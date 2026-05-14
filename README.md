@@ -83,6 +83,8 @@ POST /api/auth/login
 POST /api/auth/demo
 GET  /api/auth/me
 POST /api/auth/logout
+GET  /api/auth/meta/start
+GET  /api/auth/meta/callback
 ```
 
 Проверка API:

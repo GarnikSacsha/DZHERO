@@ -33,6 +33,8 @@ http://127.0.0.1:3000
 ```text
 GET  /api/health
 GET  /api/schema
+GET  /api/auth/meta/start
+GET  /api/auth/meta/callback
 POST /api/auth/register
 POST /api/auth/login
 POST /api/auth/demo
@@ -55,12 +57,25 @@ POST /api/workspaces/:workspaceId/ideas
 ws_demo_ua
 ```
 
+## Meta Login setup
+
+Create a Meta Developer app and set these backend environment variables:
+
+```text
+META_APP_ID=
+META_APP_SECRET=
+META_REDIRECT_URI=http://127.0.0.1:3000/api/auth/meta/callback
+META_SCOPES=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement
+```
+
+The current implementation builds the OAuth URL and receives the callback code. The next backend step is exchanging the code for an access token, reading connected Instagram Business/Creator accounts, and creating a workspace session.
+
 ## Next backend steps
 
 1. Split routes into modules.
 2. Add validation layer.
 3. Add real database.
 4. Replace local MVP auth with production auth/session storage.
-5. Add Meta Login sandbox.
+5. Finish Meta Login token exchange and Instagram account discovery.
 6. Add sync jobs table/queue.
 7. Add AI scoring endpoints.

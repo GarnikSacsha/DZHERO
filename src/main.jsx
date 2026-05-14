@@ -222,8 +222,7 @@ function App() {
 }
 
 function AuthGate({ onAuth, notify, theme, setTheme }) {
-  const [mode, setMode] = useState('login');
-  const [name, setName] = useState('');
+  const [devLoginOpen, setDevLoginOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -234,16 +233,32 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/${mode === 'register' ? 'register' : 'login'}`, {
+      const response = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ email, password }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'auth_error');
       onAuth(payload);
     } catch (authError) {
       setError(authError.message === 'invalid_credentials' ? 'Невірний email або пароль' : 'Не вдалося увійти. Перевір бекенд і дані.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startMetaLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/meta/start`);
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
+      window.location.href = payload.authUrl;
+    } catch (authError) {
+      setError('Meta Login ще не налаштований. Треба створити Meta App і додати APP ID/Secret у .env.');
+      notify('Meta Login готовий у UI, але потрібні ключі Meta App');
     } finally {
       setIsLoading(false);
     }
@@ -277,51 +292,55 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
             </div>
           </div>
           <small>Закритий робочий простір</small>
-          <h1>Увійди, щоб продюсер пам'ятав бізнес, джерела, ринки і рішення.</h1>
-          <p>Зараз це MVP-авторизація для тесту. Далі сюди ляже Meta Login, workspaces для клієнтів, ролі команди і безпечні дозволи.</p>
+          <h1>Увійди через Meta, щоб підключити бізнес-акаунт і джерела.</h1>
+          <p>Користувач не створює окремий акаунт руками: workspace з'являється після дозволу Meta для Instagram Business/Creator.</p>
           <div className="auth-points">
-            <span>Brief користувача</span>
-            <span>Бізнес-профіль</span>
+            <span>Meta permissions</span>
+            <span>Instagram Business</span>
+            <span>Insights</span>
             <span>AI Direct</span>
-            <span>Контент-план</span>
           </div>
         </div>
         <form className="auth-panel" onSubmit={submitAuth}>
           <div className="auth-panel-head">
             <div>
-              <small>{mode === 'register' ? 'Новий workspace' : 'Повернення в workspace'}</small>
-              <h2>{mode === 'register' ? 'Створити акаунт' : 'Вхід'}</h2>
+              <small>Meta Business Login</small>
+              <h2>Вхід</h2>
             </div>
             <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
-          <div className="auth-tabs">
-            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Вхід</button>
-            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Реєстрація</button>
+          <button className="auth-submit auth-meta-button" type="button" onClick={startMetaLogin} disabled={isLoading}>
+            {isLoading ? 'Готуємо Meta Login...' : 'Увійти через Meta'}
+          </button>
+          <div className="auth-permissions">
+            <strong>Що просимо</strong>
+            <span>Дозволи на Instagram Business/Creator, insights, коментарі та джерела для аналізу.</span>
           </div>
-          {mode === 'register' && (
-            <label className="auth-field">
-              <span>Ім'я або бренд</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Наприклад, SMM Cafe Kyiv" />
-            </label>
-          )}
-          <label className="auth-field">
-            <span>Email</span>
-            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@brand.ua" type="email" />
-          </label>
-          <label className="auth-field">
-            <span>Пароль</span>
-            <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="мінімум 6 символів" type="password" />
-          </label>
           {error && <div className="auth-error">{error}</div>}
-          <button className="auth-submit" type="submit" disabled={isLoading}>
-            {isLoading ? 'Перевіряємо...' : mode === 'register' ? 'Створити і увійти' : 'Увійти'}
-          </button>
           <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
-            Увійти в демо без пароля
+            Демо-вхід для перегляду
           </button>
-          <p className="auth-meta">Для першого тесту тисни демо. Для реального клієнта можна створити окремий логін.</p>
+          <button className="auth-dev-toggle" type="button" onClick={() => setDevLoginOpen((value) => !value)}>
+            Dev email login
+          </button>
+          {devLoginOpen && (
+            <div className="auth-dev-panel">
+              <label className="auth-field">
+                <span>Email</span>
+                <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@brand.ua" type="email" />
+              </label>
+              <label className="auth-field">
+                <span>Пароль</span>
+                <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="мінімум 6 символів" type="password" />
+              </label>
+              <button className="auth-demo" type="submit" disabled={isLoading}>
+                Увійти email
+              </button>
+            </div>
+          )}
+          <p className="auth-meta">Для клієнтів не буде окремої реєстрації: підключення починається з Meta, а локальний email залишиться тільки для розробки.</p>
         </form>
       </section>
     </main>
