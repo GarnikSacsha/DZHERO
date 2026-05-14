@@ -7,7 +7,6 @@ import {
   Calculator,
   CalendarDays,
   ChevronLeft,
-  ChevronRight,
   CircleCheck,
   ClipboardList,
   Database,
@@ -18,6 +17,7 @@ import {
   Globe2,
   Home,
   Lightbulb,
+  LogOut,
   Menu,
   MessageSquareText,
   Moon,
@@ -37,6 +37,9 @@ import {
 import './styles.css';
 import { fetchProducerSnapshot } from './data/uaMarket';
 
+const API_BASE = 'http://127.0.0.1:3000/api';
+const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
+
 function App() {
   const [page, setPage] = useState('home');
   const [market, setMarket] = useState('all');
@@ -45,6 +48,9 @@ function App() {
   const [toast, setToast] = useState('');
   const [remixDraft, setRemixDraft] = useState(null);
   const [theme, setTheme] = useState(() => window.localStorage.getItem('insta-producer-theme-v2') || 'dark');
+  const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(AUTH_TOKEN_KEY) || '');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authStatus, setAuthStatus] = useState('checking');
 
   useEffect(() => {
     let isMounted = true;
@@ -60,6 +66,38 @@ function App() {
     window.localStorage.setItem('insta-producer-theme-v2', theme);
   }, [theme]);
 
+  useEffect(() => {
+    let isMounted = true;
+    if (!authToken) {
+      setAuthStatus('guest');
+      return () => {
+        isMounted = false;
+      };
+    }
+    fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error('auth_failed');
+        return response.json();
+      })
+      .then((payload) => {
+        if (!isMounted) return;
+        setCurrentUser(payload.user);
+        setAuthStatus('ready');
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        window.localStorage.removeItem(AUTH_TOKEN_KEY);
+        setAuthToken('');
+        setCurrentUser(null);
+        setAuthStatus('guest');
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [authToken]);
+
   const filtered = useMemo(() => {
     if (!data) return null;
     if (market === 'all') return data;
@@ -70,16 +108,52 @@ function App() {
     };
   }, [data, market]);
 
-  if (!data || !filtered) {
-    return <div className="loading-screen">Завантажуємо дані продюсера...</div>;
-  }
-
-  const selectedReel = remixDraft ?? filtered.reels[0] ?? data.reels[0];
   const notify = (message) => {
     setToast(message);
     window.clearTimeout(window.__toastTimer);
     window.__toastTimer = window.setTimeout(() => setToast(''), 2600);
   };
+
+  const handleAuthSuccess = (payload) => {
+    window.localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
+    setAuthToken(payload.token);
+    setCurrentUser(payload.user);
+    setAuthStatus('ready');
+    notify('Вхід виконано. Можна працювати з продюсером.');
+  };
+
+  const handleLogout = async () => {
+    if (authToken) {
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` },
+      }).catch(() => {});
+    }
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuthToken('');
+    setCurrentUser(null);
+    setAuthStatus('guest');
+    notify('Ви вийшли з акаунта');
+  };
+
+  if (authStatus === 'checking') {
+    return <div className="loading-screen">Перевіряємо сесію...</div>;
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="app auth-app" data-theme={theme}>
+        <AuthGate onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} />
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
+  if (!data || !filtered) {
+    return <div className="loading-screen">Завантажуємо дані продюсера...</div>;
+  }
+
+  const selectedReel = remixDraft ?? filtered.reels[0] ?? data.reels[0];
   const addCompetitor = (handle) => {
     if (!handle) return;
     setData((current) => ({
@@ -119,7 +193,7 @@ function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      <Sidebar page={page} setPage={setPage} />
+      <Sidebar page={page} setPage={setPage} currentUser={currentUser} onLogout={handleLogout} />
       <main className="shell">
         <Topbar notify={notify} theme={theme} setTheme={setTheme} />
         <MarketFilter segments={data.marketSegments} market={market} setMarket={setMarket} />
@@ -147,7 +221,114 @@ function App() {
   );
 }
 
-function Sidebar({ page, setPage }) {
+function AuthGate({ onAuth, notify, theme, setTheme }) {
+  const [mode, setMode] = useState('login');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    setError('');
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/${mode === 'register' ? 'register' : 'login'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'auth_error');
+      onAuth(payload);
+    } catch (authError) {
+      setError(authError.message === 'invalid_credentials' ? 'Невірний email або пароль' : 'Не вдалося увійти. Перевір бекенд і дані.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const enterDemo = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'demo_error');
+      onAuth(payload);
+    } catch (authError) {
+      setError('Демо-вхід не спрацював. Треба запустити backend на 3000 порту.');
+      notify('Backend не відповідає: npm run dev:backend');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <main className="auth-page">
+      <section className="auth-shell">
+        <div className="auth-copy">
+          <div className="brand auth-brand">
+            <div className="logo">UA</div>
+            <div>
+              <strong>InstaProducer</strong>
+              <span>AI-продюсер для України і глобальних трендів</span>
+            </div>
+          </div>
+          <small>Закритий робочий простір</small>
+          <h1>Увійди, щоб продюсер пам'ятав бізнес, джерела, ринки і рішення.</h1>
+          <p>Зараз це MVP-авторизація для тесту. Далі сюди ляже Meta Login, workspaces для клієнтів, ролі команди і безпечні дозволи.</p>
+          <div className="auth-points">
+            <span>Brief користувача</span>
+            <span>Бізнес-профіль</span>
+            <span>AI Direct</span>
+            <span>Контент-план</span>
+          </div>
+        </div>
+        <form className="auth-panel" onSubmit={submitAuth}>
+          <div className="auth-panel-head">
+            <div>
+              <small>{mode === 'register' ? 'Новий workspace' : 'Повернення в workspace'}</small>
+              <h2>{mode === 'register' ? 'Створити акаунт' : 'Вхід'}</h2>
+            </div>
+            <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+          <div className="auth-tabs">
+            <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Вхід</button>
+            <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Реєстрація</button>
+          </div>
+          {mode === 'register' && (
+            <label className="auth-field">
+              <span>Ім'я або бренд</span>
+              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Наприклад, SMM Cafe Kyiv" />
+            </label>
+          )}
+          <label className="auth-field">
+            <span>Email</span>
+            <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@brand.ua" type="email" />
+          </label>
+          <label className="auth-field">
+            <span>Пароль</span>
+            <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="мінімум 6 символів" type="password" />
+          </label>
+          {error && <div className="auth-error">{error}</div>}
+          <button className="auth-submit" type="submit" disabled={isLoading}>
+            {isLoading ? 'Перевіряємо...' : mode === 'register' ? 'Створити і увійти' : 'Увійти'}
+          </button>
+          <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
+            Увійти в демо без пароля
+          </button>
+          <p className="auth-meta">Для першого тесту тисни демо. Для реального клієнта можна створити окремий логін.</p>
+        </form>
+      </section>
+    </main>
+  );
+}
+
+function Sidebar({ page, setPage, currentUser, onLogout }) {
   const items = [
     ['home', Home, 'Головна', 'core'],
     ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
@@ -187,12 +368,14 @@ function Sidebar({ page, setPage }) {
         ))}
       </nav>
       <div className="account">
-        <div className="avatar">A</div>
+        <div className="avatar">{currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
         <div>
-          <strong>Адмін</strong>
-          <span>робочий простір</span>
+          <strong>{currentUser?.name || 'Адмін'}</strong>
+          <span>{currentUser?.email || 'робочий простір'}</span>
         </div>
-        <ChevronRight size={14} />
+        <button className="logout-button" type="button" title="Вийти" onClick={onLogout}>
+          <LogOut size={14} />
+        </button>
       </div>
     </aside>
   );

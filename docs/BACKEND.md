@@ -7,6 +7,7 @@ This is the first backend skeleton for InstaProducer.
 The backend is not production-ready yet. It is a starting API layer for the MVP:
 
 - health check;
+- local MVP auth;
 - workspaces;
 - business brief;
 - competitors;
@@ -32,6 +33,11 @@ http://127.0.0.1:3000
 ```text
 GET  /api/health
 GET  /api/schema
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/demo
+GET  /api/auth/me
+POST /api/auth/logout
 GET  /api/workspaces
 POST /api/workspaces
 GET  /api/workspaces/:workspaceId/brief
@@ -54,7 +60,7 @@ ws_demo_ua
 1. Split routes into modules.
 2. Add validation layer.
 3. Add real database.
-4. Add auth/users/workspaces properly.
+4. Replace local MVP auth with production auth/session storage.
 5. Add Meta Login sandbox.
 6. Add sync jobs table/queue.
 7. Add AI scoring endpoints.

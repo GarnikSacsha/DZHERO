@@ -35,6 +35,7 @@ http://127.0.0.1:5173/
 - Data sources/settings screen.
 - `docs/MVP_TZ.md`.
 - First backend skeleton.
+- Local MVP auth: register/login/demo/me/logout.
 - JSON MVP database.
 - API health/workspaces/brief/competitors/reels/ideas.
 
@@ -45,6 +46,8 @@ Last checks performed:
 - `npm run build` passes.
 - `npm run dev:backend` starts API.
 - `GET /api/health` works.
+- `POST /api/auth/demo` and `GET /api/auth/me` work.
+- Browser login screen, demo entry and logout work.
 - Local server returns `200`.
 - Main pages click correctly.
 - Theme toggle works.
@@ -56,7 +59,7 @@ Last checks performed:
 
 - Production backend.
 - Real database.
-- Real authentication.
+- Production authentication.
 - Meta Login.
 - Real Instagram sync.
 - AI API integration.

@@ -1,5 +1,6 @@
 const fs = require('fs/promises');
 const path = require('path');
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 
@@ -12,7 +13,16 @@ app.use(express.json({ limit: '1mb' }));
 
 async function readDb() {
   const raw = await fs.readFile(DB_PATH, 'utf8');
-  return JSON.parse(raw);
+  const db = JSON.parse(raw);
+  db.users ||= [];
+  db.sessions ||= [];
+  db.workspaces ||= [];
+  db.competitors ||= [];
+  db.reels ||= [];
+  db.ideas ||= [];
+  db.leads ||= [];
+  db.syncJobs ||= [];
+  return db;
 }
 
 async function writeDb(db) {
@@ -21,6 +31,55 @@ async function writeDb(db) {
 
 function createId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
+  const hash = crypto.pbkdf2Sync(String(password), salt, 100000, 64, 'sha512').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password, storedHash) {
+  const [salt, hash] = String(storedHash || '').split(':');
+  if (!salt || !hash) return false;
+  return hashPassword(password, salt) === storedHash;
+}
+
+function publicUser(user) {
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    workspaceId: user.workspaceId,
+    createdAt: user.createdAt,
+  };
+}
+
+function createSession(db, userId) {
+  const session = {
+    token: crypto.randomBytes(32).toString('hex'),
+    userId,
+    createdAt: new Date().toISOString(),
+  };
+  db.sessions.unshift(session);
+  return session;
+}
+
+function getBearerToken(req) {
+  const header = req.headers.authorization || '';
+  if (!header.startsWith('Bearer ')) return '';
+  return header.slice('Bearer '.length).trim();
+}
+
+function getAuthUser(db, req) {
+  const token = getBearerToken(req);
+  const session = db.sessions.find((item) => item.token === token);
+  if (!session) return null;
+  return db.users.find((user) => user.id === session.userId) || null;
 }
 
 function requireWorkspace(db, workspaceId, res) {
@@ -40,12 +99,107 @@ app.get('/api/health', async (req, res) => {
     version: '0.1.0',
     counts: {
       workspaces: db.workspaces.length,
+      users: db.users.length,
       competitors: db.competitors.length,
       reels: db.reels.length,
       ideas: db.ideas.length,
       leads: db.leads.length,
     },
   });
+});
+
+app.post('/api/auth/register', async (req, res) => {
+  const db = await readDb();
+  const email = normalizeEmail(req.body.email);
+  const password = String(req.body.password || '');
+  const name = String(req.body.name || '').trim() || email.split('@')[0] || 'User';
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'valid_email_required' });
+    return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: 'password_too_short' });
+    return;
+  }
+  if (db.users.some((user) => user.email === email)) {
+    res.status(409).json({ error: 'email_already_exists' });
+    return;
+  }
+  const workspace = {
+    id: createId('ws'),
+    name: `${name} workspace`,
+    owner: name,
+    mode: 'own_business',
+    marketFocus: ['ua', 'us', 'eu', 'global'],
+    createdAt: new Date().toISOString(),
+    brief: {},
+  };
+  const user = {
+    id: createId('usr'),
+    name,
+    email,
+    role: 'owner',
+    workspaceId: workspace.id,
+    passwordHash: hashPassword(password),
+    createdAt: new Date().toISOString(),
+  };
+  db.workspaces.unshift(workspace);
+  db.users.unshift(user);
+  const session = createSession(db, user.id);
+  await writeDb(db);
+  res.status(201).json({ user: publicUser(user), token: session.token });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const db = await readDb();
+  const email = normalizeEmail(req.body.email);
+  const password = String(req.body.password || '');
+  const user = db.users.find((item) => item.email === email);
+  if (!user || !verifyPassword(password, user.passwordHash)) {
+    res.status(401).json({ error: 'invalid_credentials' });
+    return;
+  }
+  const session = createSession(db, user.id);
+  await writeDb(db);
+  res.json({ user: publicUser(user), token: session.token });
+});
+
+app.post('/api/auth/demo', async (req, res) => {
+  const db = await readDb();
+  let user = db.users.find((item) => item.email === 'demo@instaproducer.local');
+  if (!user) {
+    user = {
+      id: createId('usr'),
+      name: 'Demo User',
+      email: 'demo@instaproducer.local',
+      role: 'owner',
+      workspaceId: 'ws_demo_ua',
+      passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
+      createdAt: new Date().toISOString(),
+    };
+    db.users.unshift(user);
+  }
+  const session = createSession(db, user.id);
+  await writeDb(db);
+  res.json({ user: publicUser(user), token: session.token });
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  const db = await readDb();
+  const user = getAuthUser(db, req);
+  if (!user) {
+    res.status(401).json({ error: 'unauthorized' });
+    return;
+  }
+  res.json({ user: publicUser(user) });
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  const db = await readDb();
+  const token = getBearerToken(req);
+  db.sessions = db.sessions.filter((session) => session.token !== token);
+  await writeDb(db);
+  res.json({ ok: true });
 });
 
 app.get('/api/schema', (req, res) => {

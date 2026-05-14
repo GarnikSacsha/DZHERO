@@ -75,6 +75,16 @@ API:
 http://127.0.0.1:3000
 ```
 
+Local MVP auth is available for testing:
+
+```text
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/demo
+GET  /api/auth/me
+POST /api/auth/logout
+```
+
 Проверка API:
 
 ```text
