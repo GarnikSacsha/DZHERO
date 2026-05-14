@@ -63,6 +63,24 @@ npm run dev -- --port 5173
 http://127.0.0.1:5173/
 ```
 
+## Как запустить backend
+
+```bash
+npm run dev:backend
+```
+
+API:
+
+```text
+http://127.0.0.1:3000
+```
+
+Проверка API:
+
+```text
+GET http://127.0.0.1:3000/api/health
+```
+
 ## Проверка
 
 ```bash
@@ -75,6 +93,9 @@ npm run build
 - `src/styles.css` — весь дизайн.
 - `src/data/uaMarket.js` — моковые данные.
 - `docs/MVP_TZ.md` — подробное MVP / ТЗ.
+- `docs/BACKEND.md` — описание первого backend-скелета.
+- `backend/server.js` — Express API.
+- `backend/data/db.json` — временная JSON-база для MVP.
 - `CONTEXT.md` — продуктовый контекст.
 - `REQ.md` — требования к будущей разработке.
 - `STATUS.md` — текущее состояние.
@@ -84,11 +105,9 @@ npm run build
 
 Ближайший правильный шаг — превратить прототип в MVP с реальным хранением данных:
 
-1. выбрать backend stack;
-2. описать database schema;
-3. заменить моковые данные на CRUD;
-4. подключить auth/workspaces;
-5. проверить Meta Login и реальные permissions;
-6. сделать первый sync одного Instagram Business/Creator аккаунта;
-7. добавить AI scoring и генерацию идей.
-
+1. заменить JSON storage на настоящую базу;
+2. разнести backend routes по модулям;
+3. подключить auth/workspaces;
+4. проверить Meta Login и реальные permissions;
+5. сделать первый sync одного Instagram Business/Creator аккаунта;
+6. добавить AI scoring и генерацию идей.

@@ -1,0 +1,87 @@
+{
+  "workspaces": [
+    {
+      "id": "ws_demo_ua",
+      "name": "InstaProducer Demo",
+      "owner": "Admin",
+      "mode": "own_business",
+      "marketFocus": [
+        "ua",
+        "us",
+        "eu",
+        "global"
+      ],
+      "createdAt": "2026-05-14T00:00:00.000Z",
+      "brief": {
+        "businessType": "expert_creator",
+        "location": "Ukraine",
+        "audience": "Ukrainian Instagram audience",
+        "product": "consultations, launches, content production",
+        "toneOfVoice": "clear, useful, confident",
+        "goals": [
+          "find market signals",
+          "adapt reels",
+          "generate content plan",
+          "increase leads"
+        ],
+        "stopTopics": [
+          "RF sources",
+          "direct copying",
+          "unsafe automation"
+        ]
+      }
+    }
+  ],
+  "competitors": [
+    {
+      "id": "cmp_100x",
+      "workspaceId": "ws_demo_ua",
+      "handle": "@100xengineers",
+      "market": "global",
+      "niche": "Applied AI",
+      "score": 84.1,
+      "status": "active"
+    },
+    {
+      "id": "cmp_varun",
+      "workspaceId": "ws_demo_ua",
+      "handle": "@thevarunmaya",
+      "market": "us",
+      "niche": "AI business",
+      "score": 60.8,
+      "status": "active"
+    }
+  ],
+  "reels": [
+    {
+      "id": "reel_demo_1",
+      "workspaceId": "ws_demo_ua",
+      "sourceHandle": "@s.belyak",
+      "market": "ua",
+      "title": "Рекламні ролики з дорогою графікою можна робити однією кривою фоткою",
+      "views": 147300,
+      "likes": 3400,
+      "comments": 7700,
+      "score": 89,
+      "hook": "Дорогий CGI можна замінити AI workflow",
+      "status": [
+        "passes_gate",
+        "speech_detected",
+        "remix_candidate"
+      ]
+    }
+  ],
+  "ideas": [
+    {
+      "id": "idea_demo_1",
+      "workspaceId": "ws_demo_ua",
+      "title": "AI-контент без студії",
+      "source": "reel_demo_1",
+      "hook": "Як зробити дорогий рекламний ролик без студії",
+      "score": 88,
+      "status": "ready_for_remix"
+    }
+  ],
+  "leads": [],
+  "syncJobs": []
+}

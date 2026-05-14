@@ -44,6 +44,18 @@ Run:
 npm run dev -- --port 5173
 ```
 
+Run backend:
+
+```bash
+npm run dev:backend
+```
+
+Backend API:
+
+```text
+http://127.0.0.1:3000
+```
+
 Build:
 
 ```bash
@@ -52,17 +64,22 @@ npm run build
 
 ## Architecture status
 
-Current implementation is a single-page React prototype. It is intentionally frontend-only for now.
+Current implementation is a single-page React prototype plus a first Express backend skeleton.
+
+Backend storage is temporary JSON:
+
+```text
+backend/data/db.json
+```
 
 Next architecture step:
 
-1. choose backend;
-2. create database schema;
-3. replace mocks with persisted entities;
-4. add auth/workspaces;
-5. test Meta permissions;
-6. implement sync queue;
-7. integrate AI.
+1. replace JSON storage with real database;
+2. split backend routes into modules;
+3. add auth/workspaces properly;
+4. test Meta permissions;
+5. implement sync queue;
+6. integrate AI.
 
 ## Suggested backend entities
 
@@ -78,4 +95,3 @@ Next architecture step:
 - crm_tags
 - ai_memory
 - sync_jobs
-
