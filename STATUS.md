@@ -34,12 +34,17 @@ http://127.0.0.1:5173/
 - Team screen.
 - Data sources/settings screen.
 - `docs/MVP_TZ.md`.
+- First backend skeleton.
+- JSON MVP database.
+- API health/workspaces/brief/competitors/reels/ideas.
 
 ## Verified
 
 Last checks performed:
 
 - `npm run build` passes.
+- `npm run dev:backend` starts API.
+- `GET /api/health` works.
 - Local server returns `200`.
 - Main pages click correctly.
 - Theme toggle works.
@@ -49,8 +54,8 @@ Last checks performed:
 
 ## Not done yet
 
-- Real backend.
-- Database.
+- Production backend.
+- Real database.
 - Real authentication.
 - Meta Login.
 - Real Instagram sync.
@@ -62,6 +67,6 @@ Last checks performed:
 ## Known constraints
 
 - All current product data is mock/demo.
+- Backend currently uses `backend/data/db.json`, not a production database.
 - `src/main.jsx` is large and should be split into components later.
 - `src/styles.css` is large and should be modularized later.
-
