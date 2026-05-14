@@ -64,7 +64,7 @@ npm run build
 
 ## Architecture status
 
-Current implementation is a single-page React prototype plus a first Express backend skeleton.
+Current implementation is a single-page React prototype plus a first Express backend skeleton with local MVP auth.
 
 Backend storage is temporary JSON:
 
@@ -76,7 +76,7 @@ Next architecture step:
 
 1. replace JSON storage with real database;
 2. split backend routes into modules;
-3. add auth/workspaces properly;
+3. replace local auth/session JSON with production auth and role-based workspaces;
 4. test Meta permissions;
 5. implement sync queue;
 6. integrate AI.
