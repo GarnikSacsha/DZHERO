@@ -35,7 +35,9 @@ http://127.0.0.1:5173/
 - Data sources/settings screen.
 - `docs/MVP_TZ.md`.
 - First backend skeleton.
+- Auth screen focused on Meta Login, with demo/dev fallback.
 - Local MVP auth: register/login/demo/me/logout.
+- Meta OAuth start/callback skeleton.
 - JSON MVP database.
 - API health/workspaces/brief/competitors/reels/ideas.
 
@@ -48,6 +50,7 @@ Last checks performed:
 - `GET /api/health` works.
 - `POST /api/auth/demo` and `GET /api/auth/me` work.
 - Browser login screen, demo entry and logout work.
+- `GET /api/auth/meta/start` returns setup guidance until Meta env keys are added.
 - Local server returns `200`.
 - Main pages click correctly.
 - Theme toggle works.
@@ -60,7 +63,7 @@ Last checks performed:
 - Production backend.
 - Real database.
 - Production authentication.
-- Meta Login.
+- Complete Meta Login token exchange.
 - Real Instagram sync.
 - AI API integration.
 - Payment/subscription.

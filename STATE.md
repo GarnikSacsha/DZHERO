@@ -76,8 +76,8 @@ Next architecture step:
 
 1. replace JSON storage with real database;
 2. split backend routes into modules;
-3. replace local auth/session JSON with production auth and role-based workspaces;
-4. test Meta permissions;
+3. finish Meta OAuth token exchange and Instagram account discovery;
+4. replace local auth/session JSON with production auth and role-based workspaces;
 5. implement sync queue;
 6. integrate AI.
 

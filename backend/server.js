@@ -7,6 +7,16 @@ const cors = require('cors');
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const DB_PATH = path.join(__dirname, 'data', 'db.json');
+const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
+const META_APP_ID = process.env.META_APP_ID || '';
+const META_APP_SECRET = process.env.META_APP_SECRET || '';
+const META_REDIRECT_URI = process.env.META_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/meta/callback`;
+const META_SCOPES = process.env.META_SCOPES || [
+  'instagram_basic',
+  'instagram_manage_insights',
+  'pages_show_list',
+  'pages_read_engagement',
+].join(',');
 
 app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'] }));
 app.use(express.json({ limit: '1mb' }));
@@ -82,6 +92,21 @@ function getAuthUser(db, req) {
   return db.users.find((user) => user.id === session.userId) || null;
 }
 
+function buildMetaAuthUrl() {
+  const state = crypto.randomBytes(16).toString('hex');
+  const params = new URLSearchParams({
+    client_id: META_APP_ID,
+    redirect_uri: META_REDIRECT_URI,
+    response_type: 'code',
+    scope: META_SCOPES,
+    state,
+  });
+  return {
+    authUrl: `${META_AUTH_BASE_URL}?${params.toString()}`,
+    state,
+  };
+}
+
 function requireWorkspace(db, workspaceId, res) {
   const workspace = db.workspaces.find((item) => item.id === workspaceId);
   if (!workspace) {
@@ -106,6 +131,35 @@ app.get('/api/health', async (req, res) => {
       leads: db.leads.length,
     },
   });
+});
+
+app.get('/api/auth/meta/start', async (req, res) => {
+  if (!META_APP_ID) {
+    res.status(501).json({
+      error: 'meta_not_configured',
+      message: 'Set META_APP_ID, META_APP_SECRET and META_REDIRECT_URI in .env before using Meta Login.',
+      redirectUri: META_REDIRECT_URI,
+      requiredEnv: ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI', 'META_SCOPES'],
+    });
+    return;
+  }
+  const { authUrl, state } = buildMetaAuthUrl();
+  res.json({ authUrl, state, redirectUri: META_REDIRECT_URI, scopes: META_SCOPES.split(',') });
+});
+
+app.get('/api/auth/meta/callback', async (req, res) => {
+  if (req.query.error) {
+    res.status(400).send(`Meta Login error: ${req.query.error_description || req.query.error}`);
+    return;
+  }
+  if (!req.query.code) {
+    res.status(400).send('Meta Login callback received without code.');
+    return;
+  }
+  res.send([
+    'Meta Login code received.',
+    'Next step: exchange this code for an access token, fetch connected Instagram Business accounts, then create a workspace session.',
+  ].join('\n'));
 });
 
 app.post('/api/auth/register', async (req, res) => {
