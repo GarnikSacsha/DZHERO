@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const { generateRemix } = require('./services/remixEngine');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -120,7 +121,7 @@ app.get('/api/health', async (req, res) => {
   const db = await readDb();
   res.json({
     ok: true,
-    service: 'insta-producer-api',
+    service: 'dzhero-api',
     version: '0.1.0',
     counts: {
       workspaces: db.workspaces.length,
@@ -220,12 +221,12 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.post('/api/auth/demo', async (req, res) => {
   const db = await readDb();
-  let user = db.users.find((item) => item.email === 'demo@instaproducer.local');
+  let user = db.users.find((item) => item.email === 'demo@dzhero.app');
   if (!user) {
     user = {
       id: createId('usr'),
       name: 'Demo User',
-      email: 'demo@instaproducer.local',
+      email: 'demo@dzhero.app',
       role: 'owner',
       workspaceId: 'ws_demo_ua',
       passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
@@ -384,11 +385,39 @@ app.post('/api/workspaces/:workspaceId/ideas', async (req, res) => {
   res.status(201).json({ idea });
 });
 
+app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+
+    const { globalInsight, businessBrief } = req.body;
+    
+    if (!globalInsight) {
+      res.status(400).json({ error: 'global_insight_required', message: 'Global insight object is required' });
+      return;
+    }
+
+    // Merge supplied brief with workspace stored brief if empty
+    const mergedBrief = {
+      niche: businessBrief?.niche || workspace.brief?.businessType || 'Кафе/Ресторан',
+      product: businessBrief?.product || workspace.brief?.product || 'Спешелти кава та десерти',
+      location: businessBrief?.location || workspace.brief?.location || 'Київ',
+      toneOfVoice: businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'дружній, але професійний'
+    };
+
+    const result = await generateRemix(globalInsight, mergedBrief);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'internal_server_error' });
 });
 
 app.listen(PORT, '127.0.0.1', () => {
-  console.log(`InstaProducer API listening on http://127.0.0.1:${PORT}`);
+  console.log(`Dzhero API listening on http://127.0.0.1:${PORT}`);
 });

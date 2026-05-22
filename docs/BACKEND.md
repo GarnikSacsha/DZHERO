@@ -1,6 +1,6 @@
 # Backend
 
-This is the first backend skeleton for InstaProducer.
+This is the first backend skeleton for Dzhero.
 
 ## Current purpose
 
