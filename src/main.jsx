@@ -554,7 +554,7 @@ function ProductRoadmap({ notify }) {
           <div className="entity-grid">
             {backend.map(([title, text]) => (
               <div key={title}>
-                <strong>{title}</strong>
+                <code>{title}</code>
                 <span>{text}</span>
               </div>
             ))}
@@ -567,8 +567,10 @@ function ProductRoadmap({ notify }) {
             {dataFlow.map(([title, text], index) => (
               <div key={title}>
                 <span>{index + 1}</span>
-                <strong>{title}</strong>
-                <p>{text}</p>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                </div>
               </div>
             ))}
           </div>

@@ -112,6 +112,18 @@ button {
   transition: var(--transition);
 }
 
+h1,
+h2,
+h3,
+strong,
+p,
+span,
+small,
+li,
+button {
+  overflow-wrap: anywhere;
+}
+
 /* App Shell Layout */
 .app {
   display: grid;
@@ -619,7 +631,21 @@ nav button.active::before {
   font-weight: 700;
 }
 
+.account > div:not(.avatar) {
+  min-width: 0;
+  flex: 1;
+}
+
+.account strong,
 .account span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+
+.account span {
+  display: block;
   color: var(--muted);
   font-size: 11px;
 }
@@ -1297,7 +1323,7 @@ textarea:focus {
 .strategy-hero h2,
 .sales-card h2 {
   font-family: var(--font-display);
-  font-size: 32px;
+  font-size: clamp(26px, 2.1vw, 32px);
   font-weight: 900;
   line-height: 1.15;
   margin: 8px 0;
@@ -1309,7 +1335,7 @@ textarea:focus {
 .strategy-hero p,
 .sales-card p {
   color: #94a3b8;
-  max-width: 580px;
+  max-width: 780px;
   font-size: 14.5px;
 }
 
@@ -1328,6 +1354,152 @@ textarea:focus {
   font-family: var(--font-display);
   font-weight: 800;
   font-size: 11px;
+}
+
+/* Product roadmap / MVP specification */
+.spec-grid,
+.phase-board {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.spec-grid {
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+}
+
+.spec-card,
+.phase-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px;
+}
+
+.spec-card small,
+.phase-card small {
+  width: fit-content;
+  max-width: 100%;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: var(--success);
+  background: var(--success-bg);
+  line-height: 1.15;
+  font-size: 11px;
+}
+
+.spec-card h3,
+.phase-card h3 {
+  margin-bottom: 0;
+  line-height: 1.22;
+}
+
+.spec-card p,
+.phase-card p {
+  margin-bottom: 0;
+  color: var(--muted-2);
+  line-height: 1.5;
+}
+
+.spec-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(360px, 0.88fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.entity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.entity-grid div {
+  display: grid;
+  grid-template-columns: minmax(138px, 0.42fr) minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.entity-grid code {
+  display: block;
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: var(--success);
+  background: var(--success-bg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.entity-grid span {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.demo-flow {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.demo-flow > div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.demo-flow > div > span,
+.phase-card > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: var(--dark-text);
+  background: var(--dark);
+  font-weight: 800;
+}
+
+.demo-flow strong {
+  display: block;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+
+.demo-flow p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.phase-board {
+  grid-template-columns: repeat(5, minmax(170px, 1fr));
+}
+
+.phase-card {
+  min-height: 190px;
 }
 
 .home-stats {
@@ -1811,7 +1983,7 @@ blockquote {
   .account svg {
     display: none;
   }
-  .split, .home-grid, .home-columns, .ops-strip, .spec-layout, .phase-board, .business-flow, .strategy-layout, .sales-layout, .analytics-layout, .ideas-layout, .launch-layout, .calendar-layout, .remix-layout, .remix-bottom {
+  .split, .home-grid, .home-columns, .ops-strip, .spec-layout, .spec-grid, .phase-board, .business-flow, .strategy-layout, .sales-layout, .analytics-layout, .ideas-layout, .launch-layout, .calendar-layout, .remix-layout, .remix-bottom {
     grid-template-columns: 1fr;
   }
   .right-panel { display: none; }
@@ -1832,6 +2004,14 @@ blockquote {
   .topbar, .page-title, .market-strip { display: grid; grid-template-columns: 1fr; gap: 10px; }
   .stats, .analytics-grid, .business-grid, .team-board, .ops-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .entity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-grid div {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -2335,5 +2515,3 @@ select,
 *[class*="tracking-wider"], *[class*="tracking-widest"] {
     letter-spacing: 0.05em !important;
 }
-
-
