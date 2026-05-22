@@ -2263,4 +2263,77 @@ select,
   line-height: 1.6 !important;
 }
 
+/* ==========================================================================
+   Business Playbook Custom Overrides
+   ========================================================================== */
+.business-card .panel-title {
+  display: flex !important;
+  align-items: center !important;
+  margin-bottom: 12px !important;
+}
+
+.business-card .panel-title strong {
+  font-weight: 500 !important;
+  color: var(--text) !important;
+}
+
+.business-card .panel-title span.playbook-tag {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 400 !important;
+  font-size: 0.72rem !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase !important;
+  color: var(--primary) !important;
+  background: rgba(14, 165, 233, 0.08) !important;
+  border: 1px solid rgba(14, 165, 233, 0.15) !important;
+  border-radius: 4px !important;
+  padding: 2px 6px !important;
+  margin-left: 10px !important;
+  display: inline-block !important;
+  line-height: 1.2 !important;
+}
+
+.business-tags {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+  margin-top: 14px !important;
+}
+
+.business-tags em {
+  font-family: 'Inter', sans-serif !important;
+  font-style: normal !important;
+  font-weight: 400 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+  font-size: 0.75rem !important;
+  padding: 4px 10px !important;
+  margin-right: 6px !important;
+  margin-bottom: 6px !important;
+  border-radius: 6px !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-muted) !important;
+  display: inline-block !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.business-tags em:hover {
+  background: rgba(14, 165, 233, 0.1) !important;
+  border-color: rgba(14, 165, 233, 0.25) !important;
+  color: var(--primary) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* ==========================================================================
+   Forced Global Typography Reset
+   ========================================================================== */
+*[class*="font-bold"], *[class*="font-extrabold"] {
+    font-weight: 500 !important;
+}
+
+*[class*="tracking-wider"], *[class*="tracking-widest"] {
+    letter-spacing: 0.05em !important;
+}
+
 
