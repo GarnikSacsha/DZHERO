@@ -35,9 +35,9 @@
   --success-bg: rgba(139, 167, 154, 0.12);
   --shadow: none;
   --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
   --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
@@ -89,7 +89,7 @@ body {
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border);
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   border: 2px solid transparent;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -257,7 +257,7 @@ button {
 .auth-points span {
   padding: 8px 14px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 99px;
+  border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.04);
   font-size: 12px;
   font-weight: 600;
@@ -536,7 +536,7 @@ nav button.active::before {
   content: "";
   width: 4px;
   height: 20px;
-  border-radius: 99px;
+  border-radius: 0;
   background: #a7b8ad;
   box-shadow: none;
   position: absolute;
@@ -546,7 +546,7 @@ nav button.active::before {
 .nav-badge {
   margin-left: auto;
   padding: 2px 6px;
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   font-size: 9px;
   font-weight: 800;
   letter-spacing: 0.5px;
@@ -748,7 +748,7 @@ nav button.active::before {
 .pill {
   min-height: 28px;
   padding: 4px 12px;
-  border-radius: 99px;
+  border-radius: var(--radius-md);
   font-size: 11px;
   font-weight: 750;
   border: 1px solid var(--border);
@@ -919,7 +919,7 @@ h3 { font-size: 16px; }
 .tabs button {
   min-height: 34px;
   padding: 6px 14px;
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   color: var(--muted);
   font-weight: 600;
   font-size: 13px;
@@ -1048,7 +1048,7 @@ h3 { font-size: 16px; }
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 4px 8px;
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   font-style: normal;
   display: inline-block;
   width: fit-content;
@@ -1231,7 +1231,7 @@ textarea:focus {
 .meter {
   height: 8px;
   margin-top: 14px;
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   background: var(--control);
   overflow: hidden;
 }
@@ -1304,7 +1304,7 @@ textarea:focus {
 
 .home-badges span {
   padding: 6px 12px;
-  border-radius: 99px;
+  border-radius: var(--radius-md);
   color: var(--text);
   border: 1px solid var(--border);
   background: var(--control);
@@ -1873,7 +1873,7 @@ textarea:focus {
   padding: 4px 10px;
   font-size: 10px;
   font-weight: 800;
-  border-radius: 99px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -2150,7 +2150,7 @@ blockquote,
   height: 5px !important;
   margin-top: 12px !important;
   background: var(--control) !important;
-  border-radius: 99px !important;
+  border-radius: var(--radius-sm) !important;
   overflow: hidden !important;
 }
 
@@ -2678,6 +2678,193 @@ textarea:focus,
 select:focus {
   border-color: #6f7682 !important;
   box-shadow: none !important;
+}
+
+/* ==========================================================================
+   Step 2: strict buttons, tabs and interaction states
+   ========================================================================== */
+button,
+.actions button,
+.auth-tabs button,
+.auth-submit,
+.auth-demo,
+.auth-dev-toggle,
+.logout-button,
+.market-buttons button,
+.tabs button,
+.calendar-top button,
+.remix-script-actions button,
+.remix-script-cta,
+.copy-btn,
+.icon,
+.pill,
+.chip,
+.tag,
+.badge,
+.playbook-tag,
+.business-tags em,
+.home-badges span,
+.nav-badge {
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+}
+
+.table-card,
+.right-panel,
+.insight-card,
+.phone-card,
+.gate-card,
+.calendar-card,
+.stats div,
+.spec-card,
+.phase-card,
+.home-stats article,
+.business-card,
+.framework-card,
+.lead-table article,
+.launch-step,
+.sales-stats div,
+.brief-card,
+.source-card,
+.forecast-card,
+.mini-card,
+.auth-shell,
+.topbar,
+.market-strip,
+.brand {
+  border-radius: var(--radius-lg) !important;
+}
+
+button:hover,
+.actions button:hover,
+.auth-tabs button:hover,
+.auth-submit:hover:not(:disabled),
+.auth-demo:hover:not(:disabled),
+.auth-dev-toggle:hover,
+.logout-button:hover,
+.market-buttons button:hover,
+.tabs button:hover,
+.calendar-top button:hover,
+.remix-script-actions button:hover,
+.remix-script-cta:hover,
+.copy-btn:hover,
+.icon:hover {
+  opacity: 0.86 !important;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.actions button,
+.auth-demo,
+.auth-dev-toggle,
+.logout-button,
+.calendar-top button,
+.copy-btn,
+.icon,
+.tabs button,
+.market-buttons button,
+.auth-tabs button {
+  background: var(--control) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+.actions button.dark,
+button.dark,
+.auth-submit,
+.remix-script-actions button,
+.remix-script-cta,
+.primary,
+.cta,
+.submit-button {
+  background: #f4f1ea !important;
+  border: 1px solid #f4f1ea !important;
+  color: #0b0f17 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .actions button.dark,
+[data-theme="light"] button.dark,
+[data-theme="light"] .auth-submit,
+[data-theme="light"] .remix-script-actions button,
+[data-theme="light"] .remix-script-cta,
+[data-theme="light"] .primary,
+[data-theme="light"] .cta,
+[data-theme="light"] .submit-button {
+  background: #111827 !important;
+  border-color: #111827 !important;
+  color: #ffffff !important;
+}
+
+.market-buttons {
+  gap: 8px !important;
+}
+
+.market-buttons button {
+  position: relative !important;
+  min-height: 46px !important;
+  background: transparent !important;
+  border-color: var(--border) !important;
+}
+
+.market-buttons button.active,
+[data-theme="dark"] .market-buttons button.active {
+  background: var(--surface-strong) !important;
+  border-color: #3a4352 !important;
+  color: var(--text) !important;
+}
+
+[data-theme="light"] .market-buttons button.active {
+  background: #ffffff !important;
+  border-color: #b9b4aa !important;
+  color: #0f172a !important;
+}
+
+.market-buttons button.active::after {
+  content: "" !important;
+  position: absolute !important;
+  left: 12px !important;
+  right: 12px !important;
+  bottom: 6px !important;
+  height: 1px !important;
+  border-radius: 0 !important;
+  background: currentColor !important;
+  opacity: 0.45 !important;
+  box-shadow: none !important;
+}
+
+.tabs button.active,
+.auth-tabs button.active,
+.pill.active,
+[data-theme="dark"] .pill.active {
+  background: var(--surface-strong) !important;
+  border-color: #3a4352 !important;
+  color: var(--text) !important;
+  box-shadow: none !important;
+}
+
+nav button,
+nav button.active {
+  border-radius: var(--radius-md) !important;
+  box-shadow: none !important;
+}
+
+nav button:hover {
+  background: var(--surface-soft) !important;
+  opacity: 0.9 !important;
+  transform: none !important;
+}
+
+nav button.active {
+  background: var(--control) !important;
+  color: var(--text) !important;
+}
+
+nav button.active::before {
+  border-radius: 0 !important;
+  width: 2px !important;
+  background: currentColor !important;
+  opacity: 0.55 !important;
 }
 
 /* ==========================================================================
