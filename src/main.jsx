@@ -452,10 +452,18 @@ function HomeDashboard({ data, market, notify }) {
           <div className="home-badges"><span>Global scouting</span><span>UA-first output</span><span>Kyiv time</span></div>
         </article>
         <div className="home-stats">
-          <div><span>Ринків</span><strong>4</strong></div>
-          <div><span>Конкурентів</span><strong>{data.competitors.length}</strong></div>
-          <div><span>Рілсів</span><strong>{data.reels.length}</strong></div>
-          <div><span>Готово в план</span><strong>{data.plans.length}</strong></div>
+          {[
+            ['Ринки', '4', 'UA, США, Європа, Global'],
+            ['Конкуренти', data.competitors.length, 'у базі для scouting'],
+            ['Рілси', data.reels.length, 'відібрано для аналізу'],
+            ['У плані', data.plans.length, 'готові ідеї контенту'],
+          ].map(([label, value, note]) => (
+            <article key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+              <small>{note}</small>
+            </article>
+          ))}
         </div>
       </div>
       <div className="ops-strip">
