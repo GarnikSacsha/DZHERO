@@ -2907,3 +2907,150 @@ nav button.active::before {
   letter-spacing: 0 !important;
   line-height: 1.35 !important;
 }
+
+/* ==========================================================================
+   Step 4: page rhythm for Businesses and Audit
+   ========================================================================== */
+.page {
+  width: 100%;
+  max-width: none !important;
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+}
+
+.page-businesses,
+.page-strategy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-businesses .page-title,
+.page-strategy .page-title {
+  margin: 20px 0 0 !important;
+}
+
+.page-businesses .business-grid,
+.page-businesses .business-flow,
+.page-strategy .strategy-layout,
+.page-strategy .framework-grid {
+  margin: 0 !important;
+}
+
+.page-businesses .business-grid {
+  grid-template-columns: repeat(3, minmax(240px, 1fr)) !important;
+  gap: 24px !important;
+}
+
+.page-businesses .business-flow {
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.92fr) !important;
+  gap: 24px !important;
+}
+
+.page-businesses .business-card,
+.page-businesses .business-flow .insight-card,
+.page-strategy .strategy-hero,
+.page-strategy .strategy-cards .insight-card,
+.page-strategy .framework-card {
+  padding: 28px !important;
+}
+
+.page-businesses .business-card {
+  display: grid !important;
+  grid-template-rows: auto 1fr auto !important;
+  align-content: start !important;
+  gap: 20px !important;
+  min-height: 220px !important;
+}
+
+.page-businesses .business-card .panel-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  min-width: 0 !important;
+}
+
+.page-businesses .business-card .panel-title strong {
+  min-width: 0 !important;
+  line-height: 1.25 !important;
+}
+
+.page-businesses .business-card .panel-title span.playbook-tag {
+  flex: 0 0 auto !important;
+  margin-left: 0 !important;
+  padding: 3px 8px !important;
+}
+
+.page-businesses .business-card p,
+.page-businesses .business-flow p,
+.page-strategy .strategy-hero p,
+.page-strategy .strategy-cards p,
+.page-strategy .framework-card p {
+  margin: 0 !important;
+  line-height: 1.65 !important;
+}
+
+.page-businesses .business-tags {
+  margin-top: 0 !important;
+}
+
+.page-strategy .strategy-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr) !important;
+  gap: 24px !important;
+  align-items: stretch !important;
+}
+
+.page-strategy .strategy-cards {
+  display: grid !important;
+  gap: 24px !important;
+}
+
+.page-strategy .strategy-cards .insight-card {
+  display: grid !important;
+  gap: 16px !important;
+}
+
+.page-strategy .framework-grid {
+  grid-template-columns: repeat(3, minmax(240px, 1fr)) !important;
+  gap: 24px !important;
+}
+
+.page-strategy .framework-card {
+  min-height: 190px !important;
+}
+
+@media (max-width: 1100px) {
+  .page-businesses .business-grid,
+  .page-strategy .framework-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+  }
+
+  .page-businesses .business-flow,
+  .page-strategy .strategy-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .page-businesses,
+  .page-strategy {
+    gap: 18px;
+  }
+
+  .page-businesses .business-grid,
+  .page-strategy .framework-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  .page-businesses .business-card,
+  .page-businesses .business-flow .insight-card,
+  .page-strategy .strategy-hero,
+  .page-strategy .strategy-cards .insight-card,
+  .page-strategy .framework-card {
+    padding: 22px !important;
+  }
+}

@@ -647,7 +647,7 @@ function BusinessPlaybooks({ notify }) {
   ];
 
   return (
-    <section className="page">
+    <section className="page page-businesses">
       <PageTitle
         title="Бізнеси"
         subtitle="Сервіс має працювати не тільки для блогерів: кафе, магазини, салони, студії й e-commerce отримують свої сценарії контенту та продажів."
@@ -687,7 +687,7 @@ function StrategyBrain({ notify }) {
   const voice = ['прямо', 'без інфоциганства', 'практично', 'українською', 'з доказами'];
 
   return (
-    <section className="page">
+    <section className="page page-strategy">
       <PageTitle
         title="Аудит та позиціонування"
         subtitle="Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики."
