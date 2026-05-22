@@ -904,7 +904,7 @@ h3 { font-size: 16px; }
 .stats div,
 .spec-card,
 .phase-card,
-.home-stats div,
+.home-stats article,
 .business-card,
 .framework-card,
 .lead-table article,
@@ -1538,14 +1538,52 @@ textarea:focus {
   gap: 12px;
 }
 
-.home-stats div {
-  padding: 20px;
+.home-stats article {
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  min-height: 112px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(135deg, rgba(14, 165, 233, 0.06), transparent 55%),
+    var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.home-stats span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .home-stats strong {
+  display: block;
+  color: var(--text);
   font-family: var(--font-display);
-  font-size: 32px;
-  font-weight: 900;
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 0.9;
+}
+
+.home-stats small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.home-stats article strong {
+  background: none !important;
+  color: var(--text);
+  font-family: var(--font-display) !important;
+  font-size: 38px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  line-height: 0.9 !important;
+  -webkit-text-fill-color: currentColor !important;
 }
 
 /* Operations strip grid items */
@@ -2544,4 +2582,45 @@ select,
 
 *[class*="tracking-wider"], *[class*="tracking-widest"] {
     letter-spacing: 0.05em !important;
+}
+
+/* ==========================================================================
+   Home KPI cards final override
+   ========================================================================== */
+.home-stats article {
+  display: grid !important;
+  align-content: space-between !important;
+  gap: 10px !important;
+  min-height: 112px !important;
+}
+
+.home-stats article span {
+  display: block !important;
+  color: var(--muted) !important;
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.04em !important;
+  line-height: 1.2 !important;
+  text-transform: uppercase !important;
+}
+
+.home-stats article strong {
+  display: block !important;
+  background: none !important;
+  color: var(--text) !important;
+  font-family: var(--font-display) !important;
+  font-size: 38px !important;
+  font-weight: 800 !important;
+  letter-spacing: 0 !important;
+  line-height: 0.9 !important;
+  -webkit-background-clip: initial !important;
+  -webkit-text-fill-color: currentColor !important;
+}
+
+.home-stats article small {
+  display: block !important;
+  color: var(--muted) !important;
+  font-size: 12px !important;
+  letter-spacing: 0 !important;
+  line-height: 1.35 !important;
 }
