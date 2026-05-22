@@ -170,7 +170,7 @@ function App() {
     setData((current) => ({
       ...current,
       ideas: [
-        { market: market === 'all' ? 'ua' : market, title, source: 'manual', angle: 'Чернетка від користувача. AI має розгорнути її в український сценарій.', hook: 'Потрібно згенерувати хук', score: 70, effort: 'Середня', status: 'Потрібен розбір' },
+        { market: market === 'all' ? 'ua' : market, title, source: 'manual', angle: 'Чернетка від користувача. Потрібна адаптація під український сценарій.', hook: 'Потрібно визначити вступний меседж', score: 70, effort: 'Середня', status: 'Потрібен розбір' },
         ...current.ideas,
       ],
     }));
@@ -353,7 +353,7 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
     ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
     ['businesses', BriefcaseBusiness, 'Бізнеси', 'later'],
     ['strategy', Target, 'Стратегія', 'later'],
-    ['viral', Flame, 'Віральні рілси', 'mvp'],
+    ['viral', Flame, 'Аналітика трендів', 'mvp'],
     ['competitors', Database, 'Конкуренти', 'mvp'],
     ['remix', Wand2, 'Ремікс-студія', 'mvp'],
     ['ideas', Lightbulb, 'Ідеї', 'mvp'],
@@ -448,7 +448,7 @@ function HomeDashboard({ data, market, notify }) {
         <article className="home-hero">
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
-          <p>Система шукає сильні рілси в Україні, США, Європі та global-нішах, після чого перетворює механіку на український хук, текст і контент-план.</p>
+          <p>Система аналізує рілси в Україні, США, Європі та global-нішах, після чого адаптує механіку під український вступ, текст і контент-план.</p>
           <div className="home-badges"><span>Global scouting</span><span>UA-first output</span><span>Kyiv time</span></div>
         </article>
         <div className="home-stats">
@@ -482,7 +482,7 @@ function HomeDashboard({ data, market, notify }) {
       </div>
       <div className="home-columns">
         <article className="insight-card">
-          <small>Найсильніший сигнал</small>
+          <small>Пріоритетний сигнал</small>
           <h3>{topReel.title}</h3>
           <p>{marketLabel(topReel.market)} · {topReel.handle} · скор {topReel.score} · {topReel.views} переглядів</p>
         </article>
@@ -509,8 +509,8 @@ function ProductRoadmap({ notify }) {
     ['users', 'власник акаунта, роль, підписка, workspace'],
     ['instagram_accounts', 'Meta id, permissions, статус sync, токени'],
     ['competitors', 'handle, ринок, ніша, скор, останні сигнали'],
-    ['reels', 'caption, transcript, metrics, hook, quality gate'],
-    ['ideas', 'джерело, angle, hook, статус, зв’язок із рілсом'],
+    ['reels', 'caption, transcript, metrics, intro signal, quality gate'],
+    ['ideas', 'джерело, angle, вступний меседж, статус, зв’язок із рілсом'],
     ['content_plan', 'дата, формат, сценарій, статус, результат'],
     ['leads', 'intent, CRM-тег, температура, джерело контенту'],
     ['ai_memory', 'Tone of Voice, рішення людини, бренд-правила'],
@@ -518,14 +518,14 @@ function ProductRoadmap({ notify }) {
   const dataFlow = [
     ['Meta Login', 'користувач підключає Instagram Business/Creator і дає дозволи'],
     ['Sync jobs', 'бекенд тягне доступні пости, рілси, сторіс, коментарі, insights'],
-    ['AI analysis', 'модель робить транскрипти, scoring, intent, ідеї та ризики копіювання'],
-    ['Human choice', 'людина approve/reject/remix/plan, а AI навчається на виборі'],
+    ['Model analysis', 'модель готує транскрипти, scoring, intent, ідеї та ризики копіювання'],
+    ['Human review', 'людина approve/reject/remix/plan, а система враховує рішення'],
   ];
   const phases = [
     ['1', 'Прототип → MVP schema', 'Зафіксувати модулі, статуси, таблиці, мокові дані замінити локальною базою.'],
     ['2', 'Meta Login sandbox', 'Підключити тестовий бізнес-акаунт і перевірити реальні permissions.'],
     ['3', 'Import + scoring', 'Зібрати sync queue, банк рілсів, конкурентів, транскрипти й quality gate.'],
-    ['4', 'AI production loop', 'Ідеї, ремікси, контент-план, навчання на діях користувача.'],
+    ['4', 'Production workflow', 'Ідеї, ремікси, контент-план, навчання на діях користувача.'],
     ['5', 'AI Direct beta', 'Intent Detection, FAQ, CRM-теги, handoff менеджеру, ліміти безпеки.'],
   ];
   const risks = [
@@ -543,8 +543,8 @@ function ProductRoadmap({ notify }) {
       />
       <article className="spec-hero">
         <small>Позиціонування</small>
-        <h2>AI-продюсер для Instagram, який знаходить сигнали ринку, адаптує їх під Україну і веде контент до продажу.</h2>
-        <p>Не просто планер і не просто банк рілсів. Ядро продукту: дані → аналіз → ідея → сценарій → план → Direct/лід → аналітика грошей.</p>
+        <h2>Аналітична платформа для Instagram, яка знаходить сигнали ринку, адаптує їх під Україну і веде контент до продажу.</h2>
+        <p>Ядро продукту: дані → аналіз → ідея → сценарій → план → Direct/лід → фінансова аналітика.</p>
       </article>
       <div className="spec-grid">
         {mvp.map(([title, text, status]) => (
@@ -623,7 +623,7 @@ function ViralBank({ reels, selectedReel, market, notify }) {
         actions={<><button onClick={() => notify('Експорт підготовлено як CSV-макет')}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button></>}
       />
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: рілс, акаунт, хук, ніша, ринок..." /></label>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: рілс, акаунт, сигнал, ніша, ринок..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
@@ -664,9 +664,9 @@ function BusinessPlaybooks({ notify }) {
       </div>
       <div className="business-flow">
         <article className="insight-card">
-          <small>Що AI робить для локального бізнесу</small>
-          <h3>Не просто рілси, а щоденна система продажів в Instagram.</h3>
-          <p>AI знає тип бізнесу, асортимент, географію, сезонність, Tone of Voice і цілі. Далі пропонує контент: сторіс, пости, Reels, акції, відповіді в Direct і ідеї для повторних продажів.</p>
+          <small>Автоматизована воронка контенту</small>
+          <h3>Щоденна система контенту та продажів в Instagram.</h3>
+          <p>Профіль містить тип бізнесу, асортимент, географію, сезонність, Tone of Voice і цілі. На цій основі система пропонує контент: сторіс, пости, Reels, акції, відповіді в Direct і сценарії повторних продажів.</p>
         </article>
         <article className="insight-card">
           <small>Приклад для кафе</small>
@@ -682,21 +682,21 @@ function StrategyBrain({ notify }) {
   const pillars = [
     ['Візуальний аудит', 'Профіль виглядає як експертний, але бракує повторюваної системи обкладинок і кольорової дисципліни.', '72%'],
     ['Профіль ЦА', 'Власники малого бізнесу, експерти, консультанти й команди, яким потрібен контент без великого продакшну.', 'готово'],
-    ['Позиціонування', 'AI-продюсер, який перетворює глобальні тренди на українські сценарії, запуски й продажі.', 'draft'],
+    ['Позиціонування', 'Платформа, яка перетворює глобальні тренди на українські сценарії, запуски й продажі.', 'draft'],
   ];
   const voice = ['прямо', 'без інфоциганства', 'практично', 'українською', 'з доказами'];
 
   return (
     <section className="page">
       <PageTitle
-        title="Стратегічний мозок"
+        title="Аудит та позиціонування"
         subtitle="Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики."
-        actions={<button className="dark" onClick={() => notify('Стратегічний draft згенеровано')}><Sparkles size={16} />Згенерувати стратегію</button>}
+        actions={<button className="dark" onClick={() => notify('Позиціонування сформовано')}><Sparkles size={16} />Сформувати позиціонування</button>}
       />
       <div className="strategy-layout">
         <article className="strategy-hero">
           <small>Позиціонування</small>
-          <h2>Не просто SMM. AI-продюсер, який веде блогера від ніші до продажу.</h2>
+          <h2>Система для SMM і продюсерів, яка веде акаунт від ніші до продажу.</h2>
           <p>Система має розуміти, кому продає блогер, який офер, які болі аудиторії, як говорити і які формати даватимуть не тільки охоплення, а й заявки.</p>
           <div className="home-badges">{voice.map((item) => <span key={item}>{item}</span>)}</div>
         </article>
@@ -713,7 +713,7 @@ function StrategyBrain({ notify }) {
         {['Болі аудиторії', 'Контент-рубрики', 'Офер', 'Довіра', 'Продажі', 'Заперечення'].map((item) => (
           <article className="framework-card" key={item}>
             <strong>{item}</strong>
-            <p>AI збирає сигнали з профілю, коментарів, конкурентів і результатів, а потім оновлює стратегічну карту.</p>
+            <p>Система збирає сигнали з профілю, коментарів, конкурентів і результатів, а потім оновлює стратегічну карту.</p>
           </article>
         ))}
       </div>
@@ -788,7 +788,7 @@ function Competitors({ competitors, openModal }) {
 function RemixStudio({ reel, notify }) {
   return (
     <section className="page">
-      <PageTitle title="Топовий рілс → текст → UA-ремікс" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => notify('Відкриття Instagram буде доступне після підключення джерела')} >Instagram</button><button className="dark" onClick={() => notify('Згенеровано 3 UA-ремікси в чернетку')}><Sparkles size={16} />Згенерувати 3 ремікси</button></>} />
+      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => notify('Відкриття Instagram буде доступне після підключення джерела')} >Instagram</button><button className="dark" onClick={() => notify('Підготовлено 3 варіанти адаптації')}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <div className="remix-layout">
         <div>
           <div className="phone-card">
@@ -808,7 +808,7 @@ function RemixStudio({ reel, notify }) {
             <div className="chips"><span>Є сигнал</span><span>ринок: {marketLabel(reel.market)}</span><span>адаптація: UA</span></div>
             <small>Про що рілс</small>
             <h2>{reel.title.replace('...', '')}</h2>
-            <p>Ідея має сильний хук і зрозумілу механіку. Завдання продюсера - не копіювати, а переформатувати під український контекст, мову, болі бізнесу і локальні CTA.</p>
+            <p>Ідея має чіткий вступний сигнал і зрозумілу механіку. Завдання продюсера - не копіювати, а переформатувати під український контекст, мову, болі бізнесу і локальні CTA.</p>
           </div>
           <div className="insight-card">
             <small>Логіка адаптації</small>
@@ -820,14 +820,14 @@ function RemixStudio({ reel, notify }) {
               <small>Потенційний ремікс</small>
               <h3>Як українському бізнесу використати цю механіку без великого бюджету на продакшн...</h3>
               <ol>
-                <li>Залишити сильний callout у перші 1-2 секунди.</li>
+                <li>Залишити чіткий callout у перші 1-2 секунди.</li>
                 <li>Показати локальний біль: продажі, команда, час, контент без студії.</li>
                 <li>Закрити CTA під Україну: коментар, консультація, Telegram або профіль.</li>
               </ol>
             </div>
             <div className="insight-card empty">
               <h3>3 UA-ремікси</h3>
-              <p>Тут з’являться готові українські варіанти після генерації.</p>
+              <p>Тут з’являться українські варіанти після адаптації сценарію.</p>
             </div>
           </div>
         </div>
@@ -883,7 +883,7 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
           <div className="panel-title"><strong>Фільтр якості</strong><span>UA output</span></div>
           <p>Ідея проходить далі, якщо її можна сказати українською природно, без російського контексту, і вона має користь для локального бізнесу або експерта.</p>
           <div className="status-list">
-            <em>Є сильний перший кадр</em>
+            <em>Є чіткий перший кадр</em>
             <em>Можна адаптувати CTA</em>
             <em>Не залежить від чужого локального контексту</em>
           </div>
@@ -901,7 +901,7 @@ function CreatorAssistant() {
     'Напиши відповіді на коментарі без токсичності',
   ];
   const seedMessages = [
-    ['assistant', 'Привіт. Я можу бути продюсером, редактором, сценаристом і контент-менеджером для блогера. Дай нішу, ціль і тон голосу — зберу ідею до готового посту.'],
+    ['assistant', 'Привіт. Опишіть нішу, ціль і Tone of Voice — підготую структуру ідеї, сценарій і формат публікації.'],
     ['user', 'Мені треба контент на тиждень для українського експерта з AI.'],
     ['assistant', 'Ок. Я б зібрав 3 освітні рілси, 2 кейси, 1 розбір помилки і 1 особистий пост. Почнемо з позиціонування: експерт продає консультації, курс чи сервіс?'],
   ];
@@ -919,7 +919,7 @@ function CreatorAssistant() {
       <PageTitle
         title="Асистент блогера"
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
-        actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')}><Sparkles size={16} />Зібрати план з асистентом</button>}
+        actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')}><Sparkles size={16} />Сформувати контент-план</button>}
       />
       <div className="assistant-layout">
         <aside className="assistant-sidebar">
@@ -952,7 +952,7 @@ function CreatorAssistant() {
           </div>
           <div className="assistant-note">
             <small>Логіка</small>
-            <p>Асистент має бачити банк рілсів, ідеї, календар і стиль блогера. Тоді він не просто відповідає, а рухає контент по воронці: ідея → сценарій → зйомка → пост.</p>
+            <p>Асистент працює з банком рілсів, ідеями, календарем і стилем акаунта. Це дозволяє вести контент по воронці: ідея → сценарій → зйомка → пост.</p>
           </div>
         </aside>
       </div>
@@ -981,7 +981,7 @@ function LaunchRoadmap({ notify }) {
       <PageTitle
         title="Запуски"
         subtitle="Конструктор прогріву на 11 кроків: конкретні сценарії для сторіс, Reels, постів, тригерів, CTA і дедлайнів."
-        actions={<><button onClick={() => notify('Згенеровано тригери ажіотажу для 9-го етапу')}><Sparkles size={16} />Згенерувати тригери</button><button className="dark" onClick={() => notify('Roadmap запуску зібрано в чернетку')}><Rocket size={16} />Зібрати запуск</button></>}
+        actions={<><button onClick={() => notify('Підготовлено тригери попиту для 9-го етапу')}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={() => notify('План запуску зібрано в чернетку')}><Rocket size={16} />Сформувати запуск</button></>}
       />
       <div className="launch-layout">
         <div className="launch-roadmap">
@@ -996,7 +996,7 @@ function LaunchRoadmap({ notify }) {
           ))}
         </div>
         <aside className="right-panel launch-panel">
-          <div className="panel-title"><strong>Генеруємо на день</strong><span>3 формати</span></div>
+          <div className="panel-title"><strong>План на день</strong><span>3 формати</span></div>
           <div className="status-list">
             <em>Сторіс-прогрів</em>
             <em>Reels для охоплення</em>
@@ -1019,7 +1019,7 @@ function ContentPlan({ plans, openModal, notify }) {
   const days = useMemo(() => Array.from({ length: 35 }, (_, i) => i + 1), []);
   return (
     <section className="page">
-      <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі за київським часом." actions={<><button onClick={() => notify('Batch зібрано з відібраних ідей')}>Зібрати batch</button><button onClick={() => notify('Авто-тиждень сформовано')}>Авто-тиждень</button><button className="dark" onClick={() => openModal('post')}><Plus size={16} />Новий пост</button></>} />
+      <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі за київським часом." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openModal('post')}><Plus size={16} />Новий пост</button></>} />
       <div className="stats">
         {['Усього 4', 'Готово в batch 4', 'Знято 0', 'Опубліковано 0', 'Потрібен розбір 0'].map((item) => <div key={item}><span>{item.split(' ').slice(0, -1).join(' ')}</span><strong>{item.split(' ').at(-1)}</strong></div>)}
       </div>
@@ -1047,7 +1047,7 @@ function Analytics() {
 
   return (
     <section className="page">
-      <PageTitle title="Аналітика продюсера" subtitle="Контент, продажі й гроші в одному місці: охоплення, гарячі ліди, ROI, CAC і прогноз зальоту." />
+      <PageTitle title="Аналітика продюсера" subtitle="Контент, продажі й фінансові показники в одному місці: охоплення, кваліфіковані ліди, ROI, CAC і прогноз ефективності." />
       <div className="analytics-grid">
         <div className="insight-card"><Gauge size={24} /><h2>82</h2><p>Середній скор відібраних рілсів</p></div>
         <div className="insight-card"><CircleCheck size={24} /><h2>312%</h2><p>ROI запуску з урахуванням продакшену й трафіку</p></div>
@@ -1056,9 +1056,9 @@ function Analytics() {
       </div>
       <div className="analytics-layout">
         <article className="insight-card forecast-card">
-          <small>AI-прогноз охоплення</small>
+          <small>Прогноз охоплення</small>
           <h2>89%</h2>
-          <p>Ймовірність, що наступний рілс набере вище медіани акаунта. Сигнали: сильний hook, коментарі в ніші, короткий CTA, схожий патерн у США та Європі.</p>
+          <p>Ймовірність, що наступний рілс набере вище медіани акаунта. Сигнали: утримання уваги, коментарі в ніші, короткий CTA, схожий патерн у США та Європі.</p>
           <div className="meter"><span style={{ width: '89%' }} /></div>
         </article>
         <article className="insight-card">
@@ -1148,7 +1148,7 @@ function AnalysisSetup({ notify }) {
   const modes = [
     ['Свій бізнес', 'Ніша, гео, продукт, сезонність, конкуренти.'],
     ['SMM-клієнт', 'Окремий workspace, ринки й джерела сигналів.'],
-    ['Конкуренти', 'Handles, аномалії, hooks і механіки для адаптації.'],
+    ['Конкуренти', 'Handles, аномалії, вступні сигнали і механіки для адаптації.'],
     ['Тренди ніші', 'Пошук релевантних форматів за нішею і ринком.'],
   ];
   const businessTypes = [
@@ -1162,7 +1162,7 @@ function AnalysisSetup({ notify }) {
   const sourceRules = [
     ['Особистий feed', 'не база', 'Може бути inspiration, але не керує бізнес-стратегією.'],
     ['Бізнес-профіль', 'основа', 'Пости, рілси, insights, коментарі, сторіс і Direct після дозволу.'],
-    ['Конкуренти', 'сигнали', 'Handles, ніші, ринки, аномалії, hooks і механіки.'],
+    ['Конкуренти', 'сигнали', 'Handles, ніші, ринки, аномалії, вступні сигнали і механіки.'],
     ['Brief', 'фільтр', 'Тип бізнесу, ЦА, продукт, Tone of Voice, цілі й стоп-теми.'],
   ];
 
@@ -1171,7 +1171,7 @@ function AnalysisSetup({ notify }) {
       <article className="analysis-hero">
         <small>Як тулза аналізує акаунти</small>
         <h2>Аналіз стартує з brief, а не з мемної стрічки.</h2>
-        <p>Користувач задає ціль, бізнес, нішу, ринки й джерела. AI підбирає релевантні рілси, конкурентів і hooks під конкретну роль.</p>
+        <p>Користувач задає ціль, бізнес, нішу, ринки й джерела. Система підбирає релевантні рілси, конкурентів і вступні сигнали під конкретну роль.</p>
       </article>
       <div className="analysis-grid">
         {modes.map(([title, text]) => (
@@ -1215,7 +1215,7 @@ function DataSources({ sources, notify }) {
     ['2. Авто-sync', 'Система за розкладом тягне дозволені Reels, insights, captions, коментарі, mentions і статуси публікацій.'],
     ['3. Розбір AI', 'Модель аналізує метрики, перші секунди, caption, коментарі, транскрипт, мову, ринок і тему.'],
     ['4. Людський вибір', 'Продюсер відмічає: approve, reject, remix, в контент-план, потрібен розбір.'],
-    ['5. Навчання', 'AI запам’ятовує рішення людини, стиль бренду, сильні хуки й краще ранжує наступні рілси.'],
+    ['5. Навчання', 'Система враховує рішення людини, стиль бренду, сильні сигнали й краще ранжує наступні рілси.'],
   ];
   const authSteps = [
     ['Підключення акаунта', 'Клієнт логіниться через Meta, обирає Instagram Business/Creator акаунт і підтверджує permissions.'],
@@ -1266,7 +1266,7 @@ function DataSources({ sources, notify }) {
       <div className="insight-card pipeline-card">
         <small>Правило продукту</small>
         <h3>Скаутимо глобальні тренди, але фінальний сценарій завжди українською і для української аудиторії.</h3>
-        <p>Ринки США та Європи потрібні як джерело механік, форматів і хуків. У список потрапляють тільки релевантні та модеровані джерела.</p>
+        <p>Ринки США та Європи потрібні як джерело механік, форматів і вступних сигналів. У список потрапляють тільки релевантні та модеровані джерела.</p>
       </div>
       <div className="safety-grid">
         {safetyRules.map(([title, text]) => (
@@ -1332,7 +1332,7 @@ function LegalSafe({ notify }) {
       <article className="insight-card">
         <small>Для ТЗ</small>
         <h3>AI не замінює юриста, але готує структуру документа</h3>
-        <p>Система збирає дані проекту, ролі, бюджет, терміни, права на контент і генерує чернетку, яку можна передати юристу або власнику бізнесу на перевірку.</p>
+        <p>Система збирає дані проекту, ролі, бюджет, терміни, права на контент і формує чернетку, яку можна передати юристу або власнику бізнесу на перевірку.</p>
       </article>
     </section>
   );
