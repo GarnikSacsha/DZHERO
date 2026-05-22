@@ -646,7 +646,7 @@ function BusinessPlaybooks({ notify }) {
       <div className="business-grid">
         {playbooks.map(([title, text, tags]) => (
           <article className="business-card" key={title} onClick={() => notify(`Playbook "${title}" обрано`)}>
-            <div className="panel-title"><strong>{title}</strong><span>playbook</span></div>
+            <div className="panel-title"><strong>{title}</strong> <span className="playbook-tag">playbook</span></div>
             <p>{text}</p>
             <div className="business-tags">{tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
           </article>
