@@ -285,9 +285,9 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
       <section className="auth-shell">
         <div className="auth-copy">
           <div className="brand auth-brand">
-            <div className="logo">UA</div>
+            <div className="logo">Dz</div>
             <div>
-              <strong>InstaProducer</strong>
+              <strong>Dzhero</strong>
               <span>AI-продюсер для України і глобальних трендів</span>
             </div>
           </div>
@@ -371,18 +371,17 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="logo">UA</div>
+        <div className="logo">Dz</div>
         <div>
-          <strong>InstaProducer</strong>
+          <strong>Dzhero</strong>
           <span>Україна + світ</span>
         </div>
       </div>
       <nav>
-        {items.map(([id, Icon, label, phase]) => (
+        {items.map(([id, Icon, label]) => (
           <button className={page === id ? 'active' : ''} key={id} onClick={() => setPage(id)}>
             <Icon size={16} />
             <span className="nav-label">{label}</span>
-            <span className={`nav-badge ${phase}`}>{phase === 'mvp' ? 'MVP' : phase === 'later' ? 'L2' : 'core'}</span>
           </button>
         ))}
       </nav>

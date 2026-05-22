@@ -1,10 +1,36 @@
 {
-  "users": [],
-  "sessions": [],
+  "users": [
+    {
+      "id": "usr_mpfwnyml_c6u1jf",
+      "name": "Demo User",
+      "email": "demo@dzhero.app",
+      "role": "owner",
+      "workspaceId": "ws_demo_ua",
+      "passwordHash": "a26779ddcdf78e3cf44e7a31f57b3a9f:529c277e2c493876182b79d15509313542866ffea8b2cda01bdd57350218b38a539e33760e77f5543cbee2eb3b4a0e8519f897859c69cce1df3a06d40a9c7cdd",
+      "createdAt": "2026-05-21T19:50:26.892Z"
+    }
+  ],
+  "sessions": [
+    {
+      "token": "65095a0aa143ac75b25b8a72e49dff2f70a2ee711ac760610c886a4f669c92df",
+      "userId": "usr_mpfwnyml_c6u1jf",
+      "createdAt": "2026-05-22T09:08:47.398Z"
+    },
+    {
+      "token": "53ffb23766d839067be731701cd9681ec4420ff7e904b261c8c9abe32614b21f",
+      "userId": "usr_mpfwnyml_c6u1jf",
+      "createdAt": "2026-05-21T22:23:09.430Z"
+    },
+    {
+      "token": "3e6d2638f77979e0365e3049d46eaf415a5c3637bbb484514649f586a129f585",
+      "userId": "usr_mpfwnyml_c6u1jf",
+      "createdAt": "2026-05-21T19:50:26.892Z"
+    }
+  ],
   "workspaces": [
     {
       "id": "ws_demo_ua",
-      "name": "InstaProducer Demo",
+      "name": "Dzhero Demo",
       "owner": "Admin",
       "mode": "own_business",
       "marketFocus": [
