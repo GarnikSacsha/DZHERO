@@ -1764,19 +1764,6 @@ textarea:focus {
   position: relative;
 }
 
-/* Minimal AI loader circle */
-.remix-spinner {
-  width: 54px;
-  height: 54px;
-  border: 4px solid var(--border-soft);
-  border-top-color: var(--brand-cyan);
-  border-right-color: var(--brand-indigo);
-  border-radius: 50%;
-  animation: spin 1.2s cubic-bezier(0.5, 0.1, 0.5, 0.9) infinite;
-  margin-bottom: 24px;
-  box-shadow: none;
-}
-
 .remix-loader-text {
   font-family: var(--font-display);
   font-size: 18px;
@@ -3052,5 +3039,164 @@ nav button.active::before {
   .page-strategy .strategy-cards .insight-card,
   .page-strategy .framework-card {
     padding: 22px !important;
+  }
+}
+
+/* ==========================================================================
+   Step 5: structured data cards
+   ========================================================================== */
+.page-strategy .strategy-cards .panel-title,
+.page-strategy .framework-card strong {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  margin: 0 !important;
+  padding-bottom: 14px !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.page-strategy .strategy-cards .panel-title strong,
+.page-strategy .framework-card strong {
+  color: var(--text) !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0 !important;
+  line-height: 1.35 !important;
+}
+
+.page-strategy .strategy-cards p {
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  font-weight: 300 !important;
+  line-height: 1.7 !important;
+}
+
+.metric-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 24px !important;
+  padding: 3px 9px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--control) !important;
+  color: var(--muted-2) !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em !important;
+  white-space: nowrap !important;
+}
+
+.data-list {
+  display: grid !important;
+  gap: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  list-style: none !important;
+}
+
+.data-list li {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 10px !important;
+  padding: 11px 0 !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  color: var(--muted) !important;
+  font-size: 14px !important;
+  font-weight: 300 !important;
+  line-height: 1.45 !important;
+}
+
+.data-list li:last-child {
+  border-bottom: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.data-list li::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.55;
+  flex: 0 0 auto;
+}
+
+/* ==========================================================================
+   Step 6: Remix Studio skeleton loading
+   ========================================================================== */
+.remix-skeleton-list,
+.remix-variant-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.remix-skeleton-card,
+.remix-variant-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-soft);
+}
+
+.remix-skeleton-card {
+  display: grid;
+  gap: 10px;
+  min-height: 96px;
+  animation: skeletonPulse 2.2s ease-in-out infinite;
+}
+
+.remix-skeleton-card span,
+.remix-skeleton-card em {
+  display: block;
+  height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--border);
+  opacity: 0.7;
+}
+
+.remix-skeleton-card span {
+  width: 42%;
+}
+
+.remix-skeleton-card em:nth-of-type(1) {
+  width: 88%;
+}
+
+.remix-skeleton-card em:nth-of-type(2) {
+  width: 64%;
+}
+
+.remix-variant-card {
+  display: grid;
+  gap: 8px;
+}
+
+.remix-variant-card strong {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.remix-variant-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+@keyframes skeletonPulse {
+  0%,
+  100% {
+    opacity: 0.62;
+  }
+
+  50% {
+    opacity: 1;
   }
 }
