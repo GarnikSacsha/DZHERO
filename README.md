@@ -106,6 +106,8 @@ npm run build
 - `src/data/uaMarket.js` — моковые данные.
 - `docs/MVP_TZ.md` — подробное MVP / ТЗ.
 - `docs/BACKEND.md` — описание первого backend-скелета.
+- `docs/PRODUCT_FLOW.md` — наскрізний MVP-flow: від brief до контент-плану і Direct.
+- `docs/BACKEND_ROADMAP.md` — покроковий backend-план: моделі, API, Meta Login, sync jobs.
 - `backend/server.js` — Express API.
 - `backend/data/db.json` — временная JSON-база для MVP.
 - `CONTEXT.md` — продуктовый контекст.
