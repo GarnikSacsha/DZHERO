@@ -1581,6 +1581,39 @@ textarea:focus {
   margin: 0;
 }
 
+.page-home .home-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.page-home .home-columns .insight-card {
+  display: grid;
+  gap: 12px;
+  min-height: 124px;
+}
+
+.page-home .home-columns .insight-card small,
+.page-home .home-columns .insight-card h3,
+.page-home .home-columns .insight-card p {
+  margin: 0;
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted-2);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.55;
+}
+
+.task-list li {
+  padding-left: 2px;
+}
+
 /* ==========================================================================
    AI Assistant / Chat Panels
    ========================================================================== */
@@ -3702,5 +3735,466 @@ nav button.active::before {
 
   .launch-step {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ==========================================================================
+   Final layout normalization: prevent glued labels and raw-list pages
+   ========================================================================== */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.page-title {
+  margin: 20px 0 0 !important;
+}
+
+.page-title > div:first-child {
+  min-width: 0;
+}
+
+.page-title .actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.panel-title {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+  min-width: 0;
+}
+
+.panel-title strong,
+.panel-title span {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.panel-title span {
+  flex: 0 0 auto;
+}
+
+.right-panel,
+.insight-card,
+.table-card,
+.calendar-card,
+.assistant-sidebar,
+.assistant-chat,
+.assistant-tools,
+.vault-card,
+.budget-hero,
+.business-picker,
+.source-rules article,
+.auth-flow,
+.pipeline-step,
+.team-card,
+.source-card,
+.idea-card,
+.launch-step,
+.sales-card {
+  min-width: 0;
+}
+
+.table-card {
+  overflow-x: auto;
+}
+
+.table-card .table-head,
+.table-card .reel-row,
+.table-card .comp-row {
+  min-width: max-content;
+}
+
+.table-card .reels-grid {
+  min-width: 1180px;
+}
+
+.table-card .comp-grid {
+  min-width: 1100px;
+}
+
+.right-panel {
+  padding: 22px !important;
+}
+
+.right-panel > * + *,
+.vault-grid > * + *,
+.quality-board > * + * {
+  margin-top: 0;
+}
+
+.status-list {
+  display: grid !important;
+  gap: 8px !important;
+  align-content: start;
+}
+
+.status-list em {
+  display: inline-flex !important;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 28px;
+  white-space: normal;
+}
+
+.stats div,
+.sales-stats div,
+.idea-summary div,
+.budget-table div {
+  align-content: center;
+}
+
+.stats span,
+.sales-stats span,
+.idea-summary span,
+.budget-table span {
+  display: block;
+}
+
+.stats strong,
+.sales-stats strong,
+.idea-summary strong,
+.budget-table strong,
+.home-stats strong {
+  display: block;
+}
+
+.assistant-layout {
+  grid-template-columns: minmax(220px, 0.24fr) minmax(0, 1fr) minmax(260px, 0.28fr) !important;
+  align-items: stretch;
+}
+
+.assistant-sidebar,
+.assistant-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 22px;
+  overflow: hidden;
+}
+
+.assistant-sidebar h3,
+.assistant-tools .panel-title {
+  margin: 0;
+}
+
+.assistant-sidebar button {
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.assistant-thread {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.assistant-thread .chat-message {
+  display: grid;
+  gap: 8px;
+  width: fit-content;
+  max-width: min(760px, 82%);
+}
+
+.assistant-thread .chat-message span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.assistant-thread .chat-message p {
+  margin: 0;
+}
+
+.assistant-thread .chat-message.user {
+  align-self: flex-end;
+  background: #d8d3c7;
+  color: #0b0f17;
+}
+
+.assistant-thread .chat-message.user span {
+  color: rgba(11, 15, 23, 0.58);
+}
+
+.assistant-input {
+  align-items: center;
+}
+
+.assistant-input input {
+  min-width: 0;
+}
+
+.assistant-tools .assistant-note {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.assistant-tools .assistant-note p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 300;
+  line-height: 1.6;
+}
+
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.vault-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.vault-card svg {
+  color: var(--muted);
+}
+
+.vault-card small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+}
+
+.vault-card h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.vault-card p {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 300;
+  line-height: 1.65;
+}
+
+.vault-card button {
+  justify-self: start;
+  min-height: 36px;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--control);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.plan-panel {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.plan-panel .panel-title {
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.plan-panel .mini-card {
+  width: 100%;
+  margin: 0 !important;
+}
+
+.calendar-layout {
+  align-items: start;
+  gap: 18px !important;
+  margin-top: 8px !important;
+}
+
+.calendar-layout .calendar-card,
+.calendar-layout .plan-panel {
+  align-self: start;
+}
+
+.calendar-layout .plan-panel {
+  display: grid !important;
+  align-content: start !important;
+  gap: 12px !important;
+  padding: 24px !important;
+}
+
+.page-content-plan {
+  gap: 18px !important;
+}
+
+.page-content-plan .stats {
+  margin-bottom: 0 !important;
+}
+
+.page-content-plan .calendar-layout {
+  margin-top: 0 !important;
+}
+
+.page-content-plan .page-title {
+  margin-bottom: 4px !important;
+}
+
+.calendar-grid > div {
+  min-width: 0;
+}
+
+.remix-layout .phone-card,
+.remix-layout .gate-card,
+.remix-layout .analysis-stack .insight-card {
+  overflow: hidden;
+}
+
+.phone-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.phone-stats span,
+.phone-stats strong {
+  display: block;
+}
+
+.gate-card {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+}
+
+.gate-card p,
+.gate-card h3 {
+  margin: 0;
+}
+
+.lead-table article > *,
+.metric-table div > *,
+.entity-grid div > *,
+.demo-flow div > *,
+.pipeline-step > *,
+.auth-steps article > *,
+.team-card > *,
+.source-card > *,
+.vault-card > *,
+.idea-card > *,
+.launch-step > div > * {
+  min-width: 0;
+}
+
+.lead-table article {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.source-grid,
+.safety-grid,
+.team-board,
+.quality-board,
+.intent-grid,
+.idea-summary,
+.sales-stats,
+.business-choice-grid,
+.analysis-grid,
+.source-rules,
+.auth-steps,
+.pipeline-board,
+.vault-grid {
+  align-items: stretch;
+}
+
+@media (max-width: 1500px) {
+  .split {
+    grid-template-columns: 1fr !important;
+  }
+
+  .right-panel {
+    display: grid !important;
+  }
+
+  .source-grid,
+  .source-rules,
+  .auth-steps,
+  .pipeline-board,
+  .team-board,
+  .quality-board,
+  .intent-grid,
+  .analysis-grid,
+  .business-choice-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr)) !important;
+  }
+
+  .auth-flow,
+  .business-picker {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 1420px) {
+  .assistant-layout {
+    grid-template-columns: minmax(220px, 0.28fr) minmax(0, 1fr) !important;
+  }
+
+  .assistant-tools {
+    grid-column: 1 / -1;
+  }
+
+  .vault-grid {
+    grid-template-columns: repeat(2, minmax(220px, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .assistant-layout,
+  .calendar-layout,
+  .remix-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .assistant-chat {
+    min-height: 520px;
+  }
+
+  .vault-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-title {
+    display: grid !important;
+    grid-template-columns: 1fr;
+  }
+
+  .page-title .actions {
+    justify-content: flex-start;
   }
 }

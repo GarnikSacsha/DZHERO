@@ -438,7 +438,7 @@ function HomeDashboard({ data, market, notify }) {
   const activeMarket = data.marketSegments.find((segment) => segment.id === market);
 
   return (
-    <section className="page">
+    <section className="page page-home">
       <PageTitle
         title="Головна"
         subtitle="Операційний центр Instagram-продюсера: глобальний scouting і адаптація ідей під українську аудиторію."
@@ -1064,7 +1064,7 @@ function LaunchRoadmap({ notify }) {
 function ContentPlan({ plans, openModal, notify }) {
   const days = useMemo(() => Array.from({ length: 35 }, (_, i) => i + 1), []);
   return (
-    <section className="page">
+    <section className="page page-content-plan">
       <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі за київським часом." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openModal('post')}><Plus size={16} />Новий пост</button></>} />
       <div className="stats">
         {['Усього 4', 'Готово в batch 4', 'Знято 0', 'Опубліковано 0', 'Потрібен розбір 0'].map((item) => <div key={item}><span>{item.split(' ').slice(0, -1).join(' ')}</span><strong>{item.split(' ').at(-1)}</strong></div>)}
