@@ -685,6 +685,14 @@ function StrategyBrain({ notify }) {
     ['Позиціонування', 'Платформа, яка перетворює глобальні тренди на українські сценарії, запуски й продажі.', 'draft'],
   ];
   const voice = ['прямо', 'без інфоциганства', 'практично', 'українською', 'з доказами'];
+  const frameworkItems = [
+    ['Болі аудиторії', ['нестача системного контенту', 'низька конверсія з охоплення', 'немає стабільного позиціонування']],
+    ['Контент-рубрики', ['експертні розбори', 'кейси клієнтів', 'порівняння підходів']],
+    ['Офер', ['цінність продукту', 'умови входу', 'ключовий CTA']],
+    ['Довіра', ['соціальний доказ', 'процес роботи', 'публічні результати']],
+    ['Продажі', ['lead magnet', 'Direct-сценарій', 'кваліфікація заявки']],
+    ['Заперечення', ['ціна', 'час', 'ризики впровадження']],
+  ];
 
   return (
     <section className="page page-strategy">
@@ -703,17 +711,19 @@ function StrategyBrain({ notify }) {
         <div className="strategy-cards">
           {pillars.map(([title, text, score]) => (
             <article className="insight-card" key={title}>
-              <div className="panel-title"><strong>{title}</strong><span>{score}</span></div>
+              <div className="panel-title"><strong>{title}</strong><span className="metric-badge">{score}</span></div>
               <p>{text}</p>
             </article>
           ))}
         </div>
       </div>
       <div className="framework-grid">
-        {['Болі аудиторії', 'Контент-рубрики', 'Офер', 'Довіра', 'Продажі', 'Заперечення'].map((item) => (
+        {frameworkItems.map(([item, rows]) => (
           <article className="framework-card" key={item}>
             <strong>{item}</strong>
-            <p>Система збирає сигнали з профілю, коментарів, конкурентів і результатів, а потім оновлює стратегічну карту.</p>
+            <ul className="data-list">
+              {rows.map((row) => <li key={row}>{row}</li>)}
+            </ul>
           </article>
         ))}
       </div>
@@ -786,9 +796,24 @@ function Competitors({ competitors, openModal }) {
 }
 
 function RemixStudio({ reel, notify }) {
+  const [adaptationState, setAdaptationState] = useState('idle');
+  const scenarioVariants = [
+    ['Варіант 1', 'Перший кадр: локальний біль бізнесу. Далі - короткий доказ, приклад з ніші та CTA на консультацію.'],
+    ['Варіант 2', 'Перший кадр: порівняння до/після. Далі - три кроки адаптації механіки під український ринок.'],
+    ['Варіант 3', 'Перший кадр: заперечення клієнта. Далі - відповідь через кейс, цифру і прямий CTA в Direct.'],
+  ];
+  const adaptScenario = () => {
+    setAdaptationState('loading');
+    notify('Адаптація сценарію запущена');
+    window.setTimeout(() => {
+      setAdaptationState('ready');
+      notify('Підготовлено 3 варіанти адаптації');
+    }, 1200);
+  };
+
   return (
     <section className="page">
-      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => notify('Відкриття Instagram буде доступне після підключення джерела')} >Instagram</button><button className="dark" onClick={() => notify('Підготовлено 3 варіанти адаптації')}><Sparkles size={16} />Адаптувати сценарій</button></>} />
+      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => notify('Відкриття Instagram буде доступне після підключення джерела')} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <div className="remix-layout">
         <div>
           <div className="phone-card">
@@ -827,7 +852,28 @@ function RemixStudio({ reel, notify }) {
             </div>
             <div className="insight-card empty">
               <h3>3 UA-ремікси</h3>
-              <p>Тут з’являться українські варіанти після адаптації сценарію.</p>
+              {adaptationState === 'idle' && <p>Тут з’являться українські варіанти після адаптації сценарію.</p>}
+              {adaptationState === 'loading' && (
+                <div className="remix-skeleton-list" aria-label="Підготовка сценаріїв">
+                  {[1, 2, 3].map((item) => (
+                    <div className="remix-skeleton-card" key={item}>
+                      <span />
+                      <em />
+                      <em />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {adaptationState === 'ready' && (
+                <div className="remix-variant-list">
+                  {scenarioVariants.map(([title, text]) => (
+                    <article className="remix-variant-card" key={title}>
+                      <strong>{title}</strong>
+                      <p>{text}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
