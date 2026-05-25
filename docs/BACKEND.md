@@ -35,6 +35,7 @@ GET  /api/health
 GET  /api/schema
 GET  /api/auth/meta/start
 GET  /api/auth/meta/callback
+GET  /api/auth/meta/status
 POST /api/auth/register
 POST /api/auth/login
 POST /api/auth/demo
@@ -44,11 +45,17 @@ GET  /api/workspaces
 POST /api/workspaces
 GET  /api/workspaces/:workspaceId/brief
 PUT  /api/workspaces/:workspaceId/brief
+GET  /api/workspaces/:workspaceId/sources
+POST /api/workspaces/:workspaceId/sources
+POST /api/workspaces/:workspaceId/sources/:sourceId/sync
 GET  /api/workspaces/:workspaceId/competitors
 POST /api/workspaces/:workspaceId/competitors
 GET  /api/workspaces/:workspaceId/reels
+POST /api/workspaces/:workspaceId/reels/:reelId/analyze
+POST /api/workspaces/:workspaceId/reels/:reelId/generate-ideas
 GET  /api/workspaces/:workspaceId/ideas
 POST /api/workspaces/:workspaceId/ideas
+POST /api/workspaces/:workspaceId/remix/generate
 ```
 
 ## Demo workspace
@@ -68,7 +75,32 @@ META_REDIRECT_URI=http://127.0.0.1:3000/api/auth/meta/callback
 META_SCOPES=instagram_basic,instagram_manage_insights,pages_show_list,pages_read_engagement
 ```
 
-The current implementation builds the OAuth URL and receives the callback code. The next backend step is exchanging the code for an access token, reading connected Instagram Business/Creator accounts, and creating a workspace session.
+The current implementation builds the OAuth URL, receives the callback code, exchanges it for a token, reads linked pages with Instagram Business/Creator accounts, stores connected account metadata, and creates a `meta_account_discovery` sync job.
+
+Check setup and connected accounts:
+
+```text
+GET /api/auth/meta/status?workspaceId=ws_demo_ua
+```
+
+## Source sync and AI layer
+
+The MVP now has a first data-source pipeline:
+
+1. create source;
+2. sync source into an imported reel;
+3. analyze reel score, quality gate and copy risk;
+4. generate ideas from that reel;
+5. send selected idea to remix generation.
+
+Example:
+
+```text
+POST /api/workspaces/ws_demo_ua/sources
+POST /api/workspaces/ws_demo_ua/sources/:sourceId/sync
+POST /api/workspaces/ws_demo_ua/reels/:reelId/analyze
+POST /api/workspaces/ws_demo_ua/reels/:reelId/generate-ideas
+```
 
 ## Next backend steps
 
@@ -76,6 +108,6 @@ The current implementation builds the OAuth URL and receives the callback code. 
 2. Add validation layer.
 3. Add real database.
 4. Replace local MVP auth with production auth/session storage.
-5. Finish Meta Login token exchange and Instagram account discovery.
-6. Add sync jobs table/queue.
-7. Add AI scoring endpoints.
+5. Replace manual source sync with real scheduled imports.
+6. Add persistent queue/worker for sync jobs.
+7. Connect AI scoring/remix endpoints to production model config and monitoring.
