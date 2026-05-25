@@ -3303,14 +3303,111 @@ nav button.active::before {
   margin-bottom: 24px;
 }
 
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.analytics-grid .insight-card {
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  min-height: 150px;
+  padding: 22px;
+}
+
+.analytics-grid .insight-card svg {
+  color: var(--muted);
+}
+
+.analytics-grid .insight-card h2 {
+  margin: 10px 0 0;
+  font-size: 36px !important;
+  font-weight: 500 !important;
+  line-height: 1;
+}
+
+.analytics-grid .insight-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.analytics-layout {
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.analytics-layout .forecast-card {
+  grid-column: 1;
+}
+
+.analytics-layout > .insight-card:not(.forecast-card) {
+  grid-column: 2 / -1;
+}
+
+.analytics-layout > .insight-card:not(.forecast-card) {
+  padding: 28px !important;
+}
+
+.analytics-layout .metric-table {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.analytics-layout .metric-table div {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.25fr) repeat(4, minmax(86px, 0.5fr));
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.analytics-layout .metric-table strong,
+.analytics-layout .metric-table span,
+.analytics-layout .metric-table em {
+  line-height: 1.35;
+}
+
+.analytics-layout .metric-table span,
+.analytics-layout .metric-table em {
+  color: var(--muted);
+  font-size: 13px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
 .ideas-layout {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.34fr);
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 16px;
   align-items: start;
 }
 
 .ideas-list {
   display: grid;
   gap: 16px;
+  grid-column: 1 / span 3;
+}
+
+.ideas-layout .idea-panel {
+  grid-column: 4;
+  align-self: start;
+  min-height: 338px;
+  padding: 28px !important;
+}
+
+.ideas-layout .idea-panel p {
+  max-width: 100%;
+}
+
+.ideas-layout .idea-panel .status-list {
+  gap: 10px !important;
+  padding-top: 6px;
 }
 
 .idea-card,
@@ -3529,7 +3626,35 @@ nav button.active::before {
 
 .budget-layout {
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.35fr);
+  grid-template-areas:
+    "hero table"
+    "scenarios table"
+    ". table";
+  grid-template-rows: auto auto 1fr;
+  gap: 16px 24px;
   align-items: start;
+}
+
+.budget-hero {
+  grid-area: hero;
+}
+
+.budget-scenarios {
+  grid-area: scenarios;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.budget-scenarios .insight-card {
+  display: grid;
+  gap: 10px;
+  min-height: 136px;
+  padding: 24px !important;
+}
+
+.budget-table {
+  grid-area: table;
 }
 
 .budget-table {
@@ -3688,6 +3813,7 @@ nav button.active::before {
 @media (max-width: 1250px) {
   .idea-summary,
   .sales-stats,
+  .analytics-grid,
   .intent-grid,
   .team-board,
   .analysis-grid,
@@ -3711,11 +3837,25 @@ nav button.active::before {
   .auth-flow {
     grid-template-columns: 1fr;
   }
+
+  .budget-layout {
+    grid-template-areas:
+      "hero"
+      "scenarios"
+      "table";
+    grid-template-rows: auto;
+  }
+
+  .ideas-list,
+  .ideas-layout .idea-panel {
+    grid-column: 1;
+  }
 }
 
 @media (max-width: 760px) {
   .idea-summary,
   .sales-stats,
+  .analytics-grid,
   .intent-grid,
   .team-board,
   .quality-board,
@@ -3731,6 +3871,15 @@ nav button.active::before {
 
   .lead-table article {
     grid-template-columns: 1fr;
+  }
+
+  .budget-scenarios {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-layout .metric-table div {
+    grid-template-columns: 1fr;
+    gap: 6px;
   }
 
   .launch-step {
@@ -4058,7 +4207,18 @@ nav button.active::before {
 }
 
 .page-content-plan .calendar-layout {
+  grid-template-columns: repeat(5, minmax(150px, 1fr)) !important;
+  gap: 12px !important;
   margin-top: 0 !important;
+}
+
+.page-content-plan .calendar-card {
+  grid-column: 1 / span 4;
+}
+
+.page-content-plan .plan-panel {
+  grid-column: 5;
+  min-width: 0;
 }
 
 .page-content-plan .page-title {
@@ -4179,6 +4339,11 @@ nav button.active::before {
   .calendar-layout,
   .remix-layout {
     grid-template-columns: 1fr !important;
+  }
+
+  .page-content-plan .calendar-card,
+  .page-content-plan .plan-panel {
+    grid-column: 1;
   }
 
   .assistant-chat {
