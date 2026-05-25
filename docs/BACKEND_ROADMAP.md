@@ -273,3 +273,10 @@ Backend має одразу закласти обмеження:
 1. Замінити `backend/data/db.json` на реальне сховище або repository layer, щоб потім легко перейти на БД.
 2. Доробити workspace onboarding: business brief, mode, markets, competitors seed.
 3. Доробити Meta Login sandbox до етапу, де ми бачимо список доступних Instagram Business/Creator акаунтів.
+
+## Реалізовано у кроці 5-7
+
+- Meta Login sandbox тепер має `GET /api/auth/meta/status`, token exchange у callback і збереження connected Instagram Business/Creator accounts metadata.
+- Додано перший data-source pipeline: `sources`, ручний sync джерела, імпорт reel, sync job.
+- Додано AI layer для MVP: scoring, quality gate, copy risk, рекомендація `ready_for_remix`, генерація ідей з reel.
+- Remix endpoint залишився сумісним з попереднім UI і може працювати через API key або fallback generator.
