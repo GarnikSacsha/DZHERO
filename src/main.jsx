@@ -1415,10 +1415,10 @@ function BudgetCalculator({ notify }) {
             </div>
           ))}
         </div>
-      </div>
-      <div className="analytics-layout">
+      <div className="budget-scenarios">
         <article className="insight-card"><h3>Сценарій conservative</h3><p>Нижчий reach, CAC вище плану, потрібен довший прогрів і більше proof-контенту.</p></article>
         <article className="insight-card"><h3>Сценарій aggressive</h3><p>Більше трафіку, швидший Direct, частина ризиків передається менеджеру й юридичному сейфу.</p></article>
+      </div>
       </div>
     </section>
   );
