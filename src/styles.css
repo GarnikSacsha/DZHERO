@@ -16,6 +16,7 @@
   --brand-emerald: #A7FFEB;
   --brand-emerald-glow: rgba(167, 255, 235, 0.3);
   --brand-red: #E07F7A;
+  --accent: var(--brand-cyan);
 
   /* Theme-specific tokens (Light Theme default, dark overrides below) */
   --bg: var(--bg-light);
@@ -1748,6 +1749,83 @@ textarea:focus {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.brand-brain {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.brand-brain-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.brand-brain-head small {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand-brain-head h3 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+}
+
+.brand-brain-head p {
+  max-width: 820px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.brand-brain-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.brand-field {
+  display: grid;
+  gap: 7px;
+}
+
+.brand-field.wide {
+  grid-column: span 3;
+}
+
+.brand-field span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.brand-field textarea {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.brand-field textarea:focus {
+  border-color: var(--accent);
 }
 
 .assistant-layout {
@@ -4594,6 +4672,18 @@ nav button.active::before {
 
   .agent-pipeline-head {
     grid-template-columns: 1fr;
+  }
+
+  .brand-brain-head {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-brain-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-field.wide {
+    grid-column: auto;
   }
 
   .agent-status-cards {
