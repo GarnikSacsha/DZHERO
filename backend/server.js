@@ -70,8 +70,10 @@ async function readDb() {
   db.metaStates ||= [];
   db.instagramAccounts ||= [];
   db.aiMemory ||= [];
+  db.aiJobs ||= [];
   db.remixes ||= [];
   db.contentPlanItems ||= [];
+  db.videoJobs ||= [];
   return db;
 }
 
@@ -253,6 +255,98 @@ function requireWorkspace(db, workspaceId, res) {
     return null;
   }
   return workspace;
+}
+
+function getAiProviderStatus() {
+  return {
+    instagram: {
+      configured: Boolean(INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET),
+      status: INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET ? 'ready' : 'configuration_required',
+      requiredEnv: ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI'],
+    },
+    textAgent: {
+      configured: Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY),
+      provider: process.env.OPENAI_API_KEY ? 'openai' : process.env.GEMINI_API_KEY ? 'gemini' : 'fallback',
+      status: process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY ? 'ready' : 'fallback_mode',
+    },
+    videoGeneration: {
+      configured: Boolean(process.env.VIDEO_PROVIDER_API_KEY),
+      provider: process.env.VIDEO_PROVIDER || 'not_configured',
+      status: process.env.VIDEO_PROVIDER_API_KEY ? 'ready' : 'queued_for_later',
+    },
+  };
+}
+
+function buildAgentReelAnalysis(reel = {}, workspace = {}) {
+  const base = analyzeReel(reel, workspace);
+  const brief = workspace.brief || {};
+  const sourceTitle = reel.title || reel.caption || reel.hook || 'market signal';
+  return {
+    ...base,
+    topic: sourceTitle,
+    audience: brief.audience || 'Ukrainian Instagram audience',
+    format: reel.market === 'ua' ? 'local proof reel' : 'global trend adaptation',
+    hookPattern: reel.hook || sourceTitle,
+    whyItWorked: [
+      'clear first-frame promise',
+      'simple repeatable structure',
+      'visible business outcome',
+    ],
+    adaptation: {
+      market: 'ua',
+      rule: 'adapt the mechanism, not the original creative',
+      angle: `Connect the trend to ${brief.product || 'the offer'} for ${brief.location || 'Ukraine'}.`,
+    },
+    risks: [
+      base.copyRisk === 'high' ? 'avoid copying brand-specific visuals' : 'keep visual execution original',
+      'do not reuse original audio or copyrighted footage',
+      'human approval required before publishing',
+    ],
+    nextActions: ['generate_script', 'create_shot_list', 'prepare_caption', 'queue_video_job'],
+  };
+}
+
+function buildScriptFromIdea(idea = {}, workspace = {}) {
+  const brief = workspace.brief || {};
+  const product = brief.product || 'offer';
+  const location = brief.location || 'Ukraine';
+  const title = idea.title || 'Content idea';
+  const hook = idea.hook || title;
+  return {
+    title,
+    hook,
+    format: '15-25 sec Reels',
+    productionMode: 'smartphone_first',
+    scenes: [
+      {
+        time: '0:00-0:03',
+        visual: 'Creator faces the camera and shows the problem in one concrete example.',
+        overlay: hook,
+        voiceover: hook,
+      },
+      {
+        time: '0:03-0:12',
+        visual: `Show ${product} or a simple proof/process from ${location}.`,
+        overlay: '3 quick steps',
+        voiceover: `Explain the useful mechanism without copying the source reel.`,
+      },
+      {
+        time: '0:12-0:20',
+        visual: 'Show result, checklist or before/after proof.',
+        overlay: 'Save this before shooting',
+        voiceover: 'Turn the insight into a practical action for the viewer.',
+      },
+      {
+        time: '0:20-0:25',
+        visual: 'Point to comments or Direct keyword.',
+        overlay: 'Write PLAN in Direct',
+        voiceover: 'Invite a low-friction next step.',
+      },
+    ],
+    caption: `${title}\n\nUse this as a low-budget Ukrainian adaptation, not a copy of the original trend.`,
+    cta: 'Write PLAN in Direct',
+    humanApprovalRequired: true,
+  };
 }
 
 app.get('/api/health', async (req, res) => {
@@ -571,6 +665,8 @@ app.get('/api/schema', (req, res) => {
       'leads',
       'crm_tags',
       'ai_memory',
+      'ai_jobs',
+      'video_jobs',
       'sync_jobs',
     ],
     note: 'MVP API skeleton. JSON storage is temporary and should be replaced with a real database.',
@@ -752,6 +848,36 @@ app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze', async (req, res) 
   res.json({ reel, analysis });
 });
 
+app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze-ai', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const reel = db.reels.find((item) => item.id === req.params.reelId && item.workspaceId === req.params.workspaceId);
+  if (!reel) {
+    res.status(404).json({ error: 'reel_not_found' });
+    return;
+  }
+  const analysis = buildAgentReelAnalysis({ ...reel, ...req.body }, workspace);
+  const job = {
+    id: createId('ai_job'),
+    workspaceId: req.params.workspaceId,
+    type: 'reel_agent_analysis',
+    status: 'completed',
+    provider: getAiProviderStatus().textAgent.provider,
+    sourceType: 'reel',
+    sourceId: reel.id,
+    result: analysis,
+    createdAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  };
+  reel.aiAnalysis = analysis;
+  reel.status = Array.from(new Set([...(reel.status || []), 'ai_analyzed', analysis.recommendation]));
+  db.aiJobs.unshift(job);
+  createSyncJob(db, req.params.workspaceId, 'ai_reel_analysis', { reelId: reel.id, provider: job.provider });
+  await writeDb(db);
+  res.status(201).json({ aiJob: job, reel, analysis });
+});
+
 app.post('/api/workspaces/:workspaceId/reels/:reelId/generate-ideas', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
@@ -808,6 +934,96 @@ app.post('/api/workspaces/:workspaceId/ideas', async (req, res) => {
   db.ideas.unshift(idea);
   await writeDb(db);
   res.status(201).json({ idea });
+});
+
+app.post('/api/workspaces/:workspaceId/ideas/:ideaId/generate-script', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const idea = db.ideas.find((item) => item.id === req.params.ideaId && item.workspaceId === req.params.workspaceId);
+  if (!idea) {
+    res.status(404).json({ error: 'idea_not_found' });
+    return;
+  }
+  const script = buildScriptFromIdea({ ...idea, ...req.body }, workspace);
+  const job = {
+    id: createId('ai_job'),
+    workspaceId: req.params.workspaceId,
+    type: 'script_generation',
+    status: 'completed',
+    provider: getAiProviderStatus().textAgent.provider,
+    sourceType: 'idea',
+    sourceId: idea.id,
+    result: script,
+    createdAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  };
+  idea.script = script;
+  idea.status = 'script_ready';
+  idea.updatedAt = new Date().toISOString();
+  db.aiJobs.unshift(job);
+  createSyncJob(db, req.params.workspaceId, 'generate_script', { ideaId: idea.id, provider: job.provider });
+  await writeDb(db);
+  res.status(201).json({ aiJob: job, idea, script });
+});
+
+app.get('/api/workspaces/:workspaceId/ai/status', async (req, res) => {
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  const aiJobs = db.aiJobs.filter((job) => job.workspaceId === req.params.workspaceId);
+  const videoJobs = db.videoJobs.filter((job) => job.workspaceId === req.params.workspaceId);
+  res.json({
+    providers: getAiProviderStatus(),
+    counts: {
+      aiJobs: aiJobs.length,
+      videoJobs: videoJobs.length,
+      completedAiJobs: aiJobs.filter((job) => job.status === 'completed').length,
+      queuedVideoJobs: videoJobs.filter((job) => job.status === 'queued').length,
+    },
+    latestAiJobs: aiJobs.slice(0, 5),
+    latestVideoJobs: videoJobs.slice(0, 5),
+  });
+});
+
+app.get('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  const videoJobs = db.videoJobs.filter((job) => job.workspaceId === req.params.workspaceId);
+  res.json({ videoJobs });
+});
+
+app.post('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const idea = req.body.ideaId
+    ? db.ideas.find((item) => item.id === req.body.ideaId && item.workspaceId === req.params.workspaceId)
+    : null;
+  const script = req.body.script || idea?.script || buildScriptFromIdea(idea || req.body, workspace);
+  const videoJob = {
+    id: createId('video_job'),
+    workspaceId: req.params.workspaceId,
+    sourceType: idea ? 'idea' : 'manual',
+    sourceId: idea?.id || null,
+    status: getAiProviderStatus().videoGeneration.configured ? 'queued' : 'configuration_required',
+    provider: process.env.VIDEO_PROVIDER || 'not_configured',
+    prompt: {
+      title: script.title,
+      format: script.format || '15-25 sec Reels',
+      scenes: script.scenes || [],
+      caption: script.caption || '',
+      cta: script.cta || '',
+    },
+    humanApprovalRequired: true,
+    createdAt: new Date().toISOString(),
+  };
+  db.videoJobs.unshift(videoJob);
+  createSyncJob(db, req.params.workspaceId, 'video_job_created', {
+    videoJobId: videoJob.id,
+    status: videoJob.status,
+  });
+  await writeDb(db);
+  res.status(201).json({ videoJob });
 });
 
 app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) => {
