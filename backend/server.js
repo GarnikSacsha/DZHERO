@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 
@@ -983,6 +984,100 @@ app.get('/api/workspaces/:workspaceId/ai/status', async (req, res) => {
     latestAiJobs: aiJobs.slice(0, 5),
     latestVideoJobs: videoJobs.slice(0, 5),
   });
+});
+
+app.get('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  res.json({
+    workspaceId: workspace.id,
+    brief: workspace.brief || {},
+    providers: getAiProviderStatus(),
+    memory: db.aiMemory.filter((item) => item.workspaceId === req.params.workspaceId).slice(0, 20),
+  });
+});
+
+app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  workspace.brief = {
+    ...(workspace.brief || {}),
+    ...req.body,
+    updatedAt: new Date().toISOString(),
+  };
+  const memory = {
+    id: createId('mem'),
+    workspaceId: req.params.workspaceId,
+    type: 'brand_context_update',
+    value: req.body,
+    createdAt: new Date().toISOString(),
+  };
+  db.aiMemory.unshift(memory);
+  await writeDb(db);
+  res.json({ brief: workspace.brief, memory });
+});
+
+app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const message = String(req.body.message || '').trim();
+  if (!message) {
+    res.status(400).json({ error: 'message_required' });
+    return;
+  }
+  const history = Array.isArray(req.body.history) ? req.body.history : [];
+  const snapshot = {
+    reels: db.reels.filter((item) => item.workspaceId === req.params.workspaceId),
+    ideas: db.ideas.filter((item) => item.workspaceId === req.params.workspaceId),
+    sources: db.sources.filter((item) => item.workspaceId === req.params.workspaceId),
+  };
+
+  try {
+    const result = await generateAgentReply({ message, history, workspace, snapshot });
+    const job = {
+      id: createId('ai_job'),
+      workspaceId: req.params.workspaceId,
+      type: 'agent_chat',
+      status: 'completed',
+      provider: result.provider,
+      model: result.model,
+      sourceType: 'chat',
+      sourceId: null,
+      result: { text: result.text },
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+    db.aiJobs.unshift(job);
+    db.aiMemory.unshift({
+      id: createId('mem'),
+      workspaceId: req.params.workspaceId,
+      type: 'agent_exchange',
+      value: {
+        user: message,
+        assistant: result.text,
+        provider: result.provider,
+        model: result.model,
+      },
+      createdAt: new Date().toISOString(),
+    });
+    await writeDb(db);
+    res.status(201).json({
+      reply: result.text,
+      provider: result.provider,
+      model: result.model,
+      aiJob: job,
+    });
+  } catch (err) {
+    console.error('[AgentChat]', err);
+    res.status(502).json({
+      error: 'agent_provider_failed',
+      message: err.message,
+      provider: 'gemini',
+    });
+  }
 });
 
 app.get('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
