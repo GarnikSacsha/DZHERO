@@ -54,6 +54,28 @@ function getPublicPage() {
 }
 
 function PublicLegalPage({ page }) {
+  const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
+  const [deletionResult, setDeletionResult] = useState(null);
+  const [deletionStatus, setDeletionStatus] = useState('');
+  const submitDeletionRequest = async (event) => {
+    event.preventDefault();
+    setDeletionStatus('loading');
+    setDeletionResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/data-deletion/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deletionForm),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || 'request_failed');
+      setDeletionResult(payload);
+      setDeletionStatus('ready');
+    } catch (err) {
+      setDeletionResult({ error: err.message });
+      setDeletionStatus('error');
+    }
+  };
   const pages = {
     privacy: {
       title: 'Privacy Policy',
@@ -103,6 +125,29 @@ function PublicLegalPage({ page }) {
             <p>{text}</p>
           </section>
         ))}
+        {page === 'dataDeletion' && (
+          <form className="deletion-form" onSubmit={submitDeletionRequest}>
+            <h2>Submit deletion request</h2>
+            <label>
+              <span>Email</span>
+              <input value={deletionForm.email} onChange={(event) => setDeletionForm((current) => ({ ...current, email: event.target.value }))} placeholder="you@example.com" type="email" />
+            </label>
+            <label>
+              <span>Instagram handle</span>
+              <input value={deletionForm.instagramHandle} onChange={(event) => setDeletionForm((current) => ({ ...current, instagramHandle: event.target.value }))} placeholder="@username" />
+            </label>
+            <label>
+              <span>Reason or details</span>
+              <textarea value={deletionForm.reason} onChange={(event) => setDeletionForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Tell us which account/workspace should be deleted." rows={4} />
+            </label>
+            <button className="dark" type="submit" disabled={deletionStatus === 'loading'}>{deletionStatus === 'loading' ? 'Submitting...' : 'Request deletion'}</button>
+            {deletionResult && (
+              <p className={deletionResult.error ? 'deletion-result error' : 'deletion-result'}>
+                {deletionResult.error || `Request received. Confirmation code: ${deletionResult.confirmationCode}`}
+              </p>
+            )}
+          </form>
+        )}
       </article>
     </main>
   );
@@ -1942,6 +1987,7 @@ function MetaReviewPacket() {
     ['/privacy', 'Privacy Policy'],
     ['/terms', 'Terms of Service'],
     ['/data-deletion', 'Data Deletion Instructions'],
+    ['/api/meta/data-deletion', 'Meta Data Deletion Callback'],
   ];
 
   return (
