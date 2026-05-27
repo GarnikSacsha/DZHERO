@@ -44,6 +44,70 @@ const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 
+function getPublicPage() {
+  const path = window.location.pathname.replace(/\/$/, '');
+  return {
+    '/privacy': 'privacy',
+    '/terms': 'terms',
+    '/data-deletion': 'dataDeletion',
+  }[path] || null;
+}
+
+function PublicLegalPage({ page }) {
+  const pages = {
+    privacy: {
+      title: 'Privacy Policy',
+      subtitle: 'How Dzhero handles Instagram and business data.',
+      sections: [
+        ['Data we process', 'Dzhero may process account profile data, authorized Instagram content metadata, insights, comments, business brief data, content ideas and AI-generated drafts after the user grants permissions.'],
+        ['How we use data', 'Data is used to analyze content performance, generate ideas, prepare scripts, plan posts and help the user manage their Instagram production workflow.'],
+        ['API keys', 'Public users are never asked to provide API keys. Product API keys are stored only in backend or deployment environment variables.'],
+        ['Retention', 'Demo JSON storage is temporary for MVP testing. Production storage should support deletion, export and retention controls.'],
+        ['Contact', 'For privacy requests, contact the Dzhero product owner through the support channel provided in the app.'],
+      ],
+    },
+    terms: {
+      title: 'Terms of Service',
+      subtitle: 'Rules for using Dzhero.',
+      sections: [
+        ['Use of service', 'Dzhero helps creators, businesses and SMM teams analyze content signals and prepare drafts. Users remain responsible for what they publish.'],
+        ['Instagram requirements', 'Official Instagram access requires a Creator or Business account and permissions approved through Meta where required.'],
+        ['AI output', 'AI drafts are suggestions, not final legal, financial or professional advice. Human review is required before publishing or messaging customers.'],
+        ['Content ownership', 'Dzhero should adapt content mechanics, not copy third-party videos, audio, branding or protected creative assets.'],
+      ],
+    },
+    dataDeletion: {
+      title: 'Data Deletion Instructions',
+      subtitle: 'How users can request deletion of Dzhero data.',
+      sections: [
+        ['Request deletion', 'A user can request deletion of their workspace, connected account data, AI memory and generated drafts by contacting Dzhero support.'],
+        ['Instagram disconnect', 'Users can also remove Dzhero permissions from their Meta or Instagram account settings.'],
+        ['Processing', 'After a verified deletion request, Dzhero should remove account tokens, workspace records, AI memory, generated drafts and stored sync jobs associated with that user, unless retention is required by law.'],
+      ],
+    },
+  };
+  const content = pages[page];
+  return (
+    <main className="public-legal">
+      <a className="public-brand" href="/">
+        <span className="logo">D</span>
+        <strong>Dzhero</strong>
+      </a>
+      <article>
+        <small>Meta review document</small>
+        <h1>{content.title}</h1>
+        <p>{content.subtitle}</p>
+        {content.sections.map(([title, text]) => (
+          <section key={title}>
+            <h2>{title}</h2>
+            <p>{text}</p>
+          </section>
+        ))}
+      </article>
+    </main>
+  );
+}
+
 function App() {
   const [page, setPage] = useState('home');
   const [market, setMarket] = useState('all');
@@ -57,6 +121,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const publicPage = getPublicPage();
 
   useEffect(() => {
     let isMounted = true;
@@ -150,6 +215,10 @@ function App() {
     setAuthStatus('guest');
     notify('Ви вийшли з акаунта');
   };
+
+  if (publicPage) {
+    return <PublicLegalPage page={publicPage} />;
+  }
 
   if (authStatus === 'checking') {
     return <div className="loading-screen">Перевіряємо сесію...</div>;
@@ -249,6 +318,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const submitAuth = async (event) => {
@@ -277,10 +347,15 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
     try {
       const response = await fetch(`${API_BASE}/auth/instagram/start`);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'instagram_not_configured');
+      if (!response.ok) {
+        if (payload.error === 'instagram_not_configured') {
+          setInstagramConfig(payload);
+        }
+        throw new Error(payload.error || 'instagram_not_configured');
+      }
       window.location.href = payload.authUrl;
     } catch (authError) {
-      setError('Instagram Login ще не налаштований. Треба створити Meta App, додати Instagram Login і ключі у .env.');
+      setError('Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.');
       notify('Instagram Login готовий у UI, але потрібні ключі Meta App');
     } finally {
       setIsLoading(false);
@@ -350,6 +425,17 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           <button className="auth-submit auth-meta-button" type="button" onClick={startInstagramLogin} disabled={isLoading}>
             {isLoading ? 'Готуємо Instagram Login...' : 'Увійти через Instagram'}
           </button>
+          {instagramConfig && (
+            <div className="instagram-pending">
+              <strong>Instagram connection pending</strong>
+              <p>Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.</p>
+              <div>
+                <span>Creator або Business</span>
+                <span>Personal не підходить</span>
+                <span>{instagramConfig.redirectUri}</span>
+              </div>
+            </div>
+          )}
           {error && <div className="auth-error">{error}</div>}
           <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
             Демо-вхід для перегляду
@@ -1176,7 +1262,9 @@ function CreatorAssistant({ notify }) {
   const [messages, setMessages] = useState(seedMessages);
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
+  const [actionStatus, setActionStatus] = useState('');
   const [agentMeta, setAgentMeta] = useState({ provider: 'fallback', model: 'local-template' });
+  const [lastIdeaId, setLastIdeaId] = useState('');
   const threadRef = React.useRef(null);
 
   useEffect(() => {
@@ -1213,6 +1301,7 @@ function CreatorAssistant({ notify }) {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.message || payload.error || 'agent_error');
       setAgentMeta({ provider: payload.provider || 'agent', model: payload.model || 'unknown' });
+      setLastIdeaId('');
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1 ? ['assistant', payload.reply] : item
       )));
@@ -1225,6 +1314,98 @@ function CreatorAssistant({ notify }) {
       )));
     } finally {
       setIsThinking(false);
+    }
+  };
+
+  const latestAssistantText = [...messages].reverse().find(([role]) => role === 'assistant')?.[1] || '';
+  const extractIdeaTitle = (text) => {
+    const line = String(text || '').split('\n').map((item) => item.trim()).find((item) => item && !item.startsWith('Ок.') && !item.startsWith('Привіт'));
+    return (line || 'AI assistant idea').replace(/^[0-9.)\s-]+/, '').slice(0, 120);
+  };
+
+  const saveAssistantIdea = async () => {
+    return runAgentAction('save_idea');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/ideas`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: extractIdeaTitle(latestAssistantText),
+          hook: latestAssistantText.slice(0, 220),
+          source: 'assistant',
+          status: 'assistant_draft',
+          score: 76,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'idea_save_failed');
+      setLastIdeaId(payload.idea.id);
+      notify('Відповідь асистента збережено як ідею.');
+    } catch {
+      notify('Не вдалося зберегти ідею.');
+    }
+  };
+
+  const generateScriptFromSavedIdea = async () => {
+    return runAgentAction('generate_script');
+    if (!lastIdeaId) {
+      await saveAssistantIdea();
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
+      if (!response.ok) throw new Error('script_failed');
+      notify('Сценарій створено з ідеї.');
+    } catch {
+      notify('Не вдалося створити сценарій.');
+    }
+  };
+
+  const createVideoTask = async () => {
+    return runAgentAction('create_video_job');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ideaId: lastIdeaId || null,
+          title: extractIdeaTitle(latestAssistantText),
+          hook: latestAssistantText.slice(0, 220),
+        }),
+      });
+      if (!response.ok) throw new Error('video_task_failed');
+      notify('Video task створено. Генерація відео чекає підключення provider API.');
+    } catch {
+      notify('Не вдалося створити video task.');
+    }
+  };
+
+  const runAgentAction = async (action) => {
+    if (!latestAssistantText || actionStatus) return;
+    const labels = {
+      save_idea: 'Ідею збережено.',
+      generate_script: 'Ідею збережено і сценарій створено.',
+      create_video_job: 'Video task створено. Генерація відео чекає підключення provider API.',
+    };
+    setActionStatus(action);
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          title: extractIdeaTitle(latestAssistantText),
+          text: latestAssistantText,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'agent_action_failed');
+      setLastIdeaId(payload.idea?.id || '');
+      notify(labels[action] || 'Готово.');
+    } catch (err) {
+      notify(`Не вдалося виконати дію: ${err.message}`);
+    } finally {
+      setActionStatus('');
     }
   };
 
@@ -1254,6 +1435,12 @@ function CreatorAssistant({ notify }) {
           <div className="assistant-input">
             <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder="Напиши задачу: ніша, ціль, формат, тон голосу..." />
             <button className="dark" onClick={() => sendMessage()} disabled={isThinking}><Send size={16} />{isThinking ? 'Думаю...' : 'Надіслати'}</button>
+          </div>
+          <div className="assistant-actions">
+            <button type="button" onClick={saveAssistantIdea} disabled={isThinking || actionStatus || !latestAssistantText}>Зберегти як ідею</button>
+            <button type="button" onClick={generateScriptFromSavedIdea} disabled={isThinking || actionStatus || !latestAssistantText}>Зробити сценарій</button>
+            <button type="button" onClick={createVideoTask} disabled={isThinking || actionStatus || !latestAssistantText}>Створити video task</button>
+            {lastIdeaId && <small>Остання ідея: {lastIdeaId}</small>}
           </div>
         </div>
         <aside className="assistant-tools">
