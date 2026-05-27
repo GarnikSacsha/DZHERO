@@ -1072,11 +1072,40 @@ function CreatorAssistant() {
   ];
   const [messages, setMessages] = useState(seedMessages);
   const [input, setInput] = useState('');
-  const sendMessage = (text = input) => {
-    if (!text.trim()) return;
-    const answer = `Ок, беру задачу: "${text}". Наступний крок: уточнити нішу, ціль, офер і формат, після чого я зберу чернетку сценарію та CTA.`;
-    setMessages((current) => [...current, ['user', text], ['assistant', answer]]);
+  const [isThinking, setIsThinking] = useState(false);
+  const [agentMeta, setAgentMeta] = useState({ provider: 'fallback', model: 'local-template' });
+  const sendMessage = async (text = input) => {
+    const clean = text.trim();
+    if (!clean || isThinking) return;
+    const history = messages.map(([role, messageText]) => ({
+      role: role === 'assistant' ? 'assistant' : 'user',
+      text: messageText,
+    }));
+    setMessages((current) => [...current, ['user', clean], ['assistant', 'Думаю як продюсер: звіряю brief, тренди, ризики й наступний крок...']]);
     setInput('');
+    setIsThinking(true);
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: clean, history }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || 'agent_error');
+      setAgentMeta({ provider: payload.provider || 'agent', model: payload.model || 'unknown' });
+      setMessages((current) => current.map((item, index) => (
+        index === current.length - 1 ? ['assistant', payload.reply] : item
+      )));
+    } catch (agentError) {
+      setAgentMeta({ provider: 'offline', model: 'fallback' });
+      setMessages((current) => current.map((item, index) => (
+        index === current.length - 1
+          ? ['assistant', `Не зміг дістатися до AI-провайдера: ${agentError.message}. Але логіка готова: додай/перевір GEMINI_API_KEY у Railway Variables і зроби redeploy.`]
+          : item
+      )));
+    } finally {
+      setIsThinking(false);
+    }
   };
 
   return (
@@ -1084,7 +1113,7 @@ function CreatorAssistant() {
       <PageTitle
         title="Асистент блогера"
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
-        actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')}><Sparkles size={16} />Сформувати контент-план</button>}
+        actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
       <AgentPipeline />
       <div className="assistant-layout">
@@ -1103,11 +1132,11 @@ function CreatorAssistant() {
           </div>
           <div className="assistant-input">
             <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder="Напиши задачу: ніша, ціль, формат, тон голосу..." />
-            <button className="dark" onClick={() => sendMessage()}><Send size={16} />Надіслати</button>
+            <button className="dark" onClick={() => sendMessage()} disabled={isThinking}><Send size={16} />{isThinking ? 'Думаю...' : 'Надіслати'}</button>
           </div>
         </div>
         <aside className="assistant-tools">
-          <div className="panel-title"><strong>Може зробити</strong><span>для блогера</span></div>
+          <div className="panel-title"><strong>Може зробити</strong><span>{agentMeta.provider} · {agentMeta.model}</span></div>
           <div className="status-list">
             <em>Знайти ідею з тренду</em>
             <em>Написати сценарій Reels</em>
