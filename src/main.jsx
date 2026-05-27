@@ -18,6 +18,7 @@ import {
   Home,
   Lightbulb,
   LogOut,
+  Menu,
   MessageSquareText,
   Moon,
   Plus,
@@ -32,6 +33,7 @@ import {
   Target,
   UsersRound,
   Wand2,
+  X,
 } from 'lucide-react';
 import './styles.css';
 import logoImg from './logo.png';
@@ -54,6 +56,7 @@ function App() {
   const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(AUTH_TOKEN_KEY) || '');
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -205,10 +208,18 @@ function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      <Sidebar key={`sidebar-${language}`} page={page} setPage={setPage} currentUser={currentUser} onLogout={handleLogout} />
+      <Sidebar
+        key={`sidebar-${language}`}
+        page={page}
+        setPage={setPage}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+      />
+      {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} />
-        <MarketFilter segments={data.marketSegments} market={market} setMarket={setMarket} />
+        <Topbar notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} onOpenMenu={() => setIsSidebarOpen(true)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} language={language} />}
         {page === 'roadmap' && <ProductRoadmap notify={notify} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} />}
@@ -367,7 +378,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   );
 }
 
-function Sidebar({ page, setPage, currentUser, onLogout }) {
+function Sidebar({ page, setPage, currentUser, onLogout, isOpen, onClose }) {
   const items = [
     ['home', Home, 'Головна', 'core'],
     ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
@@ -389,7 +400,7 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
   ];
 
   return (
-    <aside className="sidebar">
+    <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
       <div className="brand">
         <div className="logo">
           <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
@@ -407,9 +418,15 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
           <span>Україна + світ</span>
         </div>
       </div>
+      <button className="mobile-menu-close" type="button" aria-label="Закрити меню" onClick={onClose}>
+        <X size={18} />
+      </button>
       <nav>
         {items.map(([id, Icon, label]) => (
-          <button className={page === id ? 'active' : ''} key={id} onClick={() => setPage(id)}>
+          <button className={page === id ? 'active' : ''} key={id} onClick={() => {
+            setPage(id);
+            onClose?.();
+          }}>
             <Icon size={16} />
             <span className="nav-label">{label}</span>
           </button>
@@ -429,10 +446,15 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
   );
 }
 
-function Topbar({ notify, theme, setTheme, language, setLanguage }) {
+function Topbar({ notify, theme, setTheme, language, setLanguage, onOpenMenu }) {
   return (
     <header className="topbar">
-      <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
+      <div className="topbar-title">
+        <button className="mobile-menu-trigger" type="button" aria-label="Відкрити меню" onClick={onOpenMenu}>
+          <Menu size={18} />
+        </button>
+        <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
+      </div>
       <div className="top-actions">
         <div className="language-switch" aria-label="Interface language">
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
