@@ -2,62 +2,62 @@
 
 :root {
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-display: 'Outfit', 'Inter', sans-serif;
+  --font-display: 'Inter', sans-serif;
 
   /* Quiet B2B SaaS Palette Base */
-  --bg-dark: #0b0f17;
-  --bg-light: #f6f5f2;
+  --bg-dark: #0f1219;
+  --bg-light: #FAF8F5;
   
-  --brand-cyan: #d8d3c7;
-  --brand-cyan-glow: transparent;
-  --brand-indigo: #9b9488;
+  --brand-cyan: #87CEEB;
+  --brand-cyan-glow: rgba(135, 206, 235, 0.4);
+  --brand-indigo: #4F4F4F;
   --brand-indigo-glow: transparent;
-  --brand-violet: #b6ad9f;
-  --brand-emerald: #8ba79a;
-  --brand-emerald-glow: transparent;
-  --brand-red: #b66b63;
+  --brand-violet: #A7FFEB;
+  --brand-emerald: #A7FFEB;
+  --brand-emerald-glow: rgba(167, 255, 235, 0.3);
+  --brand-red: #E07F7A;
 
   /* Theme-specific tokens (Light Theme default, dark overrides below) */
   --bg: var(--bg-light);
   --surface: #ffffff;
-  --surface-strong: #ffffff;
-  --surface-soft: #eeece7;
-  --sidebar: #f6f5f2;
-  --text: #0f172a;
-  --muted: #6b7280;
-  --muted-2: #4b5563;
-  --border: #d8d5ce;
-  --border-soft: #e6e2da;
-  --control: #eeece7;
-  --dark: var(--brand-indigo);
-  --dark-text: #ffffff;
-  --success: var(--brand-emerald);
-  --success-bg: rgba(139, 167, 154, 0.12);
-  --shadow: none;
+  --surface-strong: #FAF8F5;
+  --surface-soft: #F2F2F2;
+  --sidebar: #FAF8F5;
+  --text: #4F4F4F;
+  --muted: #9E9E9E;
+  --muted-2: #4F4F4F;
+  --border: #E0F7FA;
+  --border-soft: #F8F8F8;
+  --control: #F2F2F2;
+  --dark: #87CEEB;
+  --dark-text: #FAF8F5;
+  --success: #A7FFEB;
+  --success-bg: rgba(167, 255, 235, 0.15);
+  --shadow: 0 4px 20px -8px rgba(135, 206, 235, 0.08);
   --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 [data-theme="dark"] {
   --bg: var(--bg-dark);
-  --surface: #131722;
-  --surface-strong: #171b26;
-  --surface-soft: #10141d;
-  --sidebar: #090d14;
-  --text: #f2f0ea;
-  --muted: #a0a7b3;
-  --muted-2: #c2c7cf;
-  --border: #232a36;
-  --border-soft: #1b212c;
-  --control: #171b26;
-  --dark: #d8d3c7;
-  --dark-text: #0b0f17;
-  --success: #a7b8ad;
-  --success-bg: rgba(167, 184, 173, 0.12);
-  --shadow: none;
+  --surface: #141923;
+  --surface-strong: #191F2D;
+  --surface-soft: #0F1219;
+  --sidebar: #0B0E14;
+  --text: #FAF8F5;
+  --muted: #7E8B9B;
+  --muted-2: #A3B3C2;
+  --border: #1E2638;
+  --border-soft: #141A27;
+  --control: #191F2D;
+  --dark: #87CEEB;
+  --dark-text: #0f1219;
+  --success: #A7FFEB;
+  --success-bg: rgba(167, 255, 235, 0.12);
+  --shadow: 0 8px 32px -8px rgba(135, 206, 235, 0.18);
 }
 
 /* ==========================================================================
@@ -4361,5 +4361,1251 @@ nav button.active::before {
 
   .page-title .actions {
     justify-content: flex-start;
+  }
+}
+
+
+/* ==========================================================================
+   Dzhero Minimalist B2B SaaS Premium Visual Overrides
+   ========================================================================== */
+
+/* 1. Wave Decoration Backgrounds (Concept: Clean Water Stream) */
+[data-theme="light"] .home-hero, 
+[data-theme="light"] .spec-hero, 
+[data-theme="light"] .strategy-hero {
+  background-image: linear-gradient(135deg, rgba(135, 206, 235, 0.05) 0%, rgba(250, 248, 245, 0.95) 100%), 
+                    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2387CEEB' fill-opacity='0.16' d='M0,160L48,154.7C96,149,192,139,288,149.3C384,160,480,192,576,192C672,192,768,160,864,138.7C960,117,1056,107,1152,112C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-position: bottom right, bottom !important;
+  background-repeat: no-repeat !important;
+  background-size: cover, 100% 140px !important;
+}
+
+[data-theme="dark"] .home-hero, 
+[data-theme="dark"] .spec-hero, 
+[data-theme="dark"] .strategy-hero {
+  background-image: linear-gradient(135deg, rgba(135, 206, 235, 0.12) 0%, rgba(15, 18, 25, 0.98) 100%), 
+                    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2387CEEB' fill-opacity='0.12' d='M0,160L48,154.7C96,149,192,139,288,149.3C384,160,480,192,576,192C672,192,768,160,864,138.7C960,117,1056,107,1152,112C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-position: bottom right, bottom !important;
+  background-repeat: no-repeat !important;
+  background-size: cover, 100% 140px !important;
+}
+
+.home-hero, .spec-hero, .strategy-hero, .sales-card {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-xl) !important;
+  color: var(--text) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+.home-hero h2, .spec-hero h2, .strategy-hero h2, .sales-card h2 {
+  color: var(--text) !important;
+}
+
+.home-hero p, .spec-hero p, .strategy-hero p, .sales-card p {
+  color: var(--muted-2) !important;
+  opacity: 0.9;
+}
+
+/* 2. Unified Roundings and Soft Shadows across Components */
+.spec-card, 
+.phase-card, 
+.business-card, 
+.insight-card, 
+.mini-card, 
+.table-card, 
+.right-panel, 
+.source-card, 
+.vault-card, 
+.lead-table article, 
+.forecast-card, 
+.gate-card, 
+.phone-card,
+.quick-modal,
+.auth-shell {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+}
+
+/* Active and Hover states with premium glowing blue shadows */
+[data-theme="dark"] .pill.active,
+[data-theme="dark"] .market-buttons button.active,
+[data-theme="dark"] .auth-tabs button.active {
+  box-shadow: 0 0 20px rgba(135, 206, 235, 0.4) !important;
+  border-color: #87CEEB !important;
+  background: #87CEEB !important;
+  color: #0f1219 !important;
+}
+
+[data-theme="dark"] .auth-submit,
+[data-theme="dark"] button.dark {
+  box-shadow: 0 4px 20px rgba(135, 206, 235, 0.3) !important;
+  background: #87CEEB !important;
+  color: #0f1219 !important;
+}
+
+/* 3. Action Buttons Color (CTA) */
+.auth-submit, button.dark {
+  background: #87CEEB !important;
+  color: #FAF8F5 !important;
+  border: none !important;
+  box-shadow: 0 6px 20px -4px rgba(135, 206, 235, 0.4) !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-md) !important;
+}
+.auth-submit:hover:not(:disabled), button.dark:hover:not(:disabled) {
+  background: #6cbbe0 !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 24px -2px rgba(135, 206, 235, 0.5) !important;
+}
+
+/* 4. More "Air" - Increased Spacing (Padding/Margins) */
+.shell {
+  padding: 32px 48px 64px !important;
+}
+
+.page-title {
+  margin-bottom: 36px !important;
+}
+
+.home-grid,
+.spec-grid,
+.phase-board,
+.business-grid,
+.vault-grid,
+.framework-grid,
+.ops-strip {
+  gap: 24px !important;
+}
+
+.spec-card, 
+.phase-card, 
+.business-card, 
+.insight-card, 
+.vault-card {
+  padding: 28px !important;
+}
+
+/* Sidebar premium spacing */
+.sidebar {
+  padding: 28px 20px !important;
+  background: var(--sidebar) !important;
+}
+.brand {
+  margin-bottom: 34px !important;
+  border-radius: var(--radius-md) !important;
+}
+nav {
+  gap: 8px !important;
+}
+nav button {
+  padding: 10px 16px !important;
+  border-radius: var(--radius-md) !important;
+}
+nav button:hover {
+  background: var(--surface-soft) !important;
+}
+nav button.active {
+  background: var(--surface-soft) !important;
+  color: #87CEEB !important;
+  box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.05);
+}
+nav button.active svg {
+  color: #87CEEB !important;
+}
+nav button.active::before {
+  background: #87CEEB !important;
+  height: 24px !important;
+  border-radius: 2px !important;
+}
+
+/* 5. Smooth transitions & Hover interactions */
+button, 
+a, 
+nav button, 
+.pill, 
+.market-buttons button, 
+.mini-card, 
+.spec-card, 
+.phase-card, 
+.business-card, 
+.vault-card, 
+.insight-card {
+  transition: var(--transition) !important;
+}
+
+.spec-card:hover, 
+.phase-card:hover, 
+.business-card:hover, 
+.vault-card:hover, 
+.insight-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 12px 32px -8px rgba(135, 206, 235, 0.2) !important;
+  border-color: #87CEEB !important;
+}
+
+[data-theme="dark"] .spec-card:hover, 
+[data-theme="dark"] .phase-card:hover, 
+[data-theme="dark"] .business-card:hover, 
+[data-theme="dark"] .vault-card:hover, 
+[data-theme="dark"] .insight-card:hover {
+  box-shadow: 0 12px 32px -8px rgba(135, 206, 235, 0.3) !important;
+}
+
+/* Auth Page specific visual refinements */
+.auth-page {
+  background: var(--bg) !important;
+}
+.auth-shell {
+  border: 1px solid var(--border) !important;
+}
+.auth-copy {
+  background: #0f1219 !important; /* Matte dark */
+}
+.auth-brand {
+  border-color: rgba(135, 206, 235, 0.15) !important;
+  background: rgba(135, 206, 235, 0.05) !important;
+}
+.auth-brand strong {
+  color: #FAF8F5 !important;
+}
+.auth-copy h1 {
+  color: #FAF8F5 !important;
+}
+.auth-copy p {
+  color: #7E8B9B !important;
+}
+.auth-points span {
+  border: 1px solid rgba(135, 206, 235, 0.15) !important;
+  background: rgba(135, 206, 235, 0.04) !important;
+  color: #FAF8F5 !important;
+}
+.auth-points span:hover {
+  border-color: #87CEEB !important;
+  background: rgba(135, 206, 235, 0.1) !important;
+}
+
+
+/* Additional Refinements to eliminate old colors and polish components */
+.logo {
+  background: #87CEEB !important;
+  color: #FAF8F5 !important;
+}
+
+.chat-message.user {
+  background: #87CEEB !important;
+  color: #0f1219 !important;
+}
+
+.meter span {
+  background: #87CEEB !important;
+}
+
+/* User avatar */
+.avatar {
+  background: var(--surface-soft) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+/* Active indicator in navigation */
+nav button.active::before {
+  background: #87CEEB !important;
+}
+
+/* Search bar styling */
+.search-row label input {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+.search-row label input:focus {
+  border-color: #87CEEB !important;
+}
+
+/* Select element refinements */
+.search-row select {
+  background: var(--surface) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+}
+
+
+/* ==========================================================================
+   Dzhero Premium Brand & SVG Logo Styling Overrides
+   ========================================================================== */
+.brand {
+  margin-bottom: 34px !important;
+  padding: 16px 20px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-xl) !important;
+  background: linear-gradient(135deg, rgba(135, 206, 235, 0.08) 0%, rgba(135, 206, 235, 0.02) 100%) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+/* Wavy divider at the bottom of the brand box */
+.brand::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 8px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2387CEEB' fill-opacity='0.25' d='M0,224L60,202.7C120,181,240,139,360,138.7C480,139,600,181,720,202.7C840,224,960,224,1080,197.3C1200,171,1320,117,1380,90.7L1440,64L1440,320L1392,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-size: cover !important;
+  background-position: bottom !important;
+  opacity: 0.5 !important;
+}
+
+.logo {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: var(--radius-md) !important;
+  color: #87CEEB !important;
+  background: rgba(135, 206, 235, 0.12) !important;
+  border: 1px solid rgba(135, 206, 235, 0.2) !important;
+  padding: 6px !important;
+  box-shadow: 0 0 12px rgba(135, 206, 235, 0.1) !important;
+  flex: 0 0 auto !important;
+}
+
+[data-theme="dark"] .logo {
+  color: #87CEEB !important;
+  background: rgba(135, 206, 235, 0.15) !important;
+  box-shadow: 0 0 16px rgba(135, 206, 235, 0.2) !important;
+}
+
+
+/* ==========================================================================
+   Dzhero High-Contrast Light Theme Accessibility & Legibility Refinements
+   ========================================================================== */
+
+/* Boost the contrast of basic variables in light theme */
+:root {
+  --text: #2F2F2F !important; /* Rich graphite/charcoal for premium high contrast */
+  --muted: #5E6977 !important; /* Much darker grey for legible secondary text */
+  --muted-2: #3E4957 !important; /* Dark slate-charcoal for paragraphs and descriptions */
+  --border: #C8EAF0 !important; /* Slightly darker clean water blue for borders to define cards better */
+}
+
+/* Force dark text for hero banners in light theme */
+[data-theme="light"] .home-hero, 
+[data-theme="light"] .spec-hero, 
+[data-theme="light"] .strategy-hero, 
+[data-theme="light"] .sales-card {
+  color: #2F2F2F !important;
+}
+
+[data-theme="light"] .home-hero h2, 
+[data-theme="light"] .spec-hero h2, 
+[data-theme="light"] .strategy-hero h2, 
+[data-theme="light"] .sales-card h2 {
+  color: #1F1F1F !important;
+}
+
+[data-theme="light"] .home-hero p, 
+[data-theme="light"] .spec-hero p, 
+[data-theme="light"] .strategy-hero p, 
+[data-theme="light"] .sales-card p {
+  color: #3E4957 !important;
+  opacity: 1 !important;
+}
+
+/* Sidebar navigation high contrast */
+[data-theme="light"] nav button {
+  color: #5E6977 !important; /* Secondary dark grey */
+  font-weight: 550 !important;
+}
+
+[data-theme="light"] nav button svg {
+  color: #5E6977 !important;
+}
+
+[data-theme="light"] nav button:hover {
+  color: #1F1F1F !important;
+  background: rgba(135, 206, 235, 0.1) !important;
+}
+
+[data-theme="light"] nav button:hover svg {
+  color: #1F1F1F !important;
+}
+
+[data-theme="light"] nav button.active {
+  color: #0077A3 !important; /* Beautiful deep water blue for active state in light theme */
+  background: rgba(135, 206, 235, 0.15) !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="light"] nav button.active svg {
+  color: #0077A3 !important;
+}
+
+[data-theme="light"] nav button.active::before {
+  background: #0077A3 !important;
+}
+
+/* Topbar high contrast */
+[data-theme="light"] .topbar {
+  border-color: #C8EAF0 !important;
+}
+
+[data-theme="light"] .topbar > span,
+[data-theme="light"] .top-actions span {
+  color: #4E5967 !important;
+  font-weight: 600 !important;
+}
+
+/* Market strip filters */
+[data-theme="light"] .market-strip {
+  border-color: #C8EAF0 !important;
+}
+
+[data-theme="light"] .market-strip > div:first-child {
+  color: #2F2F2F !important;
+}
+
+[data-theme="light"] .market-buttons button {
+  color: #4E5967 !important;
+  border-color: #C8EAF0 !important;
+}
+
+[data-theme="light"] .market-buttons button strong {
+  color: #2F2F2F !important;
+}
+
+[data-theme="light"] .market-buttons button small {
+  color: #5E6977 !important;
+}
+
+[data-theme="light"] .market-buttons button.active {
+  background: #87CEEB !important;
+  color: #FAF8F5 !important;
+  border-color: #87CEEB !important;
+}
+
+[data-theme="light"] .market-buttons button.active strong,
+[data-theme="light"] .market-buttons button.active small {
+  color: #FAF8F5 !important;
+}
+
+/* Stat Widgets inside Light Theme */
+[data-theme="light"] .stats span,
+[data-theme="light"] .home-stats article span,
+[data-theme="light"] .sales-stats span,
+[data-theme="light"] .idea-summary span {
+  color: #5E6977 !important;
+  font-weight: 600 !important;
+}
+
+[data-theme="light"] .stats strong,
+[data-theme="light"] .home-stats article strong,
+[data-theme="light"] .sales-stats strong,
+[data-theme="light"] .idea-summary strong {
+  color: #1F1F1F !important;
+  font-weight: 700 !important;
+}
+
+/* Step Descriptions and Lists */
+[data-theme="light"] .ops-strip p,
+[data-theme="light"] .phase-card p,
+[data-theme="light"] .spec-card p,
+[data-theme="light"] .business-card p,
+[data-theme="light"] .vault-card p,
+[data-theme="light"] .framework-card p,
+[data-theme="light"] .entity-grid span,
+[data-theme="light"] .demo-flow p {
+  color: #3E4957 !important;
+  font-weight: 400 !important; /* Slightly heavier for crisp reading in light mode */
+}
+
+/* Lists and details readability */
+[data-theme="light"] .task-list li,
+[data-theme="light"] .data-list li {
+  color: #3E4957 !important;
+  font-weight: 400 !important;
+}
+
+
+/* ==========================================================================
+   Dzhero Light Theme Hero Banners Legibility & Contrast Fix
+   ========================================================================== */
+
+/* Force clean light water-drop gradient backgrounds for banners in light theme */
+[data-theme="light"] .home-hero, 
+[data-theme="light"] .spec-hero, 
+[data-theme="light"] .strategy-hero, 
+[data-theme="light"] .sales-card {
+  background: linear-gradient(135deg, #E0F7FA 0%, #FAF8F5 100%) !important;
+  background-image: linear-gradient(135deg, rgba(135, 206, 235, 0.15) 0%, rgba(250, 248, 245, 0.85) 100%), 
+                    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2387CEEB' fill-opacity='0.25' d='M0,160L48,154.7C96,149,192,139,288,149.3C384,160,480,192,576,192C672,192,768,160,864,138.7C960,117,1056,107,1152,112C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-position: bottom right, bottom !important;
+  background-repeat: no-repeat !important;
+  background-size: cover, 100% 140px !important;
+  border: 1px solid #C8EAF0 !important;
+  color: #2F2F2F !important;
+  opacity: 1 !important;
+}
+
+/* Highly visible colors for titles, paragraphs and small badges inside banners */
+[data-theme="light"] .home-hero h2, 
+[data-theme="light"] .spec-hero h2, 
+[data-theme="light"] .strategy-hero h2, 
+[data-theme="light"] .sales-card h2 {
+  color: #1F1F1F !important;
+  font-weight: 700 !important;
+}
+
+[data-theme="light"] .home-hero p, 
+[data-theme="light"] .spec-hero p, 
+[data-theme="light"] .strategy-hero p, 
+[data-theme="light"] .sales-card p {
+  color: #2F2F2F !important;
+  font-weight: 450 !important; /* Raised weight for high legibility */
+  opacity: 1 !important;
+}
+
+[data-theme="light"] .home-hero small, 
+[data-theme="light"] .spec-hero small, 
+[data-theme="light"] .strategy-hero small, 
+[data-theme="light"] .sales-card small {
+  color: #0077A3 !important; /* Beautiful high-contrast dark blue */
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+/* Ensure focus tags at bottom of hero are highly readable */
+[data-theme="light"] .home-badges span {
+  color: #2F2F2F !important;
+  border-color: #C8EAF0 !important;
+  background: rgba(135, 206, 235, 0.1) !important;
+  font-weight: 600 !important;
+}
+
+
+/* ==========================================================================
+   Dzhero Premium Bold Geometric Sans-Serif Typography Refinements
+   ========================================================================== */
+
+/* Main page title and section headings - Large, bold, premium SaaS geometric style */
+h1, h2, h3,
+.page-title h1,
+.home-hero h2,
+.spec-hero h2,
+.strategy-hero h2,
+.sales-card h2,
+.auth-panel h2,
+.auth-copy h1,
+.quick-modal h2 {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 800 !important; /* Bold/Extra-Bold as requested! */
+  letter-spacing: -0.03em !important; /* Slightly tighter letter spacing for large bold text to look premium */
+  line-height: 1.15 !important;
+}
+
+.page-title h1 {
+  font-size: 36px !important; /* Large titles */
+  margin-bottom: 8px !important;
+}
+
+.home-hero h2, 
+.spec-hero h2, 
+.strategy-hero h2, 
+.sales-card h2 {
+  font-size: 34px !important; /* Punchy hero headlines */
+  margin-top: 12px !important;
+  margin-bottom: 14px !important;
+}
+
+.auth-copy h1 {
+  font-size: 48px !important;
+  font-weight: 850 !important;
+  letter-spacing: -0.04em !important;
+}
+
+/* Subtitles and secondary titles */
+.page-title p,
+.panel-title strong,
+.remix-loader-text,
+.remix-deconstruct-card h4,
+.remix-script-header h4 {
+  font-family: 'Inter', sans-serif !important;
+  font-weight: 600 !important; /* Semi-bold for subtitles */
+  letter-spacing: -0.01em !important;
+}
+
+/* Light, extremely readable body text with generous line-height spacing */
+body, p, li, td, span, small, label, input, textarea, select,
+.ops-strip p,
+.insight-card p,
+.spec-card p,
+.phase-card p,
+.business-card p,
+.vault-card p,
+.framework-card p,
+.entity-grid span,
+.demo-flow p,
+.auth-copy p,
+.auth-permissions span,
+.auth-meta {
+  font-family: 'Inter', sans-serif !important;
+  line-height: 1.75 !important; /* Airy line height for absolute legibility */
+  letter-spacing: 0.01em !important;
+}
+
+[data-theme="dark"] p, 
+[data-theme="dark"] li, 
+[data-theme="dark"] span, 
+[data-theme="dark"] small,
+[data-theme="dark"] .ops-strip p,
+[data-theme="dark"] .insight-card p,
+[data-theme="dark"] .spec-card p,
+[data-theme="dark"] .phase-card p,
+[data-theme="dark"] .business-card p,
+[data-theme="dark"] .vault-card p {
+  font-weight: 300 !important; /* Elegant light weight for dark theme to prevent text glow blur */
+}
+
+[data-theme="light"] p, 
+[data-theme="light"] li, 
+[data-theme="light"] span, 
+[data-theme="light"] small,
+[data-theme="light"] .ops-strip p,
+[data-theme="light"] .insight-card p,
+[data-theme="light"] .spec-card p,
+[data-theme="light"] .phase-card p,
+[data-theme="light"] .business-card p,
+[data-theme="light"] .vault-card p {
+  font-weight: 400 !important; /* Solid regular weight for light theme to ensure maximum contrast */
+}
+
+
+/* ==========================================================================
+   Dzhero Soft Rounded Components & Premium CTA Button Overrides
+   ========================================================================== */
+
+/* Define even softer, more premium radiuses and luxurious double-layered shadows */
+:root {
+  --radius-sm: 8px !important;
+  --radius-md: 14px !important; /* Extra smooth rounded corners for buttons/inputs */
+  --radius-lg: 18px !important; /* Perfect App-Icon rounded corners for cards/panels */
+  --radius-xl: 26px !important; /* Large banners / auth shells */
+  
+  /* Double-layered highly premium soft blue shadow for light theme */
+  --shadow: 0 10px 30px -10px rgba(135, 206, 235, 0.12), 0 2px 10px -4px rgba(135, 206, 235, 0.06) !important;
+}
+
+[data-theme="dark"] {
+  /* Premium deep neon shadow for dark theme */
+  --shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.6), 0 0 24px -4px rgba(135, 206, 235, 0.12) !important;
+}
+
+/* 1. Universal Card & Widget Roundings and Soft Shadows */
+.spec-card, 
+.phase-card, 
+.business-card, 
+.insight-card, 
+.mini-card, 
+.table-card, 
+.right-panel, 
+.source-card, 
+.vault-card, 
+.lead-table article, 
+.forecast-card, 
+.gate-card, 
+.phone-card,
+.quick-modal,
+.auth-shell,
+.home-hero,
+.spec-hero,
+.strategy-hero,
+.sales-card,
+.ops-strip article,
+.framework-card,
+.entity-grid div,
+.demo-flow > div {
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow) !important;
+  border: 1px solid var(--border) !important;
+  background: var(--surface) !important;
+  transition: var(--transition) !important;
+}
+
+/* 2. Soft Rounding for Buttons and Interactive Elements */
+button,
+a,
+nav button,
+.pill,
+.market-buttons button,
+.logout-button,
+.icon,
+.copy-btn,
+.auth-tabs button {
+  border-radius: var(--radius-md) !important;
+}
+
+/* 3. Soft Rounding for Inputs and Fields */
+input,
+select,
+textarea,
+.search-row label,
+.auth-field input {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow) !important;
+}
+
+/* 4. Complete CTA (Call to Action) Blue Gradient Fill */
+.auth-submit,
+button.dark,
+.btn-primary,
+.save-btn,
+button[type="submit"] {
+  background: linear-gradient(135deg, #87CEEB 0%, #6cbbe0 100%) !important;
+  color: #FAF8F5 !important;
+  border: none !important;
+  box-shadow: 0 8px 24px -6px rgba(135, 206, 235, 0.5) !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-md) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+}
+
+[data-theme="dark"] .auth-submit,
+[data-theme="dark"] button.dark,
+[data-theme="dark"] .btn-primary,
+[data-theme="dark"] .save-btn,
+[data-theme="dark"] button[type="submit"] {
+  color: #0f1219 !important;
+  box-shadow: 0 8px 28px -4px rgba(135, 206, 235, 0.45) !important;
+  text-shadow: none !important;
+}
+
+.auth-submit:hover:not(:disabled),
+button.dark:hover:not(:disabled),
+.btn-primary:hover:not(:disabled),
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-2px) !important;
+  filter: brightness(1.05) !important;
+  box-shadow: 0 12px 28px -4px rgba(135, 206, 235, 0.6) !important;
+}
+
+[data-theme="dark"] .auth-submit:hover:not(:disabled),
+[data-theme="dark"] button.dark:hover:not(:disabled) {
+  box-shadow: 0 12px 32px -2px rgba(135, 206, 235, 0.55) !important;
+}
+
+/* Refined floating hover translations for all card-level components */
+.spec-card:hover, 
+.phase-card:hover, 
+.business-card:hover, 
+.vault-card:hover, 
+.insight-card:hover,
+.ops-strip article:hover,
+.framework-card:hover {
+  transform: translateY(-5px) !important;
+  box-shadow: 0 20px 38px -10px rgba(135, 206, 235, 0.22), 0 4px 14px -6px rgba(135, 206, 235, 0.1) !important;
+  border-color: #87CEEB !important;
+}
+
+[data-theme="dark"] .spec-card:hover, 
+[data-theme="dark"] .phase-card:hover, 
+[data-theme="dark"] .business-card:hover, 
+[data-theme="dark"] .vault-card:hover,
+[data-theme="dark"] .framework-card:hover {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.7), 0 0 28px rgba(135, 206, 235, 0.2) !important;
+}
+
+
+/* ==========================================================================
+   Dzhero Minimalist "No AI" Aesthetics, Spacing & Wave Line Overrides
+   ========================================================================== */
+
+/* 1. Luxurious Whitespace ("More Air") */
+.shell {
+  padding: 40px 60px 80px !important; /* Extremely airy main dashboard area */
+}
+
+.page-title {
+  margin-bottom: 42px !important; /* Generous breathing room below titles */
+}
+
+/* Increased spacing between vertical dashboard blocks */
+.home-grid,
+.home-columns,
+.ops-strip,
+.spec-hero,
+.spec-grid,
+.spec-layout,
+.phase-board,
+.business-grid,
+.business-flow,
+.strategy-layout,
+.framework-grid,
+.vault-grid,
+.calendar-layout {
+  margin-bottom: 36px !important;
+  gap: 28px !important; /* Wider spacing grid columns */
+}
+
+/* Extra inner padding for all container elements for a spacious look */
+.spec-card, 
+.phase-card, 
+.business-card, 
+.insight-card, 
+.vault-card,
+.forecast-card,
+.gate-card,
+.phone-card,
+.quick-modal,
+.auth-shell,
+.auth-copy,
+.auth-panel {
+  padding: 34px !important; /* Premium spacious card padding */
+}
+
+/* 2. Horizontal Wavy Divider for Header/Topbar */
+.topbar {
+  position: relative !important;
+  overflow: hidden !important;
+  padding-bottom: 16px !important;
+  margin-bottom: 28px !important;
+}
+
+.topbar::after {
+  content: "" !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  width: 100% !important;
+  height: 8px !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2387CEEB' fill-opacity='0.25' d='M0,224L60,202.7C120,181,240,139,360,138.7C480,139,600,181,720,202.7C840,224,960,224,1080,197.3C1200,171,1320,117,1380,90.7L1440,64L1440,320L1392,320C1320,320,1200,320,1080,320C960,320,840,320,720,320C600,320,480,320,360,320C240,320,120,320,60,320L0,320Z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-size: cover !important;
+  background-position: bottom !important;
+  opacity: 0.5 !important;
+}
+
+/* 3. Smooth Hover Scale-Floating Transitions */
+button, 
+a, 
+nav button, 
+.pill, 
+.market-buttons button, 
+.mini-card, 
+.spec-card, 
+.phase-card, 
+.business-card, 
+.vault-card, 
+.insight-card,
+.ops-strip article,
+.framework-card {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+/* Sleek float up for all buttons and interactive controls on hover */
+button:hover,
+nav button:hover,
+.pill:hover,
+.market-buttons button:hover,
+.logout-button:hover,
+.icon:hover {
+  transform: translateY(-2px) !important;
+}
+
+.spec-card:hover, 
+.phase-card:hover, 
+.business-card:hover, 
+.vault-card:hover, 
+.insight-card:hover,
+.ops-strip article:hover,
+.framework-card:hover {
+  transform: translateY(-6px) !important; /* Slightly more prominent float up */
+}
+
+/* Header cleanup: make the navigation surfaces feel intentional, not half-lit. */
+[data-theme="dark"] .brand,
+[data-theme="dark"] .topbar,
+[data-theme="dark"] .market-strip {
+  background: #111722 !important;
+  border-color: #243044 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .brand {
+  background: #101720 !important;
+}
+
+[data-theme="dark"] .brand::after,
+[data-theme="dark"] .topbar::after {
+  content: none !important;
+}
+
+[data-theme="dark"] .logo {
+  color: #8ed8f4 !important;
+  background: #162637 !important;
+  border-color: #294861 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .topbar {
+  min-height: 58px !important;
+  padding: 10px 18px !important;
+  margin-bottom: 28px !important;
+}
+
+[data-theme="dark"] .topbar > span {
+  color: #91a2b6 !important;
+}
+
+[data-theme="dark"] .market-strip {
+  min-height: 92px !important;
+  padding: 16px 22px !important;
+}
+
+[data-theme="dark"] .market-buttons button,
+[data-theme="dark"] .pill,
+[data-theme="dark"] .icon {
+  background: #101620 !important;
+  border-color: #253044 !important;
+  color: #d7e1ed !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .market-buttons button:hover,
+[data-theme="dark"] .pill:hover,
+[data-theme="dark"] .icon:hover {
+  border-color: #3a4a63 !important;
+  background: #151d2a !important;
+}
+
+[data-theme="dark"] .pill.active,
+[data-theme="dark"] .market-buttons button.active {
+  color: #08111a !important;
+  background: #8ed8f4 !important;
+  border-color: #8ed8f4 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="dark"] .market-buttons button.active::after {
+  background: rgba(8, 17, 26, 0.42) !important;
+}
+
+.language-switch {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(38px, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--control);
+}
+
+.language-switch button {
+  min-height: 28px;
+  padding: 3px 9px;
+  border-radius: 9px !important;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.language-switch button.active {
+  color: var(--dark-text);
+  background: var(--dark);
+}
+
+[data-theme="dark"] .language-switch {
+  border-color: #253044;
+  background: #101620;
+}
+
+[data-theme="dark"] .language-switch button.active {
+  color: #08111a;
+  background: #8ed8f4;
+}
+
+/* Light theme header surfaces: match the calmer dark-mode treatment. */
+[data-theme="light"] .brand,
+[data-theme="light"] .topbar,
+[data-theme="light"] .market-strip {
+  background: #111722 !important;
+  border-color: #243044 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .brand {
+  background: #101720 !important;
+}
+
+[data-theme="light"] .brand::after,
+[data-theme="light"] .topbar::after {
+  content: none !important;
+}
+
+[data-theme="light"] .brand strong {
+  color: #f6f8fb !important;
+}
+
+[data-theme="light"] .brand span,
+[data-theme="light"] .topbar > span,
+[data-theme="light"] .top-actions span {
+  color: #91a2b6 !important;
+}
+
+[data-theme="light"] .logo {
+  color: #8ed8f4 !important;
+  background: #162637 !important;
+  border-color: #294861 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .market-strip > div:first-child {
+  color: #f6f8fb !important;
+}
+
+[data-theme="light"] .market-buttons button,
+[data-theme="light"] .pill,
+[data-theme="light"] .icon,
+[data-theme="light"] .language-switch {
+  background: #101620 !important;
+  border-color: #253044 !important;
+  color: #d7e1ed !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .market-buttons button strong {
+  color: #f6f8fb !important;
+}
+
+[data-theme="light"] .market-buttons button small {
+  color: #91a2b6 !important;
+}
+
+[data-theme="light"] .market-buttons button:hover,
+[data-theme="light"] .pill:hover,
+[data-theme="light"] .icon:hover {
+  border-color: #3a4a63 !important;
+  background: #151d2a !important;
+}
+
+[data-theme="light"] .pill.active,
+[data-theme="light"] .market-buttons button.active,
+[data-theme="light"] .language-switch button.active {
+  color: #08111a !important;
+  background: #8ed8f4 !important;
+  border-color: #8ed8f4 !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .market-buttons button.active strong,
+[data-theme="light"] .market-buttons button.active small {
+  color: #08111a !important;
+}
+
+[data-theme="light"] .brand {
+  background: #ffffff !important;
+  border-color: #d8edf4 !important;
+  color: #26313f !important;
+}
+
+[data-theme="light"] .brand strong {
+  color: #26313f !important;
+}
+
+[data-theme="light"] .brand span {
+  color: #526173 !important;
+}
+
+[data-theme="light"] .brand .logo {
+  color: #2f9fc8 !important;
+  background: #eef8fb !important;
+  border-color: #cdeaf3 !important;
+}
+
+[data-theme="light"] .topbar {
+  background: #ffffff !important;
+  border-color: #d8edf4 !important;
+  color: #26313f !important;
+}
+
+[data-theme="light"] .topbar > span,
+[data-theme="light"] .top-actions span {
+  color: #526173 !important;
+}
+
+[data-theme="light"] .topbar .pill,
+[data-theme="light"] .topbar .icon,
+[data-theme="light"] .topbar .language-switch {
+  background: #f4f8fa !important;
+  border-color: #d8edf4 !important;
+  color: #26313f !important;
+}
+
+[data-theme="light"] .topbar .pill:hover,
+[data-theme="light"] .topbar .icon:hover {
+  background: #edf5f8 !important;
+  border-color: #bddce8 !important;
+}
+
+[data-theme="light"] .topbar .language-switch button.active {
+  color: #08111a !important;
+  background: #8ed8f4 !important;
+}
+
+[data-theme="light"] .market-strip {
+  background: #ffffff !important;
+  border-color: #d8edf4 !important;
+  color: #26313f !important;
+}
+
+[data-theme="light"] .market-strip > div:first-child {
+  color: #26313f !important;
+}
+
+[data-theme="light"] .market-buttons button {
+  background: #f8fbfc !important;
+  border-color: #d8edf4 !important;
+  color: #526173 !important;
+}
+
+[data-theme="light"] .market-buttons button strong {
+  color: #26313f !important;
+}
+
+[data-theme="light"] .market-buttons button small {
+  color: #6c7a8a !important;
+}
+
+[data-theme="light"] .market-buttons button:hover {
+  background: #edf5f8 !important;
+  border-color: #bddce8 !important;
+}
+
+[data-theme="light"] .market-buttons button.active {
+  color: #08111a !important;
+  background: #8ed8f4 !important;
+  border-color: #8ed8f4 !important;
+}
+
+[data-theme="light"] .market-buttons button.active strong,
+[data-theme="light"] .market-buttons button.active small {
+  color: #08111a !important;
+}
+
+@media (max-width: 760px) {
+  .auth-page {
+    min-height: 100svh !important;
+    padding: 12px !important;
+    align-items: start !important;
+  }
+
+  .auth-shell {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    border-radius: 20px !important;
+  }
+
+  .auth-copy,
+  .auth-panel {
+    padding: 24px 20px !important;
+  }
+
+  .auth-copy {
+    min-height: auto !important;
+  }
+
+  .auth-brand {
+    width: 100% !important;
+    margin-bottom: 28px !important;
+  }
+
+  .auth-brand span {
+    display: block !important;
+  }
+
+  .auth-copy small {
+    letter-spacing: 1px !important;
+  }
+
+  .auth-copy h1 {
+    max-width: none !important;
+    margin: 16px 0 0 !important;
+    font-size: clamp(31px, 9.2vw, 38px) !important;
+    line-height: 1.08 !important;
+    letter-spacing: 0 !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: none !important;
+  }
+
+  .auth-points {
+    margin-top: 26px !important;
+  }
+
+  .auth-panel-head {
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .auth-panel-head .icon {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .sidebar {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    padding: 12px 14px !important;
+    border-right: 0 !important;
+    border-bottom: 1px solid var(--border) !important;
+  }
+
+  .sidebar .brand {
+    width: 58px !important;
+    min-height: 58px !important;
+    margin: 0 0 12px !important;
+    padding: 9px !important;
+    border-radius: 18px !important;
+  }
+
+  .sidebar .brand::after {
+    content: none !important;
+  }
+
+  .sidebar .logo {
+    width: 38px !important;
+    height: 38px !important;
+  }
+
+  .sidebar nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .sidebar nav button {
+    min-height: 42px !important;
+    padding: 8px !important;
+    border-radius: 14px !important;
+  }
+
+  .sidebar .account {
+    display: none !important;
+  }
+
+  .shell {
+    padding: 22px 14px 64px !important;
   }
 }

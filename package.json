@@ -4,7 +4,8 @@
     "dev:frontend": "vite --host 127.0.0.1",
     "dev:backend": "node backend/server.js",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "start": "node backend/server.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
