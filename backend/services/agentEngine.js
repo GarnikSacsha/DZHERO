@@ -68,9 +68,9 @@ When answering, prefer this structure when useful:
 4. Risks / what a human should approve.
 
 Output rules:
-- Keep the first response compact: 450-650 words maximum.
+- Keep the first response complete and practical: 900-1400 words maximum.
 - Do not use Markdown headings like ### and do not use **bold** markers.
-- If the user asks for 5+ items, give all requested item titles, but expand only the first 3 with hook, mechanism, shot-list and CTA.
+- If the user asks for 5+ content ideas, expand every item with this compact structure: idea, hook, mechanism, 3-shot list, caption angle, CTA.
 - End with: "Можу розкрити будь-яку ідею в повний сценарій."
 `.trim();
 }
@@ -111,34 +111,58 @@ async function generateAgentReply({ message, history = [], workspace, snapshot }
     },
   ].filter((item) => item.parts[0].text);
 
-  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents,
-      systemInstruction: {
-        parts: [{ text: buildAgentSystemInstruction(context) }],
-      },
-      generationConfig: {
-        temperature: 0.65,
-        topP: 0.9,
-        maxOutputTokens: 2800,
-      },
-    }),
-  });
+  async function requestGemini(requestContents) {
+    const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: requestContents,
+        systemInstruction: {
+          parts: [{ text: buildAgentSystemInstruction(context) }],
+        },
+        generationConfig: {
+          temperature: 0.6,
+          topP: 0.9,
+          maxOutputTokens: 8192,
+        },
+      }),
+    });
 
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const messageText = payload?.error?.message || `Gemini API HTTP ${response.status}`;
-    const error = new Error(messageText);
-    error.payload = payload;
-    throw error;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const messageText = payload?.error?.message || `Gemini API HTTP ${response.status}`;
+      const error = new Error(messageText);
+      error.payload = payload;
+      throw error;
+    }
+    const candidate = payload.candidates?.[0] || {};
+    const text = candidate.content?.parts
+      ?.map((part) => part.text || '')
+      .join('')
+      .trim() || '';
+    return {
+      text,
+      finishReason: candidate.finishReason || '',
+    };
   }
 
-  const text = payload.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text || '')
-    .join('')
-    .trim();
+  const first = await requestGemini(contents);
+  let text = first.text;
+
+  if (first.finishReason === 'MAX_TOKENS') {
+    const continuation = await requestGemini([
+      ...contents,
+      {
+        role: 'model',
+        parts: [{ text }],
+      },
+      {
+        role: 'user',
+        parts: [{ text: 'Продовжуй з місця, де зупинився. Не повторюй попередній текст. Заверши відповідь повністю.' }],
+      },
+    ]);
+    text = `${text}\n\n${continuation.text}`.trim();
+  }
 
   return {
     provider: 'gemini',
