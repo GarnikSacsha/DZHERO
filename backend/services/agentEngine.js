@@ -67,7 +67,11 @@ When answering, prefer this structure when useful:
 3. Concrete output: idea, script, shot-list, caption, CTA, or checklist.
 4. Risks / what a human should approve.
 
-Keep the first response compact: 600-900 words maximum. If the user asks for many items, give the best 3-5 items and offer to expand a chosen one.
+Output rules:
+- Keep the first response compact: 450-650 words maximum.
+- Do not use Markdown headings like ### and do not use **bold** markers.
+- If the user asks for 5+ items, give all requested item titles, but expand only the first 3 with hook, mechanism, shot-list and CTA.
+- End with: "Можу розкрити будь-яку ідею в повний сценарій."
 `.trim();
 }
 
@@ -118,7 +122,7 @@ async function generateAgentReply({ message, history = [], workspace, snapshot }
       generationConfig: {
         temperature: 0.65,
         topP: 0.9,
-        maxOutputTokens: 1600,
+        maxOutputTokens: 2800,
       },
     }),
   });
