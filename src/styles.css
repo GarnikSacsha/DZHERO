@@ -1903,6 +1903,154 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+.video-queue,
+.env-checklist,
+.meta-review {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.video-queue-head,
+.env-checklist-head,
+.meta-review-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.env-checklist-head,
+.meta-review-head {
+  grid-template-columns: 1fr;
+}
+
+.video-queue small,
+.env-checklist small,
+.meta-review small {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.video-queue h3,
+.env-checklist h3,
+.meta-review h3 {
+  margin: 6px 0 8px;
+  font-size: 22px;
+}
+
+.video-queue p,
+.env-checklist p,
+.meta-review p {
+  max-width: 820px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.video-job-grid,
+.env-grid,
+.meta-review-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.env-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.video-job-card,
+.env-card,
+.meta-review-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.video-job-top,
+.video-job-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.video-job-top span,
+.video-job-top em,
+.video-job-meta span,
+.video-job-meta strong {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.video-job-card h4 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.env-card strong,
+.meta-review-grid strong {
+  font-size: 14px;
+}
+
+.env-card code,
+.review-row code {
+  display: block;
+  padding: 7px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.review-row {
+  display: grid;
+  gap: 6px;
+}
+
+.review-row span,
+.meta-review li,
+.meta-review a {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.meta-review ol {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.meta-review a {
+  text-decoration: none;
+}
+
 .assistant-layout {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -6469,8 +6617,31 @@ nav button:hover,
     order: 2;
   }
 
-  .page-assistant .agent-pipeline {
+  .page-assistant .video-queue {
     order: 3;
+  }
+
+  .page-assistant .agent-pipeline {
+    order: 4;
+  }
+
+  .video-queue-head,
+  .env-checklist-head,
+  .meta-review-head {
+    grid-template-columns: 1fr !important;
+  }
+
+  .video-job-grid,
+  .env-grid,
+  .meta-review-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .video-queue,
+  .env-checklist,
+  .meta-review {
+    padding: 16px !important;
+    border-radius: 16px !important;
   }
 
   .assistant-sidebar {
