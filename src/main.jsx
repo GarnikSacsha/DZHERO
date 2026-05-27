@@ -1247,6 +1247,94 @@ function BrandBrain({ notify }) {
   );
 }
 
+function VideoTaskQueue({ notify }) {
+  const [jobs, setJobs] = useState([]);
+  const [status, setStatus] = useState('loading');
+
+  const loadJobs = async () => {
+    setStatus('loading');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'video_jobs_failed');
+      setJobs(payload.videoJobs || []);
+      setStatus('ready');
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  useEffect(() => {
+    loadJobs();
+  }, []);
+
+  const createDemoJob = async () => {
+    setStatus('saving');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: 'Demo Reels video task',
+          hook: 'Показати, як експерт перетворює одну ідею на готовий Reels-сценарій з AI.',
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'video_job_failed');
+      setJobs((current) => [payload.videoJob, ...current]);
+      setStatus('ready');
+      notify('Video task додано в чергу.');
+    } catch (err) {
+      setStatus('error');
+      notify(`Не вдалося створити video task: ${err.message}`);
+    }
+  };
+
+  return (
+    <section className="video-queue">
+      <div className="video-queue-head">
+        <div>
+          <small>Video generation queue</small>
+          <h3>Задачі на відео після сценарію</h3>
+          <p>Тут видно, куди потрапляє результат агента. Реальна генерація буде ввімкнена після підключення video provider API, а поки задача зберігає prompt, сцени, CTA і статус approval.</p>
+        </div>
+        <button className="dark" type="button" onClick={createDemoJob} disabled={status === 'saving'}>
+          <Rocket size={16} />{status === 'saving' ? 'Створюю...' : 'Додати test task'}
+        </button>
+      </div>
+      <div className="video-job-grid">
+        {(jobs.length ? jobs : [{
+          id: 'empty-video-job',
+          status: 'configuration_required',
+          provider: 'not_configured',
+          prompt: {
+            title: 'Очікуємо першу задачу від агента',
+            format: '15-25 sec Reels',
+            scenes: [],
+            caption: 'Натисни в чаті агента: Створити video task.',
+            cta: 'Human approval before generation',
+          },
+          createdAt: new Date().toISOString(),
+        }]).slice(0, 4).map((job) => (
+          <article className="video-job-card" key={job.id}>
+            <div className="video-job-top">
+              <span>{job.status}</span>
+              <em>{job.provider}</em>
+            </div>
+            <h4>{job.prompt?.title || 'Untitled video task'}</h4>
+            <p>{job.prompt?.caption || 'Prompt буде збережено тут після створення задачі.'}</p>
+            <div className="video-job-meta">
+              <strong>{job.prompt?.format || 'Reels'}</strong>
+              <span>{job.prompt?.scenes?.length || 0} scenes</span>
+              <span>{job.humanApprovalRequired === false ? 'Auto' : 'Human approval'}</span>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function CreatorAssistant({ notify }) {
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
@@ -1418,6 +1506,7 @@ function CreatorAssistant({ notify }) {
       />
       <AgentPipeline />
       <BrandBrain notify={notify} />
+      <VideoTaskQueue notify={notify} />
       <div className="assistant-layout">
         <aside className="assistant-sidebar">
           <h3>Швидкі задачі</h3>
@@ -1746,6 +1835,7 @@ function DataSources({ sources, notify }) {
         actions={<button className="dark" onClick={() => notify('Майстер підключення джерела відкриється після backend-інтеграції')}><Plus size={16} />Підключити джерело</button>}
       />
       <AnalysisSetup notify={notify} />
+      <ProductionEnvChecklist />
       <div className="source-grid">
         {sources.map(([title, description, status]) => (
           <article className="insight-card source-card" key={title}>
@@ -1806,6 +1896,88 @@ function DataSources({ sources, notify }) {
   );
 }
 
+function ProductionEnvChecklist() {
+  const groups = [
+    ['Railway runtime', ['PORT=3000', 'HOST=0.0.0.0', 'DB_PATH=/data/db.json', 'CLIENT_URL=https://dzhero.com.ua', 'VITE_API_URL=/api']],
+    ['Gemini agent', ['GEMINI_API_KEY', 'GEMINI_TEXT_MODEL=gemini-2.5-flash']],
+    ['Instagram Login', ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI=https://dzhero.com.ua/api/auth/instagram/callback', 'INSTAGRAM_SCOPES']],
+    ['Meta fallback', ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI=https://dzhero.com.ua/api/auth/meta/callback', 'META_SCOPES']],
+    ['Video later', ['VIDEO_PROVIDER', 'VIDEO_PROVIDER_API_KEY']],
+  ];
+
+  return (
+    <section className="env-checklist">
+      <div className="env-checklist-head">
+        <small>Production deploy checklist</small>
+        <h3>Змінні, які мають бути в Railway</h3>
+        <p>Публічним користувачам ключі не потрібні. Всі API keys живуть тільки в backend/deploy env.</p>
+      </div>
+      <div className="env-grid">
+        {groups.map(([title, vars]) => (
+          <article className="env-card" key={title}>
+            <strong>{title}</strong>
+            {vars.map((item) => <code key={item}>{item}</code>)}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MetaReviewPacket() {
+  const permissions = [
+    ['instagram_business_basic', 'Підтвердити professional Instagram account і базові profile data.'],
+    ['instagram_business_manage_insights', 'Показувати performance сигналів, щоб агент не працював на порожніх даних.'],
+    ['instagram_business_manage_comments', 'Аналізувати коментарі й готувати відповіді з human review.'],
+    ['instagram_business_content_publish', 'Майбутня публікація approved content, не автоматичний spam-posting.'],
+  ];
+  const reviewSteps = [
+    'Reviewer opens Dzhero and clicks Instagram Login.',
+    'Reviewer connects Creator or Business Instagram account.',
+    'Dzhero imports allowed reels/captions/insights after permission approval.',
+    'Reviewer opens Assistant and asks for content plan or Reels adaptation.',
+    'Reviewer sees human approval before video task/publish actions.',
+  ];
+  const urls = [
+    ['/privacy', 'Privacy Policy'],
+    ['/terms', 'Terms of Service'],
+    ['/data-deletion', 'Data Deletion Instructions'],
+  ];
+
+  return (
+    <section className="meta-review">
+      <div className="meta-review-head">
+        <small>Meta App Review packet</small>
+        <h3>Що показувати Meta перед Live Mode</h3>
+        <p>Це короткий пакет для ревʼю: навіщо потрібні permissions, який user flow і де лежать обовʼязкові сторінки.</p>
+      </div>
+      <div className="meta-review-grid">
+        <article>
+          <strong>Requested permissions</strong>
+          {permissions.map(([name, reason]) => (
+            <div className="review-row" key={name}>
+              <code>{name}</code>
+              <span>{reason}</span>
+            </div>
+          ))}
+        </article>
+        <article>
+          <strong>Reviewer test flow</strong>
+          <ol>
+            {reviewSteps.map((step) => <li key={step}>{step}</li>)}
+          </ol>
+        </article>
+        <article>
+          <strong>Required public URLs</strong>
+          {urls.map(([path, label]) => (
+            <a href={path} key={path}>{label}: {path}</a>
+          ))}
+        </article>
+      </div>
+    </section>
+  );
+}
+
 function LegalSafe({ notify }) {
   const docs = [
     ['Партнерська угода', 'блогер + продюсер', 'частки, ролі, доступи, KPI, вихід із партнерства'],
@@ -1832,6 +2004,7 @@ function LegalSafe({ notify }) {
           </article>
         ))}
       </div>
+      <MetaReviewPacket />
       <article className="insight-card">
         <small>Для ТЗ</small>
         <h3>AI не замінює юриста, але готує структуру документа</h3>
