@@ -6054,3 +6054,542 @@ nav button:hover,
     padding: 22px 14px 64px !important;
   }
 }
+
+/* ==========================================================================
+   Mobile App Pass
+   ========================================================================== */
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden !important;
+  }
+
+  body {
+    font-size: 13px !important;
+  }
+
+  .app {
+    display: block !important;
+    width: 100% !important;
+    min-height: 100svh !important;
+    overflow-x: hidden !important;
+  }
+
+  .shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 100svh !important;
+    padding: 12px 12px 80px !important;
+    overflow-x: hidden !important;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(334px, 88vw) !important;
+    height: 100svh !important;
+    padding: 14px 12px calc(14px + env(safe-area-inset-bottom)) !important;
+    transform: translateX(-105%) !important;
+    overflow: hidden !important;
+    z-index: 1002 !important;
+  }
+
+  .sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .mobile-menu-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100svh !important;
+    background: rgba(3, 7, 14, 0.68) !important;
+    z-index: 1001 !important;
+  }
+
+  .mobile-menu-close,
+  .mobile-menu-trigger {
+    display: grid !important;
+    place-items: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    background: var(--surface-strong) !important;
+    color: var(--text) !important;
+  }
+
+  .mobile-menu-close {
+    position: absolute !important;
+    top: 14px !important;
+    right: 12px !important;
+  }
+
+  .sidebar .brand {
+    width: calc(100% - 52px) !important;
+    min-height: 54px !important;
+    margin: 0 0 12px !important;
+    padding: 9px 10px !important;
+    border-radius: 14px !important;
+  }
+
+  .sidebar .brand div:not(.logo) {
+    display: block !important;
+    min-width: 0 !important;
+  }
+
+  .sidebar .brand strong {
+    font-size: 14px !important;
+  }
+
+  .sidebar .brand span {
+    font-size: 10px !important;
+  }
+
+  .sidebar nav {
+    height: calc(100svh - 150px) !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding: 4px 2px 12px 0 !important;
+  }
+
+  .sidebar nav button {
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 9px 10px !important;
+    gap: 10px !important;
+    border-radius: 12px !important;
+    font-size: 13px !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  .sidebar nav button .nav-label {
+    display: inline !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .sidebar nav button svg {
+    flex: 0 0 auto !important;
+  }
+
+  .sidebar .account {
+    display: flex !important;
+    min-height: 54px !important;
+    margin-top: 8px !important;
+    padding: 9px !important;
+    border-radius: 14px !important;
+  }
+
+  .sidebar .account > div,
+  .sidebar .account svg,
+  .sidebar .account .logout-button {
+    display: grid !important;
+  }
+
+  .sidebar .account > div:not(.avatar) {
+    display: block !important;
+  }
+
+  .topbar {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 50 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+    align-items: center !important;
+    min-height: 52px !important;
+    margin: 0 0 14px !important;
+    padding: 6px 8px !important;
+    border-radius: 16px !important;
+    backdrop-filter: blur(14px);
+  }
+
+  .topbar-title {
+    width: 100% !important;
+    min-width: 0 !important;
+    gap: 8px !important;
+  }
+
+  .topbar-title > span {
+    max-width: 150px !important;
+    font-size: 9px !important;
+    letter-spacing: 0 !important;
+  }
+
+  .top-actions {
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    justify-content: flex-end !important;
+    min-width: 0 !important;
+  }
+
+  .top-actions > span:not(.pill) {
+    display: none !important;
+  }
+
+  .top-actions .pill {
+    display: none !important;
+  }
+
+  .language-switch {
+    min-width: auto !important;
+  }
+
+  .language-switch button {
+    min-width: 34px !important;
+    min-height: 30px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+  }
+
+  .top-actions .icon,
+  .auth-panel-head .icon {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+  }
+
+  .page {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .page-title {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    margin: 8px 0 18px !important;
+  }
+
+  .page-title h1 {
+    margin: 0 !important;
+    font-size: 26px !important;
+    line-height: 1.12 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .page-title p {
+    max-width: none !important;
+    font-size: 13px !important;
+    line-height: 1.55 !important;
+  }
+
+  .page-title .actions,
+  .actions {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .page-title .actions button,
+  .actions button,
+  button.dark {
+    width: 100% !important;
+    min-height: 42px !important;
+    justify-content: center !important;
+    border-radius: 12px !important;
+  }
+
+  .market-strip {
+    display: none !important;
+  }
+
+  .split,
+  .home-grid,
+  .home-columns,
+  .ops-strip,
+  .spec-layout,
+  .spec-grid,
+  .phase-board,
+  .business-grid,
+  .business-flow,
+  .strategy-layout,
+  .strategy-cards,
+  .framework-grid,
+  .sales-layout,
+  .analytics-layout,
+  .analytics-grid,
+  .ideas-layout,
+  .launch-layout,
+  .calendar-layout,
+  .remix-layout,
+  .remix-bottom,
+  .budget-layout,
+  .budget-scenarios,
+  .team-board,
+  .vault-grid,
+  .agent-step-grid,
+  .brand-brain-grid {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .stats div,
+  .mini-card,
+  .spec-card,
+  .phase-card,
+  .business-card,
+  .insight-card,
+  .source-card,
+  .vault-card,
+  .lead-table article,
+  .forecast-card,
+  .gate-card,
+  .phone-card,
+  .table-card,
+  .right-panel,
+  .budget-card,
+  .idea-card,
+  .agent-pipeline,
+  .brand-brain,
+  .assistant-sidebar,
+  .assistant-chat,
+  .assistant-tools {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .home-hero,
+  .spec-hero,
+  .strategy-hero,
+  .budget-hero,
+  .sales-card {
+    min-height: auto !important;
+    padding: 18px !important;
+    border-radius: 18px !important;
+    background-size: cover, 100% 80px !important;
+  }
+
+  .home-hero h2,
+  .spec-hero h2,
+  .strategy-hero h2,
+  .budget-hero h2,
+  .sales-card h2 {
+    font-size: 24px !important;
+    line-height: 1.14 !important;
+    letter-spacing: 0 !important;
+  }
+
+  .panel-title,
+  .idea-top,
+  .idea-meta,
+  .idea-actions,
+  .agent-pipeline-head,
+  .brand-brain-head {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    align-items: start !important;
+  }
+
+  .idea-actions,
+  .business-tags,
+  .chips,
+  .tabs,
+  .legend,
+  .agent-status-cards,
+  .agent-contracts {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    overflow-x: auto !important;
+    padding-bottom: 4px !important;
+    scroll-snap-type: x proximity;
+  }
+
+  .idea-actions button,
+  .business-tags span,
+  .chips span,
+  .tabs button,
+  .legend span,
+  .agent-status-cards span,
+  .agent-contracts code {
+    flex: 0 0 auto !important;
+    scroll-snap-align: start;
+  }
+
+  .metric-table,
+  .budget-table,
+  .lead-table,
+  .calendar-grid {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .metric-table > *,
+  .budget-table > *,
+  .lead-table > *,
+  .calendar-grid > * {
+    min-width: 640px;
+  }
+
+  .assistant-layout {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    min-height: 0 !important;
+  }
+
+  .page-assistant {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .page-assistant .page-title {
+    order: 0;
+  }
+
+  .page-assistant .assistant-layout {
+    order: 1;
+  }
+
+  .page-assistant .brand-brain {
+    order: 2;
+  }
+
+  .page-assistant .agent-pipeline {
+    order: 3;
+  }
+
+  .assistant-sidebar {
+    order: 2;
+    display: grid !important;
+    gap: 10px !important;
+  }
+
+  .assistant-sidebar h3 {
+    margin: 0 !important;
+    font-size: 15px !important;
+  }
+
+  .assistant-sidebar button {
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 10px 12px !important;
+    text-align: left !important;
+  }
+
+  .assistant-chat {
+    order: 1;
+    height: calc(100svh - 130px) !important;
+    min-height: 560px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .assistant-tools {
+    order: 3;
+  }
+
+  .assistant-thread {
+    padding: 14px !important;
+    gap: 12px !important;
+  }
+
+  .assistant-thread .chat-message,
+  .assistant-thread .chat-message.assistant,
+  .assistant-thread .chat-message.user {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 12px !important;
+    border-radius: 14px !important;
+    font-size: 13px !important;
+  }
+
+  .assistant-thread .chat-message p {
+    line-height: 1.58 !important;
+  }
+
+  .assistant-input {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .assistant-input input {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .assistant-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+
+  .assistant-actions button {
+    width: 100% !important;
+    min-height: 38px !important;
+  }
+
+  .agent-pipeline,
+  .brand-brain {
+    margin-bottom: 12px !important;
+  }
+
+  .brand-field.wide {
+    grid-column: auto !important;
+  }
+
+  .brand-field textarea {
+    min-height: 76px !important;
+  }
+
+  .toast {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom)) !important;
+    max-width: none !important;
+    width: auto !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    padding-inline: 10px !important;
+  }
+
+  .topbar-title > span {
+    max-width: 112px !important;
+  }
+
+  .stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  .page-title h1 {
+    font-size: 24px !important;
+  }
+
+  .home-hero h2,
+  .spec-hero h2,
+  .strategy-hero h2,
+  .budget-hero h2,
+  .sales-card h2 {
+    font-size: 22px !important;
+  }
+}
