@@ -111,5 +111,11 @@
     }
   ],
   "leads": [],
-  "syncJobs": []
+  "syncJobs": [],
+  "sources": [],
+  "metaStates": [],
+  "instagramAccounts": [],
+  "aiMemory": [],
+  "remixes": [],
+  "contentPlanItems": []
 }

@@ -8,13 +8,28 @@ const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const DB_PATH = path.join(__dirname, 'data', 'db.json');
+const HOST = process.env.HOST || '0.0.0.0';
+const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'db.json');
+const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
+const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
 const META_APP_ID = process.env.META_APP_ID || '';
 const META_APP_SECRET = process.env.META_APP_SECRET || '';
 const META_REDIRECT_URI = process.env.META_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/meta/callback`;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://127.0.0.1:5173';
+const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID || META_APP_ID;
+const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || META_APP_SECRET;
+const INSTAGRAM_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/instagram/callback`;
+const INSTAGRAM_AUTH_BASE_URL = process.env.INSTAGRAM_AUTH_BASE_URL || 'https://www.instagram.com/oauth/authorize';
+const INSTAGRAM_TOKEN_URL = process.env.INSTAGRAM_TOKEN_URL || 'https://api.instagram.com/oauth/access_token';
+const INSTAGRAM_GRAPH_BASE_URL = process.env.INSTAGRAM_GRAPH_BASE_URL || 'https://graph.instagram.com';
+const INSTAGRAM_SCOPES = process.env.INSTAGRAM_SCOPES || [
+  'instagram_business_basic',
+  'instagram_business_manage_comments',
+  'instagram_business_manage_messages',
+  'instagram_business_content_publish',
+].join(',');
 const META_SCOPES = process.env.META_SCOPES || [
   'instagram_basic',
   'instagram_manage_insights',
@@ -22,10 +37,25 @@ const META_SCOPES = process.env.META_SCOPES || [
   'pages_read_engagement',
 ].join(',');
 
-app.use(cors({ origin: ['http://127.0.0.1:5173', 'http://localhost:5173'] }));
+const allowedOrigins = new Set([
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+  CLIENT_URL,
+].filter(Boolean));
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+}));
 app.use(express.json({ limit: '1mb' }));
 
 async function readDb() {
+  await ensureDbFile();
   const raw = await fs.readFile(DB_PATH, 'utf8');
   const db = JSON.parse(raw);
   db.users ||= [];
@@ -46,7 +76,18 @@ async function readDb() {
 }
 
 async function writeDb(db) {
+  await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
   await fs.writeFile(DB_PATH, `${JSON.stringify(db, null, 2)}\n`, 'utf8');
+}
+
+async function ensureDbFile() {
+  try {
+    await fs.access(DB_PATH);
+  } catch {
+    await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
+    const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
+    await fs.writeFile(DB_PATH, seed, 'utf8');
+  }
 }
 
 function createId(prefix) {
@@ -116,6 +157,22 @@ function buildMetaAuthUrl(state) {
   };
 }
 
+function buildInstagramAuthUrl(state) {
+  const params = new URLSearchParams({
+    enable_fb_login: '0',
+    force_authentication: '1',
+    client_id: INSTAGRAM_APP_ID,
+    redirect_uri: INSTAGRAM_REDIRECT_URI,
+    response_type: 'code',
+    scope: INSTAGRAM_SCOPES,
+    state,
+  });
+  return {
+    authUrl: `${INSTAGRAM_AUTH_BASE_URL}?${params.toString()}`,
+    state,
+  };
+}
+
 async function fetchMetaJson(url, options) {
   if (typeof fetch !== 'function') {
     throw new Error('Node.js fetch is required for Meta API calls. Use Node 18+.');
@@ -139,6 +196,29 @@ async function exchangeMetaCode(code) {
     code,
   });
   return fetchMetaJson(`${META_GRAPH_BASE_URL}/oauth/access_token?${params.toString()}`);
+}
+
+async function exchangeInstagramCode(code) {
+  const params = new URLSearchParams({
+    client_id: INSTAGRAM_APP_ID,
+    client_secret: INSTAGRAM_APP_SECRET,
+    grant_type: 'authorization_code',
+    redirect_uri: INSTAGRAM_REDIRECT_URI,
+    code,
+  });
+  return fetchMetaJson(INSTAGRAM_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+}
+
+async function getInstagramProfile(accessToken) {
+  const params = new URLSearchParams({
+    fields: 'id,user_id,username,account_type,profile_picture_url',
+    access_token: accessToken,
+  });
+  return fetchMetaJson(`${INSTAGRAM_GRAPH_BASE_URL}/me?${params.toString()}`);
 }
 
 async function getMetaPages(accessToken) {
@@ -220,6 +300,34 @@ app.get('/api/auth/meta/start', async (req, res) => {
   res.json({ authUrl, state, redirectUri: META_REDIRECT_URI, scopes: META_SCOPES.split(',') });
 });
 
+app.get('/api/auth/instagram/start', async (req, res) => {
+  if (!INSTAGRAM_APP_ID) {
+    res.status(501).json({
+      error: 'instagram_not_configured',
+      message: 'Set INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET and INSTAGRAM_REDIRECT_URI in .env before using Instagram Login.',
+      redirectUri: INSTAGRAM_REDIRECT_URI,
+      requiredEnv: ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI', 'INSTAGRAM_SCOPES'],
+      supportedAccounts: ['creator', 'business'],
+      unsupportedAccounts: ['personal'],
+    });
+    return;
+  }
+  const db = await readDb();
+  const workspaceId = req.query.workspaceId || 'ws_demo_ua';
+  if (!requireWorkspace(db, workspaceId, res)) return;
+  const state = crypto.randomBytes(16).toString('hex');
+  db.metaStates.unshift({
+    state,
+    workspaceId,
+    provider: 'instagram',
+    createdAt: new Date().toISOString(),
+    usedAt: null,
+  });
+  await writeDb(db);
+  const { authUrl } = buildInstagramAuthUrl(state);
+  res.json({ authUrl, state, redirectUri: INSTAGRAM_REDIRECT_URI, scopes: INSTAGRAM_SCOPES.split(',') });
+});
+
 app.get('/api/auth/meta/callback', async (req, res) => {
   if (req.query.error) {
     res.status(400).send(`Meta Login error: ${req.query.error_description || req.query.error}`);
@@ -270,6 +378,68 @@ app.get('/api/auth/meta/callback', async (req, res) => {
   } catch (err) {
     console.error('[MetaLogin]', err);
     res.status(502).send(`Meta Login token exchange failed: ${err.message}`);
+  }
+});
+
+app.get('/api/auth/instagram/callback', async (req, res) => {
+  if (req.query.error) {
+    res.status(400).send(`Instagram Login error: ${req.query.error_description || req.query.error}`);
+    return;
+  }
+  if (!req.query.code) {
+    res.status(400).send('Instagram Login callback received without code.');
+    return;
+  }
+  if (!INSTAGRAM_APP_ID || !INSTAGRAM_APP_SECRET) {
+    res.status(501).send('Instagram Login is not configured. Set INSTAGRAM_APP_ID and INSTAGRAM_APP_SECRET.');
+    return;
+  }
+  try {
+    const db = await readDb();
+    const stateRecord = db.metaStates.find((item) => item.state === req.query.state);
+    const workspaceId = stateRecord?.workspaceId || 'ws_demo_ua';
+    const tokenResult = await exchangeInstagramCode(String(req.query.code));
+    const profile = await getInstagramProfile(tokenResult.access_token).catch(() => ({
+      id: tokenResult.user_id,
+      user_id: tokenResult.user_id,
+      username: '',
+      account_type: 'PROFESSIONAL',
+    }));
+    const accountId = String(profile.user_id || profile.id || tokenResult.user_id || '');
+    const connectedAccount = {
+      id: createId('ig'),
+      workspaceId,
+      provider: 'instagram_login',
+      metaPageId: null,
+      pageName: null,
+      instagramId: accountId,
+      username: profile.username || `instagram_${accountId}`,
+      accountType: profile.account_type || 'PROFESSIONAL',
+      profilePictureUrl: profile.profile_picture_url || '',
+      permissions: INSTAGRAM_SCOPES.split(','),
+      status: 'connected',
+      connectedAt: new Date().toISOString(),
+      tokenMeta: {
+        tokenType: tokenResult.token_type || 'bearer',
+        expiresIn: tokenResult.expires_in || null,
+      },
+    };
+
+    db.instagramAccounts = db.instagramAccounts.filter((account) => (
+      account.workspaceId !== workspaceId || account.instagramId !== connectedAccount.instagramId
+    ));
+    db.instagramAccounts.unshift(connectedAccount);
+    if (stateRecord) stateRecord.usedAt = new Date().toISOString();
+    createSyncJob(db, workspaceId, 'instagram_account_connected', {
+      provider: 'instagram_login',
+      accountType: connectedAccount.accountType,
+      scopes: connectedAccount.permissions,
+    });
+    await writeDb(db);
+    res.redirect(`${CLIENT_URL}/?instagram=connected&accounts=1`);
+  } catch (err) {
+    console.error('[InstagramLogin]', err);
+    res.status(502).send(`Instagram Login token exchange failed: ${err.message}`);
   }
 });
 
@@ -673,6 +843,11 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal_server_error' });
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`Dzhero API listening on http://127.0.0.1:${PORT}`);
+app.use(express.static(CLIENT_DIST_PATH));
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(CLIENT_DIST_PATH, 'index.html'));
+});
+
+app.listen(PORT, HOST, () => {
+  console.log(`Dzhero listening on http://${HOST}:${PORT}`);
 });

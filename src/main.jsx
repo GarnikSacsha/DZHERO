@@ -18,7 +18,6 @@ import {
   Home,
   Lightbulb,
   LogOut,
-  Menu,
   MessageSquareText,
   Moon,
   Plus,
@@ -35,9 +34,12 @@ import {
   Wand2,
 } from 'lucide-react';
 import './styles.css';
+import logoImg from './logo.png';
 import { fetchProducerSnapshot } from './data/uaMarket';
+import { applyInterfaceLanguage } from './i18n';
 
-const API_BASE = 'http://127.0.0.1:3000/api';
+const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 
 function App() {
@@ -48,6 +50,7 @@ function App() {
   const [toast, setToast] = useState('');
   const [remixDraft, setRemixDraft] = useState(null);
   const [theme, setTheme] = useState(() => window.localStorage.getItem('insta-producer-theme-v2') || 'dark');
+  const [language, setLanguage] = useState(() => window.localStorage.getItem('insta-producer-language') || 'uk');
   const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(AUTH_TOKEN_KEY) || '');
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
@@ -65,6 +68,15 @@ function App() {
   useEffect(() => {
     window.localStorage.setItem('insta-producer-theme-v2', theme);
   }, [theme]);
+
+  useEffect(() => {
+    window.localStorage.setItem('insta-producer-language', language);
+  }, [language]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => applyInterfaceLanguage(language), 0);
+    return () => window.clearTimeout(timer);
+  }, [language, page, market, data, modal, toast, currentUser, authStatus, theme, remixDraft]);
 
   useEffect(() => {
     let isMounted = true;
@@ -143,7 +155,7 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app auth-app" data-theme={theme}>
-        <AuthGate onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} />
+        <AuthGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -193,11 +205,11 @@ function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      <Sidebar page={page} setPage={setPage} currentUser={currentUser} onLogout={handleLogout} />
-      <main className="shell">
-        <Topbar notify={notify} theme={theme} setTheme={setTheme} />
+      <Sidebar key={`sidebar-${language}`} page={page} setPage={setPage} currentUser={currentUser} onLogout={handleLogout} />
+      <main className="shell" key={`shell-${language}`}>
+        <Topbar notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} />
         <MarketFilter segments={data.marketSegments} market={market} setMarket={setMarket} />
-        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} />}
+        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} language={language} />}
         {page === 'roadmap' && <ProductRoadmap notify={notify} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} />}
         {page === 'strategy' && <StrategyBrain notify={notify} />}
@@ -221,7 +233,7 @@ function App() {
   );
 }
 
-function AuthGate({ onAuth, notify, theme, setTheme }) {
+function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   const [devLoginOpen, setDevLoginOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -248,17 +260,17 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
     }
   };
 
-  const startMetaLogin = async () => {
+  const startInstagramLogin = async () => {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/meta/start`);
+      const response = await fetch(`${API_BASE}/auth/instagram/start`);
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
+      if (!response.ok) throw new Error(payload.error || 'instagram_not_configured');
       window.location.href = payload.authUrl;
     } catch (authError) {
-      setError('Meta Login ще не налаштований. Треба створити Meta App і додати APP ID/Secret у .env.');
-      notify('Meta Login готовий у UI, але потрібні ключі Meta App');
+      setError('Instagram Login ще не налаштований. Треба створити Meta App, додати Instagram Login і ключі у .env.');
+      notify('Instagram Login готовий у UI, але потрібні ключі Meta App');
     } finally {
       setIsLoading(false);
     }
@@ -285,18 +297,27 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
       <section className="auth-shell">
         <div className="auth-copy">
           <div className="brand auth-brand">
-            <div className="logo">Dz</div>
+            <div className="logo">
+              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+                <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
+                <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
+                <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+                <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+              </svg>
+            </div>
+            {/*
+              <img src={logoImg} alt="Dzhero Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            */}
             <div>
               <strong>Dzhero</strong>
               <span>AI-продюсер для України і глобальних трендів</span>
             </div>
           </div>
           <small>Закритий робочий простір</small>
-          <h1>Увійди через Meta, щоб підключити бізнес-акаунт і джерела.</h1>
-          <p>Користувач не створює окремий акаунт руками: workspace з'являється після дозволу Meta для Instagram Business/Creator.</p>
+          <h1>Увійди через Instagram, щоб підключити Creator або Business акаунт.</h1>
           <div className="auth-points">
-            <span>Meta permissions</span>
-            <span>Instagram Business</span>
+            <span>Instagram Login</span>
+            <span>Creator або Business</span>
             <span>Insights</span>
             <span>AI Direct</span>
           </div>
@@ -304,20 +325,20 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
         <form className="auth-panel" onSubmit={submitAuth}>
           <div className="auth-panel-head">
             <div>
-              <small>Meta Business Login</small>
+              <small>Instagram Professional Login</small>
               <h2>Вхід</h2>
+            </div>
+            <div className="language-switch" aria-label="Interface language">
+              <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
+              <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
             </div>
             <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
-          <button className="auth-submit auth-meta-button" type="button" onClick={startMetaLogin} disabled={isLoading}>
-            {isLoading ? 'Готуємо Meta Login...' : 'Увійти через Meta'}
+          <button className="auth-submit auth-meta-button" type="button" onClick={startInstagramLogin} disabled={isLoading}>
+            {isLoading ? 'Готуємо Instagram Login...' : 'Увійти через Instagram'}
           </button>
-          <div className="auth-permissions">
-            <strong>Що просимо</strong>
-            <span>Дозволи на Instagram Business/Creator, insights, коментарі та джерела для аналізу.</span>
-          </div>
           {error && <div className="auth-error">{error}</div>}
           <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
             Демо-вхід для перегляду
@@ -340,7 +361,6 @@ function AuthGate({ onAuth, notify, theme, setTheme }) {
               </button>
             </div>
           )}
-          <p className="auth-meta">Для клієнтів не буде окремої реєстрації: підключення починається з Meta, а локальний email залишиться тільки для розробки.</p>
         </form>
       </section>
     </main>
@@ -371,7 +391,17 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
   return (
     <aside className="sidebar">
       <div className="brand">
-        <div className="logo">Dz</div>
+        <div className="logo">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+            <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
+            <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
+            <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+            <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+          </svg>
+        </div>
+        {/*
+          <img src={logoImg} alt="Dzhero Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        */}
         <div>
           <strong>Dzhero</strong>
           <span>Україна + світ</span>
@@ -399,16 +429,18 @@ function Sidebar({ page, setPage, currentUser, onLogout }) {
   );
 }
 
-function Topbar({ notify, theme, setTheme }) {
+function Topbar({ notify, theme, setTheme, language, setLanguage }) {
   return (
     <header className="topbar">
       <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
       <div className="top-actions">
-        <button className="pill active" onClick={() => notify('Мова інтерфейсу: українська')}>UA</button>
-        <button className="pill" onClick={() => notify('Часовий пояс: Київ')}>Київ</button>
+        <div className="language-switch" aria-label="Interface language">
+          <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
+          <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
+        </div>
+        <span className="pill">Київ</span>
         <span>глобальний scouting для UA</span>
-        <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-        <button className="icon" title="Меню" onClick={() => notify('Компактне меню вже активне в боковій панелі')}><Menu size={16} /></button>
+        <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
     </header>
   );
@@ -516,14 +548,14 @@ function ProductRoadmap({ notify }) {
     ['ai_memory', 'Tone of Voice, рішення людини, бренд-правила'],
   ];
   const dataFlow = [
-    ['Meta Login', 'користувач підключає Instagram Business/Creator і дає дозволи'],
+    ['Instagram Login', 'користувач підключає Creator або Business акаунт і дає дозволи'],
     ['Sync jobs', 'бекенд тягне доступні пости, рілси, сторіс, коментарі, insights'],
     ['Model analysis', 'модель готує транскрипти, scoring, intent, ідеї та ризики копіювання'],
     ['Human review', 'людина approve/reject/remix/plan, а система враховує рішення'],
   ];
   const phases = [
     ['1', 'Прототип → MVP schema', 'Зафіксувати модулі, статуси, таблиці, мокові дані замінити локальною базою.'],
-    ['2', 'Meta Login sandbox', 'Підключити тестовий бізнес-акаунт і перевірити реальні permissions.'],
+    ['2', 'Instagram Login sandbox', 'Підключити тестовий Creator або Business акаунт і перевірити реальні permissions.'],
     ['3', 'Import + scoring', 'Зібрати sync queue, банк рілсів, конкурентів, транскрипти й quality gate.'],
     ['4', 'Production workflow', 'Ідеї, ремікси, контент-план, навчання на діях користувача.'],
     ['5', 'AI Direct beta', 'Intent Detection, FAQ, CRM-теги, handoff менеджеру, ліміти безпеки.'],
@@ -1264,7 +1296,7 @@ function DataSources({ sources, notify }) {
     ['5. Навчання', 'Система враховує рішення людини, стиль бренду, сильні сигнали й краще ранжує наступні рілси.'],
   ];
   const authSteps = [
-    ['Підключення акаунта', 'Клієнт логіниться через Meta, обирає Instagram Business/Creator акаунт і підтверджує permissions.'],
+    ['Підключення акаунта', 'Клієнт логіниться через Instagram, обирає Creator або Business акаунт і підтверджує permissions.'],
     ['Фоновий збір', 'Бекенд запускає sync job: нові рілси, доступні insights, коментарі, captions, mentions, статуси.'],
     ['AI-обробка', 'Черга аналізу створює транскрипт, scoring, ідеї, ризики копіювання і UA-адаптації.'],
     ['Дії користувача', 'Людина сортує, а система навчається на approve/reject/remix/plan.'],
@@ -1326,7 +1358,7 @@ function DataSources({ sources, notify }) {
       <div className="auth-flow">
         <div>
           <small>Ідеальний автоматичний режим</small>
-          <h3>Користувач авторизує бізнес-акаунт, далі система працює сама в межах дозволів Meta.</h3>
+          <h3>Користувач авторизує професійний Instagram-акаунт, далі система працює сама в межах дозволів Meta.</h3>
         </div>
         <div className="auth-steps">
           {authSteps.map(([title, text]) => (
