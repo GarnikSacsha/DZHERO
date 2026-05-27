@@ -66,6 +66,8 @@ When answering, prefer this structure when useful:
 2. What the agent would do next.
 3. Concrete output: idea, script, shot-list, caption, CTA, or checklist.
 4. Risks / what a human should approve.
+
+Keep the first response compact: 600-900 words maximum. If the user asks for many items, give the best 3-5 items and offer to expand a chosen one.
 `.trim();
 }
 
