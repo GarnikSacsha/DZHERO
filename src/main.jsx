@@ -285,8 +285,8 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       if (!response.ok) throw new Error(payload.error || 'demo_error');
       onAuth(payload);
     } catch (authError) {
-      setError('Демо-вхід не спрацював. Треба запустити backend на 3000 порту.');
-      notify('Backend не відповідає: npm run dev:backend');
+      setError('Демо-вхід не спрацював. Перевір підключення до сервера.');
+      notify('Сервер не відповідає. Перевір Railway deploy або локальний backend.');
     } finally {
       setIsLoading(false);
     }
@@ -971,6 +971,71 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
   );
 }
 
+function AgentPipeline() {
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch(`${API_BASE}/workspaces/ws_demo_ua/ai/status`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (isMounted) setStatus(payload);
+      })
+      .catch(() => {
+        if (isMounted) setStatus(null);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const providers = status?.providers || {};
+  const steps = [
+    ['01', 'Instagram data', providers.instagram?.status || 'configuration_required', 'Reels, captions, insights and comments arrive only after Meta permissions.'],
+    ['02', 'Reel understanding', providers.textAgent?.status || 'fallback_mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
+    ['03', 'Script engine', providers.textAgent?.provider || 'fallback', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
+    ['04', 'Video job', providers.videoGeneration?.status || 'queued_for_later', 'A future video provider receives approved scenes only after human review.'],
+  ];
+  const contracts = [
+    'POST /reels/:reelId/analyze-ai',
+    'POST /ideas/:ideaId/generate-script',
+    'POST /video-jobs',
+    'GET /ai/status',
+  ];
+
+  return (
+    <div className="agent-pipeline">
+      <div className="agent-pipeline-head">
+        <div>
+          <small>AI Producer Pipeline</small>
+          <h3>Reels to analysis to script to video task</h3>
+          <p>Meta will bring the real Instagram data. The agent layer is already shaped to process it without asking public users for API keys.</p>
+        </div>
+        <div className="agent-status-cards">
+          <span>{providers.instagram?.configured ? 'Instagram ready' : 'Meta keys pending'}</span>
+          <span>{providers.textAgent?.provider === 'fallback' ? 'Fallback text agent' : `${providers.textAgent?.provider || 'agent'} ready`}</span>
+          <span>{providers.videoGeneration?.configured ? 'Video ready' : 'Video API later'}</span>
+        </div>
+      </div>
+      <div className="agent-step-grid">
+        {steps.map(([number, title, badge, text]) => (
+          <article className="agent-step" key={title}>
+            <strong>{number}</strong>
+            <div>
+              <h4>{title}</h4>
+              <em>{badge}</em>
+              <p>{text}</p>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="agent-contracts">
+        {contracts.map((contract) => <code key={contract}>{contract}</code>)}
+      </div>
+    </div>
+  );
+}
+
 function CreatorAssistant() {
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
@@ -999,6 +1064,7 @@ function CreatorAssistant() {
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')}><Sparkles size={16} />Сформувати контент-план</button>}
       />
+      <AgentPipeline />
       <div className="assistant-layout">
         <aside className="assistant-sidebar">
           <h3>Швидкі задачі</h3>
