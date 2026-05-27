@@ -75,6 +75,7 @@ async function readDb() {
   db.remixes ||= [];
   db.contentPlanItems ||= [];
   db.videoJobs ||= [];
+  db.dataDeletionRequests ||= [];
   return db;
 }
 
@@ -366,7 +367,79 @@ app.get('/api/health', async (req, res) => {
       sources: db.sources.length,
       instagramAccounts: db.instagramAccounts.length,
       syncJobs: db.syncJobs.length,
+      dataDeletionRequests: db.dataDeletionRequests.length,
     },
+  });
+});
+
+app.post('/api/data-deletion/request', async (req, res) => {
+  const email = normalizeEmail(req.body.email);
+  const instagramHandle = String(req.body.instagramHandle || '').trim();
+  const reason = String(req.body.reason || '').trim();
+  if (!email && !instagramHandle) {
+    res.status(400).json({ error: 'contact_required', message: 'Email or Instagram handle is required.' });
+    return;
+  }
+
+  const db = await readDb();
+  const confirmationCode = `del_${crypto.randomBytes(8).toString('hex')}`;
+  const user = email ? db.users.find((item) => normalizeEmail(item.email) === email) : null;
+  const request = {
+    id: createId('deletion'),
+    confirmationCode,
+    email,
+    instagramHandle,
+    reason,
+    status: 'received',
+    source: 'public_form',
+    userId: user?.id || null,
+    workspaceId: user?.workspaceId || null,
+    createdAt: new Date().toISOString(),
+  };
+  db.dataDeletionRequests.unshift(request);
+  await writeDb(db);
+  res.status(201).json({
+    status: request.status,
+    confirmationCode,
+    message: 'Data deletion request received. Dzhero will verify ownership before deleting account data.',
+  });
+});
+
+app.get('/api/data-deletion/status/:confirmationCode', async (req, res) => {
+  const db = await readDb();
+  const request = db.dataDeletionRequests.find((item) => item.confirmationCode === req.params.confirmationCode);
+  if (!request) {
+    res.status(404).json({ error: 'deletion_request_not_found' });
+    return;
+  }
+  res.json({
+    confirmationCode: request.confirmationCode,
+    status: request.status,
+    createdAt: request.createdAt,
+  });
+});
+
+app.post('/api/meta/data-deletion', async (req, res) => {
+  const db = await readDb();
+  const confirmationCode = `meta_del_${crypto.randomBytes(8).toString('hex')}`;
+  const request = {
+    id: createId('deletion'),
+    confirmationCode,
+    email: '',
+    instagramHandle: '',
+    reason: 'Meta data deletion callback',
+    status: 'received',
+    source: 'meta_callback',
+    userId: req.body.user_id || null,
+    workspaceId: null,
+    rawPayload: req.body,
+    createdAt: new Date().toISOString(),
+  };
+  db.dataDeletionRequests.unshift(request);
+  await writeDb(db);
+  res.status(200).json({
+    url: `${CLIENT_URL.replace(/\/$/, '')}/data-deletion?code=${confirmationCode}`,
+    confirmation_code: confirmationCode,
   });
 });
 
