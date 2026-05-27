@@ -43,7 +43,7 @@ const allowedOrigins = new Set([
   CLIENT_URL,
 ].filter(Boolean));
 
-app.use(cors({
+app.use('/api', cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
       callback(null, true);
