@@ -4194,8 +4194,10 @@ nav button.active::before {
 .assistant-thread .chat-message {
   display: grid;
   gap: 8px;
-  width: fit-content;
-  max-width: min(760px, 82%);
+  width: min(860px, 88%);
+  max-width: 88%;
+  max-height: none;
+  overflow: visible;
 }
 
 .assistant-thread .chat-message span {
@@ -4206,8 +4208,17 @@ nav button.active::before {
   text-transform: uppercase;
 }
 
+.assistant-thread .chat-message .message-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
 .assistant-thread .chat-message p {
   margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.62;
 }
 
 .assistant-thread .chat-message.user {

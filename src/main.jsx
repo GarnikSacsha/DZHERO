@@ -1074,6 +1074,21 @@ function CreatorAssistant() {
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [agentMeta, setAgentMeta] = useState({ provider: 'fallback', model: 'local-template' });
+  const threadRef = React.useRef(null);
+
+  useEffect(() => {
+    threadRef.current?.scrollTo({
+      top: threadRef.current.scrollHeight,
+      behavior: 'smooth',
+    });
+  }, [messages, isThinking]);
+
+  const renderMessageText = (text) => String(text || '')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
+
   const sendMessage = async (text = input) => {
     const clean = text.trim();
     if (!clean || isThinking) return;
@@ -1122,11 +1137,11 @@ function CreatorAssistant() {
           {prompts.map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)}>{prompt}</button>)}
         </aside>
         <div className="assistant-chat">
-          <div className="assistant-thread">
+          <div className="assistant-thread" ref={threadRef}>
             {messages.map(([role, text], index) => (
               <div className={`chat-message ${role}`} key={`${role}-${index}`}>
                 <span>{role === 'assistant' ? 'AI' : 'Ви'}</span>
-                <p>{text}</p>
+                <div className="message-body">{renderMessageText(text)}</div>
               </div>
             ))}
           </div>
