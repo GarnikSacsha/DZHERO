@@ -1080,6 +1080,114 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
   }
 });
 
+app.post('/api/workspaces/:workspaceId/agent/actions', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+
+  const action = String(req.body.action || '').trim();
+  const text = String(req.body.text || '').trim();
+  if (!text) {
+    res.status(400).json({ error: 'text_required' });
+    return;
+  }
+
+  const allowedActions = new Set(['save_idea', 'generate_script', 'create_video_job']);
+  if (!allowedActions.has(action)) {
+    res.status(400).json({ error: 'unknown_agent_action' });
+    return;
+  }
+
+  const title = String(req.body.title || '')
+    .trim()
+    || text
+      .split('\n')
+      .map((line) => line.replace(/^[#*\s0-9.)-]+/, '').trim())
+      .find(Boolean)
+    || 'AI assistant idea';
+
+  const idea = {
+    id: createId('idea'),
+    workspaceId: req.params.workspaceId,
+    title: title.slice(0, 140),
+    source: 'assistant',
+    hook: text.slice(0, 700),
+    score: Number(req.body.score || 82),
+    status: action === 'save_idea' ? 'assistant_draft' : 'script_ready',
+    createdAt: new Date().toISOString(),
+  };
+
+  db.ideas.unshift(idea);
+
+  let script = null;
+  let aiJob = null;
+  let videoJob = null;
+
+  if (action === 'generate_script' || action === 'create_video_job') {
+    script = buildScriptFromIdea(idea, workspace);
+    idea.script = script;
+    idea.status = 'script_ready';
+    idea.updatedAt = new Date().toISOString();
+
+    aiJob = {
+      id: createId('ai_job'),
+      workspaceId: req.params.workspaceId,
+      type: 'script_generation',
+      status: 'completed',
+      provider: getAiProviderStatus().textAgent.provider,
+      sourceType: 'assistant',
+      sourceId: idea.id,
+      result: script,
+      createdAt: new Date().toISOString(),
+      completedAt: new Date().toISOString(),
+    };
+    db.aiJobs.unshift(aiJob);
+  }
+
+  if (action === 'create_video_job') {
+    videoJob = {
+      id: createId('video_job'),
+      workspaceId: req.params.workspaceId,
+      sourceType: 'idea',
+      sourceId: idea.id,
+      status: getAiProviderStatus().videoGeneration.configured ? 'queued' : 'configuration_required',
+      provider: process.env.VIDEO_PROVIDER || 'not_configured',
+      prompt: {
+        title: script.title,
+        format: script.format || '15-25 sec Reels',
+        scenes: script.scenes || [],
+        caption: script.caption || '',
+        cta: script.cta || '',
+      },
+      humanApprovalRequired: true,
+      createdAt: new Date().toISOString(),
+    };
+    db.videoJobs.unshift(videoJob);
+  }
+
+  db.aiMemory.unshift({
+    id: createId('mem'),
+    workspaceId: req.params.workspaceId,
+    type: 'agent_action',
+    value: {
+      action,
+      ideaId: idea.id,
+      aiJobId: aiJob?.id || null,
+      videoJobId: videoJob?.id || null,
+    },
+    createdAt: new Date().toISOString(),
+  });
+
+  createSyncJob(db, req.params.workspaceId, 'agent_action', {
+    action,
+    ideaId: idea.id,
+    videoJobId: videoJob?.id || null,
+  });
+
+  await writeDb(db);
+  res.status(201).json({ action, idea, script, aiJob, videoJob });
+});
+
 app.get('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
