@@ -1410,7 +1410,7 @@ function CreatorAssistant({ notify }) {
   };
 
   return (
-    <section className="page">
+    <section className="page page-assistant">
       <PageTitle
         title="Асистент блогера"
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
