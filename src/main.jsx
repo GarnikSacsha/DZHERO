@@ -1084,6 +1084,8 @@ function CreatorAssistant() {
   }, [messages, isThinking]);
 
   const renderMessageText = (text) => String(text || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*/g, '')
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)

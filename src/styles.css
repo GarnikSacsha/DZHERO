@@ -1752,9 +1752,9 @@ textarea:focus {
 
 .assistant-layout {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 16px;
-  min-height: 600px;
+  min-height: 760px;
 }
 
 .assistant-sidebar,
@@ -1769,7 +1769,8 @@ textarea:focus {
 .assistant-chat {
   display: flex;
   flex-direction: column;
-  height: 620px;
+  height: min(860px, calc(100vh - 220px));
+  min-height: 720px;
   overflow: hidden;
 }
 
@@ -4194,8 +4195,8 @@ nav button.active::before {
 .assistant-thread .chat-message {
   display: grid;
   gap: 8px;
-  width: min(860px, 88%);
-  max-width: 88%;
+  width: min(980px, 78%);
+  max-width: 78%;
   max-height: none;
   overflow: visible;
 }
@@ -4219,6 +4220,16 @@ nav button.active::before {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.62;
+}
+
+.assistant-thread .chat-message.assistant {
+  width: min(1040px, 82%);
+  max-width: 82%;
+}
+
+.assistant-thread .chat-message.user {
+  width: min(760px, 58%);
+  max-width: 58%;
 }
 
 .assistant-thread .chat-message.user {
@@ -4605,7 +4616,15 @@ nav button.active::before {
   }
 
   .assistant-chat {
-    min-height: 520px;
+    height: calc(100dvh - 190px);
+    min-height: 620px;
+  }
+
+  .assistant-thread .chat-message,
+  .assistant-thread .chat-message.assistant,
+  .assistant-thread .chat-message.user {
+    width: 100%;
+    max-width: 100%;
   }
 
   .vault-grid {
