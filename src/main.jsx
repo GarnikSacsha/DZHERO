@@ -228,7 +228,7 @@ function App() {
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
-        {page === 'assistant' && <CreatorAssistant />}
+        {page === 'assistant' && <CreatorAssistant notify={notify} />}
         {page === 'launches' && <LaunchRoadmap notify={notify} />}
         {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} />}
         {page === 'sales' && <SalesDirect notify={notify} />}
@@ -1058,7 +1058,110 @@ function AgentPipeline() {
   );
 }
 
-function CreatorAssistant() {
+function BrandBrain({ notify }) {
+  const [brief, setBrief] = useState({
+    businessType: '',
+    product: '',
+    audience: '',
+    location: '',
+    toneOfVoice: '',
+    offer: '',
+    cta: '',
+    stopTopics: '',
+    proof: '',
+  });
+  const [status, setStatus] = useState('loading');
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/context`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!isMounted || !payload?.brief) return;
+        setBrief((current) => ({
+          ...current,
+          ...payload.brief,
+          stopTopics: Array.isArray(payload.brief.stopTopics) ? payload.brief.stopTopics.join(', ') : payload.brief.stopTopics || '',
+        }));
+        setStatus('ready');
+      })
+      .catch(() => setStatus('error'));
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const updateField = (field, value) => {
+    setBrief((current) => ({ ...current, [field]: value }));
+  };
+
+  const saveBrief = async () => {
+    setStatus('saving');
+    const payload = {
+      ...brief,
+      stopTopics: String(brief.stopTopics || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    };
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/context`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('save_failed');
+      setStatus('saved');
+      notify?.('Brand Brain збережено. Асистент уже використовує цей контекст.');
+      window.setTimeout(() => setStatus('ready'), 1800);
+    } catch {
+      setStatus('error');
+      notify?.('Не вдалося зберегти Brand Brain. Перевір backend.');
+    }
+  };
+
+  const fields = [
+    ['businessType', 'Ніша', 'AI expert, SMM, cafe, beauty, e-commerce'],
+    ['product', 'Продукт', 'consultations, course, launch, service'],
+    ['audience', 'ЦА', 'Ukrainian founders, creators, small businesses'],
+    ['location', 'Ринок', 'Ukraine, Kyiv, Europe, global UA'],
+    ['toneOfVoice', 'Tone of Voice', 'clear, useful, confident'],
+    ['offer', 'Офер', 'what exactly the person sells'],
+    ['cta', 'CTA', 'write AI in Direct, book a call'],
+    ['stopTopics', 'Стоп-теми', 'comma-separated promises or topics to avoid'],
+    ['proof', 'Докази', 'cases, numbers, testimonials, before/after'],
+  ];
+
+  return (
+    <section className="brand-brain">
+      <div className="brand-brain-head">
+        <div>
+          <small>Brand Brain</small>
+          <h3>Памʼять агента про бізнес</h3>
+          <p>Це контекст, який Gemini отримує перед відповіддю: що продаємо, кому, яким тоном, що не можна обіцяти і який CTA вести.</p>
+        </div>
+        <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
+          <Database size={16} />{status === 'saving' ? 'Зберігаю...' : 'Зберегти памʼять'}
+        </button>
+      </div>
+      <div className="brand-brain-grid">
+        {fields.map(([field, label, placeholder]) => (
+          <label className={field === 'proof' || field === 'stopTopics' ? 'brand-field wide' : 'brand-field'} key={field}>
+            <span>{label}</span>
+            <textarea
+              value={brief[field] || ''}
+              onChange={(event) => updateField(field, event.target.value)}
+              placeholder={placeholder}
+              rows={field === 'proof' || field === 'stopTopics' ? 3 : 2}
+            />
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function CreatorAssistant({ notify }) {
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
     'Перетвори цей global-рілс у сценарій українською',
@@ -1133,6 +1236,7 @@ function CreatorAssistant() {
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
       <AgentPipeline />
+      <BrandBrain notify={notify} />
       <div className="assistant-layout">
         <aside className="assistant-sidebar">
           <h3>Швидкі задачі</h3>
