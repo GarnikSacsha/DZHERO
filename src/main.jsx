@@ -400,7 +400,9 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       }
       window.location.href = payload.authUrl;
     } catch (authError) {
-      setError('Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.');
+      if (authError.message !== 'instagram_not_configured') {
+        setError('Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.');
+      }
       notify('Instagram Login готовий у UI, але потрібні ключі Meta App');
     } finally {
       setIsLoading(false);
@@ -1422,7 +1424,7 @@ function CreatorAssistant({ notify }) {
       role: role === 'assistant' ? 'assistant' : 'user',
       text: messageText,
     }));
-    setMessages((current) => [...current, ['user', clean], ['assistant', 'Думаю як продюсер: звіряю brief, тренди, ризики й наступний крок...']]);
+    setMessages((current) => [...current, ['user', clean], ['assistant', 'Gemini готує відповідь, це може зайняти 10-25 секунд']]);
     setInput('');
     setIsThinking(true);
     try {
