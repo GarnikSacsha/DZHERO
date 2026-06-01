@@ -252,6 +252,36 @@ function createSyncJob(db, workspaceId, type, payload = {}) {
 
 function requireWorkspace(db, workspaceId, res) {
   const workspace = db.workspaces.find((item) => item.id === workspaceId);
+  if (!workspace && String(workspaceId || '').startsWith('ws_demo_')) {
+    const demoProfiles = {
+      ws_demo_cafe: ['Кафе Central', 'Кафе / ресторан', 'сторіс-меню'],
+      ws_demo_shop: ['Odessa Drop', 'Магазин одягу', 'лукбуки'],
+      ws_demo_beauty: ['Beauty Room', 'Салон / beauty', 'до/після'],
+      ws_demo_expert: ['Expert Lab', 'Експерт / консультант', 'експертні Reels'],
+    };
+    const [name, businessType, contentFocus] = demoProfiles[workspaceId] || ['Demo Brand', 'Бізнес', 'контент-система'];
+    const createdWorkspace = {
+      id: workspaceId,
+      name,
+      owner: 'Admin',
+      mode: 'own_business',
+      marketFocus: ['ua', 'us', 'eu', 'global'],
+      createdAt: new Date().toISOString(),
+      brief: {
+        businessType,
+        location: 'Ukraine',
+        audience: 'Ukrainian Instagram audience',
+        product: 'content, sales and launch offers',
+        toneOfVoice: 'clear, useful, confident',
+        goals: ['find market signals', 'adapt reels', 'generate content ideas', 'increase leads'],
+        stopTopics: ['RF sources', 'direct copying', 'unsafe automation'],
+        contentFocus,
+      },
+      checklists: {},
+    };
+    db.workspaces.push(createdWorkspace);
+    return createdWorkspace;
+  }
   if (!workspace) {
     res.status(404).json({ error: 'workspace_not_found' });
     return null;
@@ -277,6 +307,19 @@ function getAiProviderStatus() {
       status: process.env.VIDEO_PROVIDER_API_KEY ? 'ready' : 'queued_for_later',
     },
   };
+}
+
+function normalizeChecklistItems(items = []) {
+  return items.map((item, index) => ({
+    id: String(item.id || `item_${index + 1}`),
+    label: String(item.label || ''),
+    checked: Boolean(item.checked),
+  })).filter((item) => item.label);
+}
+
+function isDoneStatus(status = '') {
+  const normalized = String(status).trim().toLowerCase();
+  return ['done', 'approved', 'затверджено', 'готово'].includes(normalized);
 }
 
 function buildAgentReelAnalysis(reel = {}, workspace = {}) {
@@ -786,6 +829,47 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   };
   await writeDb(db);
   res.json({ brief: workspace.brief });
+});
+
+app.get('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  workspace.checklists ||= {};
+  const checklist = workspace.checklists[req.params.scope] || {
+    scope: req.params.scope,
+    parentStatus: 'В роботі',
+    items: [],
+    updatedAt: null,
+  };
+  res.json({ checklist });
+});
+
+app.put('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const items = normalizeChecklistItems(req.body.items);
+  const parentStatus = String(req.body.parentStatus || 'В роботі');
+  const allChecked = items.length > 0 && items.every((item) => item.checked);
+  if (isDoneStatus(parentStatus) && !allChecked) {
+    res.status(409).json({
+      error: 'checklist_incomplete',
+      message: 'Parent status cannot be Done / Затверджено until every checklist item is checked.',
+      allChecked,
+    });
+    return;
+  }
+  workspace.checklists ||= {};
+  workspace.checklists[req.params.scope] = {
+    scope: req.params.scope,
+    parentStatus,
+    items,
+    allChecked,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeDb(db);
+  res.json({ checklist: workspace.checklists[req.params.scope] });
 });
 
 app.get('/api/workspaces/:workspaceId/competitors', async (req, res) => {
