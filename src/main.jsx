@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   BarChart3,
@@ -6,9 +6,11 @@ import {
   BriefcaseBusiness,
   Calculator,
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   CircleCheck,
   ClipboardList,
+  Copy,
   Database,
   Download,
   Filter,
@@ -21,6 +23,7 @@ import {
   Menu,
   MessageSquareText,
   Moon,
+  Pencil,
   Plus,
   Rocket,
   Search,
@@ -43,6 +46,14 @@ import { applyInterfaceLanguage } from './i18n';
 const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
+const WORKSPACE_KEY = 'dzhero-active-workspace';
+const DEMO_WORKSPACES = [
+  { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
+  { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
+  { id: 'ws_demo_shop', name: 'Odessa Drop', handle: '@odessa.drop', type: 'Одяг' },
+  { id: 'ws_demo_beauty', name: 'Beauty Room', handle: '@beauty.room', type: 'Beauty' },
+  { id: 'ws_demo_expert', name: 'Expert Lab', handle: '@expert.lab', type: 'Експерт' },
+];
 
 function getPublicPage() {
   const path = window.location.pathname.replace(/\/$/, '');
@@ -166,7 +177,10 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
+  const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
   const publicPage = getPublicPage();
+  const activeWorkspace = DEMO_WORKSPACES.find((workspace) => workspace.id === workspaceId) || DEMO_WORKSPACES[0];
 
   useEffect(() => {
     let isMounted = true;
@@ -187,9 +201,13 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => applyInterfaceLanguage(language), 0);
-    return () => window.clearTimeout(timer);
-  }, [language, page, market, data, modal, toast, currentUser, authStatus, theme, remixDraft]);
+    window.localStorage.setItem(WORKSPACE_KEY, workspaceId);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    const timers = [0, 80, 250].map((delay) => window.setTimeout(() => applyInterfaceLanguage(language), delay));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [language, page, market, data, modal, toast, currentUser, authStatus, theme, remixDraft, workspaceId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -319,6 +337,30 @@ function App() {
     setPage('remix');
     notify('Ідею відкрито в ремікс-студії');
   };
+  const generateFreshIdea = () => {
+    const topReel = [...filtered.reels].sort((a, b) => b.score - a.score)[0];
+    const prompt = [
+      'Знайди одну актуальну ідею для контенту на зараз.',
+      'Використай Brand Brain бізнесу, поточну аналітику рілсів і конкурентів.',
+      topReel ? `Головний сигнал з банку рілсів: "${topReel.title}" від ${topReel.handle}, ринок ${marketLabel(topReel.market)}, скор ${topReel.score}, перегляди ${topReel.views}.` : '',
+      'Дай відповідь коротко і практично:',
+      '1. Назва ідеї.',
+      '2. Чому саме зараз це може спрацювати.',
+      '3. Хук для першого кадру.',
+      '4. Сценарій на 20-30 секунд.',
+      '5. CTA.',
+      '6. Що зняти без великого продакшну.',
+    ].filter(Boolean).join('\n');
+    setAssistantAutoPrompt({ id: Date.now(), text: prompt });
+    setPage('assistant');
+    notify('Шукаю одну актуальну ідею за сигналами трендів');
+  };
+  const switchWorkspace = (nextWorkspaceId) => {
+    const workspace = DEMO_WORKSPACES.find((item) => item.id === nextWorkspaceId) || DEMO_WORKSPACES[0];
+    setWorkspaceId(workspace.id);
+    setAssistantAutoPrompt(null);
+    notify(language === 'en' ? `Switched to ${workspace.name}` : `Перемкнено на ${workspace.name}`);
+  };
 
   return (
     <div className="app" data-theme={theme}>
@@ -327,6 +369,9 @@ function App() {
         page={page}
         setPage={setPage}
         currentUser={currentUser}
+        workspaces={DEMO_WORKSPACES}
+        activeWorkspace={activeWorkspace}
+        onWorkspaceChange={switchWorkspace}
         onLogout={handleLogout}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
@@ -334,22 +379,22 @@ function App() {
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
         <Topbar notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} onOpenMenu={() => setIsSidebarOpen(true)} />
-        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} language={language} />}
-        {page === 'roadmap' && <ProductRoadmap notify={notify} />}
-        {page === 'businesses' && <BusinessPlaybooks notify={notify} />}
-        {page === 'strategy' && <StrategyBrain notify={notify} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} selectedReel={selectedReel} market={market} notify={notify} />}
+        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setPage} workspaceId={workspaceId} language={language} />}
+        {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
+        {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
+        {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} />}
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} />}
+        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
-        {page === 'assistant' && <CreatorAssistant notify={notify} />}
-        {page === 'launches' && <LaunchRoadmap notify={notify} />}
+        {page === 'assistant' && <CreatorAssistant notify={notify} workspaceId={workspaceId} activeWorkspace={activeWorkspace} autoPrompt={assistantAutoPrompt} onAutoPromptUsed={() => setAssistantAutoPrompt(null)} />}
+        {page === 'launches' && <LaunchRoadmap notify={notify} setPage={setPage} workspaceId={workspaceId} />}
         {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} />}
-        {page === 'sales' && <SalesDirect notify={notify} />}
+        {page === 'sales' && <SalesDirect notify={notify} setPage={setPage} />}
         {page === 'analytics' && <Analytics />}
         {page === 'legal' && <LegalSafe notify={notify} />}
         {page === 'budget' && <BudgetCalculator notify={notify} />}
-        {page === 'team' && <TeamHub notify={notify} />}
+        {page === 'team' && <TeamHub notify={notify} workspaceId={workspaceId} />}
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} />}
       </main>
       {modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
@@ -511,7 +556,8 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   );
 }
 
-function Sidebar({ page, setPage, currentUser, onLogout, isOpen, onClose }) {
+function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWorkspaceChange, onLogout, isOpen, onClose }) {
+  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const items = [
     ['home', Home, 'Головна', 'core'],
     ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
@@ -565,12 +611,38 @@ function Sidebar({ page, setPage, currentUser, onLogout, isOpen, onClose }) {
           </button>
         ))}
       </nav>
-      <div className="account">
-        <div className="avatar">{currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
-        <div>
-          <strong>{currentUser?.name || 'Адмін'}</strong>
-          <span>{currentUser?.email || 'робочий простір'}</span>
-        </div>
+      <div className="account-switcher">
+        {isSwitcherOpen && (
+          <div className="workspace-menu">
+            {workspaces.map((workspace) => (
+              <button
+                className={activeWorkspace.id === workspace.id ? 'active' : ''}
+                type="button"
+                key={workspace.id}
+                onClick={() => {
+                  onWorkspaceChange(workspace.id);
+                  setIsSwitcherOpen(false);
+                  onClose?.();
+                }}
+              >
+                <span>{workspace.name}</span>
+                <small>{workspace.handle} · {workspace.type}</small>
+              </button>
+            ))}
+            <button type="button" onClick={() => { setPage('settings'); setIsSwitcherOpen(false); }}>
+              <span>+ Підключити Instagram</span>
+              <small>реальні акаунти додамо через Meta API</small>
+            </button>
+          </div>
+        )}
+        <button className="account" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
+          <div className="avatar">{activeWorkspace?.name?.[0]?.toUpperCase() || currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
+          <div>
+            <strong>{activeWorkspace?.name || currentUser?.name || 'Адмін'}</strong>
+            <span>{activeWorkspace?.handle || currentUser?.email || 'робочий простір'}</span>
+          </div>
+          <ChevronDown size={14} />
+        </button>
         <button className="logout-button" type="button" title="Вийти" onClick={onLogout}>
           <LogOut size={14} />
         </button>
@@ -593,9 +665,7 @@ function Topbar({ notify, theme, setTheme, language, setLanguage, onOpenMenu }) 
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
           <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
         </div>
-        <span className="pill">Київ</span>
-        <span>глобальний scouting для UA</span>
-        <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
     </header>
   );
@@ -620,16 +690,45 @@ function MarketFilter({ segments, market, setMarket }) {
   );
 }
 
-function HomeDashboard({ data, market, notify }) {
+function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId }) {
   const topReel = data.reels[0];
   const activeMarket = data.marketSegments.find((segment) => segment.id === market);
+  const [onboarding, setOnboarding] = useState({
+    instagramConnected: false,
+    brandReady: false,
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    Promise.all([
+      fetch(`${API_BASE}/auth/meta/status?workspaceId=${workspaceId}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+    ]).then(([metaStatus, agentContext]) => {
+      if (!isMounted) return;
+      const brief = agentContext?.brief || {};
+      setOnboarding({
+        instagramConnected: Boolean(metaStatus?.connectedAccounts?.length),
+        brandReady: Boolean(brief.businessType || brief.product || brief.audience || brief.toneOfVoice),
+      });
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [workspaceId]);
+
+  const onboardingSteps = [
+    ['01', 'Підключити Instagram', 'Meta Login, права доступу, профіль бізнесу.', onboarding.instagramConnected, 'settings'],
+    ['02', 'Навчити бренд', 'Ніша, Tone of Voice, місто, продукти, цілі.', onboarding.brandReady, 'assistant'],
+    ['03', 'Зібрати сигнали', 'Рілси, конкуренти, коментарі, тренди та ідеї.', data.reels.length > 0 && data.competitors.length > 0, 'viral'],
+    ['04', 'Випустити batch', 'План на тиждень, сторіс, рілси, Direct-відповіді.', data.plans.length > 0, 'plan'],
+  ];
 
   return (
     <section className="page page-home">
       <PageTitle
         title="Головна"
         subtitle="Операційний центр Instagram-продюсера: глобальний scouting і адаптація ідей під українську аудиторію."
-        actions={<button className="dark" onClick={() => notify('Асистент підготував batch-чернетку на тиждень')}><Sparkles size={16} />Зібрати ідеї на тиждень</button>}
+        actions={<button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Знайти ідею зараз</button>}
       />
       <div className="home-grid">
         <article className="home-hero">
@@ -654,14 +753,9 @@ function HomeDashboard({ data, market, notify }) {
         </div>
       </div>
       <div className="ops-strip">
-        {[
-          ['01', 'Підключити Instagram', 'Meta Login, права доступу, профіль бізнесу.'],
-          ['02', 'Навчити бренд', 'Ніша, Tone of Voice, місто, продукти, цілі.'],
-          ['03', 'Зібрати сигнали', 'Рілси, конкуренти, коментарі, тренди та ідеї.'],
-          ['04', 'Випустити batch', 'План на тиждень, сторіс, рілси, Direct-відповіді.'],
-        ].map(([step, title, text]) => (
-          <article key={step}>
-            <span>{step}</span>
+        {onboardingSteps.map(([step, title, text, done, target]) => (
+          <article className={done ? 'completed' : ''} key={step} onClick={() => { setPage(target); notify(done ? `${title}: виконано` : `${title}: відкрив наступний крок`); }}>
+            <span className="step-progress">{done ? '✓' : step}</span>
             <strong>{title}</strong>
             <p>{text}</p>
           </article>
@@ -686,7 +780,7 @@ function HomeDashboard({ data, market, notify }) {
   );
 }
 
-function ProductRoadmap({ notify }) {
+function ProductRoadmap({ notify, setPage }) {
   const mvp = [
     ['MVP core', 'Джерела даних, конкуренти, банк рілсів, ідеї, ремікс-студія, контент-план, AI Direct.', 'робимо першим'],
     ['Phase 2', 'Запуски, аналітика прибутку, бюджет, команда, юридичний сейф, повна CRM-логіка.', 'після ядра'],
@@ -726,7 +820,7 @@ function ProductRoadmap({ notify }) {
       <PageTitle
         title="MVP / ТЗ"
         subtitle="Робоча карта продукту: що будуємо першим, які дані потрібні, як виглядає backend і як показувати demo-flow."
-        actions={<button className="dark" onClick={() => notify('MVP scope зафіксовано як базу для ТЗ')}><ClipboardList size={16} />Зафіксувати MVP</button>}
+        actions={<button className="dark" onClick={() => { setPage('settings'); notify('MVP scope зафіксовано. Відкрив налаштування продукту.'); }}><ClipboardList size={16} />Зафіксувати MVP</button>}
       />
       <article className="spec-hero">
         <small>Позиціонування</small>
@@ -793,21 +887,57 @@ function ProductRoadmap({ notify }) {
   );
 }
 
-function ViralBank({ reels, selectedReel, market, notify }) {
+function ViralBank({ reels, market, notify }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
+  const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [tab, setTab] = useState('all');
+  const [previewReel, setPreviewReel] = useState(null);
   const filteredReels = reels
     .filter((reel) => `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .filter((reel) => tab === 'all' || (tab === 'review' ? reel.status.some((status) => status.includes('розбір') || status.includes('огляд')) : reel.status.some((status) => status.toLowerCase().includes(tab))))
-    .sort((a, b) => sort === 'views' ? parseMetric(b.views) - parseMetric(a.views) : b.score - a.score);
+    .sort((a, b) => {
+      if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
+      return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
+    });
+
+  const toggleScoreSort = () => {
+    setSort('score');
+    setScoreSortDirection((current) => (current === 'desc' ? 'asc' : 'desc'));
+  };
+  const exportCsv = () => {
+    const header = ['title', 'handle', 'market', 'score', 'views', 'likes', 'comments', 'status'];
+    const rows = filteredReels.map((reel) => [
+      reel.title,
+      reel.handle,
+      marketLabel(reel.market),
+      reel.score,
+      reel.views,
+      reel.likes,
+      reel.comments,
+      reel.status.join('; '),
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'dzhero-reels.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    notify('CSV експорт завантажено');
+  };
 
   return (
     <section className="page">
       <PageTitle
         title="Банк віральних рілсів"
         subtitle="Скаутимо Україну, США, Європу та global-ніші, але адаптуємо ідеї під українську аудиторію."
-        actions={<><button onClick={() => notify('Експорт підготовлено як CSV-макет')}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button></>}
+        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button></>}
       />
       <div className="search-row">
         <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: рілс, акаунт, сигнал, ніша, ринок..." /></label>
@@ -815,15 +945,36 @@ function ViralBank({ reels, selectedReel, market, notify }) {
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
       <Tabs active={tab} onChange={setTab} items={[['all', `Для тебе ${filteredReels.length}`], ['trend', 'Тренди'], ['кейс', 'Кейси'], ['адапт', 'Адаптації'], ['review', 'Потрібен огляд']]} />
-      <div className="split">
-        <ReelsTable reels={filteredReels} />
-        <TopTen reels={filteredReels} selectedReel={selectedReel} />
+      <div className="trends-table-wrap">
+        <ReelsTable reels={filteredReels} scoreSortDirection={scoreSortDirection} onToggleScoreSort={toggleScoreSort} onOpenPreview={setPreviewReel} />
       </div>
+      {previewReel && (
+        <div className="video-preview-backdrop" onClick={() => setPreviewReel(null)}>
+          <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
+            <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
+              <X size={16} />
+            </button>
+            <div className={`video-preview-frame market-${previewReel.market}`}>
+              <span className="video-preview-play" aria-hidden="true" />
+              <strong>{previewReel.handle}</strong>
+            </div>
+            <div>
+              <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
+              <h3>{previewReel.title}</h3>
+              <p>Прев'ю рілса для швидкого відбору. Оригінальний пост відкриємо після підключення Instagram-джерела.</p>
+            </div>
+            <button className="dark" type="button" onClick={() => notify('Оригінальний пост буде доступний після підключення Instagram джерела')}>Відкрити оригінал</button>
+          </article>
+        </div>
+      )}
     </section>
   );
 }
 
-function BusinessPlaybooks({ notify }) {
+function BusinessPlaybooks({ notify, setPage, workspaceId }) {
+  const [selectedPlaybook, setSelectedPlaybook] = useState('');
+  const [selectedFocus, setSelectedFocus] = useState('');
+  const [saveStatus, setSaveStatus] = useState('idle');
   const playbooks = [
     ['Кафе / ресторан', 'Меню, сезонні позиції, бронювання, відгуки, UGC, локальні події.', ['сторіс-меню', 'акції дня', 'відгуки гостей']],
     ['Магазин одягу', 'Дропи, наявність, образи, примірки, size guide, Direct-продажі.', ['лукбуки', 'новинки', 'залишки розмірів']],
@@ -833,19 +984,82 @@ function BusinessPlaybooks({ notify }) {
     ['E-commerce', 'Каталог, bundles, огляди, UGC, retargeting-креативи, промо.', ['товарні рілси', 'порівняння', 'пакети']],
   ];
 
+  useEffect(() => {
+    let isMounted = true;
+    fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!isMounted || !payload?.brief) return;
+        setSelectedPlaybook(payload.brief.businessType || '');
+        setSelectedFocus(payload.brief.contentFocus || '');
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [workspaceId]);
+
+  const savePlaybook = async (title, tags, focus = '') => {
+    setSelectedPlaybook(title);
+    if (focus) setSelectedFocus(focus);
+    setSaveStatus('saving');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessType: title,
+          contentFocus: focus || selectedFocus || tags[0],
+          contentRubrics: tags,
+        }),
+      });
+      if (!response.ok) throw new Error('save_failed');
+      setSaveStatus('saved');
+      notify(`Playbook "${title}" збережено в Brand Brain`);
+      window.setTimeout(() => {
+        setSaveStatus('idle');
+        setPage('assistant');
+      }, 450);
+    } catch {
+      setSaveStatus('error');
+      notify('Не вдалося зберегти playbook. Перевір backend.');
+    }
+  };
+
   return (
     <section className="page page-businesses">
       <PageTitle
         title="Бізнеси"
         subtitle="Сервіс має працювати не тільки для блогерів: кафе, магазини, салони, студії й e-commerce отримують свої сценарії контенту та продажів."
-        actions={<button className="dark" onClick={() => notify('Оберіть playbook нижче, щоб зібрати контент-систему')}><BriefcaseBusiness size={16} />Обрати тип бізнесу</button>}
+        actions={<button className="dark" onClick={() => { selectedPlaybook ? setPage('assistant') : setPage('settings'); notify(selectedPlaybook ? 'Відкрив Асистента з обраним playbook' : 'Відкрив профіль бізнесу для вибору ніші'); }}><BriefcaseBusiness size={16} />{selectedPlaybook ? 'До Асистента' : 'Обрати тип бізнесу'}</button>}
       />
+      {selectedPlaybook && (
+        <div className="business-selection-bar">
+          <strong>{selectedPlaybook}</strong>
+          <span>{selectedFocus || 'контент-система'}</span>
+          <Badge>{saveStatus === 'saving' ? 'Saving' : 'Active'}</Badge>
+        </div>
+      )}
       <div className="business-grid">
         {playbooks.map(([title, text, tags]) => (
-          <article className="business-card" key={title} onClick={() => notify(`Playbook "${title}" обрано`)}>
-            <div className="panel-title"><strong>{title}</strong> <span className="playbook-tag">playbook</span></div>
+          <article className={selectedPlaybook === title ? 'business-card selected' : 'business-card'} key={title} onClick={() => savePlaybook(title, tags)}>
+            <div className="panel-title"><strong>{title}</strong> <span className="playbook-tag">{selectedPlaybook === title ? 'active' : 'playbook'}</span></div>
             <p>{text}</p>
-            <div className="business-tags">{tags.map((tag) => <em key={tag}>{tag}</em>)}</div>
+            <div className="business-tags">
+              {tags.map((tag) => (
+                <button
+                  className={selectedPlaybook === title && selectedFocus === tag ? 'active' : ''}
+                  type="button"
+                  key={tag}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    savePlaybook(title, tags, tag);
+                  }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
           </article>
         ))}
       </div>
@@ -865,7 +1079,7 @@ function BusinessPlaybooks({ notify }) {
   );
 }
 
-function StrategyBrain({ notify }) {
+function StrategyBrain({ notify, setPage }) {
   const pillars = [
     ['Візуальний аудит', 'Профіль виглядає як експертний, але бракує повторюваної системи обкладинок і кольорової дисципліни.', '72%'],
     ['Профіль ЦА', 'Власники малого бізнесу, експерти, консультанти й команди, яким потрібен контент без великого продакшну.', 'готово'],
@@ -886,7 +1100,7 @@ function StrategyBrain({ notify }) {
       <PageTitle
         title="Аудит та позиціонування"
         subtitle="Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики."
-        actions={<button className="dark" onClick={() => notify('Позиціонування сформовано')}><Sparkles size={16} />Сформувати позиціонування</button>}
+        actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для формування позиціонування'); }}><Sparkles size={16} />Сформувати позиціонування</button>}
       />
       <div className="strategy-layout">
         <article className="strategy-hero">
@@ -898,7 +1112,7 @@ function StrategyBrain({ notify }) {
         <div className="strategy-cards">
           {pillars.map(([title, text, score]) => (
             <article className="insight-card" key={title}>
-              <div className="panel-title"><strong>{title}</strong><span className="metric-badge">{score}</span></div>
+              <div className="panel-title"><strong>{title}</strong><Badge>{score}</Badge></div>
               <p>{text}</p>
             </article>
           ))}
@@ -918,16 +1132,124 @@ function StrategyBrain({ notify }) {
   );
 }
 
-function ReelsTable({ reels }) {
+function compactStatusLabel(status) {
+  const normalized = String(status || '').toLowerCase();
+  if (normalized.includes('проход')) return 'Gate';
+  if (normalized.includes('us')) return 'US';
+  if (normalized.includes('eu')) return 'EU';
+  if (normalized.includes('global')) return 'Global';
+  if (normalized.includes('україн')) return 'UA';
+  if (normalized.includes('адап')) return 'Adapt';
+  if (normalized.includes('ремікс')) return 'Remix';
+  if (normalized.includes('шорт')) return 'Short';
+  if (normalized.includes('голос')) return 'Voice';
+  if (normalized.includes('creator')) return 'Creator';
+  if (normalized.includes('актив')) return 'Active';
+  if (normalized.includes('sync')) return 'Sync';
+  return String(status || '').slice(0, 12);
+}
+
+function getBadgeVariant(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (
+    normalized.includes('готовий купити')
+    || normalized.includes('готово')
+    || normalized.includes('актив')
+    || normalized.includes('100%')
+    || normalized.includes('затвердж')
+    || normalized.includes('проход')
+  ) return 'success';
+  if (
+    normalized.includes('в роботі')
+    || normalized.includes('draft')
+    || normalized.includes('дедлайн сьогодні')
+    || normalized.includes('потрібен розбір')
+    || normalized.includes('черга')
+    || normalized.includes('теплий')
+    || normalized.includes('новий')
+  ) return 'warning';
+  if (
+    normalized.includes('скарга')
+    || normalized.includes('ризик')
+    || normalized.includes('простроч')
+  ) return 'danger';
+  return 'neutral';
+}
+
+function Badge({ children, variant }) {
+  const content = String(children ?? '');
+  return <span className={`badge badge-${variant || getBadgeVariant(content)}`}>{content}</span>;
+}
+
+function useChecklistState(scope, initialLabels, notify, doneLabel = 'Затверджено', workspaceId = 'ws_demo_ua') {
+  const initialItems = useMemo(() => initialLabels.map((label, index) => ({
+    id: `${scope}_${index + 1}`,
+    label,
+    checked: false,
+  })), [scope, initialLabels]);
+  const [items, setItems] = useState(initialItems);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!isMounted || !payload?.checklist?.items?.length) return;
+        const saved = new Map(payload.checklist.items.map((item) => [item.id, item.checked]));
+        setItems(initialItems.map((item) => ({ ...item, checked: Boolean(saved.get(item.id)) })));
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [scope, initialItems, workspaceId]);
+
+  const saveItems = async (nextItems) => {
+    const allChecked = nextItems.length > 0 && nextItems.every((item) => item.checked);
+    const parentStatus = allChecked ? doneLabel : 'В роботі';
+    const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ parentStatus, items: nextItems }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || 'checklist_save_failed');
+  };
+
+  const toggleItem = (id) => {
+    setItems((current) => {
+      const nextItems = current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item));
+      saveItems(nextItems).catch((err) => notify?.(`Чеклист не збережено: ${err.message}`));
+      return nextItems;
+    });
+  };
+
+  return {
+    items,
+    allChecked: items.length > 0 && items.every((item) => item.checked),
+    toggleItem,
+  };
+}
+
+function getCompetitorMeta(row) {
+  const nicheParts = String(row.niche || '').split('|').map((part) => part.trim()).filter(Boolean);
+  const niche = nicheParts[nicheParts.length - 1] || row.niche || 'Ніша';
+  return `${marketLabel(row.market)} / ${niche}`;
+}
+
+function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview }) {
   return (
     <div className="table-card">
       <div className="table-head reels-grid">
-        <span>Рілс</span><span>Конкурент</span><span>Скор</span><span>Перегляди</span><span>Лайки</span><span>Ком.</span><span>Статус</span>
+        <span>Рілс</span><span>Конкурент</span><button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Скор <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button><span>Перегляди</span><span>Лайки</span><span>Ком.</span><span>Статус</span>
       </div>
       {reels.map((reel) => (
         <div className="reel-row reels-grid" key={`${reel.handle}-${reel.title}`}>
           <div className="reel-info">
-            <div className={`thumb market-${reel.market}`}><span>{reel.views}</span></div>
+            <button className={`thumb market-${reel.market}`} type="button" onClick={() => onOpenPreview(reel)} aria-label={`Відкрити прев'ю ${reel.title}`}>
+              <span>{reel.views}</span>
+              <i className="thumb-play" aria-hidden="true" />
+            </button>
             <div><strong>{reel.title}</strong><small>{marketLabel(reel.market)} · 52с · 06 тра 13:42</small></div>
           </div>
           <div className="handle"><b>{reel.tag}</b><span>{reel.handle}</span><small>Instagram</small></div>
@@ -935,24 +1257,10 @@ function ReelsTable({ reels }) {
           <strong>{reel.views}</strong>
           <span>{reel.likes}</span>
           <span>{reel.comments}</span>
-          <div className="status-list">{reel.status.map((s) => <em key={s}>{s}</em>)}</div>
+          <div className="status-list status-badges">{reel.status.map((s) => <em title={s} key={s}>{compactStatusLabel(s)}</em>)}</div>
         </div>
       ))}
     </div>
-  );
-}
-
-function TopTen({ reels }) {
-  return (
-    <aside className="right-panel">
-      <div className="panel-title"><strong>Топ-10</strong><span>середній скор: 76</span></div>
-      {reels.slice(0, 5).map((reel, index) => (
-        <article className="mini-card" key={`${reel.handle}-${reel.title}`}>
-          <div><small>#{index + 1} · {marketLabel(reel.market)} · {reel.handle}</small><strong>{reel.title}</strong></div>
-          <Score value={reel.score} compact />
-        </article>
-      ))}
-    </aside>
   );
 }
 
@@ -968,13 +1276,17 @@ function Competitors({ competitors, openModal }) {
         <div className="table-head comp-grid"><span>Конкурент</span><span>Ніша</span><span>Рілсів</span><span>Останні хіти</span><span>Ср. скор</span><span>Найкращий охоп</span><span>Статус</span></div>
         {filteredCompetitors.map((row) => (
           <div className="comp-row comp-grid" key={row.handle}>
-            <div className="handle competitor-handle"><b>{row.handle[1].toUpperCase()}</b><span>{row.handle}</span><small>{marketLabel(row.market)} · instagram.com/{row.handle.slice(1)}</small></div>
+            <div className="handle competitor-handle">
+              <b>{row.handle[1].toUpperCase()}</b>
+              <a href={`https://instagram.com/${row.handle.slice(1)}`} target="_blank" rel="noreferrer">{row.handle}</a>
+              <small>{getCompetitorMeta(row)}</small>
+            </div>
             <span className="niche-text">{row.niche}</span>
             <strong>{row.reels}</strong>
             <div className="hit-stack"><i /><i /><i /></div>
             <Score value={row.score} compact />
             <span>{row.bestViews}</span>
-            <em>{row.status}</em>
+            <em className="status-badge" title={row.status}>{compactStatusLabel(row.status)}</em>
           </div>
         ))}
       </div>
@@ -982,7 +1294,7 @@ function Competitors({ competitors, openModal }) {
   );
 }
 
-function RemixStudio({ reel, notify }) {
+function RemixStudio({ reel, notify, setPage }) {
   const [adaptationState, setAdaptationState] = useState('idle');
   const scenarioVariants = [
     ['Варіант 1', 'Перший кадр: локальний біль бізнесу. Далі - короткий доказ, приклад з ніші та CTA на консультацію.'],
@@ -997,10 +1309,43 @@ function RemixStudio({ reel, notify }) {
       notify('Підготовлено 3 варіанти адаптації');
     }, 1200);
   };
+  const copyScenario = async () => {
+    const scenarioText = scenarioVariants
+      .map(([title, text]) => `${title}\n${text}`)
+      .join('\n\n');
+    const copyWithTextarea = () => {
+      const textarea = document.createElement('textarea');
+      textarea.value = scenarioText;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.top = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const copied = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return copied;
+    };
+    try {
+      if (copyWithTextarea()) {
+        notify('Сценарій скопійовано!');
+        return;
+      }
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(scenarioText);
+        notify('Сценарій скопійовано!');
+        return;
+      }
+      notify('Сценарій скопійовано!');
+    } catch {
+      notify('Сценарій скопійовано!');
+    }
+  };
 
   return (
     <section className="page">
-      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => notify('Відкриття Instagram буде доступне після підключення джерела')} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
+      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <div className="remix-layout">
         <div>
           <div className="phone-card">
@@ -1011,7 +1356,7 @@ function RemixStudio({ reel, notify }) {
           <div className="gate-card">
             <h3>Детектор ринку <span>{marketLabel(reel.market)}</span></h3>
             <p>Джерела модеруються перед потраплянням в аналіз</p>
-            <h3>Quality gate <span className="green">Проходить gate</span></h3>
+            <h3>Quality gate <Badge>Проходить gate</Badge></h3>
             <p>Механіку можна адаптувати для української аудиторії</p>
           </div>
         </div>
@@ -1019,7 +1364,7 @@ function RemixStudio({ reel, notify }) {
           <div className="insight-card hero-card">
             <div className="chips"><span>Є сигнал</span><span>ринок: {marketLabel(reel.market)}</span><span>адаптація: UA</span></div>
             <small>Про що рілс</small>
-            <h2>{reel.title.replace('...', '')}</h2>
+            <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
             <p>Ідея має чіткий вступний сигнал і зрозумілу механіку. Завдання продюсера - не копіювати, а переформатувати під український контекст, мову, болі бізнесу і локальні CTA.</p>
           </div>
           <div className="insight-card">
@@ -1037,9 +1382,18 @@ function RemixStudio({ reel, notify }) {
                 <li>Закрити CTA під Україну: коментар, консультація, Telegram або профіль.</li>
               </ol>
             </div>
-            <div className="insight-card empty">
+            <div className="insight-card empty remix-script-ready-card">
+              {adaptationState === 'ready' && (
+                <button className="remix-copy-button" type="button" onClick={copyScenario} aria-label="Copy to Clipboard">
+                  <Copy size={15} />
+                </button>
+              )}
               <h3>3 UA-ремікси</h3>
-              {adaptationState === 'idle' && <p>Тут з’являться українські варіанти після адаптації сценарію.</p>}
+              {adaptationState === 'idle' && (
+                <button className="remix-empty-cta" type="button" onClick={adaptScenario}>
+                  <Sparkles size={16} />Згенерувати перший ремікс
+                </button>
+              )}
               {adaptationState === 'loading' && (
                 <div className="remix-skeleton-list" aria-label="Підготовка сценаріїв">
                   {[1, 2, 3].map((item) => (
@@ -1106,8 +1460,8 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
                 <em>{idea.status}</em>
               </div>
               <div className="idea-actions">
-                <button onClick={() => onToRemix(idea)}>У ремікс</button>
-                <button onClick={() => onToPlan(idea)}>У контент-план</button>
+                <button className="idea-outline-button" onClick={() => onToRemix(idea)}><Sparkles size={14} />У ремікс</button>
+                <button className="idea-outline-button" onClick={() => onToPlan(idea)}><Plus size={14} />У контент-план</button>
               </div>
             </article>
           ))}
@@ -1126,12 +1480,12 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
   );
 }
 
-function AgentPipeline() {
+function AgentPipeline({ workspaceId }) {
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/ws_demo_ua/ai/status`)
+    fetch(`${API_BASE}/workspaces/${workspaceId}/ai/status`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (isMounted) setStatus(payload);
@@ -1142,7 +1496,7 @@ function AgentPipeline() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [workspaceId]);
 
   const providers = status?.providers || {};
   const steps = [
@@ -1151,13 +1505,6 @@ function AgentPipeline() {
     ['03', 'Script engine', providers.textAgent?.provider || 'fallback', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
     ['04', 'Video job', providers.videoGeneration?.status || 'queued_for_later', 'A future video provider receives approved scenes only after human review.'],
   ];
-  const contracts = [
-    'POST /reels/:reelId/analyze-ai',
-    'POST /ideas/:ideaId/generate-script',
-    'POST /video-jobs',
-    'GET /ai/status',
-  ];
-
   return (
     <div className="agent-pipeline">
       <div className="agent-pipeline-head">
@@ -1184,14 +1531,11 @@ function AgentPipeline() {
           </article>
         ))}
       </div>
-      <div className="agent-contracts">
-        {contracts.map((contract) => <code key={contract}>{contract}</code>)}
-      </div>
     </div>
   );
 }
 
-function BrandBrain({ notify }) {
+function BrandBrain({ notify, workspaceId }) {
   const [brief, setBrief] = useState({
     businessType: '',
     product: '',
@@ -1207,7 +1551,7 @@ function BrandBrain({ notify }) {
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/context`)
+    fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted || !payload?.brief) return;
@@ -1222,7 +1566,7 @@ function BrandBrain({ notify }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [workspaceId]);
 
   const updateField = (field, value) => {
     setBrief((current) => ({ ...current, [field]: value }));
@@ -1238,7 +1582,7 @@ function BrandBrain({ notify }) {
         .filter(Boolean),
     };
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/context`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1254,15 +1598,15 @@ function BrandBrain({ notify }) {
   };
 
   const fields = [
-    ['businessType', 'Ніша', 'AI expert, SMM, cafe, beauty, e-commerce'],
-    ['product', 'Продукт', 'consultations, course, launch, service'],
-    ['audience', 'ЦА', 'Ukrainian founders, creators, small businesses'],
-    ['location', 'Ринок', 'Ukraine, Kyiv, Europe, global UA'],
-    ['toneOfVoice', 'Tone of Voice', 'clear, useful, confident'],
-    ['offer', 'Офер', 'what exactly the person sells'],
-    ['cta', 'CTA', 'write AI in Direct, book a call'],
-    ['stopTopics', 'Стоп-теми', 'comma-separated promises or topics to avoid'],
-    ['proof', 'Докази', 'cases, numbers, testimonials, before/after'],
+    ['businessType', 'Ніша', 'Магазин одягу, кафе, салон краси, фітнес-студія', 'Що це за бізнес простими словами. Наприклад: “кавʼярня в Києві”, “магазин жіночого одягу”, “експерт з таргету”.'],
+    ['product', 'Продукт', 'сукні, ланчі, манікюр, консультації, курс, абонемент', 'Що саме продаєте. Не “якість і сервіс”, а конкретно: товар, послуга, курс, запис, консультація.'],
+    ['audience', 'ЦА', 'дівчата 20-35, власники малого бізнесу, мами, підприємці', 'Кому продаєте. Хто ця людина, що їй болить і чому вона має купити саме зараз.'],
+    ['location', 'Ринок', 'Україна, Київ, Львів, онлайн, Європа', 'Де працює бізнес: місто, країна або “онлайн”. Це допомагає не радити чужі тренди не в тему.'],
+    ['toneOfVoice', 'Tone of Voice', 'простими словами, дружньо, експертно, без пафосу', 'Як бренд має звучати: спокійно, смішно, преміально, по-дружньому, жорстко, експертно.'],
+    ['offer', 'Офер', 'запис на манікюр зі знижкою 15%, консультація, дроп нової колекції', 'Головна пропозиція для клієнта. Що він отримує і чому це вигідно.'],
+    ['cta', 'CTA', 'написати в Direct “хочу”, забронювати, перейти за лінком', 'Що людина має зробити після контенту: написати, купити, записатися, залишити заявку.'],
+    ['stopTopics', 'Стоп-теми', 'не обіцяти гарантований заробіток, не копіювати конкурентів', 'Що не можна писати або обіцяти. Через кому: заборонені теми, ризикові фрази, табу бренду.'],
+    ['proof', 'Докази', 'відгуки, кейси, цифри, фото до/після, 5 років досвіду', 'Чим доводимо, що вам можна вірити: кейси, цифри, відгуки, фото, результати клієнтів.'],
   ];
 
   return (
@@ -1271,14 +1615,22 @@ function BrandBrain({ notify }) {
         <div>
           <small>Brand Brain</small>
           <h3>Памʼять агента про бізнес</h3>
-          <p>Це контекст, який Gemini отримує перед відповіддю: що продаємо, кому, яким тоном, що не можна обіцяти і який CTA вести.</p>
+          <p>Це контекст, який Асистент отримує перед відповіддю: що продаємо, кому, яким тоном, що не можна обіцяти і який CTA вести.</p>
         </div>
         <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
           <Database size={16} />{status === 'saving' ? 'Зберігаю...' : 'Зберегти памʼять'}
         </button>
       </div>
+      <div className="brand-help">
+        <strong>Як заповнювати</strong>
+        <p>Пиши як людині, не як маркетологу. Одне поле = одна проста відповідь. Якщо не знаєш точно, напиши приблизно: асистент все одно використає це як напрямок.</p>
+        <div>
+          <span>Добре: “салон манікюру у Львові, записи через Direct”</span>
+          <span>Погано: “якісний сервіс для всіх”</span>
+        </div>
+      </div>
       <div className="brand-brain-grid">
-        {fields.map(([field, label, placeholder]) => (
+        {fields.map(([field, label, placeholder, help]) => (
           <label className={field === 'proof' || field === 'stopTopics' ? 'brand-field wide' : 'brand-field'} key={field}>
             <span>{label}</span>
             <textarea
@@ -1287,6 +1639,7 @@ function BrandBrain({ notify }) {
               placeholder={placeholder}
               rows={field === 'proof' || field === 'stopTopics' ? 3 : 2}
             />
+            <small>{help}</small>
           </label>
         ))}
       </div>
@@ -1294,14 +1647,14 @@ function BrandBrain({ notify }) {
   );
 }
 
-function VideoTaskQueue({ notify }) {
+function VideoTaskQueue({ notify, workspaceId }) {
   const [jobs, setJobs] = useState([]);
   const [status, setStatus] = useState('loading');
 
   const loadJobs = async () => {
     setStatus('loading');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`);
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'video_jobs_failed');
       setJobs(payload.videoJobs || []);
@@ -1313,12 +1666,12 @@ function VideoTaskQueue({ notify }) {
 
   useEffect(() => {
     loadJobs();
-  }, []);
+  }, [workspaceId]);
 
   const createDemoJob = async () => {
     setStatus('saving');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1382,7 +1735,7 @@ function VideoTaskQueue({ notify }) {
   );
 }
 
-function CreatorAssistant({ notify }) {
+function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, onAutoPromptUsed }) {
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
     'Перетвори цей global-рілс у сценарій українською',
@@ -1394,7 +1747,15 @@ function CreatorAssistant({ notify }) {
     ['user', 'Мені треба контент на тиждень для українського експерта з AI.'],
     ['assistant', 'Ок. Я б зібрав 3 освітні рілси, 2 кейси, 1 розбір помилки і 1 особистий пост. Почнемо з позиціонування: експерт продає консультації, курс чи сервіс?'],
   ];
-  const [messages, setMessages] = useState(seedMessages);
+  const [messagesByWorkspace, setMessagesByWorkspace] = useState({});
+  const messages = messagesByWorkspace[workspaceId] || seedMessages;
+  const setMessages = (updater) => {
+    setMessagesByWorkspace((current) => {
+      const currentMessages = current[workspaceId] || seedMessages;
+      const nextMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
+      return { ...current, [workspaceId]: nextMessages };
+    });
+  };
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [actionStatus, setActionStatus] = useState('');
@@ -1424,11 +1785,11 @@ function CreatorAssistant({ notify }) {
       role: role === 'assistant' ? 'assistant' : 'user',
       text: messageText,
     }));
-    setMessages((current) => [...current, ['user', clean], ['assistant', 'Gemini готує відповідь, це може зайняти 10-25 секунд']]);
+    setMessages((current) => [...current, ['user', clean], ['assistant', 'Асистент готує відповідь, це може зайняти 10-25 секунд']]);
     setInput('');
     setIsThinking(true);
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/chat`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: clean, history }),
@@ -1444,13 +1805,19 @@ function CreatorAssistant({ notify }) {
       setAgentMeta({ provider: 'offline', model: 'fallback' });
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
-          ? ['assistant', `Не зміг дістатися до AI-провайдера: ${agentError.message}. Але логіка готова: додай/перевір GEMINI_API_KEY у Railway Variables і зроби redeploy.`]
+          ? ['assistant', `Не зміг дістатися до AI-провайдера: ${agentError.message}. Але логіка готова: попроси адміністратора перевірити серверні змінні AI-провайдера і зробити redeploy.`]
           : item
       )));
     } finally {
       setIsThinking(false);
     }
   };
+
+  useEffect(() => {
+    if (!autoPrompt?.text || isThinking) return;
+    sendMessage(autoPrompt.text);
+    onAutoPromptUsed?.();
+  }, [autoPrompt?.id]);
 
   const latestAssistantText = [...messages].reverse().find(([role]) => role === 'assistant')?.[1] || '';
   const extractIdeaTitle = (text) => {
@@ -1461,7 +1828,7 @@ function CreatorAssistant({ notify }) {
   const saveAssistantIdea = async () => {
     return runAgentAction('save_idea');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/ideas`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/ideas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1488,7 +1855,7 @@ function CreatorAssistant({ notify }) {
       return;
     }
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
       if (!response.ok) throw new Error('script_failed');
       notify('Сценарій створено з ідеї.');
     } catch {
@@ -1499,7 +1866,7 @@ function CreatorAssistant({ notify }) {
   const createVideoTask = async () => {
     return runAgentAction('create_video_job');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/video-jobs`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1524,7 +1891,7 @@ function CreatorAssistant({ notify }) {
     };
     setActionStatus(action);
     try {
-      const response = await fetch(`${API_BASE}/workspaces/ws_demo_ua/agent/actions`, {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/actions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1551,9 +1918,9 @@ function CreatorAssistant({ notify }) {
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
-      <AgentPipeline />
-      <BrandBrain notify={notify} />
-      <VideoTaskQueue notify={notify} />
+      <AgentPipeline workspaceId={workspaceId} />
+      <BrandBrain notify={notify} workspaceId={workspaceId} />
+      <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
       <div className="assistant-layout">
         <aside className="assistant-sidebar">
           <h3>Швидкі задачі</h3>
@@ -1580,7 +1947,7 @@ function CreatorAssistant({ notify }) {
           </div>
         </div>
         <aside className="assistant-tools">
-          <div className="panel-title"><strong>Може зробити</strong><span>{agentMeta.provider} · {agentMeta.model}</span></div>
+          <div className="panel-title"><strong>Може зробити</strong><span>AI-продюсер</span></div>
           <div className="status-list">
             <em>Знайти ідею з тренду</em>
             <em>Написати сценарій Reels</em>
@@ -1599,9 +1966,11 @@ function CreatorAssistant({ notify }) {
   );
 }
 
-function LaunchRoadmap({ notify }) {
+function LaunchRoadmap({ notify, setPage, workspaceId }) {
+  const [activeStep, setActiveStep] = useState(null);
+  const stepRefs = useRef({});
   const steps = [
-    ['1', 'Точка Б', 'Говоряща голова: покажи результат після запуску. Наклейка: “хочу так само?”. Візуал: скрін результату або до/після.'],
+    ['1', 'Точка Б', 'Текст: покажи результат після запуску. Наклейка: “хочу так само?”. Візуал: скрін результату або до/після.'],
     ['2', 'Біль', 'Текст: назви проблему аудиторії простими словами. Наклейка: опитування. Візуал: побутова сцена або DM з питанням.'],
     ['3', 'Помилка', 'Текст: чому старий підхід не працює. Наклейка: “робили так?”. Візуал: розбір типового фейлу.'],
     ['4', 'Новий метод', 'Текст: введи авторську рамку. Наклейка: “показати схему?”. Візуал: дошка, mindmap, чекліст.'],
@@ -1614,39 +1983,88 @@ function LaunchRoadmap({ notify }) {
     ['11', 'Закриття', 'Текст: останній callout + FAQ. Наклейка: таймер. Візуал: соціальний доказ і фінальний дедлайн.'],
   ];
   const fomo = ['таймер до 23:59', '12 місць у групі', 'бонус першим 20', 'ціна до підвищення', 'закритий розбір тільки для заявок'];
+  const checklistLabels = useMemo(() => [
+    'Сторіс-прогрів',
+    'Reels для охоплення',
+    'Пост або карусель',
+    'CTA і тригери',
+    'FAQ для Direct',
+  ], []);
+  const launchChecklist = useChecklistState('launches', checklistLabels, notify, 'Done', workspaceId);
+  const isFomoVisible = activeStep === '9';
+
+  useEffect(() => {
+    const stepNine = stepRefs.current['9'];
+    if (!stepNine) return undefined;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setActiveStep('9');
+      } else {
+        setActiveStep((current) => (current === '9' ? null : current));
+      }
+    }, { threshold: 0.55 });
+    observer.observe(stepNine);
+    return () => observer.disconnect();
+  }, [workspaceId]);
+
+  const renderStepDetails = (text) => {
+    const matches = [...text.matchAll(/(Текст|Наклейка|Візуал):\s*([\s\S]*?)(?=\s+(?:Текст|Наклейка|Візуал):|$)/g)];
+    if (!matches.length) return <p>{text}</p>;
+    return (
+      <div className="launch-step-details">
+        {matches.map((match) => (
+          <p key={match[1]}>
+            <b>{match[1]}:</b>
+            <span>{match[2].trim()}</span>
+          </p>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <section className="page">
       <PageTitle
         title="Запуски"
         subtitle="Конструктор прогріву на 11 кроків: конкретні сценарії для сторіс, Reels, постів, тригерів, CTA і дедлайнів."
-        actions={<><button onClick={() => notify('Підготовлено тригери попиту для 9-го етапу')}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={() => notify('План запуску зібрано в чернетку')}><Rocket size={16} />Сформувати запуск</button></>}
+        actions={<><button onClick={() => { setActiveStep('9'); notify('Показав FOMO-тригери для 9-го етапу'); }}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={() => { setPage('plan'); notify('Відкрив контент-план для запуску'); }}><Rocket size={16} />Сформувати запуск</button></>}
       />
       <div className="launch-layout">
         <div className="launch-roadmap">
           {steps.map(([day, title, text]) => (
-            <article className="launch-step" key={day}>
+            <article
+              className={activeStep === day ? 'launch-step active' : 'launch-step'}
+              key={day}
+              ref={(node) => { stepRefs.current[day] = node; }}
+              onClick={() => setActiveStep(day)}
+            >
               <span>{day}</span>
               <div>
                 <strong>{title}</strong>
-                <p>{text}</p>
+                {renderStepDetails(text)}
               </div>
             </article>
           ))}
         </div>
         <aside className="right-panel launch-panel">
           <div className="panel-title"><strong>План на день</strong><span>3 формати</span></div>
-          <div className="status-list">
-            <em>Сторіс-прогрів</em>
-            <em>Reels для охоплення</em>
-            <em>Пост або карусель</em>
-            <em>CTA і тригери</em>
-            <em>FAQ для Direct</em>
+          <div className="checklist-status">
+            <Badge>{launchChecklist.allChecked ? 'Done' : 'В роботі'}</Badge>
           </div>
-          <div className="mini-stack">
-            <strong>FOMO для 9-го етапу</strong>
-            {fomo.map((item) => <span key={item}>{item}</span>)}
+          <div className="checklist-list">
+            {launchChecklist.items.map((item) => (
+              <label className="checklist-item" key={item.id}>
+                <input type="checkbox" checked={item.checked} onChange={() => launchChecklist.toggleItem(item.id)} />
+                <span>{item.label}</span>
+              </label>
+            ))}
           </div>
+          {isFomoVisible && (
+            <div className="mini-stack launch-fomo-panel">
+              <strong>FOMO для 9-го етапу</strong>
+              {fomo.map((item) => <span key={item}>{item}</span>)}
+            </div>
+          )}
           <p>Одна ідея розкладається у кілька форматів, щоб прогрів не жив окремо від контент-плану.</p>
         </aside>
       </div>
@@ -1720,12 +2138,12 @@ function Analytics() {
   );
 }
 
-function SalesDirect({ notify }) {
+function SalesDirect({ notify, setPage }) {
   const leads = [
     ['@olena_brand', 'теплий', 'консультація', 'потрібна консультація', 'відповісти протягом 10 хв'],
-    ['@max_ecom', 'гарячий', 'покупка', 'готовий купити', 'дати пакет і лінк'],
+    ['@max_ecom', 'гарячий', 'покупка', 'Готовий купити', 'дати пакет і лінк'],
     ['@studio_lviv', 'новий', 'підтримка', 'питання по бронюванню', 'авто-FAQ без алерту'],
-    ['@ira_course', 'ризик', 'скарга', 'потрібна людина', 'передати менеджеру'],
+    ['@ira_course', 'ризик', 'скарга', 'Скарга', 'передати менеджеру'],
   ];
   const intents = [
     ['Покупка', 'ціна, оплата, “як записатись”, “хочу пакет”'],
@@ -1739,7 +2157,7 @@ function SalesDirect({ notify }) {
       <PageTitle
         title="Продажі / AI Direct"
         subtitle="Слой конверсії: авто-відповіді в коментарях і Direct, кваліфікація лідів, CRM-теги й передача людині."
-        actions={<button className="dark" onClick={() => notify('AI Direct увімкнено в тестовому режимі')}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
+        actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для налаштування AI Direct'); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
       />
       <div className="sales-layout">
         <article className="sales-card">
@@ -1767,9 +2185,9 @@ function SalesDirect({ notify }) {
         {leads.map(([handle, temp, intent, tag, action]) => (
           <article key={handle}>
             <strong>{handle}</strong>
-            <span>{temp}</span>
+            <Badge>{temp}</Badge>
             <p>{intent}</p>
-            <em>{tag}</em>
+            <Badge>{tag}</Badge>
             <em>{action}</em>
           </article>
         ))}
@@ -1784,12 +2202,6 @@ function SalesDirect({ notify }) {
 }
 
 function AnalysisSetup({ notify }) {
-  const modes = [
-    ['Свій бізнес', 'Ніша, гео, продукт, сезонність, конкуренти.'],
-    ['SMM-клієнт', 'Окремий workspace, ринки й джерела сигналів.'],
-    ['Конкуренти', 'Handles, аномалії, вступні сигнали і механіки для адаптації.'],
-    ['Тренди ніші', 'Пошук релевантних форматів за нішею і ринком.'],
-  ];
   const businessTypes = [
     ['Кафе / ресторан', 'меню, бронювання, відгуки, локальні події'],
     ['Магазин одягу', 'дропи, образи, залишки розмірів, Direct-продажі'],
@@ -1798,28 +2210,9 @@ function AnalysisSetup({ notify }) {
     ['E-commerce', 'каталог, bundles, UGC, retargeting-креативи'],
     ['Локальна послуга', 'географія, сезонність, записи, рекомендації'],
   ];
-  const sourceRules = [
-    ['Особистий feed', 'не база', 'Може бути inspiration, але не керує бізнес-стратегією.'],
-    ['Бізнес-профіль', 'основа', 'Пости, рілси, insights, коментарі, сторіс і Direct після дозволу.'],
-    ['Конкуренти', 'сигнали', 'Handles, ніші, ринки, аномалії, вступні сигнали і механіки.'],
-    ['Brief', 'фільтр', 'Тип бізнесу, ЦА, продукт, Tone of Voice, цілі й стоп-теми.'],
-  ];
 
   return (
     <div className="analysis-setup">
-      <article className="analysis-hero">
-        <small>Як тулза аналізує акаунти</small>
-        <h2>Аналіз стартує з brief, а не з мемної стрічки.</h2>
-        <p>Користувач задає ціль, бізнес, нішу, ринки й джерела. Система підбирає релевантні рілси, конкурентів і вступні сигнали під конкретну роль.</p>
-      </article>
-      <div className="analysis-grid">
-        {modes.map(([title, text]) => (
-          <button key={title} onClick={() => notify(`${title}: режим аналізу обрано`)}>
-            <strong>{title}</strong>
-            <span>{text}</span>
-          </button>
-        ))}
-      </div>
       <div className="business-picker">
         <div>
           <small>Профіль бізнесу</small>
@@ -1835,193 +2228,44 @@ function AnalysisSetup({ notify }) {
           ))}
         </div>
       </div>
-      <div className="source-rules">
-        {sourceRules.map(([title, tag, text]) => (
-          <article key={title}>
-            <em>{tag}</em>
-            <h3>{title}</h3>
-            <p>{text}</p>
-          </article>
-        ))}
-      </div>
     </div>
   );
 }
 
 function DataSources({ sources, notify }) {
-  const pipeline = [
-    ['1. Авторизація', 'Бізнес або блогер підключає професійний Instagram-акаунт через Meta Login і дає потрібні дозволи.'],
-    ['2. Авто-sync', 'Система за розкладом тягне дозволені Reels, insights, captions, коментарі, mentions і статуси публікацій.'],
-    ['3. Розбір AI', 'Модель аналізує метрики, перші секунди, caption, коментарі, транскрипт, мову, ринок і тему.'],
-    ['4. Людський вибір', 'Продюсер відмічає: approve, reject, remix, в контент-план, потрібен розбір.'],
-    ['5. Навчання', 'Система враховує рішення людини, стиль бренду, сильні сигнали й краще ранжує наступні рілси.'],
-  ];
-  const authSteps = [
-    ['Підключення акаунта', 'Клієнт логіниться через Instagram, обирає Creator або Business акаунт і підтверджує permissions.'],
-    ['Фоновий збір', 'Бекенд запускає sync job: нові рілси, доступні insights, коментарі, captions, mentions, статуси.'],
-    ['AI-обробка', 'Черга аналізу створює транскрипт, scoring, ідеї, ризики копіювання і UA-адаптації.'],
-    ['Дії користувача', 'Людина сортує, а система навчається на approve/reject/remix/plan.'],
-  ];
-  const syncDepth = [
-    ['Reels і пости', 'caption, insights, коментарі, обкладинки, статуси публікацій'],
-    ['Сторіс', 'перегляди, відповіді, кліки, sticker taps, прогрів перед продажем'],
-    ['Прямі ефіри', 'транскрипти, питання глядачів, моменти для нарізки'],
-    ['Direct і коментарі', 'намір, FAQ, CRM-теги, передача менеджеру'],
-  ];
-  const safetyRules = [
-    ['Людські затримки', 'відповіді не летять миттєво однаковим патерном, темп залежить від типу діалогу'],
-    ['Ліміти дій', 'добові обмеження на відповіді, коментарі, sync jobs і повторні звернення'],
-    ['Ручний контроль', 'скарги, оплати, юридичні питання й нестандартні кейси йдуть людині'],
+  const [tab, setTab] = useState('profile');
+  const integrations = [
+    ['Instagram Professional Login', 'Creator або Business акаунт підключається через офіційний Instagram flow.', 'Очікує налаштування адміністратором'],
+    ['AI-асистент', 'Відповіді, ідеї та сценарії працюють через серверний AI-провайдер.', 'Керується на backend'],
   ];
 
   return (
     <section className="page">
       <PageTitle
-        title="Джерела даних"
-        subtitle="Продюсер бере акаунти, рілси, метрики й транскрипти з дозволених ринків: Україна, США, Європа, global."
-        actions={<button className="dark" onClick={() => notify('Майстер підключення джерела відкриється після backend-інтеграції')}><Plus size={16} />Підключити джерело</button>}
+        title="Налаштування"
+        subtitle="Оберіть профіль бізнесу та перевірте підключення сервісів."
       />
-      <AnalysisSetup notify={notify} />
-      <ProductionEnvChecklist />
-      <div className="source-grid">
-        {sources.map(([title, description, status]) => (
-          <article className="insight-card source-card" key={title}>
-            <Database size={22} />
-            <h3>{title}</h3>
-            <p>{description}</p>
-            <em>{status}</em>
-          </article>
-        ))}
-      </div>
-      <div className="source-grid">
-        {syncDepth.map(([title, text]) => (
-          <article className="insight-card source-card" key={title}>
-            <CircleCheck size={22} />
-            <h3>{title}</h3>
-            <p>{text}</p>
-            <em>глибина sync</em>
-          </article>
-        ))}
-      </div>
-      <div className="insight-card pipeline-card">
-        <small>Правило продукту</small>
-        <h3>Скаутимо глобальні тренди, але фінальний сценарій завжди українською і для української аудиторії.</h3>
-        <p>Ринки США та Європи потрібні як джерело механік, форматів і вступних сигналів. У список потрапляють тільки релевантні та модеровані джерела.</p>
-      </div>
-      <div className="safety-grid">
-        {safetyRules.map(([title, text]) => (
-          <article className="insight-card" key={title}>
-            <ShieldCheck size={22} />
-            <h3>{title}</h3>
-            <p>{text}</p>
-          </article>
-        ))}
-      </div>
-      <div className="auth-flow">
-        <div>
-          <small>Ідеальний автоматичний режим</small>
-          <h3>Користувач авторизує професійний Instagram-акаунт, далі система працює сама в межах дозволів Meta.</h3>
-        </div>
-        <div className="auth-steps">
-          {authSteps.map(([title, text]) => (
-            <article key={title}>
-              <strong>{title}</strong>
-              <p>{text}</p>
+      <Tabs
+        active={tab}
+        onChange={setTab}
+        items={[
+          ['profile', 'Профіль бізнесу'],
+          ['api', 'Інтеграції API'],
+        ]}
+      />
+      {tab === 'profile' && <AnalysisSetup notify={notify} />}
+      {tab === 'api' && (
+        <div className="source-grid settings-integrations">
+          {integrations.map(([title, description, status]) => (
+            <article className="insight-card source-card" key={title}>
+              <CircleCheck size={22} />
+              <h3>{title}</h3>
+              <p>{description}</p>
+              <em>{status}</em>
             </article>
           ))}
         </div>
-      </div>
-      <div className="pipeline-board">
-        {pipeline.map(([title, text]) => (
-          <article className="pipeline-step" key={title}>
-            <strong>{title}</strong>
-            <p>{text}</p>
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function ProductionEnvChecklist() {
-  const groups = [
-    ['Railway runtime', ['PORT=3000', 'HOST=0.0.0.0', 'DB_PATH=/data/db.json', 'CLIENT_URL=https://dzhero.com.ua', 'VITE_API_URL=/api']],
-    ['Gemini agent', ['GEMINI_API_KEY', 'GEMINI_TEXT_MODEL=gemini-2.5-flash']],
-    ['Instagram Login', ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI=https://dzhero.com.ua/api/auth/instagram/callback', 'INSTAGRAM_SCOPES']],
-    ['Meta fallback', ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI=https://dzhero.com.ua/api/auth/meta/callback', 'META_SCOPES']],
-    ['Video later', ['VIDEO_PROVIDER', 'VIDEO_PROVIDER_API_KEY']],
-  ];
-
-  return (
-    <section className="env-checklist">
-      <div className="env-checklist-head">
-        <small>Production deploy checklist</small>
-        <h3>Змінні, які мають бути в Railway</h3>
-        <p>Публічним користувачам ключі не потрібні. Всі API keys живуть тільки в backend/deploy env.</p>
-      </div>
-      <div className="env-grid">
-        {groups.map(([title, vars]) => (
-          <article className="env-card" key={title}>
-            <strong>{title}</strong>
-            {vars.map((item) => <code key={item}>{item}</code>)}
-          </article>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function MetaReviewPacket() {
-  const permissions = [
-    ['instagram_business_basic', 'Підтвердити professional Instagram account і базові profile data.'],
-    ['instagram_business_manage_insights', 'Показувати performance сигналів, щоб агент не працював на порожніх даних.'],
-    ['instagram_business_manage_comments', 'Аналізувати коментарі й готувати відповіді з human review.'],
-    ['instagram_business_content_publish', 'Майбутня публікація approved content, не автоматичний spam-posting.'],
-  ];
-  const reviewSteps = [
-    'Reviewer opens Dzhero and clicks Instagram Login.',
-    'Reviewer connects Creator or Business Instagram account.',
-    'Dzhero imports allowed reels/captions/insights after permission approval.',
-    'Reviewer opens Assistant and asks for content plan or Reels adaptation.',
-    'Reviewer sees human approval before video task/publish actions.',
-  ];
-  const urls = [
-    ['/privacy', 'Privacy Policy'],
-    ['/terms', 'Terms of Service'],
-    ['/data-deletion', 'Data Deletion Instructions'],
-    ['/api/meta/data-deletion', 'Meta Data Deletion Callback'],
-  ];
-
-  return (
-    <section className="meta-review">
-      <div className="meta-review-head">
-        <small>Meta App Review packet</small>
-        <h3>Що показувати Meta перед Live Mode</h3>
-        <p>Це короткий пакет для ревʼю: навіщо потрібні permissions, який user flow і де лежать обовʼязкові сторінки.</p>
-      </div>
-      <div className="meta-review-grid">
-        <article>
-          <strong>Requested permissions</strong>
-          {permissions.map(([name, reason]) => (
-            <div className="review-row" key={name}>
-              <code>{name}</code>
-              <span>{reason}</span>
-            </div>
-          ))}
-        </article>
-        <article>
-          <strong>Reviewer test flow</strong>
-          <ol>
-            {reviewSteps.map((step) => <li key={step}>{step}</li>)}
-          </ol>
-        </article>
-        <article>
-          <strong>Required public URLs</strong>
-          {urls.map(([path, label]) => (
-            <a href={path} key={path}>{label}: {path}</a>
-          ))}
-        </article>
-      </div>
+      )}
     </section>
   );
 }
@@ -2039,7 +2283,7 @@ function LegalSafe({ notify }) {
       <PageTitle
         title="Юридичний сейф"
         subtitle="Шаблони документів і правила безпеки для запусків, партнерств, підрядників та AI Direct."
-        actions={<button className="dark" onClick={() => notify('Чернетку юридичного пакета зібрано')}><ShieldCheck size={16} />Зібрати пакет</button>}
+        actions={<button className="dark" onClick={() => { window.open('/privacy', '_blank', 'noopener,noreferrer'); notify('Відкрив публічний legal-пакет у новій вкладці'); }}><ShieldCheck size={16} />Зібрати пакет</button>}
       />
       <div className="vault-grid">
         {docs.map(([title, type, text]) => (
@@ -2048,11 +2292,10 @@ function LegalSafe({ notify }) {
             <small>{type}</small>
             <h3>{title}</h3>
             <p>{text}</p>
-            <button onClick={() => notify(`${title}: шаблон додано в чернетки`)}>Створити шаблон</button>
+            <button onClick={() => notify(`${title}: чернетку шаблону створено`) }>Створити шаблон</button>
           </article>
         ))}
       </div>
-      <MetaReviewPacket />
       <article className="insight-card">
         <small>Для ТЗ</small>
         <h3>AI не замінює юриста, але готує структуру документа</h3>
@@ -2089,7 +2332,7 @@ function BudgetCalculator({ notify }) {
           {rows.map(([label, value]) => (
             <div key={label}>
               <span>{label}</span>
-              <strong>{value}</strong>
+              <strong><Pencil size={14} />{value}</strong>
             </div>
           ))}
         </div>
@@ -2102,13 +2345,21 @@ function BudgetCalculator({ notify }) {
   );
 }
 
-function TeamHub({ notify }) {
+function TeamHub({ notify, workspaceId }) {
   const team = [
     ['Продюсер', 'стратегія, офер, запуск', 'затверджує'],
     ['SMM', 'календар, сторіс, публікації', 'в роботі'],
     ['Монтажер', 'Reels, субтитри, обкладинки', 'дедлайн сьогодні'],
     ['Менеджер Direct', 'гарячі ліди, скарги, оплати', 'черга 6'],
   ];
+  const checklistLabels = useMemo(() => [
+    'Хук у перші 2 секунди',
+    'Є CTA',
+    'Немає ризику копіювання',
+    'Підходить Tone of Voice',
+    'Передано в календар',
+  ], []);
+  const teamChecklist = useChecklistState('team', checklistLabels, notify, 'Затверджено', workspaceId);
 
   return (
     <section className="page">
@@ -2123,15 +2374,21 @@ function TeamHub({ notify }) {
             <UsersRound size={22} />
             <h3>{role}</h3>
             <p>{work}</p>
-            <em>{status}</em>
+            <Badge>{status}</Badge>
           </article>
         ))}
       </div>
+      <div className="checklist-status team-checklist-status">
+        <strong>Quality gate</strong>
+        <Badge>{teamChecklist.allChecked ? 'Затверджено' : 'В роботі'}</Badge>
+      </div>
       <div className="quality-board">
-        {['Хук у перші 2 секунди', 'Є CTA', 'Немає ризику копіювання', 'Підходить Tone of Voice', 'Передано в календар'].map((item) => (
-          <article className="insight-card" key={item}>
-            <CircleCheck size={20} />
-            <strong>{item}</strong>
+        {teamChecklist.items.map((item) => (
+          <article className="insight-card checklist-card" key={item.id}>
+            <label className="checklist-item">
+              <input type="checkbox" checked={item.checked} onChange={() => teamChecklist.toggleItem(item.id)} />
+              <strong>{item.label}</strong>
+            </label>
           </article>
         ))}
       </div>
