@@ -51,7 +51,7 @@ const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
-const PRODUCT_TOUR_VERSION = 'v4';
+const PRODUCT_TOUR_VERSION = 'v5';
 const DEMO_WORKSPACES = [
   { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
   { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
@@ -457,6 +457,49 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
         ],
       },
     }[locale];
+    const fullSteps = locale === 'en'
+      ? [
+        ['home', '[data-tour="sidebar-home"]', 'home', 'right', 'Step 1: Command center', 'Home is the cockpit: it shows the main workflow, the next action, and the fastest way to get an idea.'],
+        ['roadmap', '[data-tour="sidebar-roadmap"]', 'roadmap', 'right', 'Step 2: MVP / Spec', 'This is the product map: what is already in the MVP, what comes later, and how the system is supposed to work.'],
+        ['businesses', '[data-tour="sidebar-businesses"]', 'businesses', 'right', 'Step 3: Businesses', 'Business profiles help adapt content for different niches instead of giving generic advice.'],
+        ['strategy', '[data-tour="sidebar-strategy"]', 'strategy', 'right', 'Step 4: Strategy', 'Strategy keeps positioning, audience, offer, and content direction in one place.'],
+        ['viral', '[data-tour="sidebar-transcript"]', 'viral', 'right', 'Step 5: Trend analytics', 'Here AI collects viral Reels and turns global signals into ideas that make sense for a Ukrainian audience.'],
+        ['competitors', '[data-tour="sidebar-competitors"]', 'competitors', 'right', 'Step 6: Competitors', 'Competitor tracking shows which accounts and formats are worth studying before creating new content.'],
+        ['remix', '[data-tour="sidebar-remix"]', 'remix', 'right', 'Step 7: Remix studio', 'Remix studio turns a selected trend into a safer, original angle for your brand.'],
+        ['ideas', '[data-tour="sidebar-ideas"]', 'ideas', 'right', 'Step 8: Ideas', 'Ideas are the shortlist of content opportunities ready to become scripts or posts.'],
+        ['assistant', '[data-tour="sidebar-assistant"]', 'assistant', 'right', 'Step 9: Assistant', 'Assistant uses Brand Brain and current signals to write ideas, scripts, captions, and production tasks.'],
+        ['script', '[data-tour="generate-script-btn"]', 'assistant', 'bottom', 'Step 10: Generate a script', 'This action turns an assistant answer into a script workflow: hook, structure, CTA, and next production step.'],
+        ['plan', '[data-tour="sidebar-calendar"]', 'plan', 'right', 'Step 11: Content plan', 'Content plan is where selected ideas become a weekly publishing calendar.'],
+        ['sales', '[data-tour="sidebar-direct"]', 'sales', 'right', 'Step 12: Sales / AI Direct', 'Sales shows how content connects to Direct, intent, objections, and purchase conversations.'],
+        ['team', '[data-tour="sidebar-team"]', 'team', 'right', 'Step 13: Team', 'Team keeps production roles and tasks visible when more people join the workflow.'],
+        ['tools', '[data-tour="sidebar-tools"]', null, 'right', 'Step 14: More / Tools', 'Less frequent sections are grouped here so the main workflow stays clean. Open it when you need launches, analytics, legal, or budget tools.'],
+        ['launches', '[data-tour="sidebar-launches"]', 'launches', 'right', 'Step 15: Launches', 'Launches help build warm-up sequences and campaign steps around an offer.'],
+        ['analytics', '[data-tour="sidebar-analytics"]', 'analytics', 'right', 'Step 16: Analytics', 'Analytics connects content, leads, cost, and revenue so decisions are not based only on views.'],
+        ['legal', '[data-tour="sidebar-legal"]', 'legal', 'right', 'Step 17: Legal safe', 'Legal safe keeps Meta review pages, deletion flow, and public compliance materials in one place.'],
+        ['budget', '[data-tour="sidebar-budget"]', 'budget', 'right', 'Step 18: Budget', 'Budget helps estimate spend, sales targets, CAC, ROI, and whether the plan makes financial sense.'],
+        ['settings', '[data-tour="topbar-settings"]', 'settings', 'bottom', 'Step 19: Settings', 'Settings moved to the top bar. Use it for data sources, integrations, and account setup.'],
+      ]
+      : [
+        ['home', '[data-tour="sidebar-home"]', 'home', 'right', 'Крок 1: Центр керування', 'Головна — це пульт керування: тут видно основний шлях, наступну дію і найшвидший старт для пошуку ідеї.'],
+        ['roadmap', '[data-tour="sidebar-roadmap"]', 'roadmap', 'right', 'Крок 2: MVP / ТЗ', 'Тут карта продукту: що вже є в MVP, що буде пізніше і як система має працювати.'],
+        ['businesses', '[data-tour="sidebar-businesses"]', 'businesses', 'right', 'Крок 3: Бізнеси', 'Бізнес-профілі допомагають адаптувати контент під різні ніші, а не давати однакові поради всім.'],
+        ['strategy', '[data-tour="sidebar-strategy"]', 'strategy', 'right', 'Крок 4: Стратегія', 'Стратегія тримає позиціонування, аудиторію, офер і напрям контенту в одному місці.'],
+        ['viral', '[data-tour="sidebar-transcript"]', 'viral', 'right', 'Крок 5: Аналітика трендів', 'Тут AI збирає віральні Reels і перетворює глобальні сигнали на ідеї для української аудиторії.'],
+        ['competitors', '[data-tour="sidebar-competitors"]', 'competitors', 'right', 'Крок 6: Конкуренти', 'База конкурентів показує, які акаунти і формати варто вивчити перед створенням контенту.'],
+        ['remix', '[data-tour="sidebar-remix"]', 'remix', 'right', 'Крок 7: Ремікс-студія', 'Ремікс-студія перетворює вибраний тренд у безпечний, оригінальний кут для твого бренду.'],
+        ['ideas', '[data-tour="sidebar-ideas"]', 'ideas', 'right', 'Крок 8: Ідеї', 'Ідеї — це короткий список можливостей, які вже можна перетворювати на сценарії або пости.'],
+        ['assistant', '[data-tour="sidebar-assistant"]', 'assistant', 'right', 'Крок 9: Асистент', 'Асистент використовує Brand Brain і поточні сигнали, щоб писати ідеї, сценарії, caption і задачі на продакшн.'],
+        ['script', '[data-tour="generate-script-btn"]', 'assistant', 'bottom', 'Крок 10: Зробити сценарій', 'Ця дія переводить відповідь асистента у сценарний workflow: хук, структура, CTA і наступний крок продакшну.'],
+        ['plan', '[data-tour="sidebar-calendar"]', 'plan', 'right', 'Крок 11: Контент-план', 'Контент-план — місце, де відібрані ідеї стають календарем публікацій на тиждень.'],
+        ['sales', '[data-tour="sidebar-direct"]', 'sales', 'right', 'Крок 12: Продажі / AI Direct', 'Продажі показують, як контент пов’язаний з Direct, намірами, запереченнями і діалогами до покупки.'],
+        ['team', '[data-tour="sidebar-team"]', 'team', 'right', 'Крок 13: Команда', 'Команда допомагає бачити ролі і задачі, коли до процесу підключаються інші люди.'],
+        ['tools', '[data-tour="sidebar-tools"]', null, 'right', 'Крок 14: Ще / Інструменти', 'Рідше потрібні розділи зібрані тут, щоб головний шлях залишався чистим. Відкривай, коли потрібні запуски, аналітика, legal або бюджет.'],
+        ['launches', '[data-tour="sidebar-launches"]', 'launches', 'right', 'Крок 15: Запуски', 'Запуски допомагають будувати прогріви і кроки кампанії навколо офера.'],
+        ['analytics', '[data-tour="sidebar-analytics"]', 'analytics', 'right', 'Крок 16: Аналітика', 'Аналітика поєднує контент, ліди, витрати і дохід, щоб рішення не базувались тільки на переглядах.'],
+        ['legal', '[data-tour="sidebar-legal"]', 'legal', 'right', 'Крок 17: Юридичний сейф', 'Юридичний сейф зберігає Meta review pages, deletion flow і публічні compliance-матеріали.'],
+        ['budget', '[data-tour="sidebar-budget"]', 'budget', 'right', 'Крок 18: Бюджет', 'Бюджет допомагає оцінити витрати, план продажів, CAC, ROI і фінансову реальність плану.'],
+        ['settings', '[data-tour="topbar-settings"]', 'settings', 'bottom', 'Крок 19: Налаштування', 'Налаштування переїхали у верхню панель. Тут джерела даних, інтеграції і підключення акаунта.'],
+      ];
 
     const waitForElement = (selector, timeout = 5000) => new Promise((resolve, reject) => {
       const startedAt = Date.now();
@@ -477,6 +520,11 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
 
     const prepareTarget = async (selector, nextPage) => {
       if (window.innerWidth < 860) openSidebarRef.current?.();
+      const toolsTarget = ['[data-tour="sidebar-launches"]', '[data-tour="sidebar-analytics"]', '[data-tour="sidebar-legal"]', '[data-tour="sidebar-budget"]'];
+      if (toolsTarget.includes(selector)) {
+        const toolsToggle = document.querySelector('[data-tour="sidebar-tools"]');
+        if (toolsToggle?.getAttribute('aria-expanded') !== 'true') toolsToggle.click();
+      }
       if (nextPage) setPage(nextPage);
       await new Promise((resolve) => window.setTimeout(resolve, 280));
       const element = await waitForElement(selector);
@@ -549,20 +597,13 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
       },
     });
 
-    [
-      ['home', '[data-tour="sidebar-home"]', null, 'right', copy.steps[0], commonButtons(false)],
-      ['transcript', '[data-tour="sidebar-transcript"]', 'viral', 'right', copy.steps[1], commonButtons(true)],
-      ['script', '[data-tour="generate-script-btn"]', 'assistant', 'bottom', copy.steps[2], commonButtons(true)],
-      ['calendar', '[data-tour="sidebar-calendar"]', 'plan', 'right', copy.steps[3], commonButtons(true)],
-      ['direct', '[data-tour="sidebar-direct"]', 'sales', 'right', copy.steps[4], commonButtons(true)],
-      ['tools', '[data-tour="sidebar-tools"]', null, 'right', copy.steps[5], commonButtons(true, true)],
-    ].forEach(([id, selector, nextPage, attachTo, stepCopy, buttons]) => {
+    fullSteps.forEach(([id, selector, nextPage, attachTo, title, text], index) => {
       tour.addStep({
         id,
-        title: stepCopy[0],
-        text: stepCopy[1],
+        title,
+        text,
         attachTo: { element: selector, on: attachTo },
-        buttons,
+        buttons: commonButtons(index > 0, index === fullSteps.length - 1),
         beforeShowPromise: () => prepareTarget(selector, nextPage),
         when: {
           show: () => placeHotspot(selector),
@@ -1045,10 +1086,22 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   const [isToolsOpen, setIsToolsOpen] = useState(false);
   const tourTargets = {
     home: 'sidebar-home',
+    roadmap: 'sidebar-roadmap',
+    businesses: 'sidebar-businesses',
+    strategy: 'sidebar-strategy',
     viral: 'sidebar-transcript',
+    competitors: 'sidebar-competitors',
+    remix: 'sidebar-remix',
+    ideas: 'sidebar-ideas',
+    assistant: 'sidebar-assistant',
     plan: 'sidebar-calendar',
     sales: 'sidebar-direct',
+    team: 'sidebar-team',
     tools: 'sidebar-tools',
+    launches: 'sidebar-launches',
+    analytics: 'sidebar-analytics',
+    legal: 'sidebar-legal',
+    budget: 'sidebar-budget',
   };
   const labels = language === 'en'
     ? {
@@ -1220,7 +1273,7 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
         <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
       </div>
       <div className="top-actions">
-        <button className={page === 'settings' ? 'icon active' : 'icon'} title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => setPage('settings')}><Settings size={16} /></button>
+        <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => setPage('settings')}><Settings size={16} /></button>
         <div className="language-switch" aria-label="Interface language">
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
           <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
