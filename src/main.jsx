@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import Shepherd from 'shepherd.js';
+import 'shepherd.js/dist/css/shepherd.css';
 import {
   BarChart3,
   Bot,
@@ -23,6 +25,7 @@ import {
   Menu,
   MessageSquareText,
   Moon,
+  MoreHorizontal,
   Pencil,
   Plus,
   Rocket,
@@ -47,6 +50,8 @@ const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
+const PRODUCT_TOUR_KEY = 'jero_tour_completed';
+const PRODUCT_TOUR_VERSION = 'v4';
 const DEMO_WORKSPACES = [
   { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
   { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
@@ -364,13 +369,14 @@ function App() {
 
   return (
     <div className="app" data-theme={theme}>
-      <Sidebar
+      <CleanSidebar
         key={`sidebar-${language}`}
         page={page}
         setPage={setPage}
         currentUser={currentUser}
         workspaces={DEMO_WORKSPACES}
         activeWorkspace={activeWorkspace}
+        language={language}
         onWorkspaceChange={switchWorkspace}
         onLogout={handleLogout}
         isOpen={isSidebarOpen}
@@ -378,7 +384,7 @@ function App() {
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} onOpenMenu={() => setIsSidebarOpen(true)} />
+        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setPage} workspaceId={workspaceId} language={language} />}
         {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
@@ -397,10 +403,387 @@ function App() {
         {page === 'team' && <TeamHub notify={notify} workspaceId={workspaceId} />}
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} />}
       </main>
+      <ProductTour page={page} setPage={setPage} currentUser={currentUser} dataReady={Boolean(data)} language={language} onOpenSidebar={() => setIsSidebarOpen(true)} onCloseSidebar={() => setIsSidebarOpen(false)} />
       {modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
+}
+
+function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSidebar, onCloseSidebar }) {
+  const startedRef = useRef(false);
+  const openSidebarRef = useRef(onOpenSidebar);
+  const closeSidebarRef = useRef(onCloseSidebar);
+
+  useEffect(() => {
+    openSidebarRef.current = onOpenSidebar;
+    closeSidebarRef.current = onCloseSidebar;
+  }, [onOpenSidebar, onCloseSidebar]);
+
+  useEffect(() => {
+    if (!currentUser || !dataReady || page !== 'home' || startedRef.current) return;
+    if (window.localStorage.getItem(PRODUCT_TOUR_KEY) === PRODUCT_TOUR_VERSION) return;
+
+    let isCancelled = false;
+    let hotspot = null;
+    const locale = language === 'en' ? 'en' : 'uk';
+    const copy = {
+      uk: {
+        back: 'Назад',
+        skip: 'Пропустити тур',
+        next: 'Далі ->',
+        finish: 'Завершити тур',
+        steps: [
+          ['Крок 1: Центр керування', 'Головна показує весь шлях роботи: тренди, ідеї, сценарії, планування і продажі. Тут користувач бачить, з чого почати і куди рухатись далі.'],
+          ['Крок 2: Пошук світових трендів', 'Тут AI збирає віральні закордонні Reels і автоматично адаптує їхні сенси під український контекст і менталітет. Почни звідси.'],
+          ['Крок 3: Генерація сценарію', 'На основі вибраного тренду AI за хвилину пропише чіпкий хук, структуру відео і готовий заклик до дії (CTA) під твою нішу.'],
+          ['Крок 4: Календар і планування', 'Готовий сценарій можна в один клік запланувати на будь-яку дату. Система сама сформує зрозумілу сітку публікацій на тиждень вперед.'],
+          ['Крок 5: Автоматизація продажів', 'Поки ти знімаєш контент, вбудований AI-менеджер обробляє Direct: розпізнає наміри клієнтів, відповідає на питання 24/7 і веде їх до покупки.'],
+          ['Крок 6: Додаткові інструменти', 'Запуски, глибока аналітика, юридичний сейф і бюджет не зникли. Вони зібрані тут, щоб головний шлях залишався простим і не перевантажував нову людину.'],
+        ],
+      },
+      en: {
+        back: 'Back',
+        skip: 'Skip tour',
+        next: 'Next ->',
+        finish: 'Finish tour',
+        steps: [
+          ['Step 1: Command center', 'Home shows the full workflow: trends, ideas, scripts, planning, and sales. This is where a user sees where to start and what to do next.'],
+          ['Step 2: Find global trends', 'Here AI collects viral international Reels and automatically adapts their meaning for the Ukrainian context and audience mindset. Start here.'],
+          ['Step 3: Generate a script', 'Based on the selected trend, AI prepares a strong hook, video structure, and ready CTA for your niche in about a minute.'],
+          ['Step 4: Calendar and planning', 'A finished script can be scheduled for any date in one click. The system builds a clear weekly publishing grid for you.'],
+          ['Step 5: Sales automation', 'While you create content, the built-in AI manager handles Direct: detects customer intent, answers questions 24/7, and guides people toward purchase.'],
+          ['Step 6: Extra tools', 'Launches, deeper analytics, legal safe, and budget are still here. They live in this menu so the main workflow stays simple for a new user.'],
+        ],
+      },
+    }[locale];
+
+    const waitForElement = (selector, timeout = 5000) => new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const tick = () => {
+        const element = document.querySelector(selector);
+        if (element) {
+          resolve(element);
+          return;
+        }
+        if (Date.now() - startedAt > timeout) {
+          reject(new Error(`Tour target not found: ${selector}`));
+          return;
+        }
+        window.setTimeout(tick, 80);
+      };
+      tick();
+    });
+
+    const prepareTarget = async (selector, nextPage) => {
+      if (window.innerWidth < 860) openSidebarRef.current?.();
+      if (nextPage) setPage(nextPage);
+      await new Promise((resolve) => window.setTimeout(resolve, 280));
+      const element = await waitForElement(selector);
+      element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      return element;
+    };
+
+    const removeHotspot = () => {
+      hotspot?.remove();
+      hotspot = null;
+    };
+
+    const placeHotspot = (selector) => {
+      removeHotspot();
+      const element = document.querySelector(selector);
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      hotspot = document.createElement('div');
+      hotspot.className = 'tour-hotspot-container';
+      hotspot.innerHTML = '<span class="hotspot-ping"></span><span class="hotspot-dot"></span>';
+      hotspot.style.left = `${Math.max(12, rect.right - 8)}px`;
+      hotspot.style.top = `${Math.max(12, rect.top + rect.height / 2 - 6)}px`;
+      document.body.appendChild(hotspot);
+    };
+
+    const completeTour = () => {
+      if (isCancelled) return;
+      window.localStorage.setItem(PRODUCT_TOUR_KEY, PRODUCT_TOUR_VERSION);
+      removeHotspot();
+      closeSidebarRef.current?.();
+    };
+
+    const commonButtons = (includeBack = true, last = false) => [
+      includeBack ? {
+        text: copy.back,
+        classes: 'tour-btn tour-btn-muted',
+        action() {
+          return this.back();
+        },
+      } : {
+        text: copy.skip,
+        classes: 'tour-btn tour-btn-link',
+        action() {
+          completeTour();
+          return this.cancel();
+        },
+      },
+      {
+        text: last ? copy.finish : copy.next,
+        classes: 'tour-btn tour-btn-primary',
+        action() {
+          if (last) {
+            completeTour();
+            return this.complete();
+          }
+          return this.next();
+        },
+      },
+    ];
+
+    const tour = new Shepherd.Tour({
+      useModalOverlay: true,
+      defaultStepOptions: {
+        cancelIcon: { enabled: true },
+        classes: 'dzhero-tour-popover',
+        scrollTo: false,
+        modalOverlayOpeningPadding: 8,
+        modalOverlayOpeningRadius: 8,
+      },
+    });
+
+    [
+      ['home', '[data-tour="sidebar-home"]', null, 'right', copy.steps[0], commonButtons(false)],
+      ['transcript', '[data-tour="sidebar-transcript"]', 'viral', 'right', copy.steps[1], commonButtons(true)],
+      ['script', '[data-tour="generate-script-btn"]', 'assistant', 'bottom', copy.steps[2], commonButtons(true)],
+      ['calendar', '[data-tour="sidebar-calendar"]', 'plan', 'right', copy.steps[3], commonButtons(true)],
+      ['direct', '[data-tour="sidebar-direct"]', 'sales', 'right', copy.steps[4], commonButtons(true)],
+      ['tools', '[data-tour="sidebar-tools"]', null, 'right', copy.steps[5], commonButtons(true, true)],
+    ].forEach(([id, selector, nextPage, attachTo, stepCopy, buttons]) => {
+      tour.addStep({
+        id,
+        title: stepCopy[0],
+        text: stepCopy[1],
+        attachTo: { element: selector, on: attachTo },
+        buttons,
+        beforeShowPromise: () => prepareTarget(selector, nextPage),
+        when: {
+          show: () => placeHotspot(selector),
+          hide: removeHotspot,
+        },
+      });
+    });
+
+    tour.on('cancel', completeTour);
+    tour.on('complete', completeTour);
+
+    let hasStarted = false;
+    const startTimer = window.setTimeout(() => {
+      if (isCancelled) return;
+      hasStarted = true;
+      startedRef.current = true;
+      Promise.resolve(tour.start()).catch((error) => {
+        console.error('product-tour-start-error', error);
+      });
+    }, 700);
+
+    return () => {
+      if (hasStarted) return;
+      isCancelled = true;
+      window.clearTimeout(startTimer);
+      removeHotspot();
+      tour.cancel();
+    };
+  }, [currentUser, dataReady, page, language, setPage]);
+
+  return null;
+}
+
+function LegacyProductTour({ page, setPage, currentUser, dataReady, language, onOpenSidebar, onCloseSidebar }) {
+  const tourRef = useRef(null);
+  const startedRef = useRef(false);
+  const openSidebarRef = useRef(onOpenSidebar);
+  const closeSidebarRef = useRef(onCloseSidebar);
+
+  useEffect(() => {
+    openSidebarRef.current = onOpenSidebar;
+    closeSidebarRef.current = onCloseSidebar;
+  }, [onOpenSidebar, onCloseSidebar]);
+
+  useEffect(() => {
+    if (!currentUser || !dataReady || page !== 'home' || startedRef.current) return;
+    if (window.localStorage.getItem(PRODUCT_TOUR_KEY) === PRODUCT_TOUR_VERSION) return;
+
+    let isCancelled = false;
+    let hotspot = null;
+
+    const waitForElement = (selector, timeout = 5000) => new Promise((resolve, reject) => {
+      const startedAt = Date.now();
+      const tick = () => {
+        const element = document.querySelector(selector);
+        if (element) {
+          resolve(element);
+          return;
+        }
+        if (Date.now() - startedAt > timeout) {
+          reject(new Error(`Tour target not found: ${selector}`));
+          return;
+        }
+        window.setTimeout(tick, 80);
+      };
+      tick();
+    });
+
+    const prepareTarget = async (selector, nextPage) => {
+      if (window.innerWidth < 860) openSidebarRef.current?.();
+      if (nextPage) setPage(nextPage);
+      await new Promise((resolve) => window.setTimeout(resolve, 280));
+      const element = await waitForElement(selector);
+      element.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      return element;
+    };
+
+    const removeHotspot = () => {
+      hotspot?.remove();
+      hotspot = null;
+    };
+
+    const placeHotspot = (selector) => {
+      removeHotspot();
+      const element = document.querySelector(selector);
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      hotspot = document.createElement('div');
+      hotspot.className = 'tour-hotspot-container';
+      hotspot.innerHTML = '<span class="hotspot-ping"></span><span class="hotspot-dot"></span>';
+      hotspot.style.left = `${Math.max(12, rect.right - 8)}px`;
+      hotspot.style.top = `${Math.max(12, rect.top + rect.height / 2 - 6)}px`;
+      document.body.appendChild(hotspot);
+    };
+
+    const completeTour = () => {
+      if (isCancelled) return;
+      window.localStorage.setItem(PRODUCT_TOUR_KEY, PRODUCT_TOUR_VERSION);
+      removeHotspot();
+      closeSidebarRef.current?.();
+    };
+
+    const commonButtons = (includeBack = true, last = false) => [
+      ...(includeBack ? [{
+        text: 'Назад',
+        classes: 'tour-btn tour-btn-muted',
+        action() {
+          return this.back();
+        },
+      }] : [{
+        text: 'Пропустить тур',
+        classes: 'tour-btn tour-btn-link',
+        action() {
+          completeTour();
+          return this.cancel();
+        },
+      }]),
+      {
+        text: last ? 'Завершить тур' : 'Далее ->',
+        classes: 'tour-btn tour-btn-primary',
+        action() {
+          if (last) {
+            completeTour();
+            return this.complete();
+          }
+          return this.next();
+        },
+      },
+    ];
+
+    const tour = new Shepherd.Tour({
+      useModalOverlay: true,
+      defaultStepOptions: {
+        cancelIcon: { enabled: true },
+        classes: 'dzhero-tour-popover',
+        scrollTo: false,
+        modalOverlayOpeningPadding: 8,
+        modalOverlayOpeningRadius: 8,
+      },
+    });
+
+    const steps = [
+      {
+        id: 'transcript',
+        selector: '[data-tour="sidebar-transcript"]',
+        page: null,
+        attachTo: 'right',
+        title: 'Шаг 1: Поиск мировых трендов',
+        text: 'Здесь ИИ собирает виральные зарубежные Reels и автоматически адаптирует их смыслы под украинский контекст и менталитет. Начни отсюда.',
+        buttons: commonButtons(false),
+      },
+      {
+        id: 'script',
+        selector: '[data-tour="generate-script-btn"]',
+        page: 'assistant',
+        attachTo: 'bottom',
+        title: 'Шаг 2: Генерация сценария',
+        text: 'На основе выбранного тренда ИИ за минуту пропишет цепляющий хук, структуру видео и готовый призыв к действию (CTA) под твою нишу.',
+        buttons: commonButtons(true),
+      },
+      {
+        id: 'calendar',
+        selector: '[data-tour="sidebar-calendar"]',
+        page: null,
+        attachTo: 'right',
+        title: 'Шаг 3: Календарь и планирование',
+        text: 'Готовый сценарий можно в один клик запланировать на любую дату. Система сама сформирует понятную сетку публикаций на неделю вперед.',
+        buttons: commonButtons(true),
+      },
+      {
+        id: 'direct',
+        selector: '[data-tour="sidebar-direct"]',
+        page: null,
+        attachTo: 'right',
+        title: 'Шаг 4: Автоматизация продаж',
+        text: 'Пока ты снимаешь контент, встроенный ИИ-менеджер обрабатывает Директ: распознает намерения клиентов, отвечает на вопросы 24/7 и закрывает их на покупку.',
+        buttons: commonButtons(true, true),
+      },
+    ];
+
+    steps.forEach((step) => {
+      tour.addStep({
+        id: step.id,
+        title: step.title,
+        text: step.text,
+        attachTo: { element: step.selector, on: step.attachTo },
+        buttons: step.buttons,
+        beforeShowPromise: () => prepareTarget(step.selector, step.page),
+        when: {
+          show: () => placeHotspot(step.selector),
+          hide: removeHotspot,
+        },
+      });
+    });
+
+    tour.on('cancel', completeTour);
+    tour.on('complete', completeTour);
+    tourRef.current = tour;
+
+    let hasStarted = false;
+    const startTimer = window.setTimeout(() => {
+      if (isCancelled) return;
+      hasStarted = true;
+      startedRef.current = true;
+      Promise.resolve(tour.start()).catch((error) => {
+        console.error('product-tour-start-error', error);
+      });
+    }, 700);
+
+    return () => {
+      if (hasStarted) return;
+      isCancelled = true;
+      window.clearTimeout(startTimer);
+      removeHotspot();
+      tour.cancel();
+      tourRef.current = null;
+    };
+  }, [currentUser, dataReady, page, setPage]);
+
+  return null;
 }
 
 function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
@@ -558,6 +941,12 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
 
 function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWorkspaceChange, onLogout, isOpen, onClose }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const tourTargets = {
+    home: 'sidebar-home',
+    viral: 'sidebar-transcript',
+    plan: 'sidebar-calendar',
+    sales: 'sidebar-direct',
+  };
   const items = [
     ['home', Home, 'Головна', 'core'],
     ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
@@ -602,7 +991,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
       </button>
       <nav>
         {items.map(([id, Icon, label]) => (
-          <button className={page === id ? 'active' : ''} key={id} onClick={() => {
+          <button className={page === id ? 'active' : ''} data-tour={tourTargets[id]} key={id} onClick={() => {
             setPage(id);
             onClose?.();
           }}>
@@ -651,7 +1040,177 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
   );
 }
 
-function Topbar({ notify, theme, setTheme, language, setLanguage, onOpenMenu }) {
+function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, isOpen, onClose }) {
+  const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
+  const tourTargets = {
+    home: 'sidebar-home',
+    viral: 'sidebar-transcript',
+    plan: 'sidebar-calendar',
+    sales: 'sidebar-direct',
+    tools: 'sidebar-tools',
+  };
+  const labels = language === 'en'
+    ? {
+      home: 'Home',
+      roadmap: 'MVP / Spec',
+      businesses: 'Businesses',
+      strategy: 'Strategy',
+      viral: 'Trend analytics',
+      competitors: 'Competitors',
+      remix: 'Remix studio',
+      ideas: 'Ideas',
+      assistant: 'Assistant',
+      plan: 'Content plan',
+      sales: 'Sales',
+      team: 'Team',
+      tools: 'More / Tools',
+      launches: 'Launches',
+      analytics: 'Analytics',
+      legal: 'Legal safe',
+      budget: 'Budget',
+      settings: 'Settings',
+    }
+    : {
+      home: 'Головна',
+      roadmap: 'MVP / ТЗ',
+      businesses: 'Бізнеси',
+      strategy: 'Стратегія',
+      viral: 'Аналітика трендів',
+      competitors: 'Конкуренти',
+      remix: 'Ремікс-студія',
+      ideas: 'Ідеї',
+      assistant: 'Асистент',
+      plan: 'Контент-план',
+      sales: 'Продажі',
+      team: 'Команда',
+      tools: 'Ще / Інструменти',
+      launches: 'Запуски',
+      analytics: 'Аналітика',
+      legal: 'Юридичний сейф',
+      budget: 'Бюджет',
+      settings: 'Налаштування',
+    };
+  const primaryItems = [
+    ['home', Home],
+    ['roadmap', ClipboardList],
+    ['businesses', BriefcaseBusiness],
+    ['strategy', Target],
+    ['viral', Flame],
+    ['competitors', Database],
+    ['remix', Wand2],
+    ['ideas', Lightbulb],
+    ['assistant', Bot],
+    ['plan', CalendarDays],
+    ['sales', ShoppingBag],
+    ['team', UsersRound],
+  ];
+  const toolItems = [
+    ['launches', Rocket],
+    ['analytics', BarChart3],
+    ['legal', ShieldCheck],
+    ['budget', Calculator],
+  ];
+  const isToolPage = toolItems.some(([id]) => id === page);
+  const selectPage = (id) => {
+    setPage(id);
+    onClose?.();
+  };
+  const renderNavButton = ([id, Icon]) => (
+    <button className={page === id ? 'active' : ''} data-tour={tourTargets[id]} key={id} onClick={() => selectPage(id)}>
+      <Icon size={16} />
+      <span className="nav-label">{labels[id]}</span>
+    </button>
+  );
+
+  return (
+    <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
+      <div className="brand">
+        <div className="logo">
+          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
+            <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
+            <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
+            <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+            <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
+          </svg>
+        </div>
+        <div>
+          <strong>Dzhero</strong>
+          <span>{language === 'en' ? 'Ukraine + world' : 'Україна + світ'}</span>
+        </div>
+      </div>
+      <button className="mobile-menu-close" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={onClose}>
+        <X size={18} />
+      </button>
+      <nav>
+        {primaryItems.map(renderNavButton)}
+        <div className={isToolsOpen ? 'nav-tools open' : 'nav-tools'}>
+          <button
+            className={isToolPage ? 'active nav-tools-toggle' : 'nav-tools-toggle'}
+            data-tour={tourTargets.tools}
+            type="button"
+            onClick={() => setIsToolsOpen((value) => !value)}
+            aria-expanded={isToolsOpen}
+          >
+            <MoreHorizontal size={16} />
+            <span className="nav-label">{labels.tools}</span>
+            <ChevronDown className="nav-tools-chevron" size={14} />
+          </button>
+          {isToolsOpen && (
+            <div className="nav-tools-menu">
+              {toolItems.map(renderNavButton)}
+            </div>
+          )}
+        </div>
+      </nav>
+      <div className="account-switcher compact">
+        {isSwitcherOpen && (
+          <div className="workspace-menu">
+            {workspaces.map((workspace) => (
+              <button
+                className={activeWorkspace.id === workspace.id ? 'active' : ''}
+                type="button"
+                key={workspace.id}
+                onClick={() => {
+                  onWorkspaceChange(workspace.id);
+                  setIsSwitcherOpen(false);
+                  onClose?.();
+                }}
+              >
+                <span>{workspace.name}</span>
+                <small>{workspace.handle} · {workspace.type}</small>
+              </button>
+            ))}
+            <button type="button" onClick={() => { selectPage('settings'); setIsSwitcherOpen(false); }}>
+              <span>{language === 'en' ? '+ Connect Instagram' : '+ Підключити Instagram'}</span>
+              <small>{language === 'en' ? 'Real accounts through Meta API' : 'Реальні акаунти через Meta API'}</small>
+            </button>
+            <button className="workspace-logout" type="button" onClick={() => {
+              setIsSwitcherOpen(false);
+              onLogout();
+            }}>
+              <span>{language === 'en' ? 'Log out' : 'Вихід'}</span>
+              <small>{language === 'en' ? 'Leave this session' : 'Вийти з поточної сесії'}</small>
+            </button>
+          </div>
+        )}
+        <button className="account" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
+          <div className="avatar">{activeWorkspace?.name?.[0]?.toUpperCase() || currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
+          <div>
+            <strong>{activeWorkspace?.name || currentUser?.name || 'Admin'}</strong>
+            <span>{activeWorkspace?.handle || currentUser?.email || 'workspace'}</span>
+          </div>
+          <ChevronDown size={14} />
+        </button>
+        <button className="logout-button" type="button" title={language === 'en' ? 'Log out' : 'Вийти'} onClick={onLogout}>
+          <LogOut size={14} />
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu }) {
   return (
     <header className="topbar">
       <div className="topbar-title">
@@ -661,6 +1220,7 @@ function Topbar({ notify, theme, setTheme, language, setLanguage, onOpenMenu }) 
         <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
       </div>
       <div className="top-actions">
+        <button className={page === 'settings' ? 'icon active' : 'icon'} title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => setPage('settings')}><Settings size={16} /></button>
         <div className="language-switch" aria-label="Interface language">
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
           <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
@@ -1941,7 +2501,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
           </div>
           <div className="assistant-actions">
             <button type="button" onClick={saveAssistantIdea} disabled={isThinking || actionStatus || !latestAssistantText}>Зберегти як ідею</button>
-            <button type="button" onClick={generateScriptFromSavedIdea} disabled={isThinking || actionStatus || !latestAssistantText}>Зробити сценарій</button>
+            <button type="button" data-tour="generate-script-btn" onClick={generateScriptFromSavedIdea} disabled={isThinking || actionStatus || !latestAssistantText}>Зробити сценарій</button>
             <button type="button" onClick={createVideoTask} disabled={isThinking || actionStatus || !latestAssistantText}>Створити video task</button>
             {lastIdeaId && <small>Остання ідея: {lastIdeaId}</small>}
           </div>
