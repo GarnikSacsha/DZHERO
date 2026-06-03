@@ -8375,6 +8375,163 @@ button.dark,
   resize: vertical;
 }
 
+.calendar-day {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 132px;
+}
+
+.calendar-empty {
+  min-height: 132px;
+  border: 1px dashed transparent;
+  background: transparent !important;
+  box-shadow: none !important;
+  pointer-events: none;
+}
+
+.calendar-posts {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.calendar-post {
+  display: grid;
+  gap: 4px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: grab;
+}
+
+.calendar-post.done {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  opacity: 0.62;
+}
+
+.calendar-post label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.calendar-post input {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent);
+}
+
+.calendar-post em {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.calendar-post strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-post small {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.calendar-post-modal {
+  width: min(620px, calc(100vw - 28px));
+}
+
+.calendar-post-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.calendar-post-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.calendar-post-form label.wide {
+  grid-column: 1 / -1;
+}
+
+.calendar-post-form span {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.calendar-post-form input,
+.calendar-post-form select,
+.calendar-post-form textarea,
+.budget-input-card input,
+.legal-editor-modal textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.calendar-post-form input,
+.calendar-post-form select,
+.budget-input-card input {
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.calendar-post-form textarea {
+  min-height: 110px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.launch-generated-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.legal-editor-modal {
+  width: min(760px, calc(100vw - 28px));
+}
+
+.legal-editor-modal textarea {
+  min-height: 420px;
+  margin-top: 14px;
+  padding: 14px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.budget-input-card {
+  display: grid;
+  gap: 8px;
+}
+
+.budget-input-card input {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.mini-card.done {
+  opacity: 0.58;
+}
+
 @media (max-width: 640px) {
   .remix-script-timeline article {
     grid-template-columns: 1fr;
@@ -8391,6 +8548,11 @@ button.dark,
 
   .reel-link-import button {
     width: 100%;
+  }
+
+  .calendar-post-form,
+  .launch-generated-grid {
+    grid-template-columns: 1fr;
   }
 
   .manual-reel-grid {
