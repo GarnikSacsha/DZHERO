@@ -375,7 +375,10 @@ function App() {
       });
       if (!response.ok) throw new Error('import_failed');
       const payload = await response.json();
-      const importedReel = payload.reel;
+      const importedReel = {
+        ...payload.reel,
+        handle: payload.reel?.handle || payload.reel?.sourceHandle || '@instagram.reel',
+      };
       setData((current) => ({ ...current, reels: [importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)] }));
       setRemixDraft(importedReel);
       setPage('remix');
@@ -2132,6 +2135,7 @@ function buildRemixScenario(reel) {
 
 function RemixStudio({ reel, notify, setPage }) {
   const [adaptationState, setAdaptationState] = useState('idle');
+  const reelHandle = reel.handle || reel.sourceHandle || '@instagram.reel';
   const scenario = buildRemixScenario(reel);
   const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
@@ -2144,7 +2148,7 @@ function RemixStudio({ reel, notify, setPage }) {
   };
   const copyScenario = async () => {
     const scenarioText = [
-      `Джерело: ${reel.handle}`,
+      `Джерело: ${reelHandle}`,
       `Ідея: ${reel.title}`,
       '',
       'Production script:',
@@ -2185,11 +2189,11 @@ function RemixStudio({ reel, notify, setPage }) {
 
   return (
     <section className="page">
-      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reel.handle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
+      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <div className="remix-layout">
         <div>
           <div className="phone-card">
-            <div className="phone-head"><b>{reel.handle.slice(1)}</b><span>⋮</span></div>
+            <div className="phone-head"><b>{reelHandle.replace(/^@/, '')}</b><span>⋮</span></div>
             <div className={`phone-video market-${reel.market}`}><button onClick={() => notify('Превʼю відео буде доступне після підключення медіа')}>▶</button><strong>GLOBAL<br />TO UA</strong></div>
             <div className="phone-stats"><span>{reel.views}<br /><small>Перегл.</small></span><span>{reel.likes}<br /><small>Лайки</small></span><span>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
