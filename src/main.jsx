@@ -427,8 +427,8 @@ function App() {
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} />}
       </main>
       <ProductTour page={page} setPage={setPage} currentUser={currentUser} dataReady={Boolean(data)} language={language} onOpenSidebar={() => setIsSidebarOpen(true)} onCloseSidebar={() => setIsSidebarOpen(false)} />
-      {modal === 'reel'
-        ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} />
+      {modal?.type === 'reel' || modal === 'reel'
+        ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} initialUrl={typeof modal === 'object' ? modal.url : ''} />
         : modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -1571,13 +1571,15 @@ function ViralBank({ reels, market, notify, openModal }) {
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [tab, setTab] = useState('all');
   const [previewReel, setPreviewReel] = useState(null);
+  const pastedReelUrl = /instagram\.com\/(reel|reels|p)\//i.test(query.trim()) ? query.trim() : '';
   const filteredReels = reels
-    .filter((reel) => `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+    .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .filter((reel) => tab === 'all' || (tab === 'review' ? reel.status.some((status) => status.includes('розбір') || status.includes('огляд')) : reel.status.some((status) => status.toLowerCase().includes(tab))))
     .sort((a, b) => {
       if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
       return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
     });
+  const openManualImport = () => openModal({ type: 'reel', url: pastedReelUrl });
 
   const toggleScoreSort = () => {
     setSort('score');
@@ -1618,10 +1620,19 @@ function ViralBank({ reels, market, notify, openModal }) {
         actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати рілс вручну</button></>}
       />
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: рілс, акаунт, сигнал, ніша, ринок..." /></label>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && openManualImport()} placeholder="Пошук або встав Reels-посилання..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
+      {pastedReelUrl && (
+        <div className="reel-link-import">
+          <div>
+            <strong>Знайшов Reels-посилання</strong>
+            <span>Instagram зараз не підключений, але ти можеш адаптувати цей рілс вручну: додай caption або транскрипт, і Джеро відкриє ремікс-студію.</span>
+          </div>
+          <button className="dark" type="button" onClick={openManualImport}><Wand2 size={16} />Адаптувати цей Reels</button>
+        </div>
+      )}
       <Tabs active={tab} onChange={setTab} items={[['all', `Для тебе ${filteredReels.length}`], ['trend', 'Тренди'], ['кейс', 'Кейси'], ['адапт', 'Адаптації'], ['review', 'Потрібен огляд']]} />
       <div className="trends-table-wrap">
         <ReelsTable reels={filteredReels} scoreSortDirection={scoreSortDirection} onToggleScoreSort={toggleScoreSort} onOpenPreview={setPreviewReel} />
@@ -3145,9 +3156,9 @@ function QuickModal({ type, onClose, onSubmit }) {
   );
 }
 
-function ManualReelModal({ onClose, onSubmit, defaultMarket }) {
+function ManualReelModal({ onClose, onSubmit, defaultMarket, initialUrl = '' }) {
   const [form, setForm] = useState({
-    url: '',
+    url: initialUrl,
     handle: '@manual.source',
     market: defaultMarket || 'global',
     title: '',

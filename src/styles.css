@@ -8212,6 +8212,41 @@ button.dark,
   min-height: 36px !important;
 }
 
+.reel-link-import {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 0 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.reel-link-import div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reel-link-import strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.reel-link-import span {
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.reel-link-import button {
+  flex: 0 0 auto;
+}
+
 .manual-reel-modal {
   width: min(680px, calc(100vw - 28px));
 }
@@ -8263,6 +8298,15 @@ button.dark,
 }
 
 @media (max-width: 640px) {
+  .reel-link-import {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .reel-link-import button {
+    width: 100%;
+  }
+
   .manual-reel-grid {
     grid-template-columns: 1fr;
   }
