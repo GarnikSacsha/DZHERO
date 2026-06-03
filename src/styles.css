@@ -12,9 +12,9 @@
   --brand-cyan-glow: rgba(135, 206, 235, 0.4);
   --brand-indigo: #4F4F4F;
   --brand-indigo-glow: transparent;
-  --brand-violet: #A7FFEB;
-  --brand-emerald: #A7FFEB;
-  --brand-emerald-glow: rgba(167, 255, 235, 0.3);
+  --brand-violet: #2563eb;
+  --brand-emerald: #0f766e;
+  --brand-emerald-glow: rgba(15, 118, 110, 0.18);
   --brand-red: #E07F7A;
   --accent: var(--brand-cyan);
 
@@ -31,9 +31,9 @@
   --border-soft: #F8F8F8;
   --control: #F2F2F2;
   --dark: #87CEEB;
-  --dark-text: #FAF8F5;
-  --success: #A7FFEB;
-  --success-bg: rgba(167, 255, 235, 0.15);
+  --dark-text: #0f172a;
+  --success: #0f766e;
+  --success-bg: rgba(13, 148, 136, 0.12);
   --shadow: 0 4px 20px -8px rgba(135, 206, 235, 0.08);
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -7864,4 +7864,278 @@ nav button:hover,
 .app.auth-app[data-theme="light"] .auth-brand {
   border-color: rgba(135, 206, 235, 0.45) !important;
   background: #f8fafc !important;
+}
+
+/* Final contrast pass for both themes. Keep this near the end so it wins older overrides. */
+[data-theme="light"] {
+  --contrast-label: #115e59;
+  --contrast-label-bg: #ccfbf1;
+  --contrast-label-border: #5eead4;
+  --contrast-chip: #334155;
+  --contrast-chip-bg: #f8fafc;
+  --contrast-chip-border: #cbd5e1;
+}
+
+[data-theme="dark"] {
+  --contrast-label: #ccfbf1;
+  --contrast-label-bg: #14332f;
+  --contrast-label-border: #256c61;
+  --contrast-chip: #e5edf6;
+  --contrast-chip-bg: #111827;
+  --contrast-chip-border: #263244;
+}
+
+.entity-grid code,
+.env-card code,
+.instagram-pending code,
+.public-legal code {
+  color: var(--contrast-label) !important;
+  background: var(--contrast-label-bg) !important;
+  border: 1px solid var(--contrast-label-border) !important;
+}
+
+.status-list em,
+.status-badge,
+.comp-row em,
+.chips span,
+.business-tags em,
+.lead-table em,
+.idea-top > span,
+.idea-meta em,
+.source-card em,
+.metric-table em,
+.mini-stack span,
+.team-card em,
+.agent-step em,
+.calendar-grid em,
+.remix-skeleton-card em,
+.analytics-layout .metric-table em,
+.table-card .status-list em,
+.ideas-layout .idea-panel .status-list em,
+.agent-status-cards span,
+.home-badges span {
+  color: var(--contrast-label) !important;
+  background: var(--contrast-label-bg) !important;
+  border: 1px solid var(--contrast-label-border) !important;
+}
+
+.pill,
+.chip,
+.score-badge,
+.metric-badge,
+.checklist-status,
+.team-checklist-status,
+.nav-badge.mvp,
+.market-buttons button,
+.tabs button,
+.auth-tabs button,
+.actions button:not(.dark),
+.assistant-actions button:not(.dark),
+.idea-actions button,
+.remix-script-actions button,
+.calendar-top button {
+  color: var(--contrast-chip) !important;
+  background: var(--contrast-chip-bg) !important;
+  border-color: var(--contrast-chip-border) !important;
+}
+
+.pill.active,
+.tabs button.active,
+.auth-tabs button.active,
+.market-buttons button.active,
+.language-switch button.active {
+  color: var(--dark-text) !important;
+  background: var(--dark) !important;
+  border-color: var(--dark) !important;
+}
+
+button.dark,
+.actions button.dark,
+.submit-button,
+.auth-submit {
+  color: var(--dark-text) !important;
+  background: var(--dark) !important;
+  border-color: var(--dark) !important;
+}
+
+[data-theme="light"] .badge-neutral {
+  color: #334155 !important;
+  background: #e2e8f0 !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .badge-success {
+  color: #ffffff !important;
+  background: #15803d !important;
+  border-color: #166534 !important;
+}
+
+.page-home .home-primary-cta,
+.remix-empty-cta,
+.page-businesses .business-card.selected .playbook-tag {
+  color: #ffffff !important;
+  background: #0369a1 !important;
+  border-color: #075985 !important;
+  box-shadow: 0 12px 28px -10px rgba(3, 105, 161, 0.55) !important;
+}
+
+.page-home .home-primary-cta:hover:not(:disabled),
+.remix-empty-cta:hover,
+.page-businesses .business-card.selected .playbook-tag:hover {
+  color: #ffffff !important;
+  background: #075985 !important;
+  border-color: #0c4a6e !important;
+}
+
+[data-theme="dark"] .page-home .home-primary-cta,
+[data-theme="dark"] .remix-empty-cta,
+[data-theme="dark"] .page-businesses .business-card.selected .playbook-tag {
+  color: #082f49 !important;
+  background: #7dd3fc !important;
+  border-color: #38bdf8 !important;
+  box-shadow: 0 12px 28px -10px rgba(125, 211, 252, 0.5) !important;
+}
+
+[data-theme="dark"] .page-home .home-primary-cta:hover:not(:disabled),
+[data-theme="dark"] .remix-empty-cta:hover,
+[data-theme="dark"] .page-businesses .business-card.selected .playbook-tag:hover {
+  color: #082f49 !important;
+  background: #bae6fd !important;
+  border-color: #7dd3fc !important;
+}
+
+nav button {
+  color: #475569 !important;
+}
+
+nav button svg {
+  color: #64748b !important;
+}
+
+nav button:hover,
+nav button.active {
+  color: #0f172a !important;
+  background: #e0f2fe !important;
+}
+
+[data-theme="light"] nav button:hover,
+[data-theme="light"] nav button.active {
+  color: #0f172a !important;
+  background: #dbeafe !important;
+}
+
+nav button:hover svg,
+nav button.active svg {
+  color: #075985 !important;
+}
+
+[data-theme="light"] nav button:hover svg,
+[data-theme="light"] nav button.active svg {
+  color: #1d4ed8 !important;
+}
+
+nav button.active::before {
+  background: #0284c7 !important;
+}
+
+[data-theme="light"] nav button.active::before {
+  background: #2563eb !important;
+}
+
+[data-theme="dark"] nav button {
+  color: #b6c2d1 !important;
+}
+
+[data-theme="dark"] nav button svg {
+  color: #93a4b8 !important;
+}
+
+[data-theme="dark"] nav button:hover,
+[data-theme="dark"] nav button.active {
+  color: #f8fafc !important;
+  background: #111827 !important;
+}
+
+[data-theme="dark"] nav button:hover svg,
+[data-theme="dark"] nav button.active svg {
+  color: #7dd3fc !important;
+}
+
+[data-theme="dark"] nav button.active::before {
+  background: #7dd3fc !important;
+}
+
+.thumb {
+  color: #ffffff !important;
+}
+
+.thumb span,
+.thumb .thumb-play,
+.thumb .thumb-play::before {
+  color: #ffffff !important;
+}
+
+[data-theme="light"] .page-businesses .business-tags button {
+  color: #f8fafc !important;
+  background: #111827 !important;
+  border-color: #334155 !important;
+}
+
+[data-theme="light"] .page-businesses .business-tags button:hover,
+[data-theme="light"] .page-businesses .business-tags button.active {
+  color: #ffffff !important;
+  background: #075985 !important;
+  border-color: #0369a1 !important;
+}
+
+[data-theme="light"] .idea-actions .idea-outline-button {
+  color: #0f172a !important;
+  background: #ffffff !important;
+  border-color: #cbd5e1 !important;
+}
+
+[data-theme="light"] .idea-actions .idea-outline-button:hover {
+  color: #075985 !important;
+  background: #e0f2fe !important;
+  border-color: #38bdf8 !important;
+}
+
+.badge-success {
+  color: #ffffff !important;
+  background: #15803d !important;
+  border-color: #166534 !important;
+}
+
+[data-theme="dark"] .badge-success {
+  color: #dcfce7 !important;
+  background: #14532d !important;
+  border-color: #166534 !important;
+}
+
+[data-theme="light"] .ideas-layout .idea-top > span,
+[data-theme="light"] .ideas-layout .idea-meta em,
+[data-theme="light"] .ideas-layout .idea-panel .status-list em,
+[data-theme="light"] .remix-skeleton-card em,
+[data-theme="light"] .remix-skeleton-card span {
+  color: #115e59 !important;
+  background: #ccfbf1 !important;
+  border-color: #5eead4 !important;
+}
+
+.phone-video button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  color: #ffffff !important;
+  background: rgba(15, 23, 42, 0.78) !important;
+  border: 1px solid rgba(255, 255, 255, 0.55) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+
+.phone-video button:hover {
+  color: #ffffff !important;
+  background: #0369a1 !important;
+  border-color: #7dd3fc !important;
 }
