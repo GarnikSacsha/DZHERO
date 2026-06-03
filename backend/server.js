@@ -1105,6 +1105,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       workspaceId: req.params.workspaceId,
       sourceId: null,
       sourceHandle: metadata.handle,
+      handle: metadata.handle,
       sourceUrl: url,
       sourceStatus: metadata.sourceStatus,
       market: req.body.market || 'global',
