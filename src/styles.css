@@ -8139,3 +8139,75 @@ nav button.active::before {
   background: #0369a1 !important;
   border-color: #7dd3fc !important;
 }
+
+.table-card {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+}
+
+.table-card .reels-grid {
+  width: 100% !important;
+  min-width: 980px !important;
+  grid-template-columns:
+    minmax(260px, 1.75fr)
+    minmax(130px, 0.9fr)
+    62px
+    74px
+    58px
+    58px
+    minmax(150px, 1fr) !important;
+}
+
+.table-card .comp-grid {
+  width: 100% !important;
+  min-width: 940px !important;
+  grid-template-columns:
+    minmax(190px, 1.2fr)
+    minmax(220px, 1.35fr)
+    54px
+    82px
+    66px
+    92px
+    minmax(96px, 0.8fr) !important;
+}
+
+.table-card .status-list {
+  flex-wrap: wrap !important;
+  overflow: visible !important;
+}
+
+.table-card .status-list em {
+  max-width: 100% !important;
+}
+
+@media (max-width: 1100px) {
+  .table-card .reels-grid,
+  .table-card .comp-grid {
+    width: max-content !important;
+  }
+}
+
+.page-title .actions button,
+.assistant-actions button,
+.assistant-tools button,
+.assistant-input button,
+.remix-script-actions button,
+.calendar-top button,
+.idea-actions button,
+.market-buttons button {
+  min-height: 34px !important;
+  line-height: 1.2 !important;
+}
+
+.score-sort-button {
+  min-height: 32px !important;
+  padding: 0 6px !important;
+}
+
+button.dark,
+.actions button.dark,
+.submit-button,
+.auth-submit {
+  min-height: 36px !important;
+}

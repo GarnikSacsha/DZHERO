@@ -384,7 +384,7 @@ function App() {
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} />
+        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setPage} workspaceId={workspaceId} language={language} />}
         {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
@@ -519,7 +519,10 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
     });
 
     const prepareTarget = async (selector, nextPage) => {
-      if (window.innerWidth < 860) openSidebarRef.current?.();
+      if (window.innerWidth < 860) {
+        if (selector === '[data-tour="topbar-settings"]') closeSidebarRef.current?.();
+        else openSidebarRef.current?.();
+      }
       const toolsTarget = ['[data-tour="sidebar-launches"]', '[data-tour="sidebar-analytics"]', '[data-tour="sidebar-legal"]', '[data-tour="sidebar-budget"]'];
       if (toolsTarget.includes(selector)) {
         const toolsToggle = document.querySelector('[data-tour="sidebar-tools"]');
@@ -558,19 +561,21 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
       closeSidebarRef.current?.();
     };
 
+    let tour = null;
+
     const commonButtons = (includeBack = true, last = false) => [
       includeBack ? {
         text: copy.back,
         classes: 'tour-btn tour-btn-muted',
         action() {
-          return this.back();
+          return tour.back();
         },
       } : {
         text: copy.skip,
         classes: 'tour-btn tour-btn-link',
         action() {
           completeTour();
-          return this.cancel();
+          return tour.cancel();
         },
       },
       {
@@ -579,14 +584,14 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
         action() {
           if (last) {
             completeTour();
-            return this.complete();
+            return tour.complete();
           }
-          return this.next();
+          return tour.next();
         },
       },
     ];
 
-    const tour = new Shepherd.Tour({
+    tour = new Shepherd.Tour({
       useModalOverlay: true,
       defaultStepOptions: {
         cancelIcon: { enabled: true },
@@ -1263,7 +1268,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   );
 }
 
-function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu }) {
+function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
   return (
     <header className="topbar">
       <div className="topbar-title">
@@ -1273,7 +1278,7 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
         <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
       </div>
       <div className="top-actions">
-        <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => setPage('settings')}><Settings size={16} /></button>
+        <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
         <div className="language-switch" aria-label="Interface language">
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
           <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
