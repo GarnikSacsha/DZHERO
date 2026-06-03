@@ -69,6 +69,10 @@ function getPublicPage() {
   }[path] || null;
 }
 
+function getInitialAppPage() {
+  return window.location.pathname.replace(/\/$/, '') === '/admin/dev-roadmap' ? 'roadmap' : 'home';
+}
+
 function PublicLegalPage({ page }) {
   const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
   const [deletionResult, setDeletionResult] = useState(null);
@@ -170,7 +174,7 @@ function PublicLegalPage({ page }) {
 }
 
 function App() {
-  const [page, setPage] = useState('home');
+  const [page, setPage] = useState(getInitialAppPage);
   const [market, setMarket] = useState('all');
   const [data, setData] = useState(null);
   const [modal, setModal] = useState(null);
@@ -396,21 +400,28 @@ function App() {
   };
   const generateFreshIdea = () => {
     const topReel = [...filtered.reels].sort((a, b) => b.score - a.score)[0];
-    const prompt = [
-      'Знайди одну актуальну ідею для контенту на зараз.',
-      'Використай Brand Brain бізнесу, поточну аналітику рілсів і конкурентів.',
-      topReel ? `Головний сигнал з банку рілсів: "${topReel.title}" від ${topReel.handle}, ринок ${marketLabel(topReel.market)}, скор ${topReel.score}, перегляди ${topReel.views}.` : '',
-      'Дай відповідь коротко і практично:',
-      '1. Назва ідеї.',
-      '2. Чому саме зараз це може спрацювати.',
-      '3. Хук для першого кадру.',
-      '4. Сценарій на 20-30 секунд.',
-      '5. CTA.',
-      '6. Що зняти без великого продакшну.',
-    ].filter(Boolean).join('\n');
-    setAssistantAutoPrompt({ id: Date.now(), text: prompt });
-    setPage('assistant');
-    notify('Шукаю одну актуальну ідею за сигналами трендів');
+    const source = topReel || data.reels[0];
+    const ideas = [
+      ['Reels', `Розбір механіки: ${source?.title || 'новий тренд'}`, 'Хук → доказ → CTA в Direct'],
+      ['Stories', 'Опитування по болю аудиторії', '2 варіанти відповіді + збір запитів'],
+      ['Post', 'Кейс або помилка тижня', 'Один висновок і коментар як CTA'],
+      ['Reels', 'До / після для продукту', 'Показати простий контраст без студії'],
+      ['Stories', 'FAQ для теплих лідів', '3 відповіді на часті заперечення'],
+      ['Reels', 'Міні-чеклист за 15 секунд', 'Зберегти або написати ключове слово'],
+      ['Post', 'Підсумок тижня / proof', 'Цифра, скрін або процес'],
+    ];
+    const generated = ideas.map(([format, title, hook], index) => ({
+      market: market === 'all' ? 'ua' : market,
+      title,
+      source: source?.handle || 'scouting',
+      angle: `${format}: ${hook}`,
+      hook,
+      score: Math.max(72, Number(source?.score || 78) - index),
+      effort: index < 3 ? 'Низька' : 'Середня',
+      status: 'До реміксу',
+    }));
+    setData((current) => ({ ...current, ideas: [...generated, ...current.ideas] }));
+    notify('Зібрано 7 ідей на тиждень за сигналами трендів');
   };
   const switchWorkspace = (nextWorkspaceId) => {
     const workspace = DEMO_WORKSPACES.find((item) => item.id === nextWorkspaceId) || DEMO_WORKSPACES[0];
@@ -514,7 +525,6 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
     const fullSteps = locale === 'en'
       ? [
         ['home', '[data-tour="sidebar-home"]', 'home', 'right', 'Step 1: Command center', 'Home is the cockpit: it shows the main workflow, the next action, and the fastest way to get an idea.'],
-        ['roadmap', '[data-tour="sidebar-roadmap"]', 'roadmap', 'right', 'Step 2: MVP / Spec', 'This is the product map: what is already in the MVP, what comes later, and how the system is supposed to work.'],
         ['businesses', '[data-tour="sidebar-businesses"]', 'businesses', 'right', 'Step 3: Businesses', 'Business profiles help adapt content for different niches instead of giving generic advice.'],
         ['strategy', '[data-tour="sidebar-strategy"]', 'strategy', 'right', 'Step 4: Strategy', 'Strategy keeps positioning, audience, offer, and content direction in one place.'],
         ['viral', '[data-tour="sidebar-transcript"]', 'viral', 'right', 'Step 5: Trend analytics', 'Here AI collects viral Reels and turns global signals into ideas that make sense for a Ukrainian audience.'],
@@ -535,7 +545,6 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
       ]
       : [
         ['home', '[data-tour="sidebar-home"]', 'home', 'right', 'Крок 1: Центр керування', 'Головна — це пульт керування: тут видно основний шлях, наступну дію і найшвидший старт для пошуку ідеї.'],
-        ['roadmap', '[data-tour="sidebar-roadmap"]', 'roadmap', 'right', 'Крок 2: MVP / ТЗ', 'Тут карта продукту: що вже є в MVP, що буде пізніше і як система має працювати.'],
         ['businesses', '[data-tour="sidebar-businesses"]', 'businesses', 'right', 'Крок 3: Бізнеси', 'Бізнес-профілі допомагають адаптувати контент під різні ніші, а не давати однакові поради всім.'],
         ['strategy', '[data-tour="sidebar-strategy"]', 'strategy', 'right', 'Крок 4: Стратегія', 'Стратегія тримає позиціонування, аудиторію, офер і напрям контенту в одному місці.'],
         ['viral', '[data-tour="sidebar-transcript"]', 'viral', 'right', 'Крок 5: Аналітика трендів', 'Тут AI збирає віральні Reels і перетворює глобальні сигнали на ідеї для української аудиторії.'],
@@ -1084,7 +1093,6 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
   };
   const items = [
     ['home', Home, 'Головна', 'core'],
-    ['roadmap', ClipboardList, 'MVP / ТЗ', 'core'],
     ['businesses', BriefcaseBusiness, 'Бізнеси', 'later'],
     ['strategy', Target, 'Стратегія', 'later'],
     ['viral', Flame, 'Аналітика трендів', 'mvp'],
@@ -1180,7 +1188,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   const [isToolsOpen, setIsToolsOpen] = useState(false);
   const tourTargets = {
     home: 'sidebar-home',
-    roadmap: 'sidebar-roadmap',
     businesses: 'sidebar-businesses',
     strategy: 'sidebar-strategy',
     viral: 'sidebar-transcript',
@@ -1200,7 +1207,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   const labels = language === 'en'
     ? {
       home: 'Home',
-      roadmap: 'MVP / Spec',
       businesses: 'Businesses',
       strategy: 'Strategy',
       viral: 'Trend analytics',
@@ -1220,7 +1226,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     }
     : {
       home: 'Головна',
-      roadmap: 'MVP / ТЗ',
       businesses: 'Бізнеси',
       strategy: 'Стратегія',
       viral: 'Аналітика трендів',
@@ -1240,7 +1245,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     };
   const primaryItems = [
     ['home', Home],
-    ['roadmap', ClipboardList],
     ['businesses', BriefcaseBusiness],
     ['strategy', Target],
     ['viral', Flame],
@@ -1435,14 +1439,12 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
       <PageTitle
         title="Головна"
         subtitle="Операційний центр Instagram-продюсера: глобальний scouting і адаптація ідей під українську аудиторію."
-        actions={<button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Знайти ідею зараз</button>}
       />
       <div className="home-grid">
         <article className="home-hero">
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
-          <p>Система аналізує рілси в Україні, США, Європі та global-нішах, після чого адаптує механіку під український вступ, текст і контент-план.</p>
-          <div className="home-badges"><span>Global scouting</span><span>UA-first output</span><span>Kyiv time</span></div>
+          <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
         </article>
         <div className="home-stats">
           {[
@@ -1459,15 +1461,17 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           ))}
         </div>
       </div>
-      <div className="ops-strip">
-        {onboardingSteps.map(([step, title, text, done, target]) => (
-          <article className={done ? 'completed' : ''} key={step} onClick={() => { setPage(target); notify(done ? `${title}: виконано` : `${title}: відкрив наступний крок`); }}>
-            <span className="step-progress">{done ? '✓' : step}</span>
-            <strong>{title}</strong>
-            <p>{text}</p>
-          </article>
-        ))}
-      </div>
+      {!onboarding.instagramConnected && (
+        <div className="ops-strip">
+          {onboardingSteps.map(([step, title, text, done, target]) => (
+            <article className={done ? 'completed' : ''} key={step} onClick={() => { setPage(target); notify(done ? `${title}: виконано` : `${title}: відкрив наступний крок`); }}>
+              <span className="step-progress">{done ? '✓' : step}</span>
+              <strong>{title}</strong>
+              <p>{text}</p>
+            </article>
+          ))}
+        </div>
+      )}
       <div className="home-columns">
         <article className="insight-card">
           <small>Пріоритетний сигнал</small>
@@ -1840,7 +1844,6 @@ function StrategyBrain({ notify, setPage }) {
         <article className="strategy-hero">
           <small>Позиціонування</small>
           <h2>Система для SMM і продюсерів, яка веде акаунт від ніші до продажу.</h2>
-          <p>Система має розуміти, кому продає блогер, який офер, які болі аудиторії, як говорити і які формати даватимуть не тільки охоплення, а й заявки.</p>
           <div className="home-badges">{voice.map((item) => <span key={item}>{item}</span>)}</div>
         </article>
         <div className="strategy-cards">
@@ -2815,6 +2818,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
 
 function LaunchRoadmap({ notify, setPage, workspaceId }) {
   const [activeStep, setActiveStep] = useState(null);
+  const [generatedLaunch, setGeneratedLaunch] = useState([]);
   const stepRefs = useRef({});
   const steps = [
     ['1', 'Точка Б', 'Текст: покажи результат після запуску. Наклейка: “хочу так само?”. Візуал: скрін результату або до/після.'],
@@ -2839,6 +2843,16 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   ], []);
   const launchChecklist = useChecklistState('launches', checklistLabels, notify, 'Done', workspaceId);
   const isFomoVisible = activeStep === '9';
+  const generateLaunch = () => {
+    const grid = steps.slice(0, 7).map(([day, title, text], index) => ({
+      day,
+      title,
+      format: index % 3 === 0 ? 'Reels' : index % 3 === 1 ? 'Stories' : 'Post',
+      note: text.split('. ')[0],
+    }));
+    setGeneratedLaunch(grid);
+    notify('Сітку прогріву сформовано на поточному екрані');
+  };
 
   useEffect(() => {
     const stepNine = stepRefs.current['9'];
@@ -2874,8 +2888,19 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
       <PageTitle
         title="Запуски"
         subtitle="Конструктор прогріву на 11 кроків: конкретні сценарії для сторіс, Reels, постів, тригерів, CTA і дедлайнів."
-        actions={<><button onClick={() => { setActiveStep('9'); notify('Показав FOMO-тригери для 9-го етапу'); }}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={() => { setPage('plan'); notify('Відкрив контент-план для запуску'); }}><Rocket size={16} />Сформувати запуск</button></>}
+        actions={<><button onClick={() => { setActiveStep('9'); notify('Показав FOMO-тригери для 9-го етапу'); }}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={generateLaunch}><Rocket size={16} />Сформувати запуск</button></>}
       />
+      {generatedLaunch.length > 0 && (
+        <div className="launch-generated-grid">
+          {generatedLaunch.map((item) => (
+            <article className="insight-card" key={`${item.day}-${item.title}`}>
+              <small>День {item.day} · {item.format}</small>
+              <h3>{item.title}</h3>
+              <p>{item.note}</p>
+            </article>
+          ))}
+        </div>
+      )}
       <div className="launch-layout">
         <div className="launch-roadmap">
           {steps.map(([day, title, text]) => (
@@ -2920,24 +2945,141 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
 }
 
 function ContentPlan({ plans, openModal, notify }) {
-  const days = useMemo(() => Array.from({ length: 35 }, (_, i) => i + 1), []);
+  const today = new Date();
+  const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [modalDay, setModalDay] = useState(null);
+  const [draft, setDraft] = useState({ title: '', format: 'Reels', time: '10:00' });
+  const [posts, setPosts] = useState(() => plans.map((plan, index) => ({
+    id: `seed-${index}`,
+    day: Math.min(index + 3, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()),
+    title: plan[0],
+    format: index % 3 === 0 ? 'Reels' : index % 3 === 1 ? 'Stories' : 'Post',
+    time: index % 2 === 0 ? '10:00' : '18:30',
+    done: false,
+  })));
+  const monthLabel = calendarDate.toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' });
+  const daysInMonth = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate();
+  const firstWeekday = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay();
+  const days = useMemo(() => [
+    ...Array.from({ length: firstWeekday }, (_, index) => ({ type: 'empty', id: `empty-${index}` })),
+    ...Array.from({ length: daysInMonth }, (_, index) => ({ type: 'day', day: index + 1 })),
+  ], [daysInMonth, firstWeekday]);
+  const doneCount = posts.filter((post) => post.done).length;
+  const openPostModal = (day = today.getDate()) => {
+    setModalDay(Math.min(Math.max(day, 1), daysInMonth));
+    setDraft({ title: '', format: 'Reels', time: '10:00' });
+  };
+  const createPost = () => {
+    if (!draft.title.trim()) return;
+    setPosts((current) => [...current, {
+      id: `post-${Date.now()}`,
+      day: modalDay,
+      title: draft.title.trim(),
+      format: draft.format,
+      time: draft.time,
+      done: false,
+    }]);
+    setModalDay(null);
+    notify('Пост додано в календар');
+  };
+  const movePost = (postId, day) => {
+    setPosts((current) => current.map((post) => (post.id === postId ? { ...post, day } : post)));
+    notify(`Пост перенесено на ${day} число`);
+  };
+  const toggleDone = (postId) => {
+    setPosts((current) => current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post)));
+  };
+
   return (
     <section className="page page-content-plan">
-      <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі за київським часом." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openModal('post')}><Plus size={16} />Новий пост</button></>} />
+      <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
       <div className="stats">
-        {['Усього 4', 'Готово в batch 4', 'Знято 0', 'Опубліковано 0', 'Потрібен розбір 0'].map((item) => <div key={item}><span>{item.split(' ').slice(0, -1).join(' ')}</span><strong>{item.split(' ').at(-1)}</strong></div>)}
+        {[
+          ['Усього', posts.length],
+          ['Готово в batch', posts.length],
+          ['Знято', doneCount],
+          ['Опубліковано', doneCount],
+          ['Потрібен розбір', posts.length - doneCount],
+        ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
       <div className="calendar-layout">
         <div className="calendar-card">
-          <div className="calendar-top"><ChevronLeft size={16} /><strong>Травень 2026</strong><button onClick={() => notify('Повернулись до сьогодні')}>Сьогодні</button><div className="legend"><span>Відібрано</span><span>У batch</span><span>Знято</span><span>Залито</span></div></div>
+          <div className="calendar-top"><ChevronLeft size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>Сьогодні</button><div className="legend"><span>План</span><span>Done</span><span>Drag</span></div></div>
           <div className="weekdays">{['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ'].map((d) => <b key={d}>{d}</b>)}</div>
-          <div className="calendar-grid">{days.map((day) => <div key={day}><span>{day}</span>{day === 9 && <em>1</em>}</div>)}</div>
+          <div className="calendar-grid">
+            {days.map((cell) => cell.type === 'empty' ? <div className="calendar-empty" key={cell.id} /> : (
+              <div
+                className="calendar-day"
+                key={cell.day}
+                onClick={() => openPostModal(cell.day)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const postId = event.dataTransfer.getData('text/plain');
+                  if (postId) movePost(postId, cell.day);
+                }}
+              >
+                <span>{cell.day}</span>
+                <div className="calendar-posts">
+                  {posts.filter((post) => post.day === cell.day).map((post) => (
+                    <article
+                      className={post.done ? 'calendar-post done' : 'calendar-post'}
+                      key={post.id}
+                      draggable
+                      onClick={(event) => event.stopPropagation()}
+                      onDragStart={(event) => event.dataTransfer.setData('text/plain', post.id)}
+                    >
+                      <label>
+                        <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
+                        <em>{post.format}</em>
+                      </label>
+                      <strong>{post.title}</strong>
+                      <small>{post.time}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
         <aside className="right-panel plan-panel">
-          <div className="panel-title"><strong>Планові пости</strong><span>1</span></div>
-          {plans.map((plan) => <article className="mini-card" key={plan[0]}><div className="mini-thumb" /><div><strong>{plan[0]}</strong><small>{plan[1]} · {plan[2]}</small></div></article>)}
+          <div className="panel-title"><strong>Планові пости</strong><span>{posts.length}</span></div>
+          {posts.map((post) => <article className={post.done ? 'mini-card done' : 'mini-card'} key={post.id}><div className="mini-thumb" /><div><strong>{post.title}</strong><small>{post.day} · {post.time} · {post.format}</small></div></article>)}
         </aside>
       </div>
+      {modalDay && (
+        <div className="modal-backdrop" onClick={() => setModalDay(null)}>
+          <div className="quick-modal calendar-post-modal" onClick={(event) => event.stopPropagation()}>
+            <h2>Новий пост</h2>
+            <div className="calendar-post-form">
+              <label>
+                <span>Дата</span>
+                <input value={`${modalDay} ${monthLabel}`} readOnly />
+              </label>
+              <label>
+                <span>Час</span>
+                <input type="time" value={draft.time} onChange={(event) => setDraft((current) => ({ ...current, time: event.target.value }))} />
+              </label>
+              <label>
+                <span>Формат</span>
+                <select value={draft.format} onChange={(event) => setDraft((current) => ({ ...current, format: event.target.value }))}>
+                  <option>Reels</option>
+                  <option>Stories</option>
+                  <option>Post</option>
+                </select>
+              </label>
+              <label className="wide">
+                <span>Текст / тема</span>
+                <textarea autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Перша строчка майбутнього поста" />
+              </label>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setModalDay(null)}>Скасувати</button>
+              <button className="dark" onClick={createPost}>Додати в календар</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -3007,11 +3149,6 @@ function SalesDirect({ notify, setPage }) {
         actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для налаштування AI Direct'); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
       />
       <div className="sales-layout">
-        <article className="sales-card">
-          <small>Правило безпеки</small>
-          <h2>AI допомагає продавати 24/7, але критичні відповіді й оплати мають проходити через правила бренду.</h2>
-          <p>Асистент відповідає у Tone of Voice, збирає намір, тегує ліда і пропонує наступний крок: консультація, вебінар, оплата або ручний менеджер.</p>
-        </article>
         <div className="sales-stats">
           <div><span>Нові ліди</span><strong>38</strong></div>
           <div><span>Гарячі</span><strong>9</strong></div>
@@ -3039,11 +3176,6 @@ function SalesDirect({ notify, setPage }) {
           </article>
         ))}
       </div>
-      <article className="insight-card sales-rules">
-        <small>Автоматизація без шуму</small>
-        <h3>Прості FAQ не створюють задачі продюсеру</h3>
-        <p>AI відповідає на часті питання одразу, але гарячі покупки, скарги, повернення, нестандартні умови й ризикові повідомлення передає людині з CRM-тегом і контекстом.</p>
-      </article>
     </section>
   );
 }
@@ -3118,19 +3250,57 @@ function DataSources({ sources, notify }) {
 }
 
 function LegalSafe({ notify }) {
+  const [editor, setEditor] = useState(null);
   const docs = [
     ['Партнерська угода', 'блогер + продюсер', 'частки, ролі, доступи, KPI, вихід із партнерства'],
     ['Договір підрядника', 'монтажер / дизайнер / таргетолог', 'дедлайни, правки, NDA, передача матеріалів'],
     ['Оферта продукту', 'курс / консультація / клуб', 'умови продажу, повернення, доступ, відповідальність'],
     ['Політика Direct', 'AI-асистент і менеджери', 'що можна обіцяти, коли передавати людині, стоп-теми'],
   ];
+  const buildTemplate = (title, type, text) => [
+    title,
+    '',
+    `Тип документа: ${type}`,
+    '',
+    '1. Сторони та предмет документа',
+    'Опиши учасників, роль кожної сторони та результат, який має бути переданий.',
+    '',
+    '2. Обсяг робіт / умови',
+    text,
+    '',
+    '3. Дедлайни, оплата, права на контент',
+    'Зафіксуй строки, суму, порядок погодження правок і хто володіє матеріалами після оплати.',
+    '',
+    '4. Безпека та обмеження',
+    'Додай стоп-теми, порядок передачі доступів, конфіденційність і ручне погодження ризикових рішень.',
+  ].join('\n');
+  const openTemplate = (doc) => {
+    const [title, type, text] = doc;
+    setEditor({ title, text: buildTemplate(title, type, text) });
+  };
+  const copyTemplate = async () => {
+    await navigator.clipboard?.writeText(editor.text);
+    notify('Шаблон скопійовано');
+  };
+  const downloadTemplate = () => {
+    const blob = new Blob([editor.text], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${editor.title.replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'dzhero-template'}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    notify('Шаблон завантажено');
+  };
 
   return (
     <section className="page">
       <PageTitle
         title="Юридичний сейф"
         subtitle="Шаблони документів і правила безпеки для запусків, партнерств, підрядників та AI Direct."
-        actions={<button className="dark" onClick={() => { window.open('/privacy', '_blank', 'noopener,noreferrer'); notify('Відкрив публічний legal-пакет у новій вкладці'); }}><ShieldCheck size={16} />Зібрати пакет</button>}
+        actions={<button className="dark" onClick={() => openTemplate(docs[0])}><ShieldCheck size={16} />Зібрати пакет</button>}
       />
       <div className="vault-grid">
         {docs.map(([title, type, text]) => (
@@ -3139,7 +3309,7 @@ function LegalSafe({ notify }) {
             <small>{type}</small>
             <h3>{title}</h3>
             <p>{text}</p>
-            <button onClick={() => notify(`${title}: чернетку шаблону створено`) }>Створити шаблон</button>
+            <button onClick={() => openTemplate([title, type, text])}>Створити шаблон</button>
           </article>
         ))}
       </div>
@@ -3148,18 +3318,41 @@ function LegalSafe({ notify }) {
         <h3>AI не замінює юриста, але готує структуру документа</h3>
         <p>Система збирає дані проекту, ролі, бюджет, терміни, права на контент і формує чернетку, яку можна передати юристу або власнику бізнесу на перевірку.</p>
       </article>
+      {editor && (
+        <div className="modal-backdrop" onClick={() => setEditor(null)}>
+          <div className="quick-modal legal-editor-modal" onClick={(event) => event.stopPropagation()}>
+            <h2>{editor.title}</h2>
+            <textarea value={editor.text} onChange={(event) => setEditor((current) => ({ ...current, text: event.target.value }))} />
+            <div className="modal-actions">
+              <button onClick={() => setEditor(null)}>Закрити</button>
+              <button onClick={copyTemplate}>Копіювати</button>
+              <button className="dark" onClick={downloadTemplate}>Скачати .doc</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
 
 function BudgetCalculator({ notify }) {
+  const [inputs, setInputs] = useState({ profit: 300000, avgCheck: 8500, cac: 900, production: 18000 });
+  const [model, setModel] = useState(() => calculateBudgetModel(inputs));
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setModel(calculateBudgetModel(inputs)), 250);
+    return () => window.clearTimeout(timer);
+  }, [inputs]);
+
+  const updateInput = (key, value) => {
+    setInputs((current) => ({ ...current, [key]: Math.max(0, Number(value || 0)) }));
+  };
+  const money = (value) => `₴${Math.round(value).toLocaleString('uk-UA')}`;
   const rows = [
-    ['Бажаний чистий прибуток', '₴300 000'],
-    ['Середній чек', '₴8 500'],
-    ['Потрібно продажів', '36'],
-    ['Плановий CAC', '₴900'],
-    ['Бюджет на трафік', '₴32 400'],
-    ['Продакшен', '₴18 000'],
+    ['Бажаний чистий прибуток', 'profit', inputs.profit],
+    ['Середній чек', 'avgCheck', inputs.avgCheck],
+    ['Плановий CAC', 'cac', inputs.cac],
+    ['Продакшен', 'production', inputs.production],
   ];
 
   return (
@@ -3167,29 +3360,48 @@ function BudgetCalculator({ notify }) {
       <PageTitle
         title="Бюджетний калькулятор"
         subtitle="Фінансова модель запуску: прибуток, CAC, трафік, продакшен, команда і точка окупності."
-        actions={<button className="dark" onClick={() => notify('Фінансову модель запуску перераховано')}><Calculator size={16} />Перерахувати</button>}
       />
       <div className="budget-layout">
         <article className="budget-hero">
           <small>План запуску</small>
-          <h2>Щоб заробити ₴300 000 чистими, потрібно 36 продажів і контроль CAC до ₴900.</h2>
-          <p>Калькулятор пов'язує контент і продажі: скільки охоплень треба, яка конверсія в Direct, скільки гарячих лідів потрібно менеджеру і який бюджет можна витратити без просадки ROI.</p>
+          <h2>Щоб заробити {money(inputs.profit)} чистими, потрібно {model.salesNeeded} продажів і контроль CAC до {money(inputs.cac)}.</h2>
         </article>
         <div className="budget-table">
-          {rows.map(([label, value]) => (
-            <div key={label}>
+          {rows.map(([label, key, value]) => (
+            <label className="budget-input-card" key={key}>
               <span>{label}</span>
-              <strong><Pencil size={14} />{value}</strong>
-            </div>
+              <input type="number" min="0" value={value} onChange={(event) => updateInput(key, event.target.value)} />
+            </label>
           ))}
+          <div><span>Потрібно продажів</span><strong>{model.salesNeeded}</strong></div>
+          <div><span>Бюджет на трафік</span><strong>{money(model.trafficBudget)}</strong></div>
         </div>
       <div className="budget-scenarios">
-        <article className="insight-card"><h3>Сценарій conservative</h3><p>Нижчий reach, CAC вище плану, потрібен довший прогрів і більше proof-контенту.</p></article>
-        <article className="insight-card"><h3>Сценарій aggressive</h3><p>Більше трафіку, швидший Direct, частина ризиків передається менеджеру й юридичному сейфу.</p></article>
+        <article className="insight-card"><h3>Сценарій conservative</h3><p>{model.conservative.sales} продажів · {money(model.conservative.budget)} трафік · CAC {money(model.conservative.cac)}</p></article>
+        <article className="insight-card"><h3>Сценарій aggressive</h3><p>{model.aggressive.sales} продажів · {money(model.aggressive.budget)} трафік · CAC {money(model.aggressive.cac)}</p></article>
       </div>
       </div>
     </section>
   );
+}
+
+function calculateBudgetModel(inputs) {
+  const salesNeeded = Math.max(1, Math.ceil((inputs.profit + inputs.production) / Math.max(1, inputs.avgCheck)));
+  const trafficBudget = salesNeeded * inputs.cac;
+  return {
+    salesNeeded,
+    trafficBudget,
+    conservative: {
+      sales: Math.ceil(salesNeeded * 1.18),
+      cac: Math.ceil(inputs.cac * 1.25),
+      budget: Math.ceil(trafficBudget * 1.32),
+    },
+    aggressive: {
+      sales: Math.max(1, Math.ceil(salesNeeded * 0.9)),
+      cac: Math.ceil(inputs.cac * 0.82),
+      budget: Math.ceil(trafficBudget * 0.78),
+    },
+  };
 }
 
 function TeamHub({ notify, workspaceId }) {
@@ -3246,7 +3458,7 @@ function TeamHub({ notify, workspaceId }) {
 function PageTitle({ title, subtitle, actions }) {
   return (
     <div className="page-title">
-      <div><h1>{title}</h1><p>{subtitle}</p></div>
+      <div><h1>{title}</h1>{subtitle && <p>{subtitle}</p>}</div>
       <div className="actions">{actions}</div>
     </div>
   );
