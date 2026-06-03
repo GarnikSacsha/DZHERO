@@ -4174,6 +4174,84 @@ nav button.active::before {
   line-height: 1.65;
 }
 
+.remix-variant-card ol {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.remix-script-timeline {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.remix-script-timeline article {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.remix-script-timeline span {
+  grid-row: span 2;
+  align-self: start;
+  width: fit-content;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.remix-script-timeline strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.remix-script-timeline p {
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.remix-checklist {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.remix-checklist span {
+  position: relative;
+  padding-left: 18px;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.remix-checklist span::before {
+  content: "";
+  position: absolute;
+  top: 0.55em;
+  left: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 @keyframes skeletonPulse {
   0%,
   100% {
@@ -8298,6 +8376,14 @@ button.dark,
 }
 
 @media (max-width: 640px) {
+  .remix-script-timeline article {
+    grid-template-columns: 1fr;
+  }
+
+  .remix-script-timeline span {
+    grid-row: auto;
+  }
+
   .reel-link-import {
     align-items: stretch;
     flex-direction: column;
