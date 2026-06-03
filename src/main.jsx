@@ -1983,13 +1983,76 @@ function Competitors({ competitors, openModal }) {
   );
 }
 
+function buildRemixScenario(reel) {
+  const sourceText = [reel.caption, reel.transcript, reel.angle, reel.title].filter(Boolean).join(' ').trim();
+  const hasSourceText = sourceText.length > 80;
+  const cleanTitle = (reel.title || 'Рілс для адаптації').replace('...', '').trim();
+  const sourceSentences = sourceText
+    .split(/[.!?\n]+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 14)
+    .slice(0, 4);
+  const coreSignal = sourceSentences[0] || cleanTitle;
+  const proofSignal = sourceSentences[1] || 'покажи реальний приклад, цифру або міні-кейс';
+  const frictionSignal = sourceSentences[2] || 'зніми заперечення: дорого, складно, немає часу або команди';
+  const cta = 'Напиши "ХОЧУ" в Direct або залиш коментар, і я надішлю шаблон під твою нішу.';
+
+  return {
+    quality: hasSourceText ? 'Є достатньо контексту для першого сценарію' : 'Потрібен caption або транскрипт, щоб сценарій став точнішим',
+    insight: hasSourceText
+      ? `Головна механіка: ${coreSignal}. Її треба перенести не дослівно, а через український біль, доказ і простий CTA.`
+      : 'Зараз є тільки загальна ідея/посилання, тому Джеро може зібрати структуру, але для сильного сценарію треба додати, що саме відбувається у відео.',
+    checklist: [
+      'Перший кадр: чіткий біль або несподіване твердження за 1-2 секунди.',
+      'Середина: 2-3 кадри з доказом, процесом або помилкою, яку глядач впізнає.',
+      'Фінал: локальний CTA без абстрактного "підписуйся" - коментар, Direct, чеклист, консультація.',
+    ],
+    script: [
+      {
+        time: '0-2 c',
+        frame: 'Крупний план / екран з проблемою',
+        voice: `Хук: "${coreSignal.length > 90 ? coreSignal.slice(0, 90) + '...' : coreSignal}"`,
+      },
+      {
+        time: '2-6 c',
+        frame: 'Покажи контраст "як роблять зараз" vs "як треба"',
+        voice: `Пояснення: ${proofSignal}. Дай один конкретний приклад з українського бізнесу.`,
+      },
+      {
+        time: '6-11 c',
+        frame: '3 швидкі кроки / чеклист на екрані',
+        voice: `Структура: проблема -> рішення -> доказ. ${frictionSignal}.`,
+      },
+      {
+        time: '11-15 c',
+        frame: 'Результат, скрін, відгук або короткий підсумок',
+        voice: `CTA: ${cta}`,
+      },
+    ],
+    variants: [
+      {
+        title: 'Варіант 1: біль клієнта',
+        hook: `Український бізнес втрачає заявки не через продукт, а через перші 2 секунди контенту.`,
+        structure: ['Назвати біль', 'Показати помилку на прикладі', 'Дати просту заміну кадру/тексту', cta],
+      },
+      {
+        title: 'Варіант 2: до / після',
+        hook: `Ось як перетворити чужу Reels-механіку на свій сценарій без копіювання.`,
+        structure: ['Показати оригінальну механіку словами', 'Замінити приклад на локальний', 'Додати доказ і CTA', 'Попросити нішу в коментарях'],
+      },
+      {
+        title: 'Варіант 3: заперечення',
+        hook: `“У нас це не спрацює” - найчастіша причина, чому бізнес не тестує нормальний Reels.`,
+        structure: ['Озвучити заперечення', 'Розбити його одним кейсом', 'Дати міні-скрипт', 'Закрити в Direct'],
+      },
+    ],
+  };
+}
+
 function RemixStudio({ reel, notify, setPage }) {
   const [adaptationState, setAdaptationState] = useState('idle');
-  const scenarioVariants = [
-    ['Варіант 1', 'Перший кадр: локальний біль бізнесу. Далі - короткий доказ, приклад з ніші та CTA на консультацію.'],
-    ['Варіант 2', 'Перший кадр: порівняння до/після. Далі - три кроки адаптації механіки під український ринок.'],
-    ['Варіант 3', 'Перший кадр: заперечення клієнта. Далі - відповідь через кейс, цифру і прямий CTA в Direct.'],
-  ];
+  const scenario = buildRemixScenario(reel);
+  const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
     setAdaptationState('loading');
     notify('Адаптація сценарію запущена');
@@ -1999,9 +2062,16 @@ function RemixStudio({ reel, notify, setPage }) {
     }, 1200);
   };
   const copyScenario = async () => {
-    const scenarioText = scenarioVariants
-      .map(([title, text]) => `${title}\n${text}`)
-      .join('\n\n');
+    const scenarioText = [
+      `Джерело: ${reel.handle}`,
+      `Ідея: ${reel.title}`,
+      '',
+      'Production script:',
+      ...scenario.script.map((step) => `${step.time}\nКадр: ${step.frame}\nТекст: ${step.voice}`),
+      '',
+      'Варіанти:',
+      ...scenarioVariants.map((variant) => `${variant.title}\nХук: ${variant.hook}\n${variant.structure.map((item, index) => `${index + 1}. ${item}`).join('\n')}`),
+    ].join('\n\n');
     const copyWithTextarea = () => {
       const textarea = document.createElement('textarea');
       textarea.value = scenarioText;
@@ -2054,22 +2124,29 @@ function RemixStudio({ reel, notify, setPage }) {
             <div className="chips"><span>Є сигнал</span><span>ринок: {marketLabel(reel.market)}</span><span>адаптація: UA</span></div>
             <small>Про що рілс</small>
             <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
-            <p>Ідея має чіткий вступний сигнал і зрозумілу механіку. Завдання продюсера - не копіювати, а переформатувати під український контекст, мову, болі бізнесу і локальні CTA.</p>
+            <p>{scenario.insight}</p>
           </div>
           <div className="insight-card">
-            <small>Логіка адаптації</small>
-            <h3>Global insight → український сценарій</h3>
-            <p>Беремо структуру: перший кадр, обіцянка, доказ, CTA. Потім замінюємо приклади на український бізнес, прибираємо чужий культурний контекст і пишемо текст українською.</p>
+            <small>Якість вхідних даних</small>
+            <h3>{scenario.quality}</h3>
+            <p>{reel.transcript || reel.caption || 'Щоб отримати не загальний, а точний сценарій, встав сюди транскрипт, caption або короткий переказ: що у першому кадрі, яка обіцянка, який доказ і чим закінчується відео.'}</p>
           </div>
           <div className="remix-bottom">
             <div className="insight-card">
-              <small>Потенційний ремікс</small>
-              <h3>Як українському бізнесу використати цю механіку без великого бюджету на продакшн...</h3>
-              <ol>
-                <li>Залишити чіткий callout у перші 1-2 секунди.</li>
-                <li>Показати локальний біль: продажі, команда, час, контент без студії.</li>
-                <li>Закрити CTA під Україну: коментар, консультація, Telegram або профіль.</li>
-              </ol>
+              <small>Сценарій для зйомки</small>
+              <h3>Готова структура на 15 секунд</h3>
+              <div className="remix-script-timeline">
+                {scenario.script.map((step) => (
+                  <article key={step.time}>
+                    <span>{step.time}</span>
+                    <strong>{step.frame}</strong>
+                    <p>{step.voice}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="remix-checklist">
+                {scenario.checklist.map((item) => <span key={item}>{item}</span>)}
+              </div>
             </div>
             <div className="insight-card empty remix-script-ready-card">
               {adaptationState === 'ready' && (
@@ -2096,10 +2173,13 @@ function RemixStudio({ reel, notify, setPage }) {
               )}
               {adaptationState === 'ready' && (
                 <div className="remix-variant-list">
-                  {scenarioVariants.map(([title, text]) => (
-                    <article className="remix-variant-card" key={title}>
-                      <strong>{title}</strong>
-                      <p>{text}</p>
+                  {scenarioVariants.map((variant) => (
+                    <article className="remix-variant-card" key={variant.title}>
+                      <strong>{variant.title}</strong>
+                      <p>{variant.hook}</p>
+                      <ol>
+                        {variant.structure.map((item) => <li key={item}>{item}</li>)}
+                      </ol>
                     </article>
                   ))}
                 </div>
