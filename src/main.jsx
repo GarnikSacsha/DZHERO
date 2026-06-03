@@ -333,6 +333,29 @@ function App() {
     setData((current) => ({ ...current, plans: [[title, 'сьогодні', 'Чернетка'], ...current.plans] }));
     notify('Пост додано в контент-план');
   };
+  const addManualReel = (payload) => {
+    const title = payload.title?.trim() || payload.caption?.trim() || 'Ручний рілс для адаптації';
+    const handle = payload.handle?.trim() || '@manual.source';
+    const transcript = payload.transcript?.trim();
+    const manualReel = {
+      market: payload.market || (market === 'all' ? 'global' : market),
+      title,
+      handle: handle.startsWith('@') ? handle : `@${handle}`,
+      score: transcript ? 82 : 74,
+      views: payload.views?.trim() || '-',
+      likes: payload.likes?.trim() || '-',
+      comments: payload.comments?.trim() || '-',
+      status: ['Ручний імпорт', transcript ? 'Є транскрипт' : 'Потрібен розбір', 'UA-ремікс'],
+      tag: (handle.replace('@', '')[0] || 'R').toUpperCase(),
+      caption: payload.caption?.trim() || '',
+      transcript: transcript || '',
+      sourceUrl: payload.url?.trim() || '',
+    };
+    setData((current) => ({ ...current, reels: [manualReel, ...current.reels] }));
+    setRemixDraft(manualReel);
+    setPage('remix');
+    notify('Рілс додано вручну і відкрито в ремікс-студії');
+  };
   const pushIdeaToPlan = (idea) => {
     setData((current) => ({ ...current, plans: [[idea.title, idea.source, 'Відібрано'], ...current.plans] }));
     notify('Ідею перенесено в контент-план');
@@ -389,7 +412,7 @@ function App() {
         {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
         {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} />}
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
@@ -404,7 +427,9 @@ function App() {
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} />}
       </main>
       <ProductTour page={page} setPage={setPage} currentUser={currentUser} dataReady={Boolean(data)} language={language} onOpenSidebar={() => setIsSidebarOpen(true)} onCloseSidebar={() => setIsSidebarOpen(false)} />
-      {modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
+      {modal === 'reel'
+        ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} />
+        : modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -1540,7 +1565,7 @@ function ProductRoadmap({ notify, setPage }) {
   );
 }
 
-function ViralBank({ reels, market, notify }) {
+function ViralBank({ reels, market, notify, openModal }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
@@ -1590,7 +1615,7 @@ function ViralBank({ reels, market, notify }) {
       <PageTitle
         title="Банк віральних рілсів"
         subtitle="Скаутимо Україну, США, Європу та global-ніші, але адаптуємо ідеї під українську аудиторію."
-        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button></>}
+        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати рілс вручну</button></>}
       />
       <div className="search-row">
         <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук: рілс, акаунт, сигнал, ніша, ринок..." /></label>
@@ -3114,6 +3139,74 @@ function QuickModal({ type, onClose, onSubmit }) {
         <div className="modal-actions">
           <button onClick={onClose}>Скасувати</button>
           <button className="dark" onClick={submit}>Додати</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManualReelModal({ onClose, onSubmit, defaultMarket }) {
+  const [form, setForm] = useState({
+    url: '',
+    handle: '@manual.source',
+    market: defaultMarket || 'global',
+    title: '',
+    caption: '',
+    transcript: '',
+    views: '',
+    likes: '',
+    comments: '',
+  });
+  const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const submit = () => {
+    if (!form.title.trim() && !form.caption.trim() && !form.transcript.trim() && !form.url.trim()) return;
+    onSubmit(form);
+    onClose();
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="quick-modal manual-reel-modal" onClick={(event) => event.stopPropagation()}>
+        <h3>Додати рілс вручну</h3>
+        <p>Для тесту без Instagram встав посилання, caption або транскрипт. Система відкриє рілс у ремікс-студії.</p>
+        <div className="manual-reel-grid">
+          <label>
+            <span>Посилання на Reels</span>
+            <input autoFocus value={form.url} onChange={(event) => update('url', event.target.value)} placeholder="https://www.instagram.com/reel/..." />
+          </label>
+          <label>
+            <span>Акаунт / джерело</span>
+            <input value={form.handle} onChange={(event) => update('handle', event.target.value)} placeholder="@source" />
+          </label>
+          <label>
+            <span>Ринок</span>
+            <select value={form.market} onChange={(event) => update('market', event.target.value)}>
+              <option value="ua">Україна</option>
+              <option value="us">США</option>
+              <option value="eu">Європа</option>
+              <option value="global">Global</option>
+            </select>
+          </label>
+          <label>
+            <span>Перегляди</span>
+            <input value={form.views} onChange={(event) => update('views', event.target.value)} placeholder="218K" />
+          </label>
+          <label className="wide">
+            <span>Назва / хук</span>
+            <input value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Наприклад: AI workflow з одного фото товару" />
+          </label>
+          <label className="wide">
+            <span>Caption або короткий опис</span>
+            <textarea value={form.caption} onChange={(event) => update('caption', event.target.value)} placeholder="Що було в рілсі, який перший кадр, яка обіцянка, який CTA..." />
+          </label>
+          <label className="wide">
+            <span>Транскрипт, якщо є</span>
+            <textarea value={form.transcript} onChange={(event) => update('transcript', event.target.value)} placeholder="Встав сюди текст з відео або свій приблизний переказ." />
+          </label>
+        </div>
+        <div className="modal-actions">
+          <button onClick={onClose}>Скасувати</button>
+          <button className="dark" onClick={submit}>Додати і адаптувати</button>
         </div>
       </div>
     </div>
