@@ -8211,3 +8211,59 @@ button.dark,
 .auth-submit {
   min-height: 36px !important;
 }
+
+.manual-reel-modal {
+  width: min(680px, calc(100vw - 28px));
+}
+
+.manual-reel-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.manual-reel-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.manual-reel-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.manual-reel-grid span {
+  color: var(--muted-2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.manual-reel-grid input,
+.manual-reel-grid select,
+.manual-reel-grid textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.manual-reel-grid input,
+.manual-reel-grid select {
+  min-height: 38px;
+  padding: 0 12px;
+}
+
+.manual-reel-grid textarea {
+  min-height: 92px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .manual-reel-grid {
+    grid-template-columns: 1fr;
+  }
+}
