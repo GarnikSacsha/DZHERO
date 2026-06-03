@@ -839,6 +839,41 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   const [error, setError] = useState('');
   const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const authCopy = language === 'en'
+    ? {
+      brandSub: 'AI producer for Ukraine and global trends',
+      eyebrow: 'Private workspace',
+      headline: 'Sign in through Instagram to connect a Creator or Business account.',
+      creator: 'Creator or Business',
+      panelTitle: 'Sign in',
+      themeTitle: 'Theme',
+      instagramLoading: 'Preparing Instagram Login...',
+      instagramButton: 'Sign in through Instagram',
+      pendingTitle: 'Instagram connection pending',
+      pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
+      personalRejected: 'Personal accounts are not supported',
+      demoButton: 'Demo access',
+      password: 'Password',
+      passwordPlaceholder: 'minimum 6 characters',
+      emailButton: 'Sign in with email',
+    }
+    : {
+      brandSub: 'AI-продюсер для України і глобальних трендів',
+      eyebrow: 'Закритий робочий простір',
+      headline: 'Увійди через Instagram, щоб підключити Creator або Business акаунт.',
+      creator: 'Creator або Business',
+      panelTitle: 'Вхід',
+      themeTitle: 'Тема',
+      instagramLoading: 'Готуємо Instagram Login...',
+      instagramButton: 'Увійти через Instagram',
+      pendingTitle: 'Instagram connection pending',
+      pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
+      personalRejected: 'Personal не підходить',
+      demoButton: 'Демо-вхід для перегляду',
+      password: 'Пароль',
+      passwordPlaceholder: 'мінімум 6 символів',
+      emailButton: 'Увійти email',
+    };
 
   const submitAuth = async (event) => {
     event.preventDefault();
@@ -917,14 +952,14 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
             */}
             <div>
               <strong>Dzhero</strong>
-              <span>AI-продюсер для України і глобальних трендів</span>
+              <span>{authCopy.brandSub}</span>
             </div>
           </div>
-          <small>Закритий робочий простір</small>
-          <h1>Увійди через Instagram, щоб підключити Creator або Business акаунт.</h1>
+          <small>{authCopy.eyebrow}</small>
+          <h1>{authCopy.headline}</h1>
           <div className="auth-points">
             <span>Instagram Login</span>
-            <span>Creator або Business</span>
+            <span>{authCopy.creator}</span>
             <span>Insights</span>
             <span>AI Direct</span>
           </div>
@@ -933,33 +968,33 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           <div className="auth-panel-head">
             <div>
               <small>Instagram Professional Login</small>
-              <h2>Вхід</h2>
+              <h2>{authCopy.panelTitle}</h2>
             </div>
             <div className="language-switch" aria-label="Interface language">
               <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
               <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
             </div>
-            <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            <button className="icon" type="button" title={authCopy.themeTitle} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
           <button className="auth-submit auth-meta-button" type="button" onClick={startInstagramLogin} disabled={isLoading}>
-            {isLoading ? 'Готуємо Instagram Login...' : 'Увійти через Instagram'}
+            {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
           </button>
           {instagramConfig && (
             <div className="instagram-pending">
-              <strong>Instagram connection pending</strong>
-              <p>Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.</p>
+              <strong>{authCopy.pendingTitle}</strong>
+              <p>{authCopy.pendingText}</p>
               <div>
-                <span>Creator або Business</span>
-                <span>Personal не підходить</span>
+                <span>{authCopy.creator}</span>
+                <span>{authCopy.personalRejected}</span>
                 <span>{instagramConfig.redirectUri}</span>
               </div>
             </div>
           )}
           {error && <div className="auth-error">{error}</div>}
           <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
-            Демо-вхід для перегляду
+            {authCopy.demoButton}
           </button>
           <button className="auth-dev-toggle" type="button" onClick={() => setDevLoginOpen((value) => !value)}>
             Dev email login
@@ -971,11 +1006,11 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
                 <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@brand.ua" type="email" />
               </label>
               <label className="auth-field">
-                <span>Пароль</span>
-                <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="мінімум 6 символів" type="password" />
+                <span>{authCopy.password}</span>
+                <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder={authCopy.passwordPlaceholder} type="password" />
               </label>
               <button className="auth-demo" type="submit" disabled={isLoading}>
-                Увійти email
+                {authCopy.emailButton}
               </button>
             </div>
           )}
