@@ -124,6 +124,97 @@ function publicUser(user) {
   };
 }
 
+function decodeHtml(value = '') {
+  return String(value)
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractInstagramShortcode(url) {
+  const match = String(url || '').match(/instagram\.com\/(?:reel|reels|p)\/([^/?#]+)/i);
+  return match?.[1] || '';
+}
+
+function extractMetaContent(html, key) {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const propertyPattern = new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
+  const contentFirstPattern = new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+(?:property|name)=["']${escaped}["'][^>]*>`, 'i');
+  return decodeHtml(html.match(propertyPattern)?.[1] || html.match(contentFirstPattern)?.[1] || '');
+}
+
+function getInstagramHandleFromMeta(title = '', description = '') {
+  const handle = title.match(/@([a-z0-9._]+)/i)?.[1] || description.match(/@([a-z0-9._]+)/i)?.[1];
+  return handle ? `@${handle}` : '@instagram.reel';
+}
+
+async function fetchPublicReelMetadata(reelUrl) {
+  const shortcode = extractInstagramShortcode(reelUrl);
+  const fallback = {
+    url: reelUrl,
+    shortcode,
+    title: shortcode ? `Instagram Reels signal ${shortcode}` : 'Instagram Reels signal',
+    description: '',
+    handle: '@instagram.reel',
+    sourceStatus: 'url_only',
+  };
+
+  try {
+    const response = await fetch(reelUrl, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/1.0; +https://dzhero.com.ua)',
+      },
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      return { ...fallback, sourceStatus: `metadata_unavailable_${response.status}` };
+    }
+
+    const html = await response.text();
+    const title = extractMetaContent(html, 'og:title') || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || fallback.title;
+    const description = extractMetaContent(html, 'og:description') || extractMetaContent(html, 'description') || '';
+    const image = extractMetaContent(html, 'og:image');
+    const cleanTitle = decodeHtml(title)
+      .replace(/\s*•\s*Instagram.*$/i, '')
+      .replace(/\s*on Instagram.*$/i, '')
+      .trim() || fallback.title;
+
+    return {
+      ...fallback,
+      title: cleanTitle,
+      description: decodeHtml(description),
+      handle: getInstagramHandleFromMeta(title, description),
+      image,
+      sourceStatus: description || cleanTitle !== fallback.title ? 'public_metadata' : 'url_only',
+    };
+  } catch (error) {
+    return { ...fallback, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
+  }
+}
+
+function buildGlobalInsightFromReelMetadata(metadata) {
+  const script = metadata.description || [
+    `User supplied Instagram Reels URL: ${metadata.url}.`,
+    metadata.shortcode ? `Shortcode: ${metadata.shortcode}.` : '',
+    'Public Instagram metadata is limited, so infer a reusable Reels mechanic: strong first-frame promise, visible problem, proof, and Direct/comment CTA.',
+  ].filter(Boolean).join(' ');
+
+  return {
+    title: metadata.title,
+    hook: metadata.description || metadata.title,
+    script,
+    marketingMechanics: metadata.description
+      ? 'Deconstruct the caption/title into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
+      : 'URL-only import. Create a pragmatic Ukrainian adaptation framework from the visible source signal and avoid pretending video frames were analyzed.',
+  };
+}
+
 function createSession(db, userId) {
   const session = {
     token: crypto.randomBytes(32).toString('hex'),
@@ -985,6 +1076,75 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const reels = db.reels.filter((item) => item.workspaceId === req.params.workspaceId);
   res.json({ reels });
+});
+
+app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+
+    const url = String(req.body.url || '').trim();
+    if (!/https?:\/\/(?:www\.)?instagram\.com\/(?:reel|reels|p)\//i.test(url)) {
+      res.status(400).json({ error: 'instagram_reel_url_required', message: 'Instagram Reel/Post URL is required' });
+      return;
+    }
+
+    const metadata = await fetchPublicReelMetadata(url);
+    const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
+    const mergedBrief = {
+      niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Кафе/Ресторан',
+      product: req.body.businessBrief?.product || workspace.brief?.product || 'Спешелті кава та десерти',
+      location: req.body.businessBrief?.location || workspace.brief?.location || 'Київ',
+      toneOfVoice: req.body.businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'дружній, але професійний',
+    };
+
+    const remixResult = await generateRemix(globalInsight, mergedBrief);
+    const importedReel = {
+      id: createId('reel'),
+      workspaceId: req.params.workspaceId,
+      sourceId: null,
+      sourceHandle: metadata.handle,
+      sourceUrl: url,
+      sourceStatus: metadata.sourceStatus,
+      market: req.body.market || 'global',
+      title: metadata.title,
+      caption: metadata.description,
+      transcript: '',
+      views: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      saves: 0,
+      hook: globalInsight.hook,
+      status: ['url_import', metadata.sourceStatus, 'ua_remix_ready'],
+      tag: (metadata.handle.replace('@', '')[0] || 'R').toUpperCase(),
+      remixResult,
+      importedMetadata: metadata,
+      createdAt: new Date().toISOString(),
+    };
+    const analysis = analyzeReel(importedReel, workspace);
+    importedReel.score = Math.max(analysis.score, metadata.sourceStatus === 'public_metadata' ? 78 : 70);
+    importedReel.analysis = analysis;
+    db.reels.unshift(importedReel);
+    db.remixes.unshift({
+      id: createId('remix'),
+      workspaceId: req.params.workspaceId,
+      reelId: importedReel.id,
+      sourceUrl: url,
+      provider: getAiProviderStatus().textAgent.provider,
+      result: remixResult,
+      createdAt: new Date().toISOString(),
+    });
+    createSyncJob(db, req.params.workspaceId, 'url_reel_imported', {
+      reelId: importedReel.id,
+      sourceStatus: metadata.sourceStatus,
+    });
+    await writeDb(db);
+    res.status(201).json({ reel: importedReel, analysis, remix: remixResult, metadata });
+  } catch (err) {
+    next(err);
+  }
 });
 
 app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze', async (req, res) => {

@@ -356,6 +356,35 @@ function App() {
     setPage('remix');
     notify('Рілс додано вручну і відкрито в ремікс-студії');
   };
+  const autoImportReelUrl = async (url) => {
+    const cleanUrl = String(url || '').trim();
+    if (!cleanUrl) return false;
+    notify('Імпортуємо Reels і готуємо UA-адаптацію...');
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/reels/import-url`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: cleanUrl,
+          market: market === 'all' ? 'global' : market,
+        }),
+      });
+      if (!response.ok) throw new Error('import_failed');
+      const payload = await response.json();
+      const importedReel = payload.reel;
+      setData((current) => ({ ...current, reels: [importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)] }));
+      setRemixDraft(importedReel);
+      setPage('remix');
+      notify(importedReel.sourceStatus === 'public_metadata'
+        ? 'Reels імпортовано: адаптація готова'
+        : 'Instagram дав мінімум даних, але базову UA-адаптацію підготовлено');
+      return true;
+    } catch {
+      notify('Автоімпорт не вдався. Відкриваю ручний режим як запасний варіант.');
+      setModal({ type: 'reel', url: cleanUrl });
+      return false;
+    }
+  };
   const pushIdeaToPlan = (idea) => {
     setData((current) => ({ ...current, plans: [[idea.title, idea.source, 'Відібрано'], ...current.plans] }));
     notify('Ідею перенесено в контент-план');
@@ -412,7 +441,7 @@ function App() {
         {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
         {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} />}
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
@@ -1565,12 +1594,13 @@ function ProductRoadmap({ notify, setPage }) {
   );
 }
 
-function ViralBank({ reels, market, notify, openModal }) {
+function ViralBank({ reels, market, notify, openModal, onImportUrl }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [tab, setTab] = useState('all');
   const [previewReel, setPreviewReel] = useState(null);
+  const [isImportingUrl, setIsImportingUrl] = useState(false);
   const pastedReelUrl = /instagram\.com\/(reel|reels|p)\//i.test(query.trim()) ? query.trim() : '';
   const filteredReels = reels
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
@@ -1580,6 +1610,19 @@ function ViralBank({ reels, market, notify, openModal }) {
       return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
     });
   const openManualImport = () => openModal({ type: 'reel', url: pastedReelUrl });
+  const importPastedReel = async () => {
+    if (!pastedReelUrl || isImportingUrl) return;
+    if (!onImportUrl) {
+      openManualImport();
+      return;
+    }
+    setIsImportingUrl(true);
+    try {
+      await onImportUrl(pastedReelUrl);
+    } finally {
+      setIsImportingUrl(false);
+    }
+  };
 
   const toggleScoreSort = () => {
     setSort('score');
@@ -1620,7 +1663,7 @@ function ViralBank({ reels, market, notify, openModal }) {
         actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати рілс вручну</button></>}
       />
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && openManualImport()} placeholder="Пошук або встав Reels-посилання..." /></label>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав Reels-посилання..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
@@ -1628,9 +1671,11 @@ function ViralBank({ reels, market, notify, openModal }) {
         <div className="reel-link-import">
           <div>
             <strong>Знайшов Reels-посилання</strong>
-            <span>Instagram зараз не підключений, але ти можеш адаптувати цей рілс вручну: додай caption або транскрипт, і Джеро відкриє ремікс-студію.</span>
+            <span>Джеро спробує сам витягнути публічні дані з Instagram і одразу підготує UA-адаптацію. Якщо Instagram нічого не віддасть, відкриється запасний ручний режим.</span>
           </div>
-          <button className="dark" type="button" onClick={openManualImport}><Wand2 size={16} />Адаптувати цей Reels</button>
+          <button className="dark" type="button" onClick={importPastedReel} disabled={isImportingUrl}>
+            <Wand2 size={16} />{isImportingUrl ? 'Адаптуємо...' : 'Адаптувати автоматично'}
+          </button>
         </div>
       )}
       <Tabs active={tab} onChange={setTab} items={[['all', `Для тебе ${filteredReels.length}`], ['trend', 'Тренди'], ['кейс', 'Кейси'], ['адапт', 'Адаптації'], ['review', 'Потрібен огляд']]} />
@@ -1984,6 +2029,39 @@ function Competitors({ competitors, openModal }) {
 }
 
 function buildRemixScenario(reel) {
+  if (reel.remixResult?.remixes?.length) {
+    const firstRemix = reel.remixResult.remixes[0];
+    const script = (firstRemix.visualFlow || []).map((step) => ({
+      time: step.timeframe || '',
+      frame: step.actionDescription || 'Кадр для зйомки',
+      voice: [step.onScreenText, step.audioVoiceover].filter(Boolean).join(' — '),
+    }));
+    return {
+      quality: reel.sourceStatus === 'public_metadata'
+        ? 'Автоімпорт знайшов публічні дані й згенерував адаптацію'
+        : 'Instagram обмежив дані, але Джеро зібрав базову адаптацію від URL-сигналу',
+      insight: reel.remixResult.deconstruction?.coreMechanics || 'Джеро розклав Reels на хук, доказ, локальний контекст і CTA.',
+      checklist: [
+        reel.remixResult.viabilityFilter?.uaMentalityCheck,
+        reel.remixResult.viabilityFilter?.productionFeasibility,
+        ...(reel.remixResult.deconstruction?.psychologicalTriggers || []),
+      ].filter(Boolean).slice(0, 5),
+      script: script.length ? script : [{
+        time: '0-15 c',
+        frame: 'Зняти простий Reels зі смартфона',
+        voice: firstRemix.hook || reel.title,
+      }],
+      variants: reel.remixResult.remixes.map((remix) => ({
+        title: remix.title,
+        hook: remix.hook,
+        structure: [
+          ...(remix.visualFlow || []).map((step) => `${step.timeframe}: ${step.onScreenText || step.actionDescription || step.audioVoiceover}`),
+          remix.cta,
+        ].filter(Boolean),
+      })),
+    };
+  }
+
   const sourceText = [reel.caption, reel.transcript, reel.angle, reel.title].filter(Boolean).join(' ').trim();
   const hasSourceText = sourceText.length > 80;
   const cleanTitle = (reel.title || 'Рілс для адаптації').replace('...', '').trim();
