@@ -41,6 +41,8 @@ const META_SCOPES = process.env.META_SCOPES || [
 const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
   'http://localhost:5173',
+  'https://dzhero.com.ua',
+  'https://insta-producer-production.up.railway.app',
   CLIENT_URL,
 ].filter(Boolean));
 
