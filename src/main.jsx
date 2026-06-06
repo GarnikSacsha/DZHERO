@@ -46,7 +46,11 @@ import logoImg from './logo.png';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { applyInterfaceLanguage } from './i18n';
 
-const API_URL = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const isBrowser = typeof window !== 'undefined';
+const isLocalPage = isBrowser && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname);
+const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(rawApiUrl);
+const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
