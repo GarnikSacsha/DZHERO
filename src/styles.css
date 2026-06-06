@@ -9002,3 +9002,35 @@ nav button.active::before {
     display: none;
   }
 }
+
+/* Dzhero glass droplet mark */
+.logo {
+  overflow: hidden;
+  background: #09090B !important;
+  border: 1px solid rgba(250, 250, 250, 0.1) !important;
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.14) !important;
+}
+
+.logo img {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  border-radius: inherit;
+  transform: scale(1.42);
+}
+
+.brand .logo {
+  width: 38px;
+  height: 38px;
+}
+
+.auth-brand .logo {
+  width: 42px;
+  height: 42px;
+}
+
+[data-theme="light"] .logo {
+  background: #09090B !important;
+  border-color: rgba(14, 165, 233, 0.24) !important;
+}

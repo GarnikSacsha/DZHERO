@@ -42,7 +42,7 @@ import {
   X,
 } from 'lucide-react';
 import './styles.css';
-import logoImg from './logo.png';
+import logoImg from './logo-mark.svg';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { applyInterfaceLanguage } from './i18n';
 
@@ -1010,16 +1010,8 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
         <div className="auth-copy">
           <div className="brand auth-brand">
             <div className="logo">
-              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-                <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
-                <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
-                <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-                <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-              </svg>
+              <img src={logoImg} alt="Dzhero Logo" />
             </div>
-            {/*
-              <img src={logoImg} alt="Dzhero Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-            */}
             <div>
               <strong>Dzhero</strong>
               <span>{authCopy.brandSub}</span>
@@ -1121,16 +1113,8 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
     <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
       <div className="brand">
         <div className="logo">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-            <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
-            <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
-            <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-            <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-          </svg>
+          <img src={logoImg} alt="Dzhero Logo" />
         </div>
-        {/*
-          <img src={logoImg} alt="Dzhero Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        */}
         <div>
           <strong>Dzhero</strong>
           <span>Україна + світ</span>
@@ -1285,12 +1269,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
       <div className="brand">
         <div className="logo">
-          <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ width: '100%', height: '100%' }}>
-            <circle cx="50" cy="50" r="45" stroke="currentColor" strokeWidth="4" />
-            <path d="M50 20 C50 20 66 42 66 54 C66 63 59 70 50 70 C41 70 34 63 34 54 C34 42 50 20 50 20 Z" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="4" strokeLinejoin="round" />
-            <path d="M18 64 C28 60, 38 68, 50 64 C62 60, 72 68, 82 64" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-            <path d="M14 74 C26 70, 38 78, 50 74 C62 70, 74 78, 86 74" stroke="currentColor" strokeWidth="4" strokeLinecap="round" />
-          </svg>
+          <img src={logoImg} alt="Dzhero Logo" />
         </div>
         <div>
           <strong>Dzhero</strong>
