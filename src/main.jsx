@@ -1369,15 +1369,54 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
 }
 
 function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
+  const pageLabels = language === 'en'
+    ? {
+      home: ['Command center', 'Scout signals and build a weekly content batch.'],
+      settings: ['Workspace setup', 'Business profile, integrations and account readiness.'],
+      remix: ['Remix studio', 'Transform global reels into Ukrainian scenarios.'],
+      plan: ['Content calendar', 'Plan, move and complete production cards.'],
+      sales: ['AI Direct', 'Lead routing, replies and conversion control.'],
+      default: ['Operational hub', 'Instagram signals, UA adaptation and production flow.'],
+    }
+    : {
+      home: ['Центр керування', 'Сигнали, ідеї та контент-batch на тиждень.'],
+      settings: ['Налаштування простору', 'Профіль бізнесу, інтеграції та готовність акаунта.'],
+      remix: ['Ремікс-студія', 'Глобальні Reels у сценарії для України.'],
+      plan: ['Контент-календар', 'Планування, переміщення і виконання карток.'],
+      sales: ['AI Direct', 'Ліди, відповіді та контроль конверсії.'],
+      default: ['Операційний хаб', 'Instagram-сигнали, UA-адаптація і продакшн-флоу.'],
+    };
+  const pageMeta = pageLabels[page] || pageLabels.default;
+  const ctaLabel = page === 'settings'
+    ? (language === 'en' ? 'Back to hub' : 'До хабу')
+    : (language === 'en' ? 'Generate ideas' : 'Зібрати ідеї');
+  const ctaTarget = page === 'settings' ? 'home' : 'assistant';
+
   return (
     <header className="topbar">
       <div className="topbar-title">
         <button className="mobile-menu-trigger" type="button" aria-label="Відкрити меню" onClick={onOpenMenu}>
           <Menu size={18} />
         </button>
-        <span>INSTAGRAM REELS · GLOBAL SCOUTING · UA ADAPTATION</span>
+        <div className="topbar-context">
+          <span className="topbar-kicker">
+            <ShieldCheck size={13} />
+            {language === 'en' ? 'Workspace ready' : 'Простір готовий'}
+          </span>
+          <strong>{pageMeta[0]}</strong>
+          <small>{pageMeta[1]}</small>
+        </div>
+        <div className="topbar-signals" aria-hidden="true">
+          <span>UA</span>
+          <span>Reels</span>
+          <span>Direct</span>
+        </div>
       </div>
       <div className="top-actions">
+        <button className="topbar-quick-action" type="button" onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
+          <Sparkles size={15} />
+          <span>{ctaLabel}</span>
+        </button>
         <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
         <div className="language-switch" aria-label="Interface language">
           <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>

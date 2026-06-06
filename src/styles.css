@@ -8881,3 +8881,124 @@ nav button.active::before {
 .hotspot-dot {
   box-shadow: 0 0 16px rgba(14, 165, 233, 0.72) !important;
 }
+
+/* Topbar command strip */
+.topbar {
+  min-height: 62px !important;
+  padding: 10px 12px 10px 16px !important;
+  gap: 16px !important;
+}
+
+.topbar-title {
+  flex: 1 1 auto;
+  justify-content: space-between;
+  gap: 18px !important;
+}
+
+.topbar-context {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.topbar-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  color: var(--brand-cyan) !important;
+  font-family: var(--font-mono) !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.08em !important;
+  text-transform: uppercase;
+}
+
+.topbar-kicker svg {
+  color: var(--brand-cyan);
+}
+
+.topbar-context strong {
+  color: var(--text);
+  font-family: var(--font-display) !important;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.topbar-context small {
+  color: var(--muted-2);
+  font-family: var(--font-sans) !important;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0 !important;
+  text-transform: none;
+}
+
+.topbar-signals {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding-right: 4px;
+}
+
+.topbar-signals span {
+  min-height: 24px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.06);
+  color: var(--muted-2);
+  font-family: var(--font-mono) !important;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase;
+}
+
+.topbar-quick-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(14, 165, 233, 0.42);
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.topbar-quick-action svg {
+  color: var(--brand-cyan);
+}
+
+.topbar-quick-action:hover {
+  border-color: rgba(14, 165, 233, 0.75);
+  background: rgba(14, 165, 233, 0.2);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 980px) {
+  .topbar {
+    align-items: stretch !important;
+  }
+
+  .topbar-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px !important;
+  }
+
+  .topbar-signals {
+    margin-left: 0;
+  }
+
+  .topbar-context small,
+  .topbar-quick-action span {
+    display: none;
+  }
+}
