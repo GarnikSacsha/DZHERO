@@ -9034,3 +9034,198 @@ nav button.active::before {
   background: #09090B !important;
   border-color: rgba(14, 165, 233, 0.24) !important;
 }
+
+/* $10K polish pass: visual signal lens + subtle motion */
+.home-hero h2 {
+  max-width: 360px;
+}
+
+.signal-lens {
+  position: absolute;
+  right: 22px;
+  top: 22px;
+  display: grid;
+  width: min(232px, 34%);
+  min-height: 196px;
+  padding: 14px;
+  border: 1px solid rgba(14, 165, 233, 0.32);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 50% 40%, rgba(14, 165, 233, 0.2), transparent 34%),
+    linear-gradient(180deg, rgba(24, 24, 27, 0.94), rgba(9, 9, 11, 0.86));
+  box-shadow: 0 18px 42px -30px rgba(14, 165, 233, 0.65) !important;
+  color: #FAFAFA;
+  text-align: left;
+  overflow: hidden;
+}
+
+.signal-lens:hover {
+  border-color: rgba(14, 165, 233, 0.72);
+  transform: translateY(-2px);
+}
+
+.signal-lens-top,
+.signal-lens-meta,
+.signal-bars {
+  position: relative;
+  z-index: 2;
+}
+
+.signal-lens-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.signal-lens-top em {
+  color: var(--brand-cyan);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.signal-lens-top b {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  height: 26px;
+  border: 1px solid rgba(14, 165, 233, 0.38);
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.12);
+  color: #E0F2FE;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.signal-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  height: 92px;
+  margin: 12px auto 8px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 50% 70%, rgba(14, 165, 233, 0.52), transparent 28%),
+    linear-gradient(180deg, #18181B, #050506);
+  border: 1px solid rgba(250, 250, 250, 0.1);
+}
+
+.signal-orb::before {
+  content: "";
+  width: 38px;
+  height: 58px;
+  border-radius: 50% 50% 58% 58%;
+  background:
+    radial-gradient(circle at 48% 70%, #DFF8FF 0 10%, transparent 28%),
+    linear-gradient(135deg, #FFFFFF 0 10%, #0B1117 42%, #ECFEFF 72%, #0EA5E9 100%);
+  clip-path: polygon(50% 0, 76% 40%, 88% 62%, 78% 88%, 50% 100%, 22% 88%, 12% 62%, 24% 40%);
+  filter: drop-shadow(0 0 14px rgba(14, 165, 233, 0.72));
+}
+
+.signal-orb i {
+  position: absolute;
+  inset: auto 18px 14px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.85);
+  filter: blur(1px);
+}
+
+.signal-lens-title {
+  position: relative;
+  z-index: 2;
+  display: -webkit-box;
+  min-height: 34px;
+  overflow: hidden;
+  color: #FAFAFA;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.signal-lens-meta {
+  margin-top: 6px;
+  color: #A1A1AA;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.signal-bars {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  gap: 7px;
+  height: 24px;
+  margin-top: 12px;
+}
+
+.signal-bars i {
+  display: block;
+  height: 40%;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, #38BDF8, rgba(14, 165, 233, 0.12));
+  animation: signalPulse 1.8s ease-in-out infinite;
+}
+
+.signal-bars i:nth-child(2) { height: 70%; animation-delay: 0.12s; }
+.signal-bars i:nth-child(3) { height: 46%; animation-delay: 0.24s; }
+.signal-bars i:nth-child(4) { height: 86%; animation-delay: 0.36s; }
+.signal-bars i:nth-child(5) { height: 60%; animation-delay: 0.48s; }
+
+@keyframes signalPulse {
+  0%, 100% { opacity: 0.42; transform: scaleY(0.78); }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+
+.home-hero,
+.home-stats article,
+.ops-strip article,
+.home-columns .insight-card {
+  animation: surfaceIn 0.55s ease both;
+}
+
+.home-stats article:nth-child(2) { animation-delay: 0.06s; }
+.home-stats article:nth-child(3) { animation-delay: 0.12s; }
+.home-stats article:nth-child(4) { animation-delay: 0.18s; }
+
+@keyframes surfaceIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 1180px) {
+  .home-hero h2 {
+    max-width: 100%;
+  }
+
+  .signal-lens {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    margin-top: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-bars i,
+  .home-hero,
+  .home-stats article,
+  .ops-strip article,
+  .home-columns .insight-card {
+    animation: none !important;
+  }
+}
