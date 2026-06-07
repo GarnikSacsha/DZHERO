@@ -1470,6 +1470,20 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
           <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
+          <button className="signal-lens" type="button" onClick={() => { setPage('remix'); notify('Відкрив Remix Studio для пріоритетного сигналу'); }}>
+            <span className="signal-lens-top">
+              <em>Signal lens</em>
+              <b>{topReel.score}</b>
+            </span>
+            <span className={`signal-orb market-${topReel.market}`}>
+              <i />
+            </span>
+            <span className="signal-lens-title">{topReel.title.replace('...', '')}</span>
+            <span className="signal-lens-meta">{topReel.handle} · {marketLabel(topReel.market)} · {topReel.views}</span>
+            <span className="signal-bars" aria-hidden="true">
+              <i /><i /><i /><i /><i />
+            </span>
+          </button>
         </article>
         <div className="home-stats">
           {[
