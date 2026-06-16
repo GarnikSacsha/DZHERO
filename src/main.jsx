@@ -471,7 +471,7 @@ function App() {
         {page === 'legal' && <LegalSafe notify={notify} />}
         {page === 'budget' && <BudgetCalculator notify={notify} />}
         {page === 'team' && <TeamHub notify={notify} workspaceId={workspaceId} />}
-        {page === 'settings' && <DataSources sources={data.sources} notify={notify} />}
+        {page === 'settings' && <DataSources sources={data.sources} notify={notify} workspaceId={workspaceId} />}
       </main>
       <ProductTour page={page} setPage={setPage} currentUser={currentUser} dataReady={Boolean(data)} language={language} onOpenSidebar={() => setIsSidebarOpen(true)} onCloseSidebar={() => setIsSidebarOpen(false)} />
       {modal?.type === 'reel' || modal === 'reel'
@@ -3251,7 +3251,121 @@ function AnalysisSetup({ notify }) {
   );
 }
 
-function DataSources({ sources, notify }) {
+function BillingSettings({ workspaceId, notify }) {
+  const [plans, setPlans] = useState([]);
+  const [billing, setBilling] = useState(null);
+  const [status, setStatus] = useState('loading');
+
+  const loadBilling = async () => {
+    setStatus('loading');
+    try {
+      const [plansResponse, billingResponse] = await Promise.all([
+        fetch(`${API_BASE}/billing/plans`),
+        fetch(`${API_BASE}/workspaces/${workspaceId}/billing`),
+      ]);
+      const plansPayload = await plansResponse.json();
+      const billingPayload = await billingResponse.json();
+      if (!plansResponse.ok) throw new Error(plansPayload.message || plansPayload.error || 'plans_failed');
+      if (!billingResponse.ok) throw new Error(billingPayload.message || billingPayload.error || 'billing_failed');
+      setPlans(plansPayload.plans || []);
+      setBilling(billingPayload);
+      setStatus('ready');
+    } catch (err) {
+      setStatus('error');
+      notify(`Не вдалося завантажити тарифи: ${err.message}`);
+    }
+  };
+
+  useEffect(() => {
+    loadBilling();
+  }, [workspaceId]);
+
+  const selectPlan = async (planId) => {
+    try {
+      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/select-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.message || payload.error || 'select_plan_failed');
+      notify('Тариф зафіксовано як pending payment. Платіжний провайдер підключимо наступним кроком.');
+      await loadBilling();
+    } catch (err) {
+      notify(`Не вдалося обрати тариф: ${err.message}`);
+    }
+  };
+
+  const currentPlanId = billing?.plan?.id;
+  const usageRows = [
+    ['AI повідомлення', 'agentChat'],
+    ['Reels imports', 'reelImports'],
+    ['Конкуренти', 'competitors'],
+    ['Instagram акаунти', 'instagramAccounts'],
+  ];
+
+  return (
+    <div className="billing-settings">
+      <section className="billing-current">
+        <div>
+          <small>Поточний тариф</small>
+          <h3>{billing?.plan?.name || (status === 'loading' ? 'Завантаження...' : 'Не визначено')}</h3>
+          <p>{billing?.subscription?.status || 'status pending'} · {billing?.period || 'period pending'}</p>
+        </div>
+        <button type="button" onClick={loadBilling} disabled={status === 'loading'}>Оновити</button>
+      </section>
+
+      <div className="billing-usage-grid">
+        {usageRows.map(([label, key]) => {
+          const limit = billing?.plan?.limits?.[key] ?? 0;
+          const used = billing?.usage?.[key] ?? 0;
+          const remaining = billing?.remaining?.[key] ?? 0;
+          const width = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          return (
+            <article className="billing-usage-card" key={key}>
+              <div>
+                <small>{label}</small>
+                <strong>{remaining}</strong>
+              </div>
+              <p>{used} / {limit} використано</p>
+              <span><i style={{ width: `${width}%` }} /></span>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="billing-plan-grid">
+        {plans.map((plan) => {
+          const isCurrent = plan.id === currentPlanId;
+          const isDemo = plan.id === 'demo';
+          return (
+            <article className={isCurrent ? 'billing-plan active' : 'billing-plan'} key={plan.id}>
+              <small>{plan.billingPeriod}</small>
+              <h3>{plan.name}</h3>
+              <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : 'Безкоштовно'}</div>
+              <ul>
+                <li>{plan.limits.agentChat} AI повідомлень</li>
+                <li>{plan.limits.reelImports} Reels imports</li>
+                <li>{plan.limits.competitors} конкурентів</li>
+                <li>{plan.limits.instagramAccounts} Instagram акаунтів</li>
+              </ul>
+              <button
+                className={isCurrent ? 'dark' : ''}
+                type="button"
+                disabled={isCurrent || isDemo}
+                onClick={() => selectPlan(plan.id)}
+              >
+                {isCurrent ? 'Поточний' : isDemo ? 'Демо доступ' : 'Обрати тариф'}
+              </button>
+            </article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DataSources({ sources, notify, workspaceId }) {
   const [tab, setTab] = useState('profile');
   const integrations = [
     ['Instagram Professional Login', 'Creator або Business акаунт підключається через офіційний Instagram flow.', 'Очікує налаштування адміністратором'],
@@ -3270,6 +3384,7 @@ function DataSources({ sources, notify }) {
         items={[
           ['profile', 'Профіль бізнесу'],
           ['api', 'Інтеграції API'],
+          ['billing', 'Тариф і ліміти'],
         ]}
       />
       {tab === 'profile' && <AnalysisSetup notify={notify} />}
@@ -3285,6 +3400,7 @@ function DataSources({ sources, notify }) {
           ))}
         </div>
       )}
+      {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
     </section>
   );
 }
