@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
@@ -12,6 +13,9 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'db.json');
 const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const DATABASE_SSL = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require';
+const APP_STATE_KEY = process.env.APP_STATE_KEY || 'main';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -57,10 +61,20 @@ app.use('/api', cors({
 }));
 app.use(express.json({ limit: '1mb' }));
 
-async function readDb() {
-  await ensureDbFile();
-  const raw = await fs.readFile(DB_PATH, 'utf8');
-  const db = JSON.parse(raw);
+let pgPool;
+
+function getPgPool() {
+  if (!DATABASE_URL) return null;
+  if (!pgPool) {
+    pgPool = new Pool({
+      connectionString: DATABASE_URL,
+      ssl: DATABASE_SSL ? { rejectUnauthorized: false } : undefined,
+    });
+  }
+  return pgPool;
+}
+
+function normalizeDbShape(db = {}) {
   db.users ||= [];
   db.sessions ||= [];
   db.workspaces ||= [];
@@ -81,9 +95,62 @@ async function readDb() {
   return db;
 }
 
+async function readSeedDb() {
+  const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
+  return normalizeDbShape(JSON.parse(seed));
+}
+
+async function ensurePostgresState() {
+  const pool = getPgPool();
+  if (!pool) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_state (
+      key TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+  const seed = await readSeedDb();
+  await pool.query(
+    `
+      INSERT INTO app_state (key, data)
+      VALUES ($1, $2::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `,
+    [APP_STATE_KEY, JSON.stringify(seed)]
+  );
+}
+
+async function readDb() {
+  if (DATABASE_URL) {
+    await ensurePostgresState();
+    const result = await getPgPool().query('SELECT data FROM app_state WHERE key = $1', [APP_STATE_KEY]);
+    return normalizeDbShape(result.rows[0]?.data || {});
+  }
+
+  await ensureDbFile();
+  const raw = await fs.readFile(DB_PATH, 'utf8');
+  return normalizeDbShape(JSON.parse(raw));
+}
+
 async function writeDb(db) {
+  if (DATABASE_URL) {
+    await ensurePostgresState();
+    await getPgPool().query(
+      `
+        UPDATE app_state
+        SET data = $2::jsonb,
+            updated_at = now()
+        WHERE key = $1
+      `,
+      [APP_STATE_KEY, JSON.stringify(normalizeDbShape(db))]
+    );
+    return;
+  }
+
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, `${JSON.stringify(db, null, 2)}\n`, 'utf8');
+  await fs.writeFile(DB_PATH, `${JSON.stringify(normalizeDbShape(db), null, 2)}\n`, 'utf8');
 }
 
 async function ensureDbFile() {
@@ -495,6 +562,7 @@ app.get('/api/health', async (req, res) => {
     ok: true,
     service: 'dzhero-api',
     version: '0.1.0',
+    storage: DATABASE_URL ? 'postgres' : 'json',
     counts: {
       workspaces: db.workspaces.length,
       users: db.users.length,
