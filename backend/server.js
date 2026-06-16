@@ -1212,7 +1212,7 @@ app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) =>
     return;
   }
   const subscription = ensureWorkspaceSubscription(db, req.params.workspaceId);
-  subscription.planId = plan.id;
+  subscription.pendingPlanId = plan.id;
   subscription.status = 'pending_payment';
   subscription.provider = req.body.provider || 'manual';
   subscription.updatedAt = new Date().toISOString();
