@@ -8,6 +8,7 @@ The backend is not production-ready yet. It is a starting API layer for the MVP:
 
 - health check;
 - local MVP auth;
+- plans/subscriptions/usage limits;
 - workspaces;
 - business brief;
 - competitors;
@@ -41,8 +42,12 @@ POST /api/auth/login
 POST /api/auth/demo
 GET  /api/auth/me
 POST /api/auth/logout
+GET  /api/billing/plans
 GET  /api/workspaces
 POST /api/workspaces
+GET  /api/workspaces/:workspaceId/billing
+POST /api/workspaces/:workspaceId/billing/select-plan
+POST /api/workspaces/:workspaceId/billing/manual-activate
 GET  /api/workspaces/:workspaceId/brief
 PUT  /api/workspaces/:workspaceId/brief
 GET  /api/workspaces/:workspaceId/sources
@@ -63,6 +68,31 @@ POST /api/workspaces/:workspaceId/remix/generate
 ```text
 ws_demo_ua
 ```
+
+## Plans and limits
+
+The MVP has a billing/entitlements layer before real payments are connected.
+
+Plans:
+
+- `demo`
+- `starter`
+- `pro`
+- `agency`
+
+Usage is tracked per workspace and month. The first enforced limits are:
+
+- `agentChat`
+- `reelImports`
+- `competitors`
+
+Check current plan and remaining usage:
+
+```text
+GET /api/workspaces/ws_demo_ua/billing
+```
+
+Payment provider integration is not active yet. `select-plan` records a pending payment intent. `manual-activate` is protected by `ADMIN_TOKEN` and is only for internal testing before WayForPay/Fondy/another provider is connected.
 
 ## Meta Login setup
 

@@ -16,6 +16,7 @@ const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATABASE_SSL = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require';
 const APP_STATE_KEY = process.env.APP_STATE_KEY || 'main';
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -41,6 +42,75 @@ const META_SCOPES = process.env.META_SCOPES || [
   'pages_show_list',
   'pages_read_engagement',
 ].join(',');
+
+const PLAN_CATALOG = [
+  {
+    id: 'demo',
+    name: 'Demo',
+    billingPeriod: 'temporary',
+    priceUah: 0,
+    limits: {
+      agentChat: 20,
+      reelImports: 3,
+      competitors: 8,
+      workspaces: 1,
+      teamMembers: 1,
+      instagramAccounts: 0,
+    },
+    features: ['demo_workspace', 'mock_market_data', 'agent_chat_limited', 'manual_reel_import'],
+  },
+  {
+    id: 'starter',
+    name: 'Starter',
+    billingPeriod: 'month',
+    priceUah: 590,
+    limits: {
+      agentChat: 150,
+      reelImports: 30,
+      competitors: 25,
+      workspaces: 1,
+      teamMembers: 1,
+      instagramAccounts: 1,
+    },
+    features: ['brand_brain', 'assistant', 'remix_studio', 'content_plan', 'instagram_login'],
+  },
+  {
+    id: 'pro',
+    name: 'Pro',
+    billingPeriod: 'month',
+    priceUah: 1490,
+    limits: {
+      agentChat: 600,
+      reelImports: 150,
+      competitors: 100,
+      workspaces: 5,
+      teamMembers: 5,
+      instagramAccounts: 5,
+    },
+    features: ['everything_starter', 'team', 'ai_direct', 'exports', 'sync_queue'],
+  },
+  {
+    id: 'agency',
+    name: 'Agency',
+    billingPeriod: 'month',
+    priceUah: 3900,
+    limits: {
+      agentChat: 2500,
+      reelImports: 800,
+      competitors: 500,
+      workspaces: 20,
+      teamMembers: 20,
+      instagramAccounts: 20,
+    },
+    features: ['everything_pro', 'multi_client_workspaces', 'approval_flow', 'priority_limits'],
+  },
+];
+
+const USAGE_METRICS = {
+  agentChat: 'agent_chat',
+  reelImports: 'reel_imports',
+  competitors: 'competitors',
+};
 
 const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
@@ -92,6 +162,10 @@ function normalizeDbShape(db = {}) {
   db.contentPlanItems ||= [];
   db.videoJobs ||= [];
   db.dataDeletionRequests ||= [];
+  db.plans ||= PLAN_CATALOG;
+  db.subscriptions ||= [];
+  db.usageCounters ||= [];
+  db.demoSessions ||= [];
   return db;
 }
 
@@ -191,6 +265,125 @@ function publicUser(user) {
     workspaceId: user.workspaceId,
     createdAt: user.createdAt,
   };
+}
+
+function publicPlan(plan) {
+  return {
+    id: plan.id,
+    name: plan.name,
+    billingPeriod: plan.billingPeriod,
+    priceUah: plan.priceUah,
+    limits: plan.limits,
+    features: plan.features,
+  };
+}
+
+function getPlan(planId) {
+  return PLAN_CATALOG.find((plan) => plan.id === planId) || PLAN_CATALOG[0];
+}
+
+function getUsagePeriod(date = new Date()) {
+  return date.toISOString().slice(0, 7);
+}
+
+function getDefaultPlanId(workspaceId) {
+  return String(workspaceId || '').startsWith('ws_demo_') ? 'demo' : 'starter';
+}
+
+function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
+  db.subscriptions ||= [];
+  const existing = db.subscriptions.find((item) => item.workspaceId === workspaceId);
+  if (existing) return existing;
+  const now = new Date();
+  const planId = options.planId || getDefaultPlanId(workspaceId);
+  const subscription = {
+    id: createId('sub'),
+    workspaceId,
+    planId,
+    status: planId === 'demo' ? 'demo' : 'trialing',
+    provider: 'manual',
+    currentPeriodStart: now.toISOString(),
+    currentPeriodEnd: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    trialEndsAt: planId === 'demo' ? null : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    cancelAtPeriodEnd: false,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+  db.subscriptions.unshift(subscription);
+  return subscription;
+}
+
+function getUsageCounter(db, workspaceId, metric, period = getUsagePeriod()) {
+  db.usageCounters ||= [];
+  let counter = db.usageCounters.find((item) => (
+    item.workspaceId === workspaceId && item.metric === metric && item.period === period
+  ));
+  if (!counter) {
+    counter = {
+      id: createId('usage'),
+      workspaceId,
+      metric,
+      period,
+      value: 0,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    db.usageCounters.unshift(counter);
+  }
+  return counter;
+}
+
+function buildEntitlements(db, workspaceId) {
+  const subscription = ensureWorkspaceSubscription(db, workspaceId);
+  const plan = getPlan(subscription.planId);
+  const period = getUsagePeriod();
+  const usage = {
+    agentChat: getUsageCounter(db, workspaceId, USAGE_METRICS.agentChat, period).value,
+    reelImports: getUsageCounter(db, workspaceId, USAGE_METRICS.reelImports, period).value,
+    competitors: db.competitors.filter((item) => item.workspaceId === workspaceId).length,
+    instagramAccounts: db.instagramAccounts.filter((item) => item.workspaceId === workspaceId).length,
+  };
+  const remaining = {
+    agentChat: Math.max(0, plan.limits.agentChat - usage.agentChat),
+    reelImports: Math.max(0, plan.limits.reelImports - usage.reelImports),
+    competitors: Math.max(0, plan.limits.competitors - usage.competitors),
+    instagramAccounts: Math.max(0, plan.limits.instagramAccounts - usage.instagramAccounts),
+  };
+  return {
+    plan: publicPlan(plan),
+    subscription,
+    period,
+    usage,
+    remaining,
+  };
+}
+
+function assertUsageAvailable(db, workspaceId, usageKey, amount = 1) {
+  const entitlements = buildEntitlements(db, workspaceId);
+  const limit = entitlements.plan.limits[usageKey];
+  const used = entitlements.usage[usageKey] || 0;
+  if (Number.isFinite(limit) && used + amount > limit) {
+    const error = new Error('plan_limit_reached');
+    error.status = 402;
+    error.payload = {
+      error: 'plan_limit_reached',
+      usageKey,
+      limit,
+      used,
+      remaining: Math.max(0, limit - used),
+      plan: entitlements.plan,
+      message: `Plan limit reached for ${usageKey}.`,
+    };
+    throw error;
+  }
+  return entitlements;
+}
+
+function incrementUsage(db, workspaceId, metric, amount = 1) {
+  const counter = getUsageCounter(db, workspaceId, metric);
+  counter.value += amount;
+  counter.updatedAt = new Date().toISOString();
+  return counter;
 }
 
 function decodeHtml(value = '') {
@@ -300,6 +493,22 @@ function getBearerToken(req) {
   const header = req.headers.authorization || '';
   if (!header.startsWith('Bearer ')) return '';
   return header.slice('Bearer '.length).trim();
+}
+
+function getAdminToken(req) {
+  return String(req.headers['x-admin-token'] || req.query.adminToken || '').trim();
+}
+
+function requireAdmin(req, res) {
+  if (!ADMIN_TOKEN) {
+    res.status(501).json({ error: 'admin_token_not_configured' });
+    return false;
+  }
+  if (getAdminToken(req) !== ADMIN_TOKEN) {
+    res.status(403).json({ error: 'admin_forbidden' });
+    return false;
+  }
+  return true;
 }
 
 function getAuthUser(db, req) {
@@ -873,6 +1082,7 @@ app.post('/api/auth/register', async (req, res) => {
   };
   db.workspaces.unshift(workspace);
   db.users.unshift(user);
+  ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
   const session = createSession(db, user.id);
   await writeDb(db);
   res.status(201).json({ user: publicUser(user), token: session.token });
@@ -907,6 +1117,7 @@ app.post('/api/auth/demo', async (req, res) => {
     };
     db.users.unshift(user);
   }
+  ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
   const session = createSession(db, user.id);
   await writeDb(db);
   res.json({ user: publicUser(user), token: session.token });
@@ -948,9 +1159,17 @@ app.get('/api/schema', (req, res) => {
       'ai_jobs',
       'video_jobs',
       'sync_jobs',
+      'plans',
+      'subscriptions',
+      'usage_counters',
+      'demo_sessions',
     ],
-    note: 'MVP API skeleton. JSON storage is temporary and should be replaced with a real database.',
+    note: 'MVP API skeleton. Storage can run on Postgres JSONB while billing entities are being normalized.',
   });
+});
+
+app.get('/api/billing/plans', (req, res) => {
+  res.json({ plans: PLAN_CATALOG.map(publicPlan) });
 });
 
 app.get('/api/workspaces', async (req, res) => {
@@ -970,8 +1189,65 @@ app.post('/api/workspaces', async (req, res) => {
     brief: req.body.brief || {},
   };
   db.workspaces.unshift(workspace);
+  ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
   await writeDb(db);
   res.status(201).json({ workspace });
+});
+
+app.get('/api/workspaces/:workspaceId/billing', async (req, res) => {
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  const billing = buildEntitlements(db, req.params.workspaceId);
+  await writeDb(db);
+  res.json(billing);
+});
+
+app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) => {
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  const planId = String(req.body.planId || '').trim();
+  const plan = PLAN_CATALOG.find((item) => item.id === planId);
+  if (!plan || plan.id === 'demo') {
+    res.status(400).json({ error: 'valid_paid_plan_required' });
+    return;
+  }
+  const subscription = ensureWorkspaceSubscription(db, req.params.workspaceId);
+  subscription.planId = plan.id;
+  subscription.status = 'pending_payment';
+  subscription.provider = req.body.provider || 'manual';
+  subscription.updatedAt = new Date().toISOString();
+  await writeDb(db);
+  res.json({
+    subscription,
+    plan: publicPlan(plan),
+    checkout: {
+      status: 'provider_not_connected',
+      message: 'Connect a payment provider webhook before charging real customers.',
+    },
+  });
+});
+
+app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  const planId = String(req.body.planId || 'pro').trim();
+  const plan = PLAN_CATALOG.find((item) => item.id === planId);
+  if (!plan || plan.id === 'demo') {
+    res.status(400).json({ error: 'valid_paid_plan_required' });
+    return;
+  }
+  const now = new Date();
+  const subscription = ensureWorkspaceSubscription(db, req.params.workspaceId);
+  subscription.planId = plan.id;
+  subscription.status = 'active';
+  subscription.provider = 'manual';
+  subscription.currentPeriodStart = now.toISOString();
+  subscription.currentPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  subscription.trialEndsAt = null;
+  subscription.updatedAt = now.toISOString();
+  await writeDb(db);
+  res.json(buildEntitlements(db, req.params.workspaceId));
 });
 
 app.get('/api/workspaces/:workspaceId/brief', async (req, res) => {
@@ -1123,6 +1399,12 @@ app.post('/api/workspaces/:workspaceId/sources/:sourceId/sync', async (req, res)
 app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  try {
+    assertUsageAvailable(db, req.params.workspaceId, 'competitors');
+  } catch (err) {
+    res.status(err.status || 402).json(err.payload || { error: err.message });
+    return;
+  }
   const handle = String(req.body.handle || '').trim();
   if (!handle || !handle.startsWith('@')) {
     res.status(400).json({ error: 'handle_required', message: 'Handle must start with @' });
@@ -1139,8 +1421,9 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   db.competitors.unshift(competitor);
+  const billing = buildEntitlements(db, req.params.workspaceId);
   await writeDb(db);
-  res.status(201).json({ competitor });
+  res.status(201).json({ competitor, billing });
 });
 
 app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
@@ -1155,6 +1438,12 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
+    try {
+      assertUsageAvailable(db, req.params.workspaceId, 'reelImports');
+    } catch (err) {
+      res.status(err.status || 402).json(err.payload || { error: err.message });
+      return;
+    }
 
     const url = String(req.body.url || '').trim();
     if (!/https?:\/\/(?:www\.)?instagram\.com\/(?:reel|reels|p)\//i.test(url)) {
@@ -1213,8 +1502,16 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       reelId: importedReel.id,
       sourceStatus: metadata.sourceStatus,
     });
+    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports);
+    const billing = buildEntitlements(db, req.params.workspaceId);
     await writeDb(db);
-    res.status(201).json({ reel: importedReel, analysis, remix: remixResult, metadata });
+    res.status(201).json({
+      reel: importedReel,
+      analysis,
+      remix: remixResult,
+      metadata,
+      billing,
+    });
   } catch (err) {
     next(err);
   }
@@ -1418,6 +1715,13 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     res.status(400).json({ error: 'message_required' });
     return;
   }
+  let billing;
+  try {
+    billing = assertUsageAvailable(db, req.params.workspaceId, 'agentChat');
+  } catch (err) {
+    res.status(err.status || 402).json(err.payload || { error: err.message });
+    return;
+  }
   const history = Array.isArray(req.body.history) ? req.body.history : [];
   const snapshot = {
     reels: db.reels.filter((item) => item.workspaceId === req.params.workspaceId),
@@ -1453,12 +1757,15 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
       },
       createdAt: new Date().toISOString(),
     });
+    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.agentChat);
+    billing = buildEntitlements(db, req.params.workspaceId);
     await writeDb(db);
     res.status(201).json({
       reply: result.text,
       provider: result.provider,
       model: result.model,
       aiJob: job,
+      billing,
     });
   } catch (err) {
     console.error('[AgentChat]', err);
