@@ -4476,12 +4476,13 @@ nav button.active::before {
 
 .checkout-panel {
   display: grid;
-  gap: 18px;
-  padding: 24px;
+  gap: 20px;
+  max-width: 760px;
+  padding: 26px;
   border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, transparent), transparent 42%),
+    radial-gradient(circle at top left, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
     var(--surface);
   box-shadow: 0 18px 60px color-mix(in srgb, var(--accent) 10%, transparent);
 }
@@ -4494,7 +4495,8 @@ nav button.active::before {
 }
 
 .checkout-head small,
-.checkout-grid small {
+.checkout-card small,
+.checkout-meta small {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -4512,44 +4514,65 @@ nav button.active::before {
 }
 
 .checkout-head p {
-  max-width: 720px;
+  max-width: 560px;
   margin: 0;
   color: var(--muted);
   line-height: 1.5;
 }
 
-.checkout-grid {
+.checkout-card {
   display: grid;
-  grid-template-columns: repeat(4, minmax(180px, 1fr));
   gap: 14px;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 44%, transparent);
 }
 
-.checkout-grid article {
+.checkout-card strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: clamp(24px, 4vw, 38px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.checkout-card button,
+.checkout-paid-button {
+  justify-content: center;
+  min-height: 46px;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 800;
+}
+
+.checkout-card button:disabled {
+  background: color-mix(in srgb, var(--text) 9%, var(--surface));
+  color: var(--muted);
+}
+
+.checkout-meta {
   display: grid;
+  grid-template-columns: minmax(130px, 0.45fr) minmax(220px, 1fr);
   gap: 12px;
-  min-height: 154px;
-  padding: 18px;
+}
+
+.checkout-meta article {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: color-mix(in srgb, var(--bg) 42%, transparent);
+  background: color-mix(in srgb, var(--bg) 34%, transparent);
 }
 
-.checkout-grid strong {
+.checkout-meta strong {
   overflow-wrap: anywhere;
   color: var(--text);
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.25;
-}
-
-.checkout-grid button {
-  align-self: end;
-  justify-content: center;
-}
-
-.checkout-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .button-link {
@@ -7505,6 +7528,19 @@ nav button:hover,
 
   .shell {
     padding: 22px 14px 64px !important;
+  }
+
+  .checkout-head,
+  .checkout-meta {
+    grid-template-columns: 1fr !important;
+  }
+
+  .checkout-head {
+    display: grid !important;
+  }
+
+  .checkout-card strong {
+    font-size: 24px !important;
   }
 }
 

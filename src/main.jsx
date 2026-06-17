@@ -3424,43 +3424,33 @@ function BillingSettings({ workspaceId, notify }) {
         <section className="checkout-panel">
           <div className="checkout-head">
             <div>
-              <small>Оплата карткою</small>
+              <small>Поповнення картки</small>
               <h3>{checkout.plan.name} · ₴{checkout.payment.amount}</h3>
-              <p>Після переказу доступ активується вручну. Коли підключимо платіжний провайдер, це стане автоматичним.</p>
+              <p>Поповніть картку на суму тарифу. Після перевірки ми активуємо доступ вручну.</p>
             </div>
             <button type="button" onClick={() => setCheckout(null)}>Закрити</button>
           </div>
-          <div className="checkout-grid">
-            {checkout.payment.cardNumber && (
-              <article>
-                <small>Карта</small>
-                <strong>{checkout.payment.cardNumber}</strong>
-                <button type="button" onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер карти')}>Копіювати карту</button>
-              </article>
-            )}
-            {checkout.payment.cardHolder && (
-              <article>
-                <small>Отримувач</small>
-                <strong>{checkout.payment.cardHolder}</strong>
-                <button type="button" onClick={() => copyPaymentText(checkout.payment.cardHolder, 'Отримувача')}>Копіювати</button>
-              </article>
-            )}
-            <article>
-              <small>Призначення</small>
-              <strong>{checkout.payment.note}</strong>
-              <button type="button" onClick={() => copyPaymentText(checkout.payment.note, 'Призначення')}>Копіювати призначення</button>
-            </article>
+          <article className="checkout-card">
+            <small>Номер картки для поповнення</small>
+            <strong>{checkout.payment.cardNumber || 'Реквізити скоро зʼявляться'}</strong>
+            <button type="button" disabled={!checkout.payment.cardNumber} onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер картки')}>
+              <Copy size={16} />
+              Скопіювати номер
+            </button>
+          </article>
+          <div className="checkout-meta">
             <article>
               <small>Сума</small>
               <strong>₴{checkout.payment.amount}</strong>
-              <button type="button" onClick={() => copyPaymentText(String(checkout.payment.amount), 'Суму')}>Копіювати суму</button>
+            </article>
+            <article>
+              <small>Коментар до платежу</small>
+              <strong>{checkout.payment.note}</strong>
             </article>
           </div>
-          <div className="checkout-actions">
-            {checkout.payment.paymentUrl && <a className="dark button-link" href={checkout.payment.paymentUrl} target="_blank" rel="noreferrer">Відкрити оплату</a>}
-            {checkout.payment.supportUrl && <a className="button-link" href={checkout.payment.supportUrl} target="_blank" rel="noreferrer">Надіслати чек</a>}
-            <button type="button" onClick={() => notify('Оплату треба перевірити вручну. Після підтвердження адміністратор активує тариф.')}>Я оплатив</button>
-          </div>
+          <button className="checkout-paid-button" type="button" onClick={() => notify('Оплату треба перевірити вручну. Після підтвердження адміністратор активує тариф.')}>
+            Я оплатив
+          </button>
         </section>
       )}
     </div>
