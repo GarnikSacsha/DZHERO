@@ -1292,24 +1292,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
 }
 
 function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
-  const pageLabels = language === 'en'
-    ? {
-      home: ['Command center', 'Scout signals and build a weekly content batch.'],
-      settings: ['Workspace setup', 'Business profile, integrations and account readiness.'],
-      remix: ['Remix studio', 'Transform global reels into Ukrainian scenarios.'],
-      plan: ['Content calendar', 'Plan, move and complete production cards.'],
-      sales: ['AI Direct', 'Lead routing, replies and conversion control.'],
-      default: ['Operational hub', 'Instagram signals, UA adaptation and production flow.'],
-    }
-    : {
-      home: ['Центр керування', 'Сигнали, ідеї та контент-batch на тиждень.'],
-      settings: ['Налаштування простору', 'Профіль бізнесу, інтеграції та готовність акаунта.'],
-      remix: ['Ремікс-студія', 'Глобальні Reels у сценарії для України.'],
-      plan: ['Контент-календар', 'Планування, переміщення і виконання карток.'],
-      sales: ['AI Direct', 'Ліди, відповіді та контроль конверсії.'],
-      default: ['Операційний хаб', 'Instagram-сигнали, UA-адаптація і продакшн-флоу.'],
-    };
-  const pageMeta = pageLabels[page] || pageLabels.default;
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
     : (language === 'en' ? 'Generate ideas' : 'Зібрати ідеї');
@@ -1321,14 +1303,6 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
         <button className="mobile-menu-trigger" type="button" aria-label="Відкрити меню" onClick={onOpenMenu}>
           <Menu size={18} />
         </button>
-        <div className="topbar-context">
-          <span className="topbar-kicker">
-            <ShieldCheck size={13} />
-            {language === 'en' ? 'Workspace ready' : 'Простір готовий'}
-          </span>
-          <strong>{pageMeta[0]}</strong>
-          <small>{pageMeta[1]}</small>
-        </div>
       </div>
       <div className="top-actions">
         <button className="topbar-quick-action" type="button" onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
@@ -1405,20 +1379,6 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
           <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
-          <button className="signal-lens" type="button" onClick={() => { setPage('remix'); notify('Відкрив Remix Studio для пріоритетного сигналу'); }}>
-            <span className="signal-lens-top">
-              <em>Signal lens</em>
-              <b>{topReel.score}</b>
-            </span>
-            <span className={`signal-orb market-${topReel.market}`}>
-              <i />
-            </span>
-            <span className="signal-lens-title">{topReel.title.replace('...', '')}</span>
-            <span className="signal-lens-meta">{topReel.handle} · {marketLabel(topReel.market)} · {topReel.views}</span>
-            <span className="signal-bars" aria-hidden="true">
-              <i /><i /><i /><i /><i />
-            </span>
-          </button>
         </article>
         <div className="home-stats">
           {[
@@ -1742,7 +1702,6 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
     <section className="page page-businesses">
       <PageTitle
         title="Бізнеси"
-        subtitle="Сервіс має працювати не тільки для блогерів: кафе, магазини, салони, студії й e-commerce отримують свої сценарії контенту та продажів."
         actions={<button className="dark" onClick={() => { selectedPlaybook ? setPage('assistant') : setPage('settings'); notify(selectedPlaybook ? 'Відкрив Асистента з обраним playbook' : 'Відкрив профіль бізнесу для вибору ніші'); }}><BriefcaseBusiness size={16} />{selectedPlaybook ? 'До Асистента' : 'Обрати тип бізнесу'}</button>}
       />
       {selectedPlaybook && (
@@ -1819,15 +1778,15 @@ function StrategyBrain({ notify, setPage }) {
           <small>Позиціонування</small>
           <h2>Система для SMM і продюсерів, яка веде акаунт від ніші до продажу.</h2>
           <div className="home-badges">{voice.map((item) => <span key={item}>{item}</span>)}</div>
+          <div className="strategy-cards strategy-cards-inline">
+            {pillars.map(([title, text, score]) => (
+              <article className="insight-card" key={title}>
+                <div className="panel-title"><strong>{title}</strong><Badge>{score}</Badge></div>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
         </article>
-        <div className="strategy-cards">
-          {pillars.map(([title, text, score]) => (
-            <article className="insight-card" key={title}>
-              <div className="panel-title"><strong>{title}</strong><Badge>{score}</Badge></div>
-              <p>{text}</p>
-            </article>
-          ))}
-        </div>
       </div>
       <div className="framework-grid">
         {frameworkItems.map(([item, rows]) => (
@@ -2162,7 +2121,7 @@ function RemixStudio({ reel, notify, setPage }) {
     <section className="page">
       <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <div className="remix-layout">
-        <div>
+        <div className="remix-side-panel">
           <div className="phone-card">
             <div className="phone-head"><b>{reelHandle.replace(/^@/, '')}</b><span>⋮</span></div>
             <div className={`phone-video market-${reel.market}`}><button onClick={() => notify('Превʼю відео буде доступне після підключення медіа')}>▶</button><strong>GLOBAL<br />TO UA</strong></div>

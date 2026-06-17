@@ -1619,6 +1619,12 @@ textarea:focus {
   gap: 20px;
 }
 
+.remix-side-panel {
+  display: grid;
+  align-content: start;
+  gap: 22px;
+}
+
 .phone-card {
   padding: 20px;
 }
@@ -1770,6 +1776,8 @@ textarea:focus {
 
 .home-hero {
   background: #10141d;
+  display: grid;
+  align-content: center;
 }
 
 [data-theme="dark"] .home-hero {
@@ -1786,6 +1794,10 @@ textarea:focus {
   line-height: 1.15;
   margin: 8px 0;
   letter-spacing: -0.5px;
+}
+
+.home-hero h2 {
+  max-width: 540px;
 }
 
 .home-hero p,
@@ -3944,19 +3956,26 @@ nav button.active::before {
 
 .page-strategy .strategy-layout {
   display: grid !important;
-  grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.8fr) !important;
+  grid-template-columns: 1fr !important;
   gap: 24px !important;
   align-items: stretch !important;
 }
 
 .page-strategy .strategy-cards {
   display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   gap: 24px !important;
+}
+
+.page-strategy .strategy-cards-inline {
+  margin-top: 48px !important;
 }
 
 .page-strategy .strategy-cards .insight-card {
   display: grid !important;
   gap: 16px !important;
+  background: color-mix(in srgb, var(--surface) 78%, transparent) !important;
+  backdrop-filter: blur(8px);
 }
 
 .page-strategy .framework-grid {
@@ -3976,6 +3995,10 @@ nav button.active::before {
 
   .page-businesses .business-flow,
   .page-strategy .strategy-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  .page-strategy .strategy-cards {
     grid-template-columns: 1fr !important;
   }
 }
@@ -9200,14 +9223,14 @@ nav button.active::before {
 
 /* Topbar command strip */
 .topbar {
-  min-height: 62px !important;
-  padding: 10px 12px 10px 16px !important;
+  min-height: 54px !important;
+  padding: 10px 12px !important;
   gap: 16px !important;
+  justify-content: flex-end !important;
 }
 
 .topbar-title {
-  flex: 1 1 auto;
-  justify-content: space-between;
+  flex: 0 0 auto;
   gap: 18px !important;
 }
 
@@ -9325,9 +9348,9 @@ nav button.active::before {
   border-color: rgba(14, 165, 233, 0.24) !important;
 }
 
-/* $10K polish pass: visual signal lens + subtle motion */
+/* $10K polish pass: subtle home motion */
 .home-hero h2 {
-  max-width: 360px;
+  max-width: 540px;
 }
 
 .signal-lens {
