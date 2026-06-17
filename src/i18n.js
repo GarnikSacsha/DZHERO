@@ -329,7 +329,6 @@ const EN_TEXT = {
   'Вхід': 'Sign in',
   'Увійти через Meta': 'Sign in with Meta',
   'Демо-вхід для перегляду': 'Demo access',
-  'Dev email login': 'Dev email login',
   'Що просимо': 'Requested access',
   'Meta permissions': 'Meta permissions',
   'Закритий робочий простір': 'Private workspace',
