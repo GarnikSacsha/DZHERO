@@ -3295,6 +3295,11 @@ function BillingSettings({ workspaceId, notify }) {
       const checkoutResponse = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/checkout?planId=${planId}`);
       const checkoutPayload = await checkoutResponse.json();
       if (!checkoutResponse.ok) throw new Error(checkoutPayload.message || checkoutPayload.error || 'checkout_failed');
+      if (checkoutPayload.payment?.paymentUrl) {
+        notify('Переходимо до безпечної оплати Monobank.');
+        window.location.assign(checkoutPayload.payment.paymentUrl);
+        return;
+      }
       setCheckout(checkoutPayload);
       notify('Тариф зарезервовано. Перевір реквізити оплати нижче.');
       await loadBilling();
@@ -3413,7 +3418,7 @@ function BillingSettings({ workspaceId, notify }) {
                 disabled={isCurrent || isDemo}
                 onClick={() => selectPlan(plan.id)}
               >
-                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : 'Обрати тариф'}
+                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : 'Оплатити тариф'}
               </button>
             </article>
           );
