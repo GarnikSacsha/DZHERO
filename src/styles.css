@@ -4310,6 +4310,16 @@ nav button.active::before {
     var(--surface);
 }
 
+.billing-upgrade-button {
+  min-width: 190px;
+  min-height: 44px;
+  justify-content: center;
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .billing-current small,
 .billing-plan small,
 .billing-usage-card small {
@@ -4391,8 +4401,9 @@ nav button.active::before {
 
 .billing-plan {
   display: grid;
+  grid-template-rows: auto auto auto 1fr auto;
   gap: 14px;
-  min-height: 300px;
+  min-height: 308px;
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -4420,9 +4431,39 @@ nav button.active::before {
   list-style: none;
 }
 
-.billing-plan button {
+.billing-plan li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.billing-plan li svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+  opacity: 0.9;
+}
+
+.billing-plan li span {
+  min-width: 0;
+}
+
+.billing-plan-button {
   align-self: end;
   justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius);
+  font-weight: 800;
+}
+
+.billing-plan-button.current,
+.billing-plan-button:disabled {
+  border-color: color-mix(in srgb, var(--border) 78%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, var(--surface));
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+  box-shadow: none;
+  cursor: default;
 }
 
 .checkout-panel {
