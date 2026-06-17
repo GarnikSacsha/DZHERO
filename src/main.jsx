@@ -903,9 +903,6 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
 }
 
 function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
-  const [devLoginOpen, setDevLoginOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -923,9 +920,6 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
       personalRejected: 'Personal accounts are not supported',
       demoButton: 'Demo access',
-      password: 'Password',
-      passwordPlaceholder: 'minimum 6 characters',
-      emailButton: 'Sign in with email',
     }
     : {
       brandSub: 'AI-продюсер для України і глобальних трендів',
@@ -940,30 +934,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
       personalRejected: 'Personal не підходить',
       demoButton: 'Демо-вхід для перегляду',
-      password: 'Пароль',
-      passwordPlaceholder: 'мінімум 6 символів',
-      emailButton: 'Увійти email',
     };
-
-  const submitAuth = async (event) => {
-    event.preventDefault();
-    setError('');
-    setIsLoading(true);
-    try {
-      const response = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'auth_error');
-      onAuth(payload);
-    } catch (authError) {
-      setError(authError.message === 'invalid_credentials' ? 'Невірний email або пароль' : 'Не вдалося увійти. Перевір бекенд і дані.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const startInstagramLogin = async () => {
     setError('');
@@ -1026,7 +997,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
             <span>AI Direct</span>
           </div>
         </div>
-        <form className="auth-panel" onSubmit={submitAuth}>
+        <form className="auth-panel" onSubmit={(event) => event.preventDefault()}>
           <div className="auth-panel-head">
             <div>
               <small>Instagram Professional Login</small>
