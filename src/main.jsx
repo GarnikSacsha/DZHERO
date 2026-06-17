@@ -474,7 +474,6 @@ function App() {
         {page === 'team' && <TeamHub notify={notify} workspaceId={workspaceId} />}
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} workspaceId={workspaceId} />}
       </main>
-      <ProductTour page={page} setPage={setPage} currentUser={currentUser} dataReady={Boolean(data)} language={language} onOpenSidebar={() => setIsSidebarOpen(true)} onCloseSidebar={() => setIsSidebarOpen(false)} />
       {modal?.type === 'reel' || modal === 'reel'
         ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} initialUrl={typeof modal === 'object' ? modal.url : ''} />
         : modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
@@ -1033,10 +1032,6 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
               <small>Instagram Professional Login</small>
               <h2>{authCopy.panelTitle}</h2>
             </div>
-            <div className="language-switch" aria-label="Interface language">
-              <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
-              <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
-            </div>
             <button className="icon" type="button" title={authCopy.themeTitle} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
@@ -1048,35 +1043,12 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
             <div className="instagram-pending">
               <strong>{authCopy.pendingTitle}</strong>
               <p>{authCopy.pendingText}</p>
-              <div>
-                <span>{authCopy.creator}</span>
-                <span>{authCopy.personalRejected}</span>
-                <span>{instagramConfig.redirectUri}</span>
-              </div>
             </div>
           )}
           {error && <div className="auth-error">{error}</div>}
           <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
             {authCopy.demoButton}
           </button>
-          <button className="auth-dev-toggle" type="button" onClick={() => setDevLoginOpen((value) => !value)}>
-            Dev email login
-          </button>
-          {devLoginOpen && (
-            <div className="auth-dev-panel">
-              <label className="auth-field">
-                <span>Email</span>
-                <input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@brand.ua" type="email" />
-              </label>
-              <label className="auth-field">
-                <span>{authCopy.password}</span>
-                <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder={authCopy.passwordPlaceholder} type="password" />
-              </label>
-              <button className="auth-demo" type="submit" disabled={isLoading}>
-                {authCopy.emailButton}
-              </button>
-            </div>
-          )}
         </form>
       </section>
     </main>
@@ -1386,11 +1358,6 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
           <strong>{pageMeta[0]}</strong>
           <small>{pageMeta[1]}</small>
         </div>
-        <div className="topbar-signals" aria-hidden="true">
-          <span>UA</span>
-          <span>Reels</span>
-          <span>Direct</span>
-        </div>
       </div>
       <div className="top-actions">
         <button className="topbar-quick-action" type="button" onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
@@ -1398,10 +1365,6 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
           <span>{ctaLabel}</span>
         </button>
         <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
-        <div className="language-switch" aria-label="Interface language">
-          <button className={language === 'uk' ? 'active' : ''} type="button" onClick={() => setLanguage('uk')}>UA</button>
-          <button className={language === 'en' ? 'active' : ''} type="button" onClick={() => setLanguage('en')}>EN</button>
-        </div>
         <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
       </div>
     </header>
