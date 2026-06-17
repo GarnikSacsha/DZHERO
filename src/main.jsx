@@ -1941,8 +1941,14 @@ function Competitors({ competitors, openModal }) {
   return (
     <section className="page">
       <PageTitle title="База конкурентів" subtitle="Глобальний список акаунтів для аналізу: Україна, США, Європа та англомовний global." actions={<button className="dark" onClick={() => openModal('competitor')}><Plus size={16} />Додати конкурента</button>} />
+      <div className="competitor-toolbar">
+        <label>
+          <Search size={16} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук конкурентів..." />
+        </label>
+        <span>{filteredCompetitors.length} акаунтів у вибірці</span>
+      </div>
       <div className="table-card">
-        <div className="search-row inside"><label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук конкурентів..." /></label><span>{filteredCompetitors.length} акаунтів у вибірці</span></div>
         <div className="table-head comp-grid"><span>Конкурент</span><span>Ніша</span><span>Рілсів</span><span>Останні хіти</span><span>Ср. скор</span><span>Найкращий охоп</span><span>Статус</span></div>
         {filteredCompetitors.map((row) => (
           <div className="comp-row comp-grid" key={row.handle}>

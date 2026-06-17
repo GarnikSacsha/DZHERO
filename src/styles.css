@@ -1580,6 +1580,71 @@ select {
   background: var(--surface-strong);
 }
 
+.competitor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: min(640px, 100%);
+  margin: 4px 0 14px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.competitor-toolbar label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 220px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.competitor-toolbar label:focus-within {
+  border-color: var(--accent);
+}
+
+.competitor-toolbar input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+}
+
+.competitor-toolbar span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+[data-theme="light"] .competitor-toolbar {
+  border-color: rgba(14, 165, 233, 0.22);
+  background: color-mix(in srgb, var(--surface) 92%, #ffffff);
+}
+
+@media (max-width: 720px) {
+  .competitor-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .competitor-toolbar span {
+    white-space: normal;
+  }
+}
+
 /* Editable brief form stylings */
 .brief-card {
   margin-top: 14px;
