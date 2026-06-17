@@ -3383,16 +3383,20 @@ function BillingSettings({ workspaceId, notify }) {
             <button type="button" onClick={() => setCheckout(null)}>Закрити</button>
           </div>
           <div className="checkout-grid">
-            <article>
-              <small>Карта</small>
-              <strong>{checkout.payment.cardNumber || 'Додай PAYMENT_CARD_NUMBER в Railway'}</strong>
-              <button type="button" onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер карти')} disabled={!checkout.payment.cardNumber}>Копіювати карту</button>
-            </article>
-            <article>
-              <small>Отримувач</small>
-              <strong>{checkout.payment.cardHolder || 'Monobank / card holder'}</strong>
-              <button type="button" onClick={() => copyPaymentText(checkout.payment.cardHolder, 'Отримувача')} disabled={!checkout.payment.cardHolder}>Копіювати</button>
-            </article>
+            {checkout.payment.cardNumber && (
+              <article>
+                <small>Карта</small>
+                <strong>{checkout.payment.cardNumber}</strong>
+                <button type="button" onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер карти')}>Копіювати карту</button>
+              </article>
+            )}
+            {checkout.payment.cardHolder && (
+              <article>
+                <small>Отримувач</small>
+                <strong>{checkout.payment.cardHolder}</strong>
+                <button type="button" onClick={() => copyPaymentText(checkout.payment.cardHolder, 'Отримувача')}>Копіювати</button>
+              </article>
+            )}
             <article>
               <small>Призначення</small>
               <strong>{checkout.payment.note}</strong>
