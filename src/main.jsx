@@ -3284,6 +3284,11 @@ function BillingSettings({ workspaceId, notify }) {
   }, [workspaceId]);
 
   const selectPlan = async (planId) => {
+    const paymentWindow = window.open('', '_blank');
+    if (paymentWindow) {
+      paymentWindow.opener = null;
+      paymentWindow.document.write('<title>Dzhero payment</title><body style="margin:0;background:#0b0f14;color:#fff;font-family:system-ui;display:grid;place-items:center;min-height:100vh">Відкриваємо оплату...</body>');
+    }
     try {
       const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/select-plan`, {
         method: 'POST',
@@ -3297,13 +3302,19 @@ function BillingSettings({ workspaceId, notify }) {
       if (!checkoutResponse.ok) throw new Error(checkoutPayload.message || checkoutPayload.error || 'checkout_failed');
       if (checkoutPayload.payment?.paymentUrl) {
         notify('Переходимо до безпечної оплати Monobank.');
-        window.location.assign(checkoutPayload.payment.paymentUrl);
+        if (paymentWindow) {
+          paymentWindow.location.href = checkoutPayload.payment.paymentUrl;
+        } else {
+          window.open(checkoutPayload.payment.paymentUrl, '_blank', 'noopener,noreferrer');
+        }
         return;
       }
+      paymentWindow?.close();
       setCheckout(checkoutPayload);
       notify('Тариф зарезервовано. Перевір реквізити оплати нижче.');
       await loadBilling();
     } catch (err) {
+      paymentWindow?.close();
       notify(`Не вдалося обрати тариф: ${err.message}`);
     }
   };
