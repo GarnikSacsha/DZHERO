@@ -38,6 +38,7 @@ import {
   Sun,
   Target,
   UsersRound,
+  Video,
   Wand2,
   X,
 } from 'lucide-react';
@@ -3256,6 +3257,7 @@ function BillingSettings({ workspaceId, notify }) {
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
   const [status, setStatus] = useState('loading');
+  const planGridRef = useRef(null);
 
   const loadBilling = async () => {
     setStatus('loading');
@@ -3307,11 +3309,24 @@ function BillingSettings({ workspaceId, notify }) {
   };
 
   const currentPlanId = billing?.plan?.id;
+  const subscriptionStatusLabel = (() => {
+    if (billing?.plan?.id === 'demo') return 'Безкоштовний тестовий доступ';
+    if (billing?.subscription?.status === 'active') return 'Активний доступ';
+    if (billing?.subscription?.status === 'pending_payment') return 'Очікує підтвердження оплати';
+    if (billing?.subscription?.status === 'trialing') return 'Тестовий період';
+    return 'Доступ налаштовується';
+  })();
   const usageRows = [
     ['AI повідомлення', 'agentChat'],
     ['Reels imports', 'reelImports'],
     ['Конкуренти', 'competitors'],
     ['Instagram акаунти', 'instagramAccounts'],
+  ];
+  const planLimitRows = [
+    ['agentChat', MessageSquareText, 'AI повідомлень'],
+    ['reelImports', Video, 'Reels imports'],
+    ['competitors', Target, 'конкурентів'],
+    ['instagramAccounts', UsersRound, 'Instagram акаунтів'],
   ];
 
   return (
@@ -3320,9 +3335,15 @@ function BillingSettings({ workspaceId, notify }) {
         <div>
           <small>Поточний тариф</small>
           <h3>{billing?.plan?.name || (status === 'loading' ? 'Завантаження...' : 'Не визначено')}</h3>
-          <p>{billing?.subscription?.status || 'status pending'} · {billing?.period || 'period pending'}</p>
+          <p>{subscriptionStatusLabel}</p>
         </div>
-        <button type="button" onClick={loadBilling} disabled={status === 'loading'}>Оновити</button>
+        <button
+          className="billing-upgrade-button"
+          type="button"
+          onClick={() => planGridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        >
+          Перейти на Starter/Pro
+        </button>
       </section>
 
       <div className="billing-usage-grid">
@@ -3344,7 +3365,7 @@ function BillingSettings({ workspaceId, notify }) {
         })}
       </div>
 
-      <div className="billing-plan-grid">
+      <div className="billing-plan-grid" ref={planGridRef}>
         {plans.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const isDemo = plan.id === 'demo';
@@ -3354,18 +3375,20 @@ function BillingSettings({ workspaceId, notify }) {
               <h3>{plan.name}</h3>
               <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : 'Безкоштовно'}</div>
               <ul>
-                <li>{plan.limits.agentChat} AI повідомлень</li>
-                <li>{plan.limits.reelImports} Reels imports</li>
-                <li>{plan.limits.competitors} конкурентів</li>
-                <li>{plan.limits.instagramAccounts} Instagram акаунтів</li>
+                {planLimitRows.map(([key, Icon, label]) => (
+                  <li key={key}>
+                    <Icon size={15} />
+                    <span>{plan.limits[key]} {label}</span>
+                  </li>
+                ))}
               </ul>
               <button
-                className={isCurrent ? 'dark' : ''}
+                className={isCurrent ? 'billing-plan-button current' : 'billing-plan-button'}
                 type="button"
                 disabled={isCurrent || isDemo}
                 onClick={() => selectPlan(plan.id)}
               >
-                {isCurrent ? 'Поточний' : isDemo ? 'Демо доступ' : 'Обрати тариф'}
+                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : 'Обрати тариф'}
               </button>
             </article>
           );
