@@ -2459,6 +2459,7 @@ textarea:focus {
 
 .brand-field {
   display: grid;
+  align-content: start;
   gap: 7px;
 }
 
@@ -2478,12 +2479,13 @@ textarea:focus {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+  min-height: 34px;
 }
 
 .brand-field textarea {
   width: 100%;
-  min-height: 58px;
-  resize: vertical;
+  height: 64px;
+  resize: none;
   padding: 11px 12px;
   border: 1px solid #3A3F50;
   border-radius: var(--radius-md);
@@ -2491,6 +2493,10 @@ textarea:focus {
   color: var(--text);
   line-height: 1.45;
   transition: var(--transition);
+}
+
+.brand-field.wide textarea {
+  height: 88px;
 }
 
 .brand-field textarea:hover {
@@ -4850,6 +4856,30 @@ nav button.active::before {
   background: var(--control);
   color: var(--muted-2);
   font-weight: 400 !important;
+}
+
+.idea-score-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.idea-score-pill small {
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .idea-card h3,
@@ -8803,11 +8833,13 @@ button.dark,
 
 .calendar-post {
   display: grid;
-  gap: 4px;
-  padding: 7px;
-  border: 1px solid var(--border);
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
   cursor: grab;
 }
 
@@ -8820,16 +8852,23 @@ button.dark,
   display: flex;
   align-items: center;
   gap: 6px;
+  min-height: 18px;
 }
 
 .calendar-post input {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   accent-color: var(--accent);
 }
 
 .calendar-post em {
-  padding: 2px 6px;
+  position: static !important;
+  display: inline-flex !important;
+  place-items: unset !important;
+  width: auto !important;
+  height: auto !important;
+  justify-content: center;
+  padding: 2px 7px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent-strong);
@@ -8839,6 +8878,7 @@ button.dark,
 }
 
 .calendar-post strong {
+  grid-column: 2;
   overflow: hidden;
   color: var(--text);
   font-size: 12px;
@@ -8848,8 +8888,66 @@ button.dark,
 }
 
 .calendar-post small {
+  grid-column: 2;
   color: var(--muted-2);
   font-size: 11px;
+}
+
+.plan-task {
+  align-items: flex-start !important;
+  gap: 10px !important;
+  padding: 12px !important;
+  cursor: default;
+}
+
+.plan-task label {
+  position: relative;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin-top: 2px;
+}
+
+.plan-task label input {
+  position: absolute;
+  inset: 0;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.plan-task label span {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.plan-task label input:checked + span {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.plan-task label input:checked + span::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 5px;
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.plan-task strong {
+  display: block;
+  margin-bottom: 4px;
+  line-height: 1.3;
 }
 
 .calendar-post-modal {

@@ -2236,7 +2236,7 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
             <article className="idea-card" key={`${idea.source}-${idea.title}`}>
               <div className="idea-top">
                 <span>{marketLabel(idea.market)}</span>
-                <Score value={idea.score} compact />
+                <strong className="idea-score-pill"><small>UA fit</small>{idea.score}</strong>
               </div>
               <h3>{idea.title}</h3>
               <p>{idea.angle}</p>
@@ -2944,7 +2944,7 @@ function ContentPlan({ plans, openModal, notify }) {
       </div>
       <div className="calendar-layout">
         <div className="calendar-card">
-          <div className="calendar-top"><ChevronLeft size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>Сьогодні</button><div className="legend"><span>План</span><span>Done</span><span>Drag</span></div></div>
+          <div className="calendar-top"><ChevronLeft size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>Сьогодні</button><button onClick={() => openPostModal()}><Plus size={14} />Пост</button></div>
           <div className="weekdays">{['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ'].map((d) => <b key={d}>{d}</b>)}</div>
           <div className="calendar-grid">
             {days.map((cell) => cell.type === 'empty' ? <div className="calendar-empty" key={cell.id} /> : (
@@ -2984,7 +2984,18 @@ function ContentPlan({ plans, openModal, notify }) {
         </div>
         <aside className="right-panel plan-panel">
           <div className="panel-title"><strong>Планові пости</strong><span>{posts.length}</span></div>
-          {posts.map((post) => <article className={post.done ? 'mini-card done' : 'mini-card'} key={post.id}><div className="mini-thumb" /><div><strong>{post.title}</strong><small>{post.day} · {post.time} · {post.format}</small></div></article>)}
+          {posts.map((post) => (
+            <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
+              <label>
+                <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
+                <span />
+              </label>
+              <div>
+                <strong>{post.title}</strong>
+                <small>{post.day} · {post.time} · {post.format}</small>
+              </div>
+            </article>
+          ))}
         </aside>
       </div>
       {modalDay && (
