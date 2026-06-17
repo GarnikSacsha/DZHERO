@@ -3254,6 +3254,7 @@ function AnalysisSetup({ notify }) {
 function BillingSettings({ workspaceId, notify }) {
   const [plans, setPlans] = useState([]);
   const [billing, setBilling] = useState(null);
+  const [checkout, setCheckout] = useState(null);
   const [status, setStatus] = useState('loading');
 
   const loadBilling = async () => {
@@ -3289,11 +3290,20 @@ function BillingSettings({ workspaceId, notify }) {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || payload.error || 'select_plan_failed');
-      notify('Тариф зафіксовано як pending payment. Платіжний провайдер підключимо наступним кроком.');
+      const checkoutResponse = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/checkout?planId=${planId}`);
+      const checkoutPayload = await checkoutResponse.json();
+      if (!checkoutResponse.ok) throw new Error(checkoutPayload.message || checkoutPayload.error || 'checkout_failed');
+      setCheckout(checkoutPayload);
+      notify('Тариф зарезервовано. Перевір реквізити оплати нижче.');
       await loadBilling();
     } catch (err) {
       notify(`Не вдалося обрати тариф: ${err.message}`);
     }
+  };
+
+  const copyPaymentText = async (value, label) => {
+    await navigator.clipboard?.writeText(value || '');
+    notify(`${label} скопійовано`);
   };
 
   const currentPlanId = billing?.plan?.id;
@@ -3361,6 +3371,46 @@ function BillingSettings({ workspaceId, notify }) {
           );
         })}
       </div>
+
+      {checkout && (
+        <section className="checkout-panel">
+          <div className="checkout-head">
+            <div>
+              <small>Оплата карткою</small>
+              <h3>{checkout.plan.name} · ₴{checkout.payment.amount}</h3>
+              <p>Після переказу доступ активується вручну. Коли підключимо платіжний провайдер, це стане автоматичним.</p>
+            </div>
+            <button type="button" onClick={() => setCheckout(null)}>Закрити</button>
+          </div>
+          <div className="checkout-grid">
+            <article>
+              <small>Карта</small>
+              <strong>{checkout.payment.cardNumber || 'Додай PAYMENT_CARD_NUMBER в Railway'}</strong>
+              <button type="button" onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер карти')} disabled={!checkout.payment.cardNumber}>Копіювати карту</button>
+            </article>
+            <article>
+              <small>Отримувач</small>
+              <strong>{checkout.payment.cardHolder || 'Monobank / card holder'}</strong>
+              <button type="button" onClick={() => copyPaymentText(checkout.payment.cardHolder, 'Отримувача')} disabled={!checkout.payment.cardHolder}>Копіювати</button>
+            </article>
+            <article>
+              <small>Призначення</small>
+              <strong>{checkout.payment.note}</strong>
+              <button type="button" onClick={() => copyPaymentText(checkout.payment.note, 'Призначення')}>Копіювати призначення</button>
+            </article>
+            <article>
+              <small>Сума</small>
+              <strong>₴{checkout.payment.amount}</strong>
+              <button type="button" onClick={() => copyPaymentText(String(checkout.payment.amount), 'Суму')}>Копіювати суму</button>
+            </article>
+          </div>
+          <div className="checkout-actions">
+            {checkout.payment.paymentUrl && <a className="dark button-link" href={checkout.payment.paymentUrl} target="_blank" rel="noreferrer">Відкрити оплату</a>}
+            {checkout.payment.supportUrl && <a className="button-link" href={checkout.payment.supportUrl} target="_blank" rel="noreferrer">Надіслати чек</a>}
+            <button type="button" onClick={() => notify('Оплату треба перевірити вручну. Після підтвердження адміністратор активує тариф.')}>Я оплатив</button>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

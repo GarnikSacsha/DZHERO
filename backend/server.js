@@ -17,6 +17,11 @@ const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATABASE_SSL = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require';
 const APP_STATE_KEY = process.env.APP_STATE_KEY || 'main';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const PAYMENT_CARD_NUMBER = process.env.PAYMENT_CARD_NUMBER || '';
+const PAYMENT_CARD_HOLDER = process.env.PAYMENT_CARD_HOLDER || '';
+const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
+const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
+const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -384,6 +389,28 @@ function incrementUsage(db, workspaceId, metric, amount = 1) {
   counter.value += amount;
   counter.updatedAt = new Date().toISOString();
   return counter;
+}
+
+function activateWorkspacePlan(db, workspaceId, planId, options = {}) {
+  const plan = PLAN_CATALOG.find((item) => item.id === planId);
+  if (!plan || plan.id === 'demo') {
+    throw new Error('valid_paid_plan_required');
+  }
+  const now = new Date();
+  const days = Number(options.days || 30);
+  const subscription = ensureWorkspaceSubscription(db, workspaceId);
+  subscription.planId = plan.id;
+  delete subscription.pendingPlanId;
+  subscription.status = options.status || 'active';
+  subscription.provider = options.provider || 'manual';
+  subscription.currentPeriodStart = now.toISOString();
+  subscription.currentPeriodEnd = new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
+  subscription.trialEndsAt = null;
+  subscription.cancelAtPeriodEnd = false;
+  subscription.tester = Boolean(options.tester);
+  subscription.note = options.note || subscription.note || '';
+  subscription.updatedAt = now.toISOString();
+  return subscription;
 }
 
 function decodeHtml(value = '') {
@@ -1202,6 +1229,40 @@ app.get('/api/workspaces/:workspaceId/billing', async (req, res) => {
   res.json(billing);
 });
 
+app.get('/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const planId = String(req.query.planId || '').trim();
+  const plan = PLAN_CATALOG.find((item) => item.id === planId);
+  if (!plan || plan.id === 'demo') {
+    res.status(400).json({ error: 'valid_paid_plan_required' });
+    return;
+  }
+  const reference = `${PAYMENT_NOTE_PREFIX}-${workspace.id}-${plan.id}`.replace(/\s+/g, '-');
+  res.json({
+    plan: publicPlan(plan),
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+    },
+    payment: {
+      status: PAYMENT_CARD_NUMBER || PAYMENT_CARD_URL ? 'ready' : 'payment_details_missing',
+      method: 'manual_card_transfer',
+      provider: 'monobank_manual',
+      currency: 'UAH',
+      amount: plan.priceUah,
+      cardNumber: PAYMENT_CARD_NUMBER,
+      cardHolder: PAYMENT_CARD_HOLDER,
+      paymentUrl: PAYMENT_CARD_URL,
+      supportUrl: PAYMENT_SUPPORT_URL,
+      reference,
+      note: `${reference} ${plan.name} ${plan.priceUah} UAH`,
+      activation: 'manual_after_payment_review',
+    },
+  });
+});
+
 app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
@@ -1221,8 +1282,9 @@ app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) =>
     subscription,
     plan: publicPlan(plan),
     checkout: {
-      status: 'provider_not_connected',
-      message: 'Connect a payment provider webhook before charging real customers.',
+      status: PAYMENT_CARD_NUMBER || PAYMENT_CARD_URL ? 'manual_payment_ready' : 'payment_details_missing',
+      url: `/api/workspaces/${req.params.workspaceId}/billing/checkout?planId=${plan.id}`,
+      message: 'Manual card payment is available until payment provider webhooks are connected.',
     },
   });
 });
@@ -1237,17 +1299,77 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
-  const now = new Date();
-  const subscription = ensureWorkspaceSubscription(db, req.params.workspaceId);
-  subscription.planId = plan.id;
-  subscription.status = 'active';
-  subscription.provider = 'manual';
-  subscription.currentPeriodStart = now.toISOString();
-  subscription.currentPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-  subscription.trialEndsAt = null;
-  subscription.updatedAt = now.toISOString();
+  activateWorkspacePlan(db, req.params.workspaceId, plan.id, {
+    provider: 'manual',
+    days: Number(req.body.days || 30),
+    note: req.body.note || 'manual activation',
+  });
   await writeDb(db);
   res.json(buildEntitlements(db, req.params.workspaceId));
+});
+
+app.post('/api/admin/testers/grant', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const db = await readDb();
+  const email = normalizeEmail(req.body.email);
+  const requestedWorkspaceId = String(req.body.workspaceId || '').trim();
+  const user = email ? db.users.find((item) => normalizeEmail(item.email) === email) : null;
+  const workspaceId = requestedWorkspaceId || user?.workspaceId || '';
+  const workspace = workspaceId ? requireWorkspace(db, workspaceId, res) : null;
+  if (!workspace) {
+    if (!res.headersSent) res.status(404).json({ error: 'tester_workspace_not_found' });
+    return;
+  }
+  const planId = String(req.body.planId || 'agency').trim();
+  const plan = PLAN_CATALOG.find((item) => item.id === planId);
+  if (!plan || plan.id === 'demo') {
+    res.status(400).json({ error: 'valid_paid_plan_required' });
+    return;
+  }
+  const subscription = activateWorkspacePlan(db, workspace.id, plan.id, {
+    provider: 'tester_grant',
+    days: Number(req.body.days || 90),
+    tester: true,
+    note: req.body.note || `Tester access${email ? ` for ${email}` : ''}`,
+  });
+  workspace.testerAccess = {
+    enabled: true,
+    email: email || user?.email || '',
+    planId: plan.id,
+    grantedAt: new Date().toISOString(),
+    expiresAt: subscription.currentPeriodEnd,
+  };
+  await writeDb(db);
+  res.json({
+    ok: true,
+    user: user ? publicUser(user) : null,
+    workspace: {
+      id: workspace.id,
+      name: workspace.name,
+    },
+    billing: buildEntitlements(db, workspace.id),
+  });
+});
+
+app.get('/api/admin/testers', async (req, res) => {
+  if (!requireAdmin(req, res)) return;
+  const db = await readDb();
+  const testers = db.subscriptions
+    .filter((subscription) => subscription.tester || subscription.provider === 'tester_grant')
+    .map((subscription) => {
+      const workspace = db.workspaces.find((item) => item.id === subscription.workspaceId);
+      const user = db.users.find((item) => item.workspaceId === subscription.workspaceId);
+      return {
+        workspaceId: subscription.workspaceId,
+        workspaceName: workspace?.name || '',
+        email: user?.email || workspace?.testerAccess?.email || '',
+        planId: subscription.planId,
+        status: subscription.status,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+        note: subscription.note || '',
+      };
+    });
+  res.json({ testers });
 });
 
 app.get('/api/workspaces/:workspaceId/brief', async (req, res) => {

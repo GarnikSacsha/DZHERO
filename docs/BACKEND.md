@@ -47,7 +47,10 @@ GET  /api/workspaces
 POST /api/workspaces
 GET  /api/workspaces/:workspaceId/billing
 POST /api/workspaces/:workspaceId/billing/select-plan
+GET  /api/workspaces/:workspaceId/billing/checkout
 POST /api/workspaces/:workspaceId/billing/manual-activate
+POST /api/admin/testers/grant
+GET  /api/admin/testers
 GET  /api/workspaces/:workspaceId/brief
 PUT  /api/workspaces/:workspaceId/brief
 GET  /api/workspaces/:workspaceId/sources
@@ -93,6 +96,27 @@ GET /api/workspaces/ws_demo_ua/billing
 ```
 
 Payment provider integration is not active yet. `select-plan` records a pending payment intent. `manual-activate` is protected by `ADMIN_TOKEN` and is only for internal testing before WayForPay/Fondy/another provider is connected.
+
+Manual card checkout is controlled by deployment variables:
+
+```text
+PAYMENT_CARD_NUMBER=
+PAYMENT_CARD_HOLDER=
+PAYMENT_CARD_URL=
+PAYMENT_SUPPORT_URL=
+PAYMENT_NOTE_PREFIX=Dzhero
+```
+
+Tester/full access can be granted by an admin token:
+
+```bash
+curl -X POST https://dzhero.com.ua/api/admin/testers/grant \
+  -H "Content-Type: application/json" \
+  -H "x-admin-token: $ADMIN_TOKEN" \
+  -d '{"email":"tester@example.com","planId":"agency","days":90}'
+```
+
+If the user does not exist yet, pass `workspaceId` instead of `email`.
 
 ## Meta Login setup
 
