@@ -3167,7 +3167,6 @@ function BillingSettings({ workspaceId, notify }) {
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
   const [status, setStatus] = useState('loading');
-  const planGridRef = useRef(null);
 
   const loadBilling = async () => {
     setStatus('loading');
@@ -3279,13 +3278,6 @@ function BillingSettings({ workspaceId, notify }) {
           <h3>{billing?.plan?.name || (status === 'loading' ? 'Завантаження...' : 'Не визначено')}</h3>
           <p>{subscriptionStatusLabel}</p>
         </div>
-        <button
-          className="billing-upgrade-button"
-          type="button"
-          onClick={() => planGridRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-        >
-          Перейти на Starter/Pro
-        </button>
       </section>
 
       <div className="billing-usage-grid">
@@ -3307,7 +3299,7 @@ function BillingSettings({ workspaceId, notify }) {
         })}
       </div>
 
-      <div className="billing-plan-grid" ref={planGridRef}>
+      <div className="billing-plan-grid">
         {plans.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const isDemo = plan.id === 'demo';
