@@ -552,28 +552,6 @@ button {
   transform: translateY(-2px);
 }
 
-.auth-dev-toggle {
-  width: 100%;
-  margin-top: 14px;
-  color: var(--muted);
-  background: transparent;
-  font-size: 12px;
-  font-weight: 700;
-  transition: var(--transition);
-}
-
-.auth-dev-toggle:hover {
-  color: var(--text);
-}
-
-.auth-dev-panel {
-  margin-top: 14px;
-  padding: 16px;
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.02);
-}
-
 .auth-meta {
   margin: 20px 0 0;
   color: var(--muted);
@@ -3659,7 +3637,6 @@ button,
 .auth-tabs button,
 .auth-submit,
 .auth-demo,
-.auth-dev-toggle,
 .logout-button,
 .market-buttons button,
 .tabs button,
@@ -3711,7 +3688,6 @@ button:hover,
 .auth-tabs button:hover,
 .auth-submit:hover:not(:disabled),
 .auth-demo:hover:not(:disabled),
-.auth-dev-toggle:hover,
 .logout-button:hover,
 .market-buttons button:hover,
 .tabs button:hover,
@@ -3727,7 +3703,6 @@ button:hover,
 
 .actions button,
 .auth-demo,
-.auth-dev-toggle,
 .logout-button,
 .calendar-top button,
 .copy-btn,
@@ -9100,7 +9075,6 @@ button.dark:hover:not(:disabled),
 }
 
 .auth-demo,
-.auth-dev-toggle,
 .actions button:not(.dark),
 .assistant-actions button:not(.dark),
 nav button,
@@ -9277,28 +9251,6 @@ nav button.active::before {
   text-transform: none;
 }
 
-.topbar-signals {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  padding-right: 4px;
-}
-
-.topbar-signals span {
-  min-height: 24px;
-  padding: 5px 9px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: rgba(14, 165, 233, 0.06);
-  color: var(--muted-2);
-  font-family: var(--font-mono) !important;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em !important;
-  text-transform: uppercase;
-}
-
 .topbar-quick-action {
   display: inline-flex;
   align-items: center;
@@ -9333,10 +9285,6 @@ nav button.active::before {
     align-items: flex-start;
     flex-direction: column;
     gap: 10px !important;
-  }
-
-  .topbar-signals {
-    margin-left: 0;
   }
 
   .topbar-context small,
