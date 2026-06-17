@@ -19,7 +19,7 @@ const APP_STATE_KEY = process.env.APP_STATE_KEY || 'main';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 const PAYMENT_CARD_NUMBER = process.env.PAYMENT_CARD_NUMBER || '4874 1000 3899 9119';
 const PAYMENT_CARD_HOLDER = process.env.PAYMENT_CARD_HOLDER || '';
-const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
+const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || 'https://send.monobank.ua/jar/7FdC9FmyL4';
 const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
@@ -1257,7 +1257,7 @@ app.get('/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
       paymentUrl: PAYMENT_CARD_URL,
       supportUrl: PAYMENT_SUPPORT_URL,
       reference,
-      note: `${reference} ${plan.name} ${plan.priceUah} UAH`,
+      note: `Dzhero ${plan.name}`,
       activation: 'manual_after_payment_review',
     },
   });
