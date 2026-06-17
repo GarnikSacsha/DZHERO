@@ -337,7 +337,6 @@ const EN_TEXT = {
   'Користувач не створює окремий акаунт руками: workspace зʼявляється після дозволу Meta для Instagram Business/Creator.': 'The user does not create a separate account manually: the workspace appears after Meta authorization for Instagram Business/Creator.',
   'Для клієнтів не буде окремої реєстрації: підключення починається з Meta, а локальний email залишиться тільки для розробки.': 'Clients will not use separate registration: connection starts with Meta, while local email stays for development only.',
   'Знайти ідею зараз': 'Find an idea now',
-  'Сервіс має працювати не тільки для блогерів: кафе, магазини, салони, студії й e-commerce отримують свої сценарії контенту та продажів.': 'The service should work beyond creators: cafes, shops, salons, studios, and e-commerce get their own content and sales scenarios.',
   'До Асистента': 'Go to Assistant',
   'Кафе / ресторан': 'Cafe / restaurant',
   'Меню, сезонні позиції, бронювання, відгуки, UGC, локальні події.': 'Menu, seasonal items, bookings, reviews, UGC, and local events.',
