@@ -4443,6 +4443,14 @@ nav button.active::before {
   opacity: 0.9;
 }
 
+.billing-plan li.billing-plan-feature {
+  color: color-mix(in srgb, var(--text) 82%, var(--muted));
+}
+
+.billing-plan li.billing-plan-feature svg {
+  color: color-mix(in srgb, var(--success) 70%, var(--accent));
+}
+
 .billing-plan li span {
   min-width: 0;
 }
