@@ -72,7 +72,7 @@ const PLAN_CATALOG = [
     limits: {
       agentChat: 150,
       reelImports: 30,
-      competitors: 25,
+      competitors: 5,
       workspaces: 1,
       teamMembers: 1,
       instagramAccounts: 1,
@@ -86,11 +86,11 @@ const PLAN_CATALOG = [
     priceUah: 1490,
     limits: {
       agentChat: 600,
-      reelImports: 150,
-      competitors: 100,
-      workspaces: 5,
+      reelImports: 180,
+      competitors: 20,
+      workspaces: 3,
       teamMembers: 5,
-      instagramAccounts: 5,
+      instagramAccounts: 3,
     },
     features: ['everything_starter', 'team', 'ai_direct', 'exports', 'sync_queue'],
   },
@@ -101,13 +101,13 @@ const PLAN_CATALOG = [
     priceUah: 3900,
     limits: {
       agentChat: 2500,
-      reelImports: 800,
-      competitors: 500,
-      workspaces: 20,
+      reelImports: 500,
+      competitors: 50,
+      workspaces: 10,
       teamMembers: 20,
-      instagramAccounts: 20,
+      instagramAccounts: 10,
     },
-    features: ['everything_pro', 'multi_client_workspaces', 'approval_flow', 'priority_limits'],
+    features: ['everything_pro', 'team_full_access', 'ai_direct_unlimited', 'multi_client_workspaces', 'approval_flow'],
   },
 ];
 

@@ -3328,6 +3328,22 @@ function BillingSettings({ workspaceId, notify }) {
     ['competitors', Target, 'конкурентів'],
     ['instagramAccounts', UsersRound, 'Instagram акаунтів'],
   ];
+  const planFeatureLabels = {
+    brand_brain: 'Brand brain і контент-план',
+    assistant: 'AI асистент для сценаріїв',
+    remix_studio: 'Remix Studio',
+    instagram_login: 'Instagram login ready',
+    everything_starter: 'Усе зі Starter',
+    team: 'Команда для спільної роботи',
+    ai_direct: 'AI Direct для CRM',
+    exports: 'Експорти для клієнтів',
+    sync_queue: 'Sync queue',
+    everything_pro: 'Усе з Pro',
+    team_full_access: 'Повний доступ до модуля Команда',
+    ai_direct_unlimited: 'Безлімітний AI Direct',
+    multi_client_workspaces: 'Мультиклієнтські простори',
+    approval_flow: 'Approval flow для контенту',
+  };
 
   return (
     <div className="billing-settings">
@@ -3381,6 +3397,15 @@ function BillingSettings({ workspaceId, notify }) {
                     <span>{plan.limits[key]} {label}</span>
                   </li>
                 ))}
+                {(plan.features || [])
+                  .filter((feature) => planFeatureLabels[feature])
+                  .slice(0, plan.id === 'agency' ? 4 : 2)
+                  .map((feature) => (
+                    <li className="billing-plan-feature" key={feature}>
+                      <CircleCheck size={15} />
+                      <span>{planFeatureLabels[feature]}</span>
+                    </li>
+                  ))}
               </ul>
               <button
                 className={isCurrent ? 'billing-plan-button current' : 'billing-plan-button'}
