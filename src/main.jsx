@@ -996,6 +996,11 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
             <span>Insights</span>
             <span>AI Direct</span>
           </div>
+          <div className="auth-signal-panel">
+            <span>Live readiness</span>
+            <strong>Підключення через офіційний Instagram flow</strong>
+            <p>Користувач авторизує Creator або Business акаунт, а Dzhero забирає тільки дозволені дані для аналізу, плану і комунікації.</p>
+          </div>
         </div>
         <form className="auth-panel" onSubmit={(event) => event.preventDefault()}>
           <div className="auth-panel-head">
@@ -1010,6 +1015,21 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           <button className="auth-submit auth-meta-button" type="button" onClick={startInstagramLogin} disabled={isLoading}>
             {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
           </button>
+          <div className="auth-flow-list">
+            {[
+              ['01', 'Instagram permission', 'Creator або Business акаунт підтверджує доступи.'],
+              ['02', 'Workspace sync', 'Профіль, медіа і сигнали потрапляють у робочий простір.'],
+              ['03', 'AI producer', 'Джеро готує ідеї, сценарії, план і Direct-підказки.'],
+            ].map(([step, title, text]) => (
+              <article key={step}>
+                <span>{step}</span>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
           {instagramConfig && (
             <div className="instagram-pending">
               <strong>{authCopy.pendingTitle}</strong>
@@ -1379,6 +1399,11 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
           <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
+          <div className="home-hero-rail">
+            <span>Signal radar</span>
+            <strong>{topReel.score}</strong>
+            <em>{topReel.views} переглядів</em>
+          </div>
         </article>
         <div className="home-stats">
           {[
@@ -1407,18 +1432,23 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
         </div>
       )}
       <div className="home-columns">
-        <article className="insight-card">
+        <article className="insight-card home-signal-card">
           <small>Пріоритетний сигнал</small>
           <h3>{topReel.title}</h3>
           <p>{marketLabel(topReel.market)} · {topReel.handle} · скор {topReel.score} · {topReel.views} переглядів</p>
+          <div className="signal-readiness">
+            <span>Хук</span>
+            <span>UA-fit</span>
+            <span>CTA</span>
+          </div>
         </article>
-        <article className="insight-card">
-          <small>Що робимо далі</small>
-          <ul className="task-list">
-            <li>Додати 20-30 релевантних акаунтів з США та Європи.</li>
-            <li>Позначити, які механіки можна адаптувати під український бізнес.</li>
-            <li>Зібрати batch з 7 українських сценаріїв на тиждень.</li>
-          </ul>
+        <article className="insight-card home-action-card">
+          <small>Наступна дія</small>
+          <h3>{onboarding.instagramConnected ? 'Зібрати batch на тиждень' : 'Підключити Instagram-джерело'}</h3>
+          <p>{onboarding.instagramConnected ? 'Сигнали вже можна переводити в сценарії, сторіс і Direct-відповіді.' : 'Джеро готовий до Meta keys: після логіну зможемо підтягувати реальні профілі й дозволи.'}</p>
+          <button type="button" onClick={() => { setPage(onboarding.instagramConnected ? 'plan' : 'settings'); notify(onboarding.instagramConnected ? 'Відкрив контент-план' : 'Відкрив інтеграції Instagram'); }}>
+            {onboarding.instagramConnected ? 'До контент-плану' : 'Перейти до інтеграцій'}
+          </button>
         </article>
       </div>
     </section>
@@ -2126,6 +2156,17 @@ function RemixStudio({ reel, notify, setPage }) {
   return (
     <section className="page">
       <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
+      <article className="remix-command-strip">
+        <div>
+          <small>Remix command</small>
+          <strong>Не копіюємо ролик, а витягуємо механіку і збираємо український сценарій.</strong>
+        </div>
+        <div className="remix-command-metrics">
+          <span><b>{reel.score}</b> signal</span>
+          <span><b>{scenarioVariants.length}</b> remix</span>
+          <span><b>15s</b> script</span>
+        </div>
+      </article>
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -2146,6 +2187,12 @@ function RemixStudio({ reel, notify, setPage }) {
             <small>Про що рілс</small>
             <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
             <p>{scenario.insight}</p>
+            <div className="remix-signal-map">
+              <span>Перший кадр</span>
+              <span>Доказ</span>
+              <span>Локальний біль</span>
+              <span>Direct CTA</span>
+            </div>
           </div>
           <div className="insight-card">
             <small>Якість вхідних даних</small>
@@ -3377,9 +3424,15 @@ function BillingSettings({ workspaceId, notify }) {
 
 function DataSources({ sources, notify, workspaceId }) {
   const [tab, setTab] = useState('profile');
+  const redirectUri = `${window.location.origin}/api/auth/instagram/callback`;
   const integrations = [
     ['Instagram Professional Login', 'Creator або Business акаунт підключається через офіційний Instagram flow.', 'Очікує налаштування адміністратором'],
     ['AI-асистент', 'Відповіді, ідеї та сценарії працюють через серверний AI-провайдер.', 'Керується на backend'],
+  ];
+  const apiSetupSteps = [
+    ['01', 'Meta app', 'Instagram API scenario + required permissions'],
+    ['02', 'Redirect URI', redirectUri],
+    ['03', 'Railway env', 'INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI, CLIENT_URL'],
   ];
 
   return (
@@ -3399,16 +3452,39 @@ function DataSources({ sources, notify, workspaceId }) {
       />
       {tab === 'profile' && <AnalysisSetup notify={notify} />}
       {tab === 'api' && (
-        <div className="source-grid settings-integrations">
-          {integrations.map(([title, description, status]) => (
-            <article className="insight-card source-card" key={title}>
-              <CircleCheck size={22} />
-              <h3>{title}</h3>
-              <p>{description}</p>
-              <em>{status}</em>
-            </article>
-          ))}
-        </div>
+        <>
+          <article className="api-readiness-panel">
+            <div>
+              <small>Instagram API readiness</small>
+              <h3>Джеро готовий прийняти ключі Meta App</h3>
+              <p>Після App ID/Secret і redirect URI кнопка Instagram Login почне вести в офіційний flow, а callback збере підключений акаунт у workspace.</p>
+            </div>
+            <button type="button" onClick={() => navigator.clipboard?.writeText(redirectUri).then(() => notify('Redirect URI скопійовано')).catch(() => notify(redirectUri))}>
+              <Copy size={15} />Скопіювати redirect
+            </button>
+          </article>
+          <div className="api-setup-steps">
+            {apiSetupSteps.map(([step, title, text]) => (
+              <article key={step}>
+                <span>{step}</span>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="source-grid settings-integrations">
+            {integrations.map(([title, description, status]) => (
+              <article className="insight-card source-card" key={title}>
+                <CircleCheck size={22} />
+                <h3>{title}</h3>
+                <p>{description}</p>
+                <em>{status}</em>
+              </article>
+            ))}
+          </div>
+        </>
       )}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
     </section>
