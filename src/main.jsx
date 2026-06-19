@@ -461,6 +461,7 @@ function App() {
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
         {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
         {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} />}
+        {page === 'tiktok' && <TikTokSignalsDemo notify={notify} setPage={setPage} />}
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
@@ -1146,6 +1147,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     businesses: 'sidebar-businesses',
     strategy: 'sidebar-strategy',
     viral: 'sidebar-transcript',
+    tiktok: 'sidebar-tiktok',
     competitors: 'sidebar-competitors',
     remix: 'sidebar-remix',
     ideas: 'sidebar-ideas',
@@ -1165,6 +1167,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       businesses: 'Businesses',
       strategy: 'Strategy',
       viral: 'Trend analytics',
+      tiktok: 'TikTok Signals',
       competitors: 'Competitors',
       remix: 'Remix studio',
       ideas: 'Ideas',
@@ -1184,6 +1187,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       businesses: 'Бізнеси',
       strategy: 'Стратегія',
       viral: 'Аналітика трендів',
+      tiktok: 'TikTok Signals',
       competitors: 'Конкуренти',
       remix: 'Ремікс-студія',
       ideas: 'Ідеї',
@@ -1203,6 +1207,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     ['businesses', BriefcaseBusiness],
     ['strategy', Target],
     ['viral', Flame],
+    ['tiktok', Video],
     ['competitors', Database],
     ['remix', Wand2],
     ['ideas', Lightbulb],
@@ -1557,6 +1562,105 @@ function ProductRoadmap({ notify, setPage }) {
             <p>{text}</p>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function TikTokSignalsDemo({ notify, setPage }) {
+  const [step, setStep] = useState('ready');
+  const isConnected = step === 'connected' || step === 'analyzed' || step === 'planned';
+  const isAnalyzed = step === 'analyzed' || step === 'planned';
+  const isPlanned = step === 'planned';
+  const signals = [
+    ['Video trend', 'AI workflow from one product photo', '2.4M views', '92'],
+    ['Sound signal', 'Fast tutorial beat used by creators', '18.6K uses', '88'],
+    ['Effect signal', 'Before/after product reveal mask', '7.1K uses', '84'],
+  ];
+  const plan = [
+    ['Hook', 'Show the business pain in the first 2 seconds.'],
+    ['Proof', 'Use one concrete example, number, or mini-case.'],
+    ['CTA', 'Invite viewers to comment a keyword or write in Direct.'],
+  ];
+  const runStep = (nextStep, message) => {
+    setStep(nextStep);
+    notify(message);
+  };
+
+  return (
+    <section className="page page-tiktok-demo">
+      <PageTitle
+        title="TikTok Signals"
+        subtitle="Sandbox preview for TikTok review: trend signals, sounds and video ideas become original content plans."
+        actions={<button className="dark" type="button" onClick={() => setPage('remix')}><Wand2 size={16} />Open Remix Studio</button>}
+      />
+      <div className="tiktok-demo-hero">
+        <div>
+          <small>Sandbox integration preview</small>
+          <h2>Analyze short-form video signals without copying content.</h2>
+          <p>Dzhero will connect TikTok trend context to the workspace, score signals by market fit, and turn them into original scripts for the user’s own brand.</p>
+        </div>
+        <div className="tiktok-demo-actions">
+          <button className={isConnected ? 'completed' : 'dark'} type="button" onClick={() => runStep('connected', 'TikTok sandbox connected')}>
+            <CircleCheck size={16} />{isConnected ? 'TikTok connected' : 'Connect TikTok sandbox'}
+          </button>
+          <button type="button" disabled={!isConnected} onClick={() => runStep('analyzed', 'TikTok signals imported')}>
+            <Download size={16} />Import trend signals
+          </button>
+          <button type="button" disabled={!isAnalyzed} onClick={() => runStep('planned', 'Original content plan generated')}>
+            <Sparkles size={16} />Generate original plan
+          </button>
+        </div>
+      </div>
+
+      <div className="tiktok-flow-grid">
+        {[
+          ['01', 'Connect', isConnected ? 'done' : 'ready', 'User authorizes the TikTok integration in a sandbox flow.'],
+          ['02', 'Analyze', isAnalyzed ? 'done' : isConnected ? 'ready' : 'locked', 'Dzhero reads selected trend signals and scores market fit.'],
+          ['03', 'Create', isPlanned ? 'done' : isAnalyzed ? 'ready' : 'locked', 'AI turns the signals into original hooks, scripts and calendar ideas.'],
+        ].map(([number, title, status, text]) => (
+          <article className={`tiktok-flow-card ${status}`} key={title}>
+            <span>{number}</span>
+            <strong>{title}</strong>
+            <p>{text}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="tiktok-demo-layout">
+        <article className="insight-card tiktok-signal-panel">
+          <small>Trend signals</small>
+          <h3>Selected TikTok signals for review demo</h3>
+          <div className="tiktok-signal-list">
+            {signals.map(([type, title, meta, score]) => (
+              <button className={isAnalyzed ? 'active' : ''} type="button" key={title} onClick={() => !isAnalyzed && notify('Connect and import TikTok signals first')}>
+                <span>{type}</span>
+                <strong>{title}</strong>
+                <em>{meta}</em>
+                <b>{score}</b>
+              </button>
+            ))}
+          </div>
+        </article>
+        <article className="insight-card tiktok-plan-panel">
+          <small>Original content plan</small>
+          <h3>{isPlanned ? 'Ready for Ukrainian brand adaptation' : 'Waiting for generated plan'}</h3>
+          {isPlanned ? (
+            <div className="tiktok-plan-list">
+              {plan.map(([label, text]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <p>{text}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="tiktok-empty-plan">
+              <Sparkles size={22} />
+              <p>After importing signals, Dzhero will generate an original script structure and content plan. No automatic reposting or copying.</p>
+            </div>
+          )}
+        </article>
       </div>
     </section>
   );
