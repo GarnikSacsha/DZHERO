@@ -284,6 +284,11 @@ button {
   min-height: 360px;
 }
 
+.tiktok-plan-panel.ready {
+  border-color: rgba(34, 211, 238, 0.58);
+  box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.16) inset, 0 18px 60px rgba(34, 211, 238, 0.08);
+}
+
 .tiktok-signal-panel h3,
 .tiktok-plan-panel h3 {
   margin-top: 0;

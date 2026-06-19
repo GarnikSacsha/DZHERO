@@ -1586,6 +1586,10 @@ function TikTokSignalsDemo({ notify, setPage }) {
     setStep(nextStep);
     notify(message);
   };
+  const generatePlan = () => {
+    setStep('planned');
+    notify('Original content plan generated');
+  };
 
   return (
     <section className="page page-tiktok-demo">
@@ -1607,7 +1611,7 @@ function TikTokSignalsDemo({ notify, setPage }) {
           <button type="button" disabled={!isConnected} onClick={() => runStep('analyzed', 'TikTok signals imported')}>
             <Download size={16} />Import trend signals
           </button>
-          <button type="button" disabled={!isAnalyzed} onClick={() => runStep('planned', 'Original content plan generated')}>
+          <button className={isPlanned ? 'completed' : ''} type="button" onClick={generatePlan}>
             <Sparkles size={16} />Generate original plan
           </button>
         </div>
@@ -1642,7 +1646,7 @@ function TikTokSignalsDemo({ notify, setPage }) {
             ))}
           </div>
         </article>
-        <article className="insight-card tiktok-plan-panel">
+        <article className={`insight-card tiktok-plan-panel ${isPlanned ? 'ready' : ''}`}>
           <small>Original content plan</small>
           <h3>{isPlanned ? 'Ready for Ukrainian brand adaptation' : 'Waiting for generated plan'}</h3>
           {isPlanned ? (
