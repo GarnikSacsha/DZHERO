@@ -1557,7 +1557,6 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           </div>
         </article>
       </div>
-      <WorkflowRail active="signals" setPage={setPage} notify={notify} />
       {!onboarding.instagramConnected && (
         <div className="ops-strip">
           {onboardingSteps.map(([step, title, text, done, target]) => (
