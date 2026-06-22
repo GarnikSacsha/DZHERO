@@ -1433,6 +1433,20 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
     ['03', 'Зібрати сигнали', 'Рілси, конкуренти, коментарі, тренди та ідеї.', data.reels.length > 0 && data.competitors.length > 0, 'viral'],
     ['04', 'Випустити batch', 'План на тиждень, сторіс, рілси, Direct-відповіді.', data.plans.length > 0, 'plan'],
   ];
+  const marketFocus = [
+    ['UA local proof', '+18%', 'Кейси, відгуки, до/після замість абстрактних обіцянок.'],
+    ['AI workflows', '+31%', 'Показати, як за 5 хвилин зробити контент без студії.'],
+    ['Direct CTA', '+12%', 'Комент або Direct з конкретним словом працює краще.'],
+    ['Service reviews', '+22%', 'Огляди сервісів та помилок добре лягають на UA-ринок.'],
+  ];
+  const quickActions = [
+    ['Signals', Radio, 'tiktok'],
+    ['Analytics', BarChart3, 'viral'],
+    ['Remix', Wand2, 'remix'],
+    ['Plan', CalendarDays, 'plan'],
+    ['Sales', ShoppingBag, 'sales'],
+    ['Settings', Settings, 'settings'],
+  ];
 
   return (
     <section className="page page-home">
@@ -1444,6 +1458,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
         <article className="home-hero">
           <small>Поточний фокус</small>
           <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
+          <p>Command center: збираємо сигнали, оцінюємо ринок, робимо ремікс і ведемо ідеї до плану та Direct.</p>
           <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
           <div className="home-hero-rail">
             <span>Signal radar</span>
@@ -1465,6 +1480,43 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
             </article>
           ))}
         </div>
+      </div>
+      <div className="home-command-grid">
+        <article className="home-readiness-card">
+          <small>Status readiness</small>
+          <strong>{onboarding.instagramConnected ? 'Production ready' : 'Integration waiting'}</strong>
+          <div className="home-readiness-list">
+            {onboardingSteps.map(([step, title, , done, target]) => (
+              <button className={done ? 'done' : ''} type="button" key={step} onClick={() => setPage(target)}>
+                <span>{done ? '✓' : step}</span>
+                <b>{title}</b>
+              </button>
+            ))}
+          </div>
+        </article>
+        <article className="home-market-focus">
+          <div className="panel-title"><strong>Market focus</strong><span>{marketLabel(market)}</span></div>
+          <div className="home-market-grid">
+            {marketFocus.map(([title, delta, text]) => (
+              <div key={title}>
+                <span>{delta}</span>
+                <strong>{title}</strong>
+                <p>{text}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+        <article className="home-quick-actions">
+          <div className="panel-title"><strong>Quick actions</strong><span>workflow</span></div>
+          <div>
+            {quickActions.map(([label, Icon, target]) => (
+              <button type="button" key={label} onClick={() => { setPage(target); notify(`${label}: opened`); }}>
+                <Icon size={16} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </div>
+        </article>
       </div>
       <WorkflowRail active="signals" setPage={setPage} notify={notify} />
       {!onboarding.instagramConnected && (
@@ -1615,9 +1667,9 @@ function TikTokSignalsDemo({ notify, setPage }) {
   const isAnalyzed = step === 'analyzed' || step === 'planned';
   const isPlanned = step === 'planned';
   const signals = [
-    ['Video trend', 'AI workflow from one product photo', '2.4M views', '92'],
-    ['Sound signal', 'Fast tutorial beat used by creators', '18.6K uses', '88'],
-    ['Effect signal', 'Before/after product reveal mask', '7.1K uses', '84'],
+    ['Video trend', Video, 'AI workflow from one product photo', '2.4M views', '92'],
+    ['Sound signal', Radio, 'Fast tutorial beat used by creators', '18.6K uses', '88'],
+    ['Effect signal', Wand2, 'Before/after product reveal mask', '7.1K uses', '84'],
   ];
   const plan = [
     ['Hook', 'Show the business pain in the first 2 seconds.'],
@@ -1674,13 +1726,14 @@ function TikTokSignalsDemo({ notify, setPage }) {
         ))}
       </div>
 
-      <div className="tiktok-demo-layout">
+      <div className="tiktok-demo-layout signal-to-plan-layout">
         <article className="insight-card tiktok-signal-panel">
           <small>Trend signals</small>
           <h3>Selected TikTok signals for review demo</h3>
           <div className="tiktok-signal-list">
-            {signals.map(([type, title, meta, score]) => (
+            {signals.map(([type, Icon, title, meta, score]) => (
               <button className={isAnalyzed ? 'active' : ''} type="button" key={title} onClick={() => !isAnalyzed && notify('Connect and import TikTok signals first')}>
+                <i><Icon size={17} /></i>
                 <span>{type}</span>
                 <strong>{title}</strong>
                 <em>{meta}</em>
@@ -2091,12 +2144,20 @@ function getCompetitorMeta(row) {
 
 function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview }) {
   return (
-    <div className="table-card">
-      <div className="table-head reels-grid">
-        <span>Рілс</span><span>Конкурент</span><button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Скор <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button><span>Перегляди</span><span>Лайки</span><span>Ком.</span><span>Статус</span>
+    <div className="table-card trend-analytics-table">
+      <div className="table-head trend-grid">
+        <span>Rank</span>
+        <span>Content / video</span>
+        <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Score <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
+        <span>Views</span>
+        <span>Likes</span>
+        <span>Market</span>
+        <span>Source</span>
+        <span>Status</span>
       </div>
-      {reels.map((reel) => (
-        <div className="reel-row reels-grid" key={`${reel.handle}-${reel.title}`}>
+      {reels.map((reel, index) => (
+        <div className="reel-row trend-grid" key={`${reel.handle}-${reel.title}`}>
+          <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
           <div className="reel-info">
             <button className={`thumb market-${reel.market}`} type="button" onClick={() => onOpenPreview(reel)} aria-label={`Відкрити прев'ю ${reel.title}`}>
               <span>{reel.views}</span>
@@ -2104,11 +2165,11 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
             </button>
             <div><strong>{reel.title}</strong><small>{marketLabel(reel.market)} · 52с · 06 тра 13:42</small></div>
           </div>
-          <div className="handle"><b>{reel.tag}</b><span>{reel.handle}</span><small>Instagram</small></div>
           <Score value={reel.score} />
           <strong>{reel.views}</strong>
           <span>{reel.likes}</span>
-          <span>{reel.comments}</span>
+          <span>{marketLabel(reel.market)}</span>
+          <div className="handle trend-source"><b>{reel.tag}</b><span>{reel.handle}</span><small>Instagram</small></div>
           <div className="status-list status-badges">{reel.status.map((s) => <em title={s} key={s}>{compactStatusLabel(s)}</em>)}</div>
         </div>
       ))}
@@ -2306,7 +2367,7 @@ function RemixStudio({ reel, notify, setPage }) {
   };
 
   return (
-    <section className="page">
+    <section className="page page-remix-studio">
       <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
       <WorkflowRail active="remix" setPage={setPage} notify={notify} variant="compact" />
       <article className="remix-command-strip">
@@ -2408,6 +2469,34 @@ function RemixStudio({ reel, notify, setPage }) {
             </div>
           </div>
         </div>
+        <aside className="remix-project-panel">
+          <div>
+            <small>Project controls</small>
+            <h3>Ремікс готовий до виробництва</h3>
+            <p>Сценарій можна поставити в контент-план, скопіювати або експортувати для команди.</p>
+          </div>
+          <button className="dark" type="button" onClick={() => { setPage('plan'); notify('Ремікс додано до контент-плану'); }}>
+            <CalendarDays size={16} />Додати в план
+          </button>
+          <button type="button" onClick={copyScenario}>
+            <Copy size={16} />Скопіювати сценарій
+          </button>
+          <button type="button" onClick={() => notify('Експорт буде доступний після підключення workspace-файлів')}>
+            <Download size={16} />Експорт
+          </button>
+          <div className="remix-control-metrics">
+            <label>
+              <span>Complexity</span>
+              <strong>84%</strong>
+              <i><b style={{ width: '84%' }} /></i>
+            </label>
+            <label>
+              <span>Trend score</span>
+              <strong>{reel.score}</strong>
+              <i><b style={{ width: `${Math.min(reel.score, 100)}%` }} /></i>
+            </label>
+          </div>
+        </aside>
       </div>
     </section>
   );
@@ -3105,6 +3194,12 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
     ...Array.from({ length: daysInMonth }, (_, index) => ({ type: 'day', day: index + 1 })),
   ], [daysInMonth, firstWeekday]);
   const doneCount = posts.filter((post) => post.done).length;
+  const pendingPosts = posts.filter((post) => !post.done);
+  const weeklyActions = [
+    ['Review scripts', pendingPosts.length, 'Перевірити хук, доказ і CTA перед зйомкою.'],
+    ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти рілси одним блоком і закрити тиждень.'],
+    ['Prepare Direct', 3, 'Підготувати короткі відповіді для коментарів і Direct.'],
+  ];
   const openPostModal = (day = today.getDate()) => {
     setModalDay(Math.min(Math.max(day, 1), daysInMonth));
     setDraft({ title: '', format: 'Reels', time: '10:00' });
@@ -3184,6 +3279,18 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
           </div>
         </div>
         <aside className="right-panel plan-panel">
+          <div className="panel-title"><strong>Next production steps</strong><span>{pendingPosts.length}</span></div>
+          <div className="plan-action-stack">
+            {weeklyActions.map(([title, value, text]) => (
+              <article key={title}>
+                <span>{value}</span>
+                <div>
+                  <strong>{title}</strong>
+                  <p>{text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
           <div className="panel-title"><strong>Планові пости</strong><span>{posts.length}</span></div>
           {posts.map((post) => (
             <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
@@ -3195,6 +3302,9 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
                 <strong>{post.title}</strong>
                 <small>{post.day} · {post.time} · {post.format}</small>
               </div>
+              <button type="button" onClick={() => { setPage('remix'); notify('Відкрив Remix Studio для цього поста'); }}>
+                <Wand2 size={14} />
+              </button>
             </article>
           ))}
         </aside>

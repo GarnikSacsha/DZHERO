@@ -10369,3 +10369,430 @@ nav button.active::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* Stitch-inspired structure pass */
+.home-command-grid {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 240px;
+  gap: 16px;
+}
+
+.home-readiness-card,
+.home-market-focus,
+.home-quick-actions,
+.remix-project-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  padding: 16px;
+}
+
+.home-readiness-card small,
+.remix-project-panel small {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.home-readiness-card > strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.home-readiness-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.home-readiness-list button {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  text-align: left;
+}
+
+.home-readiness-list span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.home-readiness-list .done span {
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+}
+
+.home-readiness-list b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.home-market-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.home-market-grid div {
+  min-height: 116px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.home-market-grid span {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.home-market-grid strong {
+  display: block;
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.home-market-grid p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-quick-actions > div:last-child {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.home-quick-actions button {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 58px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+}
+
+.home-quick-actions svg {
+  color: var(--accent);
+}
+
+.home-quick-actions span {
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.signal-to-plan-layout {
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.tiktok-signal-list button {
+  position: relative;
+}
+
+.tiktok-signal-list i {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 8px;
+  color: var(--accent);
+}
+
+.trend-analytics-table {
+  overflow: hidden;
+}
+
+.trend-grid {
+  display: grid;
+  grid-template-columns: 70px minmax(260px, 1.6fr) 110px 100px 100px 110px minmax(160px, 0.9fr) minmax(160px, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.trend-analytics-table .table-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.trend-rank {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.trend-source {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+}
+
+.trend-source small {
+  grid-column: 2;
+}
+
+.trend-analytics-table .score {
+  display: grid;
+  gap: 2px;
+}
+
+.trend-analytics-table .score small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.remix-layout {
+  grid-template-columns: 310px minmax(0, 1fr) 260px;
+  align-items: stretch;
+}
+
+.remix-project-panel {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.remix-project-panel h3 {
+  margin: 6px 0 0;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.remix-project-panel p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.remix-project-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  border-radius: 8px;
+  font-weight: 900;
+}
+
+.remix-control-metrics {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.remix-control-metrics label {
+  display: grid;
+  gap: 7px;
+}
+
+.remix-control-metrics label > span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.remix-control-metrics strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.remix-control-metrics i {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.16);
+}
+
+.remix-control-metrics b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.plan-action-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.plan-action-stack article {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.plan-action-stack span {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-strong);
+  font-family: var(--mono);
+  font-weight: 900;
+}
+
+.plan-action-stack strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.plan-action-stack p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.plan-task {
+  grid-template-columns: auto minmax(0, 1fr) 34px;
+}
+
+.plan-task > button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--accent);
+}
+
+@media (max-width: 1320px) {
+  .home-command-grid,
+  .remix-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .remix-project-panel {
+    position: static;
+  }
+
+  .home-market-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 980px) {
+  .trend-grid {
+    grid-template-columns: 52px minmax(220px, 1fr) 90px 90px 90px 90px;
+  }
+
+  .trend-grid > :nth-child(7),
+  .trend-grid > :nth-child(8) {
+    display: none;
+  }
+
+  .signal-to-plan-layout,
+  .home-market-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 680px) {
+  .home-quick-actions > div:last-child {
+    grid-template-columns: 1fr;
+  }
+
+  .trend-grid {
+    grid-template-columns: 44px minmax(180px, 1fr) 72px;
+  }
+
+  .trend-grid > :nth-child(n+4) {
+    display: none;
+  }
+}
+
+.page-remix-studio .remix-bottom {
+  grid-template-columns: 1fr;
+}
+
+.page-remix-studio .phone-video {
+  height: 360px;
+}
+
+.page-remix-studio .remix-script-ready-card.empty {
+  min-height: auto;
+}
+
+.page-content-plan .calendar-post {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+.page-content-plan .calendar-post label,
+.page-content-plan .calendar-post strong,
+.page-content-plan .calendar-post small {
+  grid-column: 1;
+}
+
+.page-content-plan .calendar-post label {
+  justify-content: space-between;
+}
+
+.page-content-plan .calendar-post strong {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.page-content-plan .calendar-post em {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
