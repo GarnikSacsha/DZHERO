@@ -28,6 +28,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  Radio,
   Rocket,
   Search,
   Send,
@@ -460,14 +461,14 @@ function App() {
         {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
         {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
         {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} setPage={setPage} />}
         {page === 'tiktok' && <TikTokSignalsDemo notify={notify} setPage={setPage} />}
         {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
         {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
         {page === 'assistant' && <CreatorAssistant notify={notify} workspaceId={workspaceId} activeWorkspace={activeWorkspace} autoPrompt={assistantAutoPrompt} onAutoPromptUsed={() => setAssistantAutoPrompt(null)} />}
         {page === 'launches' && <LaunchRoadmap notify={notify} setPage={setPage} workspaceId={workspaceId} />}
-        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} />}
+        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setPage} />}
         {page === 'sales' && <SalesDirect notify={notify} setPage={setPage} />}
         {page === 'analytics' && <Analytics />}
         {page === 'legal' && <LegalSafe notify={notify} />}
@@ -1360,6 +1361,46 @@ function MarketFilter({ segments, market, setMarket }) {
   );
 }
 
+function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' }) {
+  const steps = [
+    ['signals', 'Signals', 'TikTok + Instagram inputs', 'tiktok', Radio],
+    ['analytics', 'Analyze', 'Score markets and trends', 'viral', BarChart3],
+    ['remix', 'Remix', 'Turn signal into script', 'remix', Wand2],
+    ['plan', 'Plan', 'Schedule the content batch', 'plan', CalendarDays],
+    ['sales', 'Sales', 'Connect content to Direct', 'sales', ShoppingBag],
+  ];
+  const activeIndex = Math.max(0, steps.findIndex(([id]) => id === active));
+
+  return (
+    <div className={`workflow-rail ${variant === 'compact' ? 'compact' : ''}`}>
+      <div className="workflow-rail-head">
+        <small>Dzhero production path</small>
+        <strong>Signal → analysis → remix → plan → sales</strong>
+      </div>
+      <div className="workflow-steps">
+        {steps.map(([id, title, text, target, Icon], index) => {
+          const state = index < activeIndex ? 'done' : index === activeIndex ? 'active' : 'next';
+          return (
+            <button
+              className={`workflow-step ${state}`}
+              type="button"
+              key={id}
+              onClick={() => {
+                setPage(target);
+                notify(`${title}: opened`);
+              }}
+            >
+              <span><Icon size={15} /></span>
+              <b>{title}</b>
+              <em>{text}</em>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId }) {
   const topReel = data.reels[0];
   const activeMarket = data.marketSegments.find((segment) => segment.id === market);
@@ -1425,6 +1466,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           ))}
         </div>
       </div>
+      <WorkflowRail active="signals" setPage={setPage} notify={notify} />
       {!onboarding.instagramConnected && (
         <div className="ops-strip">
           {onboardingSteps.map(([step, title, text, done, target]) => (
@@ -1598,6 +1640,7 @@ function TikTokSignalsDemo({ notify, setPage }) {
         subtitle="Sandbox preview for TikTok review: trend signals, sounds and video ideas become original content plans."
         actions={<button className="dark" type="button" onClick={() => setPage('remix')}><Wand2 size={16} />Open Remix Studio</button>}
       />
+      <WorkflowRail active="signals" setPage={setPage} notify={notify} variant="compact" />
       <div className="tiktok-demo-hero">
         <div>
           <small>Sandbox integration preview</small>
@@ -1670,7 +1713,7 @@ function TikTokSignalsDemo({ notify, setPage }) {
   );
 }
 
-function ViralBank({ reels, market, notify, openModal, onImportUrl }) {
+function ViralBank({ reels, market, notify, openModal, onImportUrl, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
@@ -1738,6 +1781,7 @@ function ViralBank({ reels, market, notify, openModal, onImportUrl }) {
         subtitle="Скаутимо Україну, США, Європу та global-ніші, але адаптуємо ідеї під українську аудиторію."
         actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати рілс вручну</button></>}
       />
+      <WorkflowRail active="analytics" setPage={setPage} notify={notify} variant="compact" />
       <div className="search-row">
         <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав Reels-посилання..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
@@ -2264,6 +2308,7 @@ function RemixStudio({ reel, notify, setPage }) {
   return (
     <section className="page">
       <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
+      <WorkflowRail active="remix" setPage={setPage} notify={notify} variant="compact" />
       <article className="remix-command-strip">
         <div>
           <small>Remix command</small>
@@ -3039,7 +3084,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   );
 }
 
-function ContentPlan({ plans, openModal, notify }) {
+function ContentPlan({ plans, openModal, notify, setPage }) {
   const today = new Date();
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [modalDay, setModalDay] = useState(null);
@@ -3088,6 +3133,7 @@ function ContentPlan({ plans, openModal, notify }) {
   return (
     <section className="page page-content-plan">
       <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
+      <WorkflowRail active="plan" setPage={setPage} notify={notify} variant="compact" />
       <div className="stats">
         {[
           ['Усього', posts.length],
@@ -3254,6 +3300,7 @@ function SalesDirect({ notify, setPage }) {
         subtitle="Слой конверсії: авто-відповіді в коментарях і Direct, кваліфікація лідів, CRM-теги й передача людині."
         actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для налаштування AI Direct'); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
       />
+      <WorkflowRail active="sales" setPage={setPage} notify={notify} variant="compact" />
       <div className="sales-layout">
         <div className="sales-stats">
           <div><span>Нові ліди</span><strong>38</strong></div>
