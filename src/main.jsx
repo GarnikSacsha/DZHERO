@@ -1447,6 +1447,14 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
     ['Sales', ShoppingBag, 'sales'],
     ['Settings', Settings, 'settings'],
   ];
+  const radarPoints = [34, 48, 42, 66, 58, 74, 68, 86];
+  const radarPolyline = radarPoints.map((value, index) => `${index * 34},${96 - value}`).join(' ');
+  const recentActivity = [
+    ['UA', '@ukrainian.marketing оновив задачу у контент-плані', '10:30'],
+    ['TT', 'Новий TikTok-сигнал з високим потенціалом', '10:15'],
+    ['AI', 'Ремікс “AI-контент” готовий до сценарію', 'вчора'],
+    ['CRM', 'Конкурентний аналіз для @maker завершено', 'вчора'],
+  ];
 
   return (
     <section className="page page-home">
@@ -1481,15 +1489,46 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           ))}
         </div>
       </div>
-      <div className="home-command-grid">
+      <div className="home-command-grid home-intel-grid">
+        <article className="home-radar-card">
+          <div className="panel-title"><strong>Signal radar</strong><span>Last 30 days</span></div>
+          <div className="home-radar-value">
+            <strong>230.5K</strong>
+            <span>+15% за місяць</span>
+          </div>
+          <svg className="home-radar-chart" viewBox="0 0 238 110" role="img" aria-label="Signal activity chart">
+            <path d="M0 100H238" />
+            <path d="M0 70H238" />
+            <path d="M0 40H238" />
+            <polyline points={radarPolyline} />
+            {radarPoints.map((value, index) => <circle key={index} cx={index * 34} cy={96 - value} r="4" />)}
+          </svg>
+          <div className="home-radar-meta">
+            <span><b>{topReel.views}</b> переглядів</span>
+            <span><b>56</b> signals</span>
+          </div>
+        </article>
         <article className="home-readiness-card">
           <small>Status readiness</small>
           <strong>{onboarding.instagramConnected ? 'Production ready' : 'Integration waiting'}</strong>
+          <div className="readiness-progress"><i style={{ width: `${Math.round((onboardingSteps.filter(([, , , done]) => done).length / onboardingSteps.length) * 100)}%` }} /></div>
           <div className="home-readiness-list">
             {onboardingSteps.map(([step, title, , done, target]) => (
               <button className={done ? 'done' : ''} type="button" key={step} onClick={() => setPage(target)}>
                 <span>{done ? '✓' : step}</span>
                 <b>{title}</b>
+              </button>
+            ))}
+          </div>
+        </article>
+        <article className="home-activity-card">
+          <div className="panel-title"><strong>Recent activity</strong><span>live</span></div>
+          <div className="activity-timeline">
+            {recentActivity.map(([type, text, time]) => (
+              <button type="button" key={`${type}-${text}`} onClick={() => notify(text)}>
+                <span>{type}</span>
+                <strong>{text}</strong>
+                <em>{time}</em>
               </button>
             ))}
           </div>
@@ -1993,13 +2032,14 @@ function StrategyBrain({ notify, setPage }) {
   ];
   const voice = ['прямо', 'без інфоциганства', 'практично', 'українською', 'з доказами'];
   const frameworkItems = [
-    ['Болі аудиторії', ['нестача системного контенту', 'низька конверсія з охоплення', 'немає стабільного позиціонування']],
-    ['Контент-рубрики', ['експертні розбори', 'кейси клієнтів', 'порівняння підходів']],
-    ['Офер', ['цінність продукту', 'умови входу', 'ключовий CTA']],
-    ['Довіра', ['соціальний доказ', 'процес роботи', 'публічні результати']],
-    ['Продажі', ['lead magnet', 'Direct-сценарій', 'кваліфікація заявки']],
-    ['Заперечення', ['ціна', 'час', 'ризики впровадження']],
+    ['Болі аудиторії', 'Score: 70', 'danger', ['нестача системного контенту', 'низька конверсія з охоплення', 'немає стабільного позиціонування']],
+    ['Контент-рубрики', 'Score: 90', 'success', ['експертні розбори', 'кейси клієнтів', 'порівняння підходів']],
+    ['Офер', 'Score: 78', 'warning', ['цінність продукту', 'умови входу', 'ключовий CTA']],
+    ['Довіра', 'Score: 70', 'danger', ['соціальний доказ', 'процес роботи', 'публічні результати']],
+    ['Продажі', 'Score: 90', 'success', ['lead magnet', 'Direct-сценарій', 'кваліфікація заявки']],
+    ['Заперечення', 'Score: 78', 'warning', ['ціна', 'час', 'ризики впровадження']],
   ];
+  const brandHealth = 82;
 
   return (
     <section className="page page-strategy">
@@ -2008,6 +2048,18 @@ function StrategyBrain({ notify, setPage }) {
         subtitle="Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики."
         actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для формування позиціонування'); }}><Sparkles size={16} />Сформувати позиціонування</button>}
       />
+      <article className="strategy-health-card">
+        <div>
+          <small>Здоровʼя бренду</small>
+          <h2>Загальний бренд сильний, але продажі потребують чіткішої системи.</h2>
+          <p>Сильні сторони: позиціонування та контент-рубрики. Зони росту: болі аудиторії, довіра й обробка заперечень.</p>
+        </div>
+        <div className="strategy-health-score">
+          <strong>{brandHealth}<span>/100</span></strong>
+          <i><b style={{ width: `${brandHealth}%` }} /></i>
+          <em>{brandHealth}% готовності</em>
+        </div>
+      </article>
       <div className="strategy-layout">
         <article className="strategy-hero">
           <small>Позиціонування</small>
@@ -2024,11 +2076,16 @@ function StrategyBrain({ notify, setPage }) {
         </article>
       </div>
       <div className="framework-grid">
-        {frameworkItems.map(([item, rows]) => (
+        {frameworkItems.map(([item, score, variant, rows]) => (
           <article className="framework-card" key={item}>
-            <strong>{item}</strong>
+            <div className="panel-title"><strong>{item}</strong><Badge variant={variant}>{score}</Badge></div>
             <ul className="data-list">
-              {rows.map((row) => <li key={row}>{row}</li>)}
+              {rows.map((row, index) => (
+                <li key={row}>
+                  <span>{index + 1}</span>
+                  <p>{row}</p>
+                </li>
+              ))}
             </ul>
           </article>
         ))}
@@ -3388,17 +3445,29 @@ function Analytics() {
 }
 
 function SalesDirect({ notify, setPage }) {
-  const leads = [
-    ['@olena_brand', 'теплий', 'консультація', 'потрібна консультація', 'відповісти протягом 10 хв'],
-    ['@max_ecom', 'гарячий', 'покупка', 'Готовий купити', 'дати пакет і лінк'],
-    ['@studio_lviv', 'новий', 'підтримка', 'питання по бронюванню', 'авто-FAQ без алерту'],
-    ['@ira_course', 'ризик', 'скарга', 'Скарга', 'передати менеджеру'],
+  const pipeline = [
+    ['Нові ліди', 'New', [
+      ['@olena_brand', 'теплий', 'консультація', 'потрібна консультація', '5m ago'],
+      ['@new_lead1', 'гарячий', 'покупка', 'питає про пакет', '15m ago'],
+    ]],
+    ['Кваліфіковані', 'Qualified', [
+      ['@max_ecom', 'гарячий', 'покупка', 'готовий купити', '1h ago'],
+      ['@qualified2', 'теплий', 'демо', 'запит на демо', '2h ago'],
+    ]],
+    ['В обробці', 'In progress', [
+      ['@studio_lviv', 'новий', 'підтримка', 'питання по бронюванню', '4h ago'],
+      ['@inprogress2', 'скарга', 'проблема з доступом', 'передати людині', '6h ago'],
+    ]],
+    ['Закриті', 'Closed', [
+      ['@ira_course', 'ризик', 'скарга', 'скаргу закрито', '1d ago'],
+      ['@closed2', 'комплімент', 'подяка', 'відповісти коротко', '2d ago'],
+    ]],
   ];
   const intents = [
-    ['Покупка', 'ціна, оплата, “як записатись”, “хочу пакет”'],
-    ['Підтримка', 'доставка, бронювання, доступ, технічне питання'],
-    ['Скарга', 'негатив, повернення, помилка, публічний ризик'],
-    ['Комплімент', 'лайк, реакція, коротка подяка без наміру купити'],
+    ['Покупка', ShoppingBag, 'ціна, оплата, “як записатись”, “хочу пакет”'],
+    ['Підтримка', ShieldCheck, 'доставка, бронювання, доступ, технічне питання'],
+    ['Скарга', Flame, 'негатив, повернення, помилка, публічний ризик'],
+    ['Комплімент', Sparkles, 'лайк, реакція, коротка подяка без наміру купити'],
   ];
 
   return (
@@ -3415,24 +3484,49 @@ function SalesDirect({ notify, setPage }) {
           <div><span>FAQ авто-закрито</span><strong>71%</strong></div>
           <div><span>Передано людині</span><strong>6</strong></div>
         </div>
+        <div className="sales-insight-charts">
+          <article>
+            <div className="panel-title"><strong>Average response time</strong><span>Last 30 days</span></div>
+            <div className="mini-line-chart">
+              {[84, 62, 48, 28].map((value, index) => <i key={index} style={{ height: `${value}%` }} />)}
+            </div>
+            <p>2h → 45m після AI triage</p>
+          </article>
+          <article>
+            <div className="panel-title"><strong>Conversion trend</strong><span>Weekly</span></div>
+            <div className="mini-bar-chart">
+              {[15, 18, 22, 25].map((value, index) => <i key={index} style={{ height: `${value * 3}%` }}><span>{value}%</span></i>)}
+            </div>
+            <p>+10% за 4 тижні</p>
+          </article>
+        </div>
       </div>
       <div className="intent-grid">
-        {intents.map(([title, text]) => (
-          <article className="insight-card" key={title}>
+        {intents.map(([title, Icon, text]) => (
+          <article className="insight-card intent-card" key={title}>
+            <i><Icon size={18} /></i>
             <small>Intent Detection</small>
             <h3>{title}</h3>
             <p>{text}</p>
           </article>
         ))}
       </div>
-      <div className="lead-table">
-        {leads.map(([handle, temp, intent, tag, action]) => (
-          <article key={handle}>
-            <strong>{handle}</strong>
-            <Badge>{temp}</Badge>
-            <p>{intent}</p>
-            <Badge>{tag}</Badge>
-            <em>{action}</em>
+      <div className="sales-pipeline-board">
+        {pipeline.map(([title, subtitle, cards]) => (
+          <article className="sales-pipeline-column" key={title}>
+            <div className="panel-title"><strong>{title}</strong><span>{cards.length}</span></div>
+            <small>{subtitle}</small>
+            {cards.map(([handle, temp, intent, message, time]) => (
+              <button type="button" key={handle} onClick={() => notify(`${handle}: ${message}`)}>
+                <div>
+                  <strong>{handle}</strong>
+                  <MoreHorizontal size={16} />
+                </div>
+                <p>Intent: <Badge>{temp}</Badge> <Badge>{intent}</Badge></p>
+                <span>{message}</span>
+                <em>{time}</em>
+              </button>
+            ))}
           </article>
         ))}
       </div>
