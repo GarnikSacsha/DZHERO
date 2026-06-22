@@ -11259,3 +11259,339 @@ nav button.active::before {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Compact assistant command surface */
+.assistant-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+  gap: 18px;
+  align-items: start;
+}
+
+.assistant-main-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.assistant-support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.page-assistant .brand-brain,
+.page-assistant .video-queue,
+.page-assistant .agent-pipeline {
+  margin-bottom: 0;
+}
+
+.page-assistant .brand-brain {
+  gap: 14px;
+  padding: 18px;
+}
+
+.page-assistant .brand-brain-head h3 {
+  margin: 4px 0 6px;
+  font-size: 21px;
+}
+
+.page-assistant .brand-brain-head p,
+.page-assistant .video-queue p {
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.page-assistant .brand-help {
+  gap: 7px;
+  padding: 12px 14px;
+}
+
+.page-assistant .brand-help p {
+  font-size: 12.5px;
+}
+
+.page-assistant .brand-help span {
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  font-size: 11.5px;
+}
+
+.page-assistant .brand-brain-grid {
+  gap: 10px;
+}
+
+.page-assistant .brand-field {
+  gap: 6px;
+}
+
+.page-assistant .brand-field small {
+  min-height: 0;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.page-assistant .brand-field textarea {
+  height: 54px;
+  padding: 10px 11px;
+}
+
+.page-assistant .brand-field.wide textarea {
+  height: 66px;
+}
+
+.page-assistant .video-queue {
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+}
+
+.page-assistant .video-queue h3 {
+  margin: 4px 0 6px;
+  font-size: 20px;
+}
+
+.page-assistant .video-job-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.page-assistant .video-job-card {
+  padding: 14px;
+}
+
+.page-assistant .agent-pipeline {
+  align-content: start;
+  padding: 18px;
+}
+
+.assistant-widget {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 36px);
+  min-width: 0;
+  padding: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.assistant-widget-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.assistant-widget-head small,
+.assistant-mini-note small {
+  display: block;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.assistant-widget-head h3 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.assistant-widget-head span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.assistant-widget .assistant-chat {
+  display: grid;
+  gap: 10px;
+  height: auto !important;
+  min-height: 0 !important;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.assistant-widget .assistant-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 220px;
+  max-height: 330px;
+  padding: 10px;
+  overflow-y: auto;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.assistant-widget .assistant-thread .chat-message {
+  width: 100%;
+  max-width: 100%;
+  padding: 10px 11px;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.assistant-widget .assistant-thread .chat-message .message-body {
+  gap: 7px;
+}
+
+.assistant-widget .assistant-thread .chat-message .message-body p {
+  margin: 0;
+}
+
+.assistant-widget .assistant-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+
+.assistant-widget .assistant-input input {
+  min-width: 0;
+  height: 38px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.assistant-widget .assistant-input button {
+  min-height: 38px;
+  padding: 0 11px;
+  white-space: nowrap;
+}
+
+.assistant-widget .assistant-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.assistant-widget .assistant-actions button,
+.assistant-quick-prompts button {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 750;
+  line-height: 1.3;
+  text-align: left;
+}
+
+.assistant-widget .assistant-actions button {
+  text-align: center;
+}
+
+.assistant-quick-prompts {
+  display: grid;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.assistant-quick-prompts h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.assistant-mini-note {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.assistant-mini-note .panel-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assistant-mini-note .status-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.assistant-mini-note .status-list em {
+  min-height: 26px;
+  justify-content: center;
+  padding: 0 7px;
+  font-size: 9.5px;
+}
+
+.assistant-mini-note .assistant-note {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.assistant-mini-note .assistant-note p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1320px) {
+  .assistant-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-widget {
+    position: static;
+    max-height: none;
+  }
+
+  .assistant-widget .assistant-thread {
+    max-height: 520px;
+  }
+}
+
+@media (max-width: 980px) {
+  .assistant-support-grid,
+  .page-assistant .brand-brain-grid,
+  .page-assistant .video-job-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-assistant .brand-field.wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .assistant-widget .assistant-input {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-mini-note .status-list {
+    grid-template-columns: 1fr;
+  }
+}
