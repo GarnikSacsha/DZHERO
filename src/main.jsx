@@ -3052,14 +3052,26 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
         subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
-      <AgentPipeline workspaceId={workspaceId} />
-      <BrandBrain notify={notify} workspaceId={workspaceId} />
-      <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
-      <div className="assistant-layout">
-        <aside className="assistant-sidebar">
+      <div className="assistant-workspace">
+        <div className="assistant-main-column">
+          <BrandBrain notify={notify} workspaceId={workspaceId} />
+          <div className="assistant-support-grid">
+            <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
+            <AgentPipeline workspaceId={workspaceId} />
+          </div>
+        </div>
+        <aside className="assistant-widget">
+          <div className="assistant-widget-head">
+            <div>
+              <small>AI assistant</small>
+              <h3>AI-продюсер поруч</h3>
+            </div>
+            <span>{agentMeta.provider}</span>
+          </div>
+        <div className="assistant-quick-prompts">
           <h3>Швидкі задачі</h3>
           {prompts.map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)}>{prompt}</button>)}
-        </aside>
+        </div>
         <div className="assistant-chat">
           <div className="assistant-thread" ref={threadRef}>
             {messages.map(([role, text], index) => (
@@ -3080,7 +3092,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
             {lastIdeaId && <small>Остання ідея: {lastIdeaId}</small>}
           </div>
         </div>
-        <aside className="assistant-tools">
+        <div className="assistant-mini-note">
           <div className="panel-title"><strong>Може зробити</strong><span>AI-продюсер</span></div>
           <div className="status-list">
             <em>Знайти ідею з тренду</em>
@@ -3094,6 +3106,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
             <small>Логіка</small>
             <p>Асистент працює з банком рілсів, ідеями, календарем і стилем акаунта. Це дозволяє вести контент по воронці: ідея → сценарій → зйомка → пост.</p>
           </div>
+        </div>
         </aside>
       </div>
     </section>
