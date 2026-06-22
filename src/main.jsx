@@ -2369,7 +2369,6 @@ function RemixStudio({ reel, notify, setPage }) {
   return (
     <section className="page page-remix-studio">
       <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
-      <WorkflowRail active="remix" setPage={setPage} notify={notify} variant="compact" />
       <article className="remix-command-strip">
         <div>
           <small>Remix command</small>
@@ -3228,7 +3227,6 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
   return (
     <section className="page page-content-plan">
       <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
-      <WorkflowRail active="plan" setPage={setPage} notify={notify} variant="compact" />
       <div className="stats">
         {[
           ['Усього', posts.length],
@@ -3410,7 +3408,6 @@ function SalesDirect({ notify, setPage }) {
         subtitle="Слой конверсії: авто-відповіді в коментарях і Direct, кваліфікація лідів, CRM-теги й передача людині."
         actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для налаштування AI Direct'); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
       />
-      <WorkflowRail active="sales" setPage={setPage} notify={notify} variant="compact" />
       <div className="sales-layout">
         <div className="sales-stats">
           <div><span>Нові ліди</span><strong>38</strong></div>
