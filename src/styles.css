@@ -10742,6 +10742,469 @@ nav button.active::before {
   }
 }
 
+/* Infographic structure pass */
+.home-intel-grid {
+  grid-template-columns: minmax(280px, 1.08fr) minmax(260px, 0.92fr) minmax(300px, 0.95fr);
+  align-items: stretch;
+}
+
+.home-radar-card,
+.home-activity-card,
+.strategy-health-card,
+.sales-insight-charts article,
+.sales-pipeline-column {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+}
+
+.home-radar-card,
+.home-activity-card {
+  padding: 18px;
+}
+
+.home-radar-value {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.home-radar-value strong {
+  color: var(--text);
+  font-size: clamp(34px, 4vw, 48px);
+  line-height: 0.95;
+  letter-spacing: 0;
+}
+
+.home-radar-value span {
+  color: #10b981;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.home-radar-chart {
+  display: block;
+  width: 100%;
+  height: 130px;
+  margin: 14px 0 10px;
+  overflow: visible;
+}
+
+.home-radar-chart path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--border) 68%, transparent);
+  stroke-width: 1;
+}
+
+.home-radar-chart polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4;
+  filter: drop-shadow(0 8px 16px color-mix(in srgb, var(--accent) 24%, transparent));
+}
+
+.home-radar-chart circle {
+  fill: var(--accent);
+  stroke: var(--card);
+  stroke-width: 3;
+}
+
+.home-radar-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.home-radar-meta span {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.home-radar-meta b {
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+.readiness-progress {
+  height: 8px;
+  margin: 14px 0 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.readiness-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #10b981));
+}
+
+.activity-timeline {
+  display: grid;
+  gap: 0;
+  margin-top: 12px;
+}
+
+.activity-timeline button {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 62px;
+  padding: 6px 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.activity-timeline button:not(:last-child)::after {
+  position: absolute;
+  top: 40px;
+  bottom: 0;
+  left: 16px;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 34%, var(--border));
+  content: "";
+}
+
+.activity-timeline button > span {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.activity-timeline strong {
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.activity-timeline em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.home-market-focus {
+  grid-column: 1 / span 2;
+}
+
+.home-quick-actions {
+  grid-column: 3;
+}
+
+.strategy-health-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 24px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 22px;
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 34%),
+    var(--card);
+}
+
+.strategy-health-card small {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.strategy-health-card h2 {
+  max-width: 820px;
+  margin: 8px 0;
+  color: var(--text);
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.12;
+}
+
+.strategy-health-card p {
+  max-width: 820px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.strategy-health-score {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
+.strategy-health-score strong {
+  color: var(--text);
+  font-size: 42px;
+  line-height: 1;
+}
+
+.strategy-health-score span {
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.strategy-health-score i {
+  display: block;
+  width: 100%;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.strategy-health-score b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #22c55e, var(--accent));
+}
+
+.strategy-health-score em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.page-strategy .framework-card .panel-title {
+  margin-bottom: 14px;
+}
+
+.page-strategy .framework-card .data-list {
+  gap: 10px;
+}
+
+.page-strategy .framework-card .data-list li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.page-strategy .framework-card .data-list li:first-child {
+  border-top: 0;
+}
+
+.page-strategy .framework-card .data-list span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.page-strategy .framework-card .data-list p {
+  margin: 0;
+}
+
+.sales-insight-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.sales-insight-charts article {
+  min-height: 174px;
+  padding: 18px;
+}
+
+.mini-line-chart,
+.mini-bar-chart {
+  display: flex;
+  align-items: end;
+  gap: 14px;
+  height: 82px;
+  margin-top: 18px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.mini-line-chart i,
+.mini-bar-chart i {
+  position: relative;
+  flex: 1;
+  min-width: 20px;
+  border-radius: 999px 999px 0 0;
+  background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 30%, transparent));
+}
+
+.mini-line-chart i::before {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  transform: translateX(-50%);
+  content: "";
+}
+
+.mini-bar-chart span {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 900;
+  transform: translateX(-50%);
+}
+
+.sales-insight-charts p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.intent-card {
+  position: relative;
+  padding-left: 58px;
+}
+
+.intent-card > i {
+  position: absolute;
+  top: 18px;
+  left: 18px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-strong);
+}
+
+.sales-pipeline-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(190px, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.sales-pipeline-column {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 420px;
+  padding: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 26%),
+    var(--surface);
+}
+
+.sales-pipeline-column > small {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sales-pipeline-column button {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  text-align: left;
+}
+
+.sales-pipeline-column button > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sales-pipeline-column button strong {
+  font-size: 13px;
+}
+
+.sales-pipeline-column button p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.sales-pipeline-column button > span {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.sales-pipeline-column button em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+@media (max-width: 1320px) {
+  .home-intel-grid,
+  .sales-pipeline-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .home-market-focus,
+  .home-quick-actions {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 860px) {
+  .home-intel-grid,
+  .strategy-health-card,
+  .sales-insight-charts,
+  .sales-pipeline-board {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-health-score {
+    justify-items: start;
+  }
+}
+
 @media (max-width: 680px) {
   .home-quick-actions > div:last-child {
     grid-template-columns: 1fr;
