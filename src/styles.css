@@ -12905,3 +12905,67 @@ nav button.active::before {
 [data-theme="dark"] .auth-panel {
   background: rgba(18, 18, 20, 0.72) !important;
 }
+
+/* Remove the heavy top command strip: actions now live beside the page title. */
+@media (min-width: 761px) {
+  .app:not(.auth-app) .shell {
+    position: relative !important;
+    padding-top: 34px !important;
+  }
+
+  .app:not(.auth-app) .topbar {
+    position: absolute !important;
+    top: 34px !important;
+    right: 34px !important;
+    z-index: 20 !important;
+    width: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .app:not(.auth-app) .topbar::before,
+  .app:not(.auth-app) .topbar::after,
+  .app:not(.auth-app) .topbar-title,
+  .app:not(.auth-app) .mobile-menu-trigger {
+    display: none !important;
+  }
+
+  .app:not(.auth-app) .top-actions {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .app:not(.auth-app) .topbar-quick-action {
+    min-height: 34px !important;
+    padding: 0 13px !important;
+    border-radius: 999px !important;
+  }
+
+  .app:not(.auth-app) .top-actions .icon {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    border-radius: 999px !important;
+  }
+
+  .app:not(.auth-app) .page-title {
+    min-height: 38px !important;
+    margin: 0 0 52px !important;
+    padding-right: 340px !important;
+  }
+
+  .app:not(.auth-app) .page-title h1 {
+    margin: 0 !important;
+  }
+}
