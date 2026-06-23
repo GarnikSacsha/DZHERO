@@ -204,6 +204,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
   const publicPage = getPublicPage();
@@ -488,6 +489,14 @@ function App() {
       {modal?.type === 'reel' || modal === 'reel'
         ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} initialUrl={typeof modal === 'object' ? modal.url : ''} />
         : modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
+      <AssistantDrawer
+        isOpen={isAssistantOpen}
+        onOpen={() => setIsAssistantOpen(true)}
+        onClose={() => setIsAssistantOpen(false)}
+        notify={notify}
+        workspaceId={workspaceId}
+        activeWorkspace={activeWorkspace}
+      />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -2032,6 +2041,180 @@ function getCompetitorMeta(row) {
   const nicheParts = String(row.niche || '').split('|').map((part) => part.trim()).filter(Boolean);
   const niche = nicheParts[nicheParts.length - 1] || row.niche || 'Ніша';
   return `${marketLabel(row.market)} / ${niche}`;
+}
+
+function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace }) {
+  const assistantName = 'Джерик';
+  const starterPrompts = [
+    'Поясни, що робити на цій сторінці',
+    'Збери 5 ідей на тиждень',
+    'Адаптуй тренд під мій бренд',
+    'Напиши короткий Reels-сценарій',
+  ];
+  const seedMessages = [
+    ['assistant', `Йо, я ${assistantName}. Можу швидко зібрати ідею, сценарій, shot-list або пояснити, що робити далі у Dzhero.`],
+  ];
+  const [messagesByWorkspace, setMessagesByWorkspace] = useState({});
+  const messages = messagesByWorkspace[workspaceId] || seedMessages;
+  const [input, setInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
+  const [actionStatus, setActionStatus] = useState('');
+  const [agentMeta, setAgentMeta] = useState({ provider: 'ready', model: 'dzhero' });
+  const threadRef = useRef(null);
+
+  const setMessages = (updater) => {
+    setMessagesByWorkspace((current) => {
+      const currentMessages = current[workspaceId] || seedMessages;
+      const nextMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
+      return { ...current, [workspaceId]: nextMessages };
+    });
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    window.setTimeout(() => {
+      threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
+    }, 40);
+  }, [isOpen, messages, isThinking]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  const renderMessageText = (text) => String(text || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*/g, '')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
+
+  const sendMessage = async (text = input) => {
+    const clean = String(text || '').trim();
+    if (!clean || isThinking) return;
+    const history = messages.map(([role, messageText]) => ({
+      role: role === 'assistant' ? 'assistant' : 'user',
+      text: messageText,
+    }));
+    setMessages((current) => [...current, ['user', clean], ['assistant', `${assistantName} думає...`]]);
+    setInput('');
+    setIsThinking(true);
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: clean, history }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || 'agent_error');
+      setAgentMeta({ provider: payload.provider || 'agent', model: payload.model || 'dzhero' });
+      setMessages((current) => current.map((item, index) => (
+        index === current.length - 1 ? ['assistant', payload.reply] : item
+      )));
+    } catch (error) {
+      setAgentMeta({ provider: 'offline', model: 'fallback' });
+      setMessages((current) => current.map((item, index) => (
+        index === current.length - 1
+          ? ['assistant', `Не дістався до AI-провайдера: ${error.message}. Але я на місці: перевір env для AI або спробуй ще раз після redeploy.`]
+          : item
+      )));
+    } finally {
+      setIsThinking(false);
+    }
+  };
+
+  const latestAssistantText = [...messages].reverse().find(([role]) => role === 'assistant')?.[1] || '';
+  const extractIdeaTitle = (text) => {
+    const line = String(text || '').split('\n').map((item) => item.trim()).find(Boolean);
+    return (line || 'Jeryk idea').replace(/^[0-9.)\s-]+/, '').slice(0, 120);
+  };
+
+  const runAgentAction = async (action) => {
+    if (!latestAssistantText || actionStatus) return;
+    setActionStatus(action);
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          title: extractIdeaTitle(latestAssistantText),
+          text: latestAssistantText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'agent_action_failed');
+      notify(action === 'generate_script'
+        ? `${assistantName} зробив сценарій`
+        : action === 'create_video_job'
+          ? `${assistantName} створив video task`
+          : `${assistantName} зберіг ідею`);
+    } catch (error) {
+      notify(`Не вийшло виконати дію: ${error.message}`);
+    } finally {
+      setActionStatus('');
+    }
+  };
+
+  return (
+    <>
+      <button className={isOpen ? 'jeryk-launcher open' : 'jeryk-launcher'} type="button" onClick={isOpen ? onClose : onOpen} aria-label={isOpen ? 'Закрити Джерика' : 'Відкрити Джерика'}>
+        {isOpen ? <X size={22} /> : <Bot size={22} />}
+      </button>
+      {isOpen && <button className="jeryk-backdrop" type="button" aria-label="Закрити Джерика" onClick={onClose} />}
+      <aside className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'} aria-hidden={!isOpen}>
+        <div className="jeryk-head">
+          <div className="jeryk-avatar"><Bot size={24} /></div>
+          <div>
+            <strong>Джерик</strong>
+            <span>малий AI-продюсер Dzhero</span>
+          </div>
+          <button className="icon" type="button" onClick={onClose} aria-label="Закрити"><X size={17} /></button>
+        </div>
+        <div className="jeryk-context">
+          <span>{activeWorkspace?.name || 'Workspace'}</span>
+          <em>{agentMeta.provider}</em>
+        </div>
+        <div className="jeryk-thread" ref={threadRef}>
+          {messages.map(([role, text], index) => (
+            <div className={`jeryk-message ${role}`} key={`${role}-${index}`}>
+              <span>{role === 'assistant' ? assistantName : 'Ви'}</span>
+              <div>{renderMessageText(text)}</div>
+            </div>
+          ))}
+        </div>
+        <div className="jeryk-prompts">
+          {starterPrompts.map((prompt) => (
+            <button type="button" key={prompt} onClick={() => sendMessage(prompt)} disabled={isThinking}>{prompt}</button>
+          ))}
+        </div>
+        <div className="jeryk-input-row">
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendMessage();
+            }}
+            placeholder="Напиши Джерику задачу..."
+            maxLength={600}
+          />
+          <button className="dark" type="button" onClick={() => sendMessage()} disabled={isThinking || !input.trim()} aria-label="Надіслати">
+            <Send size={17} />
+          </button>
+        </div>
+        <div className="jeryk-actions">
+          <button type="button" onClick={() => runAgentAction('save_idea')} disabled={isThinking || actionStatus || !latestAssistantText}>В ідею</button>
+          <button type="button" onClick={() => runAgentAction('generate_script')} disabled={isThinking || actionStatus || !latestAssistantText}>В сценарій</button>
+          <button type="button" onClick={() => runAgentAction('create_video_job')} disabled={isThinking || actionStatus || !latestAssistantText}>Video task</button>
+        </div>
+      </aside>
+    </>
+  );
 }
 
 function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt }) {

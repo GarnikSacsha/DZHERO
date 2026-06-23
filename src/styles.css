@@ -12018,6 +12018,258 @@ nav button.active::before {
   }
 }
 
+.jeryk-launcher {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1300;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  border: 1px solid rgba(14, 165, 233, 0.46);
+  border-radius: 999px;
+  background: #0EA5E9;
+  color: #fff;
+  box-shadow: 0 20px 50px rgba(14, 165, 233, 0.34), 0 10px 30px rgba(0, 0, 0, 0.24);
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.jeryk-launcher:hover {
+  transform: translateY(-2px) scale(1.03);
+}
+
+.jeryk-launcher.open {
+  background: #ff5b66;
+  border-color: rgba(255, 91, 102, 0.5);
+  box-shadow: 0 20px 50px rgba(255, 91, 102, 0.28), 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.jeryk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1240;
+  border: 0;
+  background: rgba(3, 7, 14, 0.46);
+  backdrop-filter: blur(3px);
+}
+
+.jeryk-drawer {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  bottom: 18px;
+  z-index: 1250;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+  width: min(440px, calc(100vw - 36px));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+  transform: translateX(calc(100% + 34px));
+  opacity: 0;
+  pointer-events: none;
+  backdrop-filter: blur(18px) saturate(140%);
+  transition: transform 0.26s ease, opacity 0.2s ease;
+}
+
+.jeryk-drawer.open {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.jeryk-head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.jeryk-avatar {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 16px;
+  background: #ffffff;
+  color: #111827;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
+}
+
+.jeryk-head strong,
+.jeryk-head span {
+  display: block;
+}
+
+.jeryk-head strong {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.jeryk-head span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.jeryk-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.jeryk-context span,
+.jeryk-context em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jeryk-context em {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.jeryk-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.jeryk-message {
+  max-width: 88%;
+  padding: 11px 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.jeryk-message.user {
+  align-self: flex-end;
+  border-color: rgba(14, 165, 233, 0.36);
+  background: rgba(14, 165, 233, 0.14);
+}
+
+.jeryk-message.assistant {
+  align-self: flex-start;
+}
+
+.jeryk-message span {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.jeryk-message p {
+  margin: 0 0 8px;
+}
+
+.jeryk-message p:last-child {
+  margin-bottom: 0;
+}
+
+.jeryk-prompts {
+  display: flex;
+  gap: 7px;
+  padding: 10px 16px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.jeryk-prompts::-webkit-scrollbar {
+  display: none;
+}
+
+.jeryk-prompts button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.jeryk-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+  padding: 12px 16px 8px;
+}
+
+.jeryk-input-row textarea {
+  width: 100%;
+  min-height: 62px;
+  max-height: 130px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-soft);
+  color: var(--text);
+  padding: 12px;
+  font: inherit;
+}
+
+.jeryk-input-row button {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  align-self: end;
+  border-radius: 16px;
+}
+
+.jeryk-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.jeryk-actions button {
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.jeryk-actions button:disabled,
+.jeryk-prompts button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 /* Mobile MVP pass: Dzhero should feel like an app, not a squeezed dashboard. */
 @media (max-width: 760px) {
   :root {
@@ -12035,6 +12287,70 @@ nav button.active::before {
 
   .app:not(.auth-app) .shell {
     padding: 10px 10px calc(var(--mobile-bottom-nav) + 14px) !important;
+  }
+
+  .jeryk-launcher {
+    right: 16px !important;
+    bottom: calc(var(--mobile-bottom-nav) + 14px) !important;
+    width: 54px !important;
+    height: 54px !important;
+  }
+
+  .jeryk-drawer {
+    top: auto !important;
+    right: 10px !important;
+    bottom: calc(var(--mobile-bottom-nav) + 8px) !important;
+    left: 10px !important;
+    width: auto !important;
+    height: min(74svh, 620px) !important;
+    border-radius: 20px !important;
+    transform: translateY(calc(100% + var(--mobile-bottom-nav) + 24px)) !important;
+  }
+
+  .jeryk-drawer.open {
+    transform: translateY(0) !important;
+  }
+
+  .jeryk-backdrop {
+    background: rgba(3, 7, 14, 0.5) !important;
+  }
+
+  .jeryk-head {
+    padding: 12px !important;
+  }
+
+  .jeryk-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    border-radius: 14px !important;
+  }
+
+  .jeryk-thread {
+    padding: 12px !important;
+  }
+
+  .jeryk-message {
+    max-width: 94% !important;
+    font-size: 12px !important;
+  }
+
+  .jeryk-input-row {
+    grid-template-columns: minmax(0, 1fr) 46px !important;
+    padding: 10px 12px 8px !important;
+  }
+
+  .jeryk-prompts {
+    padding: 8px 12px 0 !important;
+  }
+
+  .jeryk-actions {
+    padding: 0 12px 12px !important;
+    gap: 6px !important;
+  }
+
+  .jeryk-actions button {
+    padding: 0 5px !important;
+    font-size: 10px !important;
   }
 
   .app:not(.auth-app) .sidebar {
