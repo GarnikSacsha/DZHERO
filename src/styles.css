@@ -13004,6 +13004,61 @@ nav button.active::before {
   background: rgba(18, 18, 20, 0.72) !important;
 }
 
+.mobile-preview-page {
+  min-height: 100svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  place-items: center;
+  gap: 16px;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(14, 165, 233, 0.12), transparent 34%),
+    #050507;
+  color: #f8fafc;
+}
+
+.mobile-preview-toolbar {
+  width: min(430px, 100%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(248, 250, 252, 0.72);
+  font-size: 13px;
+}
+
+.mobile-preview-toolbar strong {
+  color: #f8fafc;
+  font-size: 13px;
+}
+
+.mobile-preview-toolbar a {
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.mobile-preview-device {
+  width: min(430px, calc(100vw - 24px));
+  height: min(880px, calc(100svh - 82px));
+  min-height: 620px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 34px;
+  background: #0b0b0f;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.mobile-preview-device iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 24px;
+  background: #09090b;
+}
+
 /* Remove the heavy top command strip: actions now live beside the page title. */
 @media (min-width: 761px) {
   .app:not(.auth-app) .shell {
