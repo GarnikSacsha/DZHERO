@@ -192,6 +192,31 @@ function PublicLegalPage({ page }) {
   );
 }
 
+function getMobilePreviewUrl() {
+  if (!isBrowser) return '';
+  const url = new URL(window.location.href);
+  const isMobilePreview = url.searchParams.get('mobile') === '1' || url.searchParams.get('preview') === 'mobile';
+  if (!isMobilePreview) return '';
+  url.searchParams.delete('mobile');
+  url.searchParams.delete('preview');
+  if (!url.searchParams.has('v')) url.searchParams.set('v', 'mobile-preview');
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function MobilePreviewFrame({ src }) {
+  return (
+    <main className="mobile-preview-page">
+      <div className="mobile-preview-toolbar">
+        <strong>Dzhero mobile preview</strong>
+        <a href={src} target="_blank" rel="noreferrer">Відкрити без рамки</a>
+      </div>
+      <section className="mobile-preview-device" aria-label="Mobile preview">
+        <iframe title="Dzhero mobile preview" src={src} />
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const [page, setPage] = useState(getInitialAppPage);
   const [market, setMarket] = useState('all');
@@ -209,6 +234,7 @@ function App() {
   const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
   const publicPage = getPublicPage();
+  const mobilePreviewUrl = getMobilePreviewUrl();
   const activeWorkspace = DEMO_WORKSPACES.find((workspace) => workspace.id === workspaceId) || DEMO_WORKSPACES[0];
   const setMvpPage = (nextPage) => {
     const allowedPages = new Set(['home', 'viral', 'remix', 'plan', 'settings']);
@@ -320,6 +346,10 @@ function App() {
 
   if (publicPage) {
     return <PublicLegalPage page={publicPage} />;
+  }
+
+  if (mobilePreviewUrl) {
+    return <MobilePreviewFrame src={mobilePreviewUrl} />;
   }
 
   if (authStatus === 'checking') {
