@@ -10,23 +10,7 @@
       "createdAt": "2026-05-21T19:50:26.892Z"
     }
   ],
-  "sessions": [
-    {
-      "token": "65095a0aa143ac75b25b8a72e49dff2f70a2ee711ac760610c886a4f669c92df",
-      "userId": "usr_mpfwnyml_c6u1jf",
-      "createdAt": "2026-05-22T09:08:47.398Z"
-    },
-    {
-      "token": "53ffb23766d839067be731701cd9681ec4420ff7e904b261c8c9abe32614b21f",
-      "userId": "usr_mpfwnyml_c6u1jf",
-      "createdAt": "2026-05-21T22:23:09.430Z"
-    },
-    {
-      "token": "3e6d2638f77979e0365e3049d46eaf415a5c3637bbb484514649f586a129f585",
-      "userId": "usr_mpfwnyml_c6u1jf",
-      "createdAt": "2026-05-21T19:50:26.892Z"
-    }
-  ],
+  "sessions": [],
   "workspaces": [
     {
       "id": "ws_demo_ua",
@@ -41,7 +25,7 @@
       ],
       "createdAt": "2026-05-14T00:00:00.000Z",
       "brief": {
-        "businessType": "expert_creator",
+        "businessType": "Магазин одягу",
         "location": "Ukraine",
         "audience": "Ukrainian Instagram audience",
         "product": "consultations, launches, content production",
@@ -56,7 +40,49 @@
           "RF sources",
           "direct copying",
           "unsafe automation"
-        ]
+        ],
+        "contentFocus": "сторіс-меню",
+        "contentRubrics": [
+          "лукбуки",
+          "новинки",
+          "залишки розмірів"
+        ],
+        "updatedAt": "2026-06-01T12:09:08.518Z"
+      },
+      "checklists": {
+        "launches": {
+          "scope": "launches",
+          "parentStatus": "В роботі",
+          "items": [
+            {
+              "id": "launches_1",
+              "label": "Сторіс-прогрів",
+              "checked": false
+            },
+            {
+              "id": "launches_2",
+              "label": "Reels для охоплення",
+              "checked": false
+            },
+            {
+              "id": "launches_3",
+              "label": "Пост або карусель",
+              "checked": false
+            },
+            {
+              "id": "launches_4",
+              "label": "CTA і тригери",
+              "checked": false
+            },
+            {
+              "id": "launches_5",
+              "label": "FAQ для Direct",
+              "checked": false
+            }
+          ],
+          "allChecked": false,
+          "updatedAt": "2026-05-28T10:46:07.612Z"
+        }
       }
     }
   ],
@@ -115,9 +141,171 @@
   "sources": [],
   "metaStates": [],
   "instagramAccounts": [],
-  "aiMemory": [],
-  "aiJobs": [],
+  "aiMemory": [
+    {
+      "id": "mem_mpv6ov14_968mr2",
+      "workspaceId": "ws_demo_ua",
+      "type": "agent_exchange",
+      "value": {
+        "user": "Знайди одну актуальну ідею для контенту на зараз.\nВикористай Brand Brain бізнесу, поточну аналітику рілсів і конкурентів.\nГоловний сигнал з банку рілсів: \"This tiny AI workflow turned one product photo into five ad creatives in under ten minutes.\" від @ai.marketing.lab, ринок США, скор 92, перегляди 1.8M.\nДай відповідь коротко і практично:\n1. Назва ідеї.\n2. Чому саме зараз це може спрацювати.\n3. Хук для першого кадру.\n4. Сценарій на 20-30 секунд.\n5. CTA.\n6. Що зняти без великого продакшну.",
+        "assistant": "Ок, беру як AI-продюсер Dzhero: Знайди одну актуальну ідею для контенту на зараз. Використай Brand Brain бізнесу, поточну аналітику рілсів і конкурентів. Головний сигнал з банку рілсів: \"This tiny AI workflow turned one product photo into five ad creatives in under ten minutes.\" від @ai.marketing.lab, ринок США, скор 92, перегляди 1.8M. Дай відповідь коротко і практично: 1. Назва ідеї. 2. Чому саме зараз це може спрацювати. 3. Хук для першого кадру. 4. Сценарій на 20-30 секунд. 5. CTA. 6. Що зняти без великого продакшну..\n\nДля Магазин одягу я б почав з механіки: проблема аудиторії -> просте рішення -> доказ -> CTA в Direct.\n\nНаступний вихід: 1 сценарій Reels, 1 shot-list, caption і CTA під Ukraine.\n\nПеред публікацією людина має перевірити обіцянки, юридичні формулювання і тон бренду.",
+        "provider": "fallback",
+        "model": "local-template"
+      },
+      "createdAt": "2026-06-01T12:27:37.624Z"
+    },
+    {
+      "id": "mem_mpv6138m_zkjoqv",
+      "workspaceId": "ws_demo_ua",
+      "type": "brand_context_update",
+      "value": {
+        "businessType": "Магазин одягу",
+        "contentFocus": "сторіс-меню",
+        "contentRubrics": [
+          "лукбуки",
+          "новинки",
+          "залишки розмірів"
+        ]
+      },
+      "createdAt": "2026-06-01T12:09:08.518Z"
+    },
+    {
+      "id": "mem_mpv1ei0o_npnw6e",
+      "workspaceId": "ws_demo_ua",
+      "type": "brand_context_update",
+      "value": {
+        "businessType": "Кафе / ресторан",
+        "contentFocus": "сторіс-меню",
+        "contentRubrics": [
+          "сторіс-меню",
+          "акції дня",
+          "відгуки гостей"
+        ]
+      },
+      "createdAt": "2026-06-01T09:59:36.120Z"
+    }
+  ],
+  "aiJobs": [
+    {
+      "id": "ai_job_mpv6ov14_lows1g",
+      "workspaceId": "ws_demo_ua",
+      "type": "agent_chat",
+      "status": "completed",
+      "provider": "fallback",
+      "model": "local-template",
+      "sourceType": "chat",
+      "sourceId": null,
+      "result": {
+        "text": "Ок, беру як AI-продюсер Dzhero: Знайди одну актуальну ідею для контенту на зараз. Використай Brand Brain бізнесу, поточну аналітику рілсів і конкурентів. Головний сигнал з банку рілсів: \"This tiny AI workflow turned one product photo into five ad creatives in under ten minutes.\" від @ai.marketing.lab, ринок США, скор 92, перегляди 1.8M. Дай відповідь коротко і практично: 1. Назва ідеї. 2. Чому саме зараз це може спрацювати. 3. Хук для першого кадру. 4. Сценарій на 20-30 секунд. 5. CTA. 6. Що зняти без великого продакшну..\n\nДля Магазин одягу я б почав з механіки: проблема аудиторії -> просте рішення -> доказ -> CTA в Direct.\n\nНаступний вихід: 1 сценарій Reels, 1 shot-list, caption і CTA під Ukraine.\n\nПеред публікацією людина має перевірити обіцянки, юридичні формулювання і тон бренду."
+      },
+      "createdAt": "2026-06-01T12:27:37.624Z",
+      "completedAt": "2026-06-01T12:27:37.624Z"
+    }
+  ],
   "remixes": [],
   "contentPlanItems": [],
-  "videoJobs": []
+  "videoJobs": [],
+  "dataDeletionRequests": [],
+  "plans": [
+    {
+      "id": "demo",
+      "name": "Demo",
+      "billingPeriod": "temporary",
+      "priceUah": 0,
+      "limits": {
+        "agentChat": 20,
+        "reelImports": 3,
+        "competitors": 8,
+        "workspaces": 1,
+        "teamMembers": 1,
+        "instagramAccounts": 0
+      },
+      "features": [
+        "demo_workspace",
+        "mock_market_data",
+        "agent_chat_limited",
+        "manual_reel_import"
+      ]
+    },
+    {
+      "id": "starter",
+      "name": "Starter",
+      "billingPeriod": "month",
+      "priceUah": 590,
+      "limits": {
+        "agentChat": 150,
+        "reelImports": 30,
+        "competitors": 5,
+        "workspaces": 1,
+        "teamMembers": 1,
+        "instagramAccounts": 1
+      },
+      "features": [
+        "brand_brain",
+        "assistant",
+        "remix_studio",
+        "content_plan",
+        "instagram_login"
+      ]
+    },
+    {
+      "id": "pro",
+      "name": "Pro",
+      "billingPeriod": "month",
+      "priceUah": 1490,
+      "limits": {
+        "agentChat": 600,
+        "reelImports": 180,
+        "competitors": 20,
+        "workspaces": 3,
+        "teamMembers": 5,
+        "instagramAccounts": 3
+      },
+      "features": [
+        "everything_starter",
+        "team",
+        "ai_direct",
+        "exports",
+        "sync_queue"
+      ]
+    },
+    {
+      "id": "agency",
+      "name": "Agency",
+      "billingPeriod": "month",
+      "priceUah": 3900,
+      "limits": {
+        "agentChat": 2500,
+        "reelImports": 500,
+        "competitors": 50,
+        "workspaces": 10,
+        "teamMembers": 20,
+        "instagramAccounts": 10
+      },
+      "features": [
+        "everything_pro",
+        "team_full_access",
+        "ai_direct_unlimited",
+        "multi_client_workspaces",
+        "approval_flow"
+      ]
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub_mqikxyg3_pi8am9",
+      "workspaceId": "ws_demo_ua",
+      "planId": "demo",
+      "status": "demo",
+      "provider": "manual",
+      "currentPeriodStart": "2026-06-17T21:25:18.627Z",
+      "currentPeriodEnd": "2026-07-01T21:25:18.627Z",
+      "trialEndsAt": null,
+      "cancelAtPeriodEnd": false,
+      "createdAt": "2026-06-17T21:25:18.627Z",
+      "updatedAt": "2026-06-17T21:25:18.627Z"
+    }
+  ],
+  "usageCounters": [],
+  "demoSessions": []
 }

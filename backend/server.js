@@ -3,6 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
@@ -17,11 +19,14 @@ const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATABASE_SSL = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require';
 const APP_STATE_KEY = process.env.APP_STATE_KEY || 'main';
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
-const PAYMENT_CARD_NUMBER = process.env.PAYMENT_CARD_NUMBER || '4874 1000 3899 9119';
+const PAYMENT_CARD_NUMBER = process.env.PAYMENT_CARD_NUMBER || '';
 const PAYMENT_CARD_HOLDER = process.env.PAYMENT_CARD_HOLDER || '';
-const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || 'https://send.monobank.ua/jar/7FdC9FmyL4';
+const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
 const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
+const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true';
+const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
+const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -125,6 +130,13 @@ const allowedOrigins = new Set([
   CLIENT_URL,
 ].filter(Boolean));
 
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
 app.use('/api', cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) {
@@ -135,6 +147,36 @@ app.use('/api', cors({
   },
 }));
 app.use(express.json({ limit: '1mb' }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 180,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const expensiveLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/demo', authLimiter);
+app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/remix/generate', expensiveLimiter);
 
 let pgPool;
 
@@ -432,6 +474,26 @@ function extractInstagramShortcode(url) {
   return match?.[1] || '';
 }
 
+function parseAllowedSignalUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(String(rawUrl || '').trim());
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'https:') return null;
+  const allowedHosts = new Set([
+    'instagram.com',
+    'www.instagram.com',
+    'tiktok.com',
+    'www.tiktok.com',
+    'vm.tiktok.com',
+    'vt.tiktok.com',
+  ]);
+  if (!allowedHosts.has(parsed.hostname.toLowerCase())) return null;
+  return parsed.toString();
+}
+
 function extractMetaContent(html, key) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const propertyPattern = new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
@@ -507,10 +569,12 @@ function buildGlobalInsightFromReelMetadata(metadata) {
 }
 
 function createSession(db, userId) {
+  const now = Date.now();
   const session = {
     token: crypto.randomBytes(32).toString('hex'),
     userId,
-    createdAt: new Date().toISOString(),
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
   };
   db.sessions.unshift(session);
   return session;
@@ -523,7 +587,7 @@ function getBearerToken(req) {
 }
 
 function getAdminToken(req) {
-  return String(req.headers['x-admin-token'] || req.query.adminToken || '').trim();
+  return String(req.headers['x-admin-token'] || '').trim();
 }
 
 function requireAdmin(req, res) {
@@ -542,7 +606,25 @@ function getAuthUser(db, req) {
   const token = getBearerToken(req);
   const session = db.sessions.find((item) => item.token === token);
   if (!session) return null;
+  if (session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) return null;
   return db.users.find((user) => user.id === session.userId) || null;
+}
+
+function requireAuthUser(db, req, res) {
+  const user = getAuthUser(db, req);
+  if (!user) {
+    res.status(401).json({ error: 'unauthorized' });
+    return null;
+  }
+  return user;
+}
+
+function canAccessWorkspace(user, workspaceId) {
+  if (!user) return false;
+  if (user.role === 'admin') return true;
+  if (user.workspaceId === workspaceId) return true;
+  if (Array.isArray(user.workspaceIds) && user.workspaceIds.includes(workspaceId)) return true;
+  return false;
 }
 
 function buildMetaAuthUrl(state) {
@@ -686,6 +768,27 @@ function requireWorkspace(db, workspaceId, res) {
   }
   return workspace;
 }
+
+async function requireWorkspaceAccess(req, res, next) {
+  try {
+    const db = await readDb();
+    const user = requireAuthUser(db, req, res);
+    if (!user) return;
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    if (!canAccessWorkspace(user, workspace.id)) {
+      res.status(403).json({ error: 'workspace_forbidden' });
+      return;
+    }
+    req.authUser = user;
+    req.workspace = workspace;
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+app.use('/api/workspaces/:workspaceId', requireWorkspaceAccess);
 
 function getAiProviderStatus() {
   return {
@@ -1056,6 +1159,14 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
 app.get('/api/auth/meta/status', async (req, res) => {
   const db = await readDb();
   const workspaceId = req.query.workspaceId || 'ws_demo_ua';
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  const workspace = requireWorkspace(db, workspaceId, res);
+  if (!workspace) return;
+  if (!canAccessWorkspace(user, workspace.id)) {
+    res.status(403).json({ error: 'workspace_forbidden' });
+    return;
+  }
   const accounts = db.instagramAccounts.filter((account) => account.workspaceId === workspaceId);
   res.json({
     configured: Boolean(META_APP_ID && META_APP_SECRET),
@@ -1130,6 +1241,10 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/demo', async (req, res) => {
+  if (!ALLOW_DEMO_LOGIN) {
+    res.status(403).json({ error: 'demo_login_disabled' });
+    return;
+  }
   const db = await readDb();
   let user = db.users.find((item) => item.email === 'demo@dzhero.app');
   if (!user) {
@@ -1201,21 +1316,28 @@ app.get('/api/billing/plans', (req, res) => {
 
 app.get('/api/workspaces', async (req, res) => {
   const db = await readDb();
-  res.json({ workspaces: db.workspaces });
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  const workspaces = db.workspaces.filter((workspace) => canAccessWorkspace(user, workspace.id));
+  res.json({ workspaces });
 });
 
 app.post('/api/workspaces', async (req, res) => {
   const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
   const workspace = {
     id: createId('ws'),
     name: req.body.name || 'New workspace',
-    owner: req.body.owner || 'Admin',
+    owner: user.name || user.email,
+    ownerUserId: user.id,
     mode: req.body.mode || 'own_business',
     marketFocus: req.body.marketFocus || ['ua', 'us', 'eu', 'global'],
     createdAt: new Date().toISOString(),
     brief: req.body.brief || {},
   };
   db.workspaces.unshift(workspace);
+  user.workspaceIds = Array.from(new Set([...(user.workspaceIds || []), workspace.id]));
   ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
   await writeDb(db);
   res.status(201).json({ workspace });
@@ -1567,9 +1689,12 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       return;
     }
 
-    const url = String(req.body.url || '').trim();
-    if (!/https?:\/\/(?:www\.)?instagram\.com\/(?:reel|reels|p)\//i.test(url)) {
-      res.status(400).json({ error: 'instagram_reel_url_required', message: 'Instagram Reel/Post URL is required' });
+    const url = parseAllowedSignalUrl(req.body.url);
+    if (!url) {
+      res.status(400).json({
+        error: 'supported_signal_url_required',
+        message: 'Paste a valid public Instagram or TikTok URL.',
+      });
       return;
     }
 

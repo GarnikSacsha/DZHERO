@@ -66,6 +66,18 @@ const DEMO_WORKSPACES = [
   { id: 'ws_demo_expert', name: 'Expert Lab', handle: '@expert.lab', type: 'Експерт' },
 ];
 
+function getAuthHeaders(extraHeaders = {}) {
+  const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
+  return token ? { ...extraHeaders, Authorization: `Bearer ${token}` } : extraHeaders;
+}
+
+function authFetch(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: getAuthHeaders(options.headers || {}),
+  });
+}
+
 function getPublicPage() {
   const path = window.location.pathname.replace(/\/$/, '');
   return {
@@ -196,6 +208,16 @@ function App() {
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
   const publicPage = getPublicPage();
   const activeWorkspace = DEMO_WORKSPACES.find((workspace) => workspace.id === workspaceId) || DEMO_WORKSPACES[0];
+  const setMvpPage = (nextPage) => {
+    const allowedPages = new Set(['home', 'viral', 'remix', 'plan', 'settings']);
+    setPage(allowedPages.has(nextPage) ? nextPage : 'home');
+  };
+
+  useEffect(() => {
+    if (!['home', 'viral', 'remix', 'plan', 'settings'].includes(page)) {
+      setPage('home');
+    }
+  }, [page]);
 
   useEffect(() => {
     let isMounted = true;
@@ -371,7 +393,7 @@ function App() {
     if (!cleanUrl) return false;
     notify('Імпортуємо Reels і готуємо UA-адаптацію...');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/reels/import-url`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels/import-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -444,7 +466,7 @@ function App() {
       <CleanSidebar
         key={`sidebar-${language}`}
         page={page}
-        setPage={setPage}
+        setPage={setMvpPage}
         currentUser={currentUser}
         workspaces={DEMO_WORKSPACES}
         activeWorkspace={activeWorkspace}
@@ -456,24 +478,11 @@ function App() {
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
-        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setPage} workspaceId={workspaceId} language={language} />}
-        {page === 'roadmap' && <ProductRoadmap notify={notify} setPage={setPage} />}
-        {page === 'businesses' && <BusinessPlaybooks notify={notify} setPage={setPage} workspaceId={workspaceId} />}
-        {page === 'strategy' && <StrategyBrain notify={notify} setPage={setPage} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} setPage={setPage} />}
-        {page === 'tiktok' && <TikTokSignalsDemo notify={notify} setPage={setPage} />}
-        {page === 'competitors' && <Competitors competitors={filtered.competitors} openModal={setModal} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setPage} />}
-        {page === 'ideas' && <IdeasBoard ideas={filterByMarket(data.ideas, market)} openModal={setModal} onToRemix={pushIdeaToRemix} onToPlan={pushIdeaToPlan} />}
-        {page === 'assistant' && <CreatorAssistant notify={notify} workspaceId={workspaceId} activeWorkspace={activeWorkspace} autoPrompt={assistantAutoPrompt} onAutoPromptUsed={() => setAssistantAutoPrompt(null)} />}
-        {page === 'launches' && <LaunchRoadmap notify={notify} setPage={setPage} workspaceId={workspaceId} />}
-        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setPage} />}
-        {page === 'sales' && <SalesDirect notify={notify} setPage={setPage} />}
-        {page === 'analytics' && <Analytics />}
-        {page === 'legal' && <LegalSafe notify={notify} />}
-        {page === 'budget' && <BudgetCalculator notify={notify} />}
-        {page === 'team' && <TeamHub notify={notify} workspaceId={workspaceId} />}
+        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
+        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
+        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} />}
+        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setMvpPage} />}
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} workspaceId={workspaceId} />}
       </main>
       {modal?.type === 'reel' || modal === 'reel'
@@ -911,27 +920,31 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   const authCopy = language === 'en'
     ? {
       brandSub: 'AI producer for Ukraine and global trends',
-      eyebrow: 'Private workspace',
-      headline: 'Sign in through Instagram to connect a Creator or Business account.',
+      eyebrow: 'Signals -> scripts -> weekly plan',
+      headline: 'Find the signal. Write the script. Put it into the plan.',
+      subheadline: 'Dzhero turns short-form content mechanics into original ideas, scripts, weekly plans, and Direct prompts for your brand.',
       creator: 'Creator or Business',
-      panelTitle: 'Sign in',
+      panelEyebrow: 'Workspace preview',
+      panelTitle: 'Start with demo',
       themeTitle: 'Theme',
       instagramLoading: 'Preparing Instagram Login...',
-      instagramButton: 'Sign in through Instagram',
+      instagramButton: 'Connect Instagram later',
       pendingTitle: 'Instagram connection pending',
       pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
       personalRejected: 'Personal accounts are not supported',
-      demoButton: 'Demo access',
+      demoButton: 'View demo workspace',
     }
     : {
       brandSub: 'AI-продюсер для України і глобальних трендів',
-      eyebrow: 'Закритий робочий простір',
-      headline: 'Увійди через Instagram, щоб підключити Creator або Business акаунт.',
+      eyebrow: 'Сигнали -> сценарії -> план',
+      headline: 'Знайти сигнал. Написати сценарій. Поставити в план.',
+      subheadline: 'Dzhero перетворює short-form механіки у власні ідеї, сценарії, тижневий план і Direct-підказки для бренду.',
       creator: 'Creator або Business',
-      panelTitle: 'Вхід',
+      panelEyebrow: 'Перегляд workspace',
+      panelTitle: 'Почати з демо',
       themeTitle: 'Тема',
       instagramLoading: 'Готуємо Instagram Login...',
-      instagramButton: 'Увійти через Instagram',
+      instagramButton: 'Підключити Instagram пізніше',
       pendingTitle: 'Instagram connection pending',
       pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
       personalRejected: 'Personal не підходить',
@@ -992,46 +1005,29 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           </div>
           <small>{authCopy.eyebrow}</small>
           <h1>{authCopy.headline}</h1>
-          <div className="auth-points">
-            <span>Instagram Login</span>
-            <span>{authCopy.creator}</span>
-            <span>Insights</span>
-            <span>AI Direct</span>
-          </div>
-          <div className="auth-signal-panel">
-            <span>Live readiness</span>
-            <strong>Підключення через офіційний Instagram flow</strong>
-            <p>Користувач авторизує Creator або Business акаунт, а Dzhero забирає тільки дозволені дані для аналізу, плану і комунікації.</p>
+          <p className="auth-lead">{authCopy.subheadline}</p>
+          <div className="auth-outcomes">
+            <span>Сигнали з Reels і short-form контенту</span>
+            <span>UA-адаптація без копіювання</span>
+            <span>Сценарій, календар і CTA в Direct</span>
           </div>
         </div>
         <form className="auth-panel" onSubmit={(event) => event.preventDefault()}>
           <div className="auth-panel-head">
             <div>
-              <small>Instagram Professional Login</small>
+              <small>{authCopy.panelEyebrow}</small>
               <h2>{authCopy.panelTitle}</h2>
             </div>
             <button className="icon" type="button" title={authCopy.themeTitle} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
-          <button className="auth-submit auth-meta-button" type="button" onClick={startInstagramLogin} disabled={isLoading}>
+          <button className="auth-demo primary" type="button" onClick={enterDemo} disabled={isLoading}>
+            {authCopy.demoButton}
+          </button>
+          <button className="auth-submit auth-meta-button secondary" type="button" onClick={startInstagramLogin} disabled={isLoading}>
             {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
           </button>
-          <div className="auth-flow-list">
-            {[
-              ['01', 'Instagram permission', 'Creator або Business акаунт підтверджує доступи.'],
-              ['02', 'Workspace sync', 'Профіль, медіа і сигнали потрапляють у робочий простір.'],
-              ['03', 'AI producer', 'Джеро готує ідеї, сценарії, план і Direct-підказки.'],
-            ].map(([step, title, text]) => (
-              <article key={step}>
-                <span>{step}</span>
-                <div>
-                  <strong>{title}</strong>
-                  <p>{text}</p>
-                </div>
-              </article>
-            ))}
-          </div>
           {instagramConfig && (
             <div className="instagram-pending">
               <strong>{authCopy.pendingTitle}</strong>
@@ -1039,9 +1035,6 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
             </div>
           )}
           {error && <div className="auth-error">{error}</div>}
-          <button className="auth-demo" type="button" onClick={enterDemo} disabled={isLoading}>
-            {authCopy.demoButton}
-          </button>
         </form>
       </section>
     </main>
@@ -1142,88 +1135,35 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
 
 function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, isOpen, onClose }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
-  const [isToolsOpen, setIsToolsOpen] = useState(false);
   const tourTargets = {
     home: 'sidebar-home',
-    businesses: 'sidebar-businesses',
-    strategy: 'sidebar-strategy',
     viral: 'sidebar-transcript',
-    tiktok: 'sidebar-tiktok',
-    competitors: 'sidebar-competitors',
     remix: 'sidebar-remix',
-    ideas: 'sidebar-ideas',
-    assistant: 'sidebar-assistant',
     plan: 'sidebar-calendar',
-    sales: 'sidebar-direct',
-    team: 'sidebar-team',
-    tools: 'sidebar-tools',
-    launches: 'sidebar-launches',
-    analytics: 'sidebar-analytics',
-    legal: 'sidebar-legal',
-    budget: 'sidebar-budget',
+    settings: 'sidebar-settings',
   };
   const labels = language === 'en'
     ? {
       home: 'Home',
-      businesses: 'Businesses',
-      strategy: 'Strategy',
-      viral: 'Trend analytics',
-      tiktok: 'TikTok Signals',
-      competitors: 'Competitors',
-      remix: 'Remix studio',
-      ideas: 'Ideas',
-      assistant: 'Assistant',
+      viral: 'Signals',
+      remix: 'Studio',
       plan: 'Content plan',
-      sales: 'Sales',
-      team: 'Team',
-      tools: 'More / Tools',
-      launches: 'Launches',
-      analytics: 'Analytics',
-      legal: 'Legal safe',
-      budget: 'Budget',
       settings: 'Settings',
     }
     : {
       home: 'Головна',
-      businesses: 'Бізнеси',
-      strategy: 'Стратегія',
-      viral: 'Аналітика трендів',
-      tiktok: 'TikTok Signals',
-      competitors: 'Конкуренти',
-      remix: 'Ремікс-студія',
-      ideas: 'Ідеї',
-      assistant: 'Асистент',
+      viral: 'Сигнали',
+      remix: 'Студія',
       plan: 'Контент-план',
-      sales: 'Продажі',
-      team: 'Команда',
-      tools: 'Ще / Інструменти',
-      launches: 'Запуски',
-      analytics: 'Аналітика',
-      legal: 'Юридичний сейф',
-      budget: 'Бюджет',
       settings: 'Налаштування',
     };
   const primaryItems = [
     ['home', Home],
-    ['businesses', BriefcaseBusiness],
-    ['strategy', Target],
-    ['viral', Flame],
-    ['tiktok', Video],
-    ['competitors', Database],
+    ['viral', Radio],
     ['remix', Wand2],
-    ['ideas', Lightbulb],
-    ['assistant', Bot],
     ['plan', CalendarDays],
-    ['sales', ShoppingBag],
-    ['team', UsersRound],
+    ['settings', Settings],
   ];
-  const toolItems = [
-    ['launches', Rocket],
-    ['analytics', BarChart3],
-    ['legal', ShieldCheck],
-    ['budget', Calculator],
-  ];
-  const isToolPage = toolItems.some(([id]) => id === page);
   const selectPage = (id) => {
     setPage(id);
     onClose?.();
@@ -1251,24 +1191,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       </button>
       <nav>
         {primaryItems.map(renderNavButton)}
-        <div className={isToolsOpen ? 'nav-tools open' : 'nav-tools'}>
-          <button
-            className={isToolPage ? 'active nav-tools-toggle' : 'nav-tools-toggle'}
-            data-tour={tourTargets.tools}
-            type="button"
-            onClick={() => setIsToolsOpen((value) => !value)}
-            aria-expanded={isToolsOpen}
-          >
-            <MoreHorizontal size={16} />
-            <span className="nav-label">{labels.tools}</span>
-            <ChevronDown className="nav-tools-chevron" size={14} />
-          </button>
-          {isToolsOpen && (
-            <div className="nav-tools-menu">
-              {toolItems.map(renderNavButton)}
-            </div>
-          )}
-        </div>
       </nav>
       <div className="account-switcher compact">
         {isSwitcherOpen && (
@@ -1320,8 +1242,8 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
 function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
-    : (language === 'en' ? 'Generate ideas' : 'Зібрати ідеї');
-  const ctaTarget = page === 'settings' ? 'home' : 'assistant';
+    : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
+  const ctaTarget = 'home';
 
   return (
     <header className="topbar">
@@ -1363,11 +1285,9 @@ function MarketFilter({ segments, market, setMarket }) {
 
 function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' }) {
   const steps = [
-    ['signals', 'Signals', 'TikTok + Instagram inputs', 'tiktok', Radio],
-    ['analytics', 'Analyze', 'Score markets and trends', 'viral', BarChart3],
-    ['remix', 'Remix', 'Turn signal into script', 'remix', Wand2],
-    ['plan', 'Plan', 'Schedule the content batch', 'plan', CalendarDays],
-    ['sales', 'Sales', 'Connect content to Direct', 'sales', ShoppingBag],
+    ['signals', 'Signals', 'Find content mechanics', 'viral', Radio],
+    ['studio', 'Studio', 'Adapt into script', 'remix', Wand2],
+    ['plan', 'Plan', 'Schedule the batch', 'plan', CalendarDays],
   ];
   const activeIndex = Math.max(0, steps.findIndex(([id]) => id === active));
 
@@ -1412,8 +1332,8 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
   useEffect(() => {
     let isMounted = true;
     Promise.all([
-      fetch(`${API_BASE}/auth/meta/status?workspaceId=${workspaceId}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
-      fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      authFetch(`${API_BASE}/auth/meta/status?workspaceId=${workspaceId}`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
+      authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`).then((response) => (response.ok ? response.json() : null)).catch(() => null),
     ]).then(([metaStatus, agentContext]) => {
       if (!isMounted) return;
       const brief = agentContext?.brief || {};
@@ -1460,132 +1380,33 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
     <section className="page page-home">
       <PageTitle
         title="Головна"
-        subtitle="Операційний центр Instagram-продюсера: глобальний scouting і адаптація ідей під українську аудиторію."
+        subtitle="Короткий стан MVP: джерела, готові ідеї і одна дія на тиждень."
       />
-      <div className="home-grid">
-        <article className="home-hero">
-          <small>Поточний фокус</small>
-          <h2>{activeMarket?.label ?? 'Усі ринки'} → український сценарій</h2>
-          <p>Command center: збираємо сигнали, оцінюємо ринок, робимо ремікс і ведемо ідеї до плану та Direct.</p>
-          <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Зібрати ідеї на тиждень</button>
-          <div className="home-hero-rail">
-            <span>Signal radar</span>
-            <strong>{topReel.score}</strong>
-            <em>{topReel.views} переглядів</em>
-          </div>
+      <div className="mvp-home-grid">
+        <article className="mvp-home-hero">
+          <small>Головна дія</small>
+          <h2>Згенерувати контент-план на тиждень</h2>
+          <p>Джеро бере найсильніші сигнали, адаптує їх під бренд і складає тижневий план без зайвого менеджменту.</p>
+          <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Згенерувати контент-план на тиждень</button>
         </article>
-        <div className="home-stats">
-          {[
-            ['Ринки', '4', 'UA, США, Європа, Global'],
-            ['Конкуренти', data.competitors.length, 'у базі для scouting'],
-            ['Рілси', data.reels.length, 'відібрано для аналізу'],
-            ['У плані', data.plans.length, 'готові ідеї контенту'],
-          ].map(([label, value, note]) => (
-            <article key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
-              <small>{note}</small>
-            </article>
-          ))}
-        </div>
-      </div>
-      <div className="home-command-grid home-intel-grid">
-        <article className="home-radar-card">
-          <div className="panel-title"><strong>Signal radar</strong><span>Last 30 days</span></div>
-          <div className="home-radar-value">
-            <strong>230.5K</strong>
-            <span>+15% за місяць</span>
+        <article className="mvp-status-card">
+          <small>Інтеграції</small>
+          <div className="mvp-status-list">
+            <div><span>Meta / Instagram</span><Badge variant={onboarding.instagramConnected ? 'success' : 'warning'}>{onboarding.instagramConnected ? 'Підключено' : 'Очікує'}</Badge></div>
+            <div><span>Short-form signals</span><Badge variant="success">Demo ready</Badge></div>
+            <div><span>Brand Brain</span><Badge variant={onboarding.brandReady ? 'success' : 'warning'}>{onboarding.brandReady ? 'Готово' : 'Заповнити'}</Badge></div>
           </div>
-          <svg className="home-radar-chart" viewBox="0 0 238 110" role="img" aria-label="Signal activity chart">
-            <path d="M0 100H238" />
-            <path d="M0 70H238" />
-            <path d="M0 40H238" />
-            <polyline points={radarPolyline} />
-            {radarPoints.map((value, index) => <circle key={index} cx={index * 34} cy={96 - value} r="4" />)}
-          </svg>
-          <div className="home-radar-meta">
-            <span><b>{topReel.views}</b> переглядів</span>
-            <span><b>56</b> signals</span>
-          </div>
+          <button type="button" onClick={() => setPage('settings')}>Налаштувати джерела</button>
         </article>
-        <article className="home-readiness-card">
-          <small>Status readiness</small>
-          <strong>{onboarding.instagramConnected ? 'Production ready' : 'Integration waiting'}</strong>
-          <div className="readiness-progress"><i style={{ width: `${Math.round((onboardingSteps.filter(([, , , done]) => done).length / onboardingSteps.length) * 100)}%` }} /></div>
-          <div className="home-readiness-list">
-            {onboardingSteps.map(([step, title, , done, target]) => (
-              <button className={done ? 'done' : ''} type="button" key={step} onClick={() => setPage(target)}>
-                <span>{done ? '✓' : step}</span>
-                <b>{title}</b>
-              </button>
-            ))}
-          </div>
+        <article className="mvp-counter-card">
+          <span>Готові ідеї</span>
+          <strong>{data.ideas.length}</strong>
+          <p>{data.plans.length} вже у контент-плані</p>
         </article>
-        <article className="home-activity-card">
-          <div className="panel-title"><strong>Recent activity</strong><span>live</span></div>
-          <div className="activity-timeline">
-            {recentActivity.map(([type, text, time]) => (
-              <button type="button" key={`${type}-${text}`} onClick={() => notify(text)}>
-                <span>{type}</span>
-                <strong>{text}</strong>
-                <em>{time}</em>
-              </button>
-            ))}
-          </div>
-        </article>
-        <article className="home-market-focus">
-          <div className="panel-title"><strong>Market focus</strong><span>{marketLabel(market)}</span></div>
-          <div className="home-market-grid">
-            {marketFocus.map(([title, delta, text]) => (
-              <div key={title}>
-                <span>{delta}</span>
-                <strong>{title}</strong>
-                <p>{text}</p>
-              </div>
-            ))}
-          </div>
-        </article>
-        <article className="home-quick-actions">
-          <div className="panel-title"><strong>Quick actions</strong><span>workflow</span></div>
-          <div>
-            {quickActions.map(([label, Icon, target]) => (
-              <button type="button" key={label} onClick={() => { setPage(target); notify(`${label}: opened`); }}>
-                <Icon size={16} />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-        </article>
-      </div>
-      {!onboarding.instagramConnected && (
-        <div className="ops-strip">
-          {onboardingSteps.map(([step, title, text, done, target]) => (
-            <article className={done ? 'completed' : ''} key={step} onClick={() => { setPage(target); notify(done ? `${title}: виконано` : `${title}: відкрив наступний крок`); }}>
-              <span className="step-progress">{done ? '✓' : step}</span>
-              <strong>{title}</strong>
-              <p>{text}</p>
-            </article>
-          ))}
-        </div>
-      )}
-      <div className="home-columns">
-        <article className="insight-card home-signal-card">
-          <small>Пріоритетний сигнал</small>
-          <h3>{topReel.title}</h3>
-          <p>{marketLabel(topReel.market)} · {topReel.handle} · скор {topReel.score} · {topReel.views} переглядів</p>
-          <div className="signal-readiness">
-            <span>Хук</span>
-            <span>UA-fit</span>
-            <span>CTA</span>
-          </div>
-        </article>
-        <article className="insight-card home-action-card">
-          <small>Наступна дія</small>
-          <h3>{onboarding.instagramConnected ? 'Зібрати batch на тиждень' : 'Підключити Instagram-джерело'}</h3>
-          <p>{onboarding.instagramConnected ? 'Сигнали вже можна переводити в сценарії, сторіс і Direct-відповіді.' : 'Джеро готовий до Meta keys: після логіну зможемо підтягувати реальні профілі й дозволи.'}</p>
-          <button type="button" onClick={() => { setPage(onboarding.instagramConnected ? 'plan' : 'settings'); notify(onboarding.instagramConnected ? 'Відкрив контент-план' : 'Відкрив інтеграції Instagram'); }}>
-            {onboarding.instagramConnected ? 'До контент-плану' : 'Перейти до інтеграцій'}
-          </button>
+        <article className="mvp-counter-card">
+          <span>Сигнали</span>
+          <strong>{data.reels.length}</strong>
+          <p>Найсильніший: {topReel.score} score</p>
         </article>
       </div>
     </section>
@@ -1726,22 +1547,22 @@ function TikTokSignalsDemo({ notify, setPage }) {
   return (
     <section className="page page-tiktok-demo">
       <PageTitle
-        title="TikTok Signals"
-        subtitle="Sandbox preview for TikTok review: trend signals, sounds and video ideas become original content plans."
+        title="Short-form sandbox"
+        subtitle="Preview for user-authorized short-form profile and stats: signals become original content plans."
         actions={<button className="dark" type="button" onClick={() => setPage('remix')}><Wand2 size={16} />Open Remix Studio</button>}
       />
       <WorkflowRail active="signals" setPage={setPage} notify={notify} variant="compact" />
       <div className="tiktok-demo-hero">
         <div>
-          <small>Sandbox integration preview</small>
+          <small>User-authorized preview</small>
           <h2>Analyze short-form video signals without copying content.</h2>
-          <p>Dzhero will connect TikTok trend context to the workspace, score signals by market fit, and turn them into original scripts for the user’s own brand.</p>
+          <p>Dzhero uses authorized profile and stats context, scores selected short-form signals by market fit, and turns them into original scripts for the user’s own brand.</p>
         </div>
         <div className="tiktok-demo-actions">
-          <button className={isConnected ? 'completed' : 'dark'} type="button" onClick={() => runStep('connected', 'TikTok sandbox connected')}>
-            <CircleCheck size={16} />{isConnected ? 'TikTok connected' : 'Connect TikTok sandbox'}
+          <button className={isConnected ? 'completed' : 'dark'} type="button" onClick={() => runStep('connected', 'Short-form source connected')}>
+            <CircleCheck size={16} />{isConnected ? 'Source connected' : 'Connect source preview'}
           </button>
-          <button type="button" disabled={!isConnected} onClick={() => runStep('analyzed', 'TikTok signals imported')}>
+          <button type="button" disabled={!isConnected} onClick={() => runStep('analyzed', 'Short-form signals imported')}>
             <Download size={16} />Import trend signals
           </button>
           <button className={isPlanned ? 'completed' : ''} type="button" onClick={generatePlan}>
@@ -1752,8 +1573,8 @@ function TikTokSignalsDemo({ notify, setPage }) {
 
       <div className="tiktok-flow-grid">
         {[
-          ['01', 'Connect', isConnected ? 'done' : 'ready', 'User authorizes the TikTok integration in a sandbox flow.'],
-          ['02', 'Analyze', isAnalyzed ? 'done' : isConnected ? 'ready' : 'locked', 'Dzhero reads selected trend signals and scores market fit.'],
+          ['01', 'Connect', isConnected ? 'done' : 'ready', 'User authorizes profile and stats access in a preview flow.'],
+          ['02', 'Analyze', isAnalyzed ? 'done' : isConnected ? 'ready' : 'locked', 'Dzhero reads selected short-form signals and scores market fit.'],
           ['03', 'Create', isPlanned ? 'done' : isAnalyzed ? 'ready' : 'locked', 'AI turns the signals into original hooks, scripts and calendar ideas.'],
         ].map(([number, title, status, text]) => (
           <article className={`tiktok-flow-card ${status}`} key={title}>
@@ -1766,11 +1587,11 @@ function TikTokSignalsDemo({ notify, setPage }) {
 
       <div className="tiktok-demo-layout signal-to-plan-layout">
         <article className="insight-card tiktok-signal-panel">
-          <small>Trend signals</small>
-          <h3>Selected TikTok signals for review demo</h3>
+          <small>Short-form signals</small>
+          <h3>Selected signals for review demo</h3>
           <div className="tiktok-signal-list">
             {signals.map(([type, Icon, title, meta, score]) => (
-              <button className={isAnalyzed ? 'active' : ''} type="button" key={title} onClick={() => !isAnalyzed && notify('Connect and import TikTok signals first')}>
+              <button className={isAnalyzed ? 'active' : ''} type="button" key={title} onClick={() => !isAnalyzed && notify('Connect and import short-form signals first')}>
                 <i><Icon size={17} /></i>
                 <span>{type}</span>
                 <strong>{title}</strong>
@@ -1804,17 +1625,15 @@ function TikTokSignalsDemo({ notify, setPage }) {
   );
 }
 
-function ViralBank({ reels, market, notify, openModal, onImportUrl, setPage }) {
+function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onAdapt, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
-  const [tab, setTab] = useState('all');
   const [previewReel, setPreviewReel] = useState(null);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const pastedReelUrl = /instagram\.com\/(reel|reels|p)\//i.test(query.trim()) ? query.trim() : '';
   const filteredReels = reels
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
-    .filter((reel) => tab === 'all' || (tab === 'review' ? reel.status.some((status) => status.includes('розбір') || status.includes('огляд')) : reel.status.some((status) => status.toLowerCase().includes(tab))))
     .sort((a, b) => {
       if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
       return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
@@ -1866,13 +1685,13 @@ function ViralBank({ reels, market, notify, openModal, onImportUrl, setPage }) {
   };
 
   return (
-    <section className="page">
+    <section className="page page-signals">
       <PageTitle
-        title="Банк віральних рілсів"
-        subtitle="Скаутимо Україну, США, Європу та global-ніші, але адаптуємо ідеї під українську аудиторію."
-        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button onClick={() => setTab('review')}><Filter size={16} />Фільтри</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати рілс вручну</button></>}
+        title="Сигнали"
+        subtitle="Єдина стрічка віральних Reels, short-form і конкурентних механік для адаптації під бренд."
+        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати сигнал</button></>}
       />
-      <WorkflowRail active="analytics" setPage={setPage} notify={notify} variant="compact" />
+      <WorkflowRail active="signals" setPage={setPage} notify={notify} variant="compact" />
       <div className="search-row">
         <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав Reels-посилання..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
@@ -1889,9 +1708,26 @@ function ViralBank({ reels, market, notify, openModal, onImportUrl, setPage }) {
           </button>
         </div>
       )}
-      <Tabs active={tab} onChange={setTab} items={[['all', `Для тебе ${filteredReels.length}`], ['trend', 'Тренди'], ['кейс', 'Кейси'], ['адапт', 'Адаптації'], ['review', 'Потрібен огляд']]} />
-      <div className="trends-table-wrap">
-        <ReelsTable reels={filteredReels} scoreSortDirection={scoreSortDirection} onToggleScoreSort={toggleScoreSort} onOpenPreview={setPreviewReel} />
+      <div className="signals-layout">
+        <div className="trends-table-wrap">
+          <ReelsTable reels={filteredReels} scoreSortDirection={scoreSortDirection} onToggleScoreSort={toggleScoreSort} onOpenPreview={setPreviewReel} onAdapt={onAdapt} />
+        </div>
+        <aside className="signals-source-panel">
+          <div className="panel-title"><strong>Джерела</strong><span>{competitors.length} акаунтів</span></div>
+          <p>Конкуренти не окремий модуль: вони просто джерела сигналів для стрічки.</p>
+          <div className="signals-source-list">
+            {competitors.slice(0, 6).map((row) => (
+              <article key={row.handle}>
+                <b>{row.handle[1]?.toUpperCase() || 'C'}</b>
+                <div>
+                  <strong>{row.handle}</strong>
+                  <span>{marketLabel(row.market)} · {row.bestViews} best</span>
+                </div>
+                <Score value={row.score} compact />
+              </article>
+            ))}
+          </div>
+        </aside>
       </div>
       {previewReel && (
         <div className="video-preview-backdrop" onClick={() => setPreviewReel(null)}>
@@ -1906,9 +1742,9 @@ function ViralBank({ reels, market, notify, openModal, onImportUrl, setPage }) {
             <div>
               <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
               <h3>{previewReel.title}</h3>
-              <p>Прев'ю рілса для швидкого відбору. Оригінальний пост відкриємо після підключення Instagram-джерела.</p>
+              <p>Прев'ю сигналу для швидкого відбору. Джеро витягує механіку, а не копіює ролик.</p>
             </div>
-            <button className="dark" type="button" onClick={() => notify('Оригінальний пост буде доступний після підключення Instagram джерела')}>Відкрити оригінал</button>
+            <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); setPreviewReel(null); }}>Адаптувати під мій бренд</button>
           </article>
         </div>
       )}
@@ -1931,7 +1767,7 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted || !payload?.brief) return;
@@ -1949,7 +1785,7 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
     if (focus) setSelectedFocus(focus);
     setSaveStatus('saving');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2152,7 +1988,7 @@ function useChecklistState(scope, initialLabels, notify, doneLabel = 'Затве
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`)
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted || !payload?.checklist?.items?.length) return;
@@ -2168,7 +2004,7 @@ function useChecklistState(scope, initialLabels, notify, doneLabel = 'Затве
   const saveItems = async (nextItems) => {
     const allChecked = nextItems.length > 0 && nextItems.every((item) => item.checked);
     const parentStatus = allChecked ? doneLabel : 'В роботі';
-    const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`, {
+    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/checklists/${scope}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ parentStatus, items: nextItems }),
@@ -2198,21 +2034,21 @@ function getCompetitorMeta(row) {
   return `${marketLabel(row.market)} / ${niche}`;
 }
 
-function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview }) {
+function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt }) {
   return (
     <div className="table-card trend-analytics-table">
-      <div className="table-head trend-grid">
+      <div className="table-head trend-grid signals-grid">
         <span>Rank</span>
-        <span>Content / video</span>
+        <span>Сигнал / відео</span>
         <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Score <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
         <span>Views</span>
         <span>Likes</span>
         <span>Market</span>
-        <span>Source</span>
-        <span>Status</span>
+        <span>Теги</span>
+        <span></span>
       </div>
       {reels.map((reel, index) => (
-        <div className="reel-row trend-grid" key={`${reel.handle}-${reel.title}`}>
+        <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
           <div className="reel-info">
             <button className={`thumb market-${reel.market}`} type="button" onClick={() => onOpenPreview(reel)} aria-label={`Відкрити прев'ю ${reel.title}`}>
@@ -2225,8 +2061,10 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
           <strong>{reel.views}</strong>
           <span>{reel.likes}</span>
           <span>{marketLabel(reel.market)}</span>
-          <div className="handle trend-source"><b>{reel.tag}</b><span>{reel.handle}</span><small>Instagram</small></div>
           <div className="status-list status-badges">{reel.status.map((s) => <em title={s} key={s}>{compactStatusLabel(s)}</em>)}</div>
+          <button className="signal-adapt-button" type="button" onClick={() => onAdapt?.(reel)}>
+            <Wand2 size={14} />Адаптувати під мій бренд
+          </button>
         </div>
       ))}
     </div>
@@ -2424,18 +2262,7 @@ function RemixStudio({ reel, notify, setPage }) {
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title="Рілс → транскрипт → UA-адаптація" subtitle={`${reelHandle} · ${marketLabel(reel.market)} · 06 травня 2026, 13:42`} actions={<><button onClick={() => { setPage('settings'); notify('Відкрив інтеграції для підключення Instagram'); }} >Instagram</button><button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button></>} />
-      <article className="remix-command-strip">
-        <div>
-          <small>Remix command</small>
-          <strong>Не копіюємо ролик, а витягуємо механіку і збираємо український сценарій.</strong>
-        </div>
-        <div className="remix-command-metrics">
-          <span><b>{reel.score}</b> signal</span>
-          <span><b>{scenarioVariants.length}</b> remix</span>
-          <span><b>15s</b> script</span>
-        </div>
-      </article>
+      <PageTitle title="Студія" subtitle="Витягуємо механіку сигналу і збираємо оригінальний сценарій під бренд." actions={<button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button>} />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -2443,115 +2270,53 @@ function RemixStudio({ reel, notify, setPage }) {
             <div className={`phone-video market-${reel.market}`}><button onClick={() => notify('Превʼю відео буде доступне після підключення медіа')}>▶</button><strong>GLOBAL<br />TO UA</strong></div>
             <div className="phone-stats"><span>{reel.views}<br /><small>Перегл.</small></span><span>{reel.likes}<br /><small>Лайки</small></span><span>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
-          <div className="gate-card">
-            <h3>Детектор ринку <span>{marketLabel(reel.market)}</span></h3>
-            <p>Джерела модеруються перед потраплянням в аналіз</p>
-            <h3>Quality gate <Badge>Проходить gate</Badge></h3>
-            <p>Механіку можна адаптувати для української аудиторії</p>
-          </div>
-        </div>
-        <div className="analysis-stack">
-          <div className="insight-card hero-card">
-            <div className="chips"><span>Є сигнал</span><span>ринок: {marketLabel(reel.market)}</span><span>адаптація: UA</span></div>
-            <small>Про що рілс</small>
-            <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
+          <div className="insight-card studio-mechanics-card">
+            <small>Механіка ролика</small>
+            <h3>{marketLabel(reel.market)} → мій бренд</h3>
             <p>{scenario.insight}</p>
             <div className="remix-signal-map">
               <span>Перший кадр</span>
               <span>Доказ</span>
               <span>Локальний біль</span>
-              <span>Direct CTA</span>
+              <span>CTA</span>
             </div>
           </div>
-          <div className="insight-card">
-            <small>Якість вхідних даних</small>
-            <h3>{scenario.quality}</h3>
-            <p>{reel.transcript || reel.caption || 'Щоб отримати не загальний, а точний сценарій, встав сюди транскрипт, caption або короткий переказ: що у першому кадрі, яка обіцянка, який доказ і чим закінчується відео.'}</p>
+        </div>
+        <div className="analysis-stack">
+          <div className="insight-card hero-card">
+            <small>Вхідний сигнал</small>
+            <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
+            <p>{reel.transcript || reel.caption || 'Джеро використовує назву, метрики і механіку сигналу. Коли буде підключене джерело, сюди підтягнеться caption або транскрипт.'}</p>
           </div>
           <div className="remix-bottom">
             <div className="insight-card">
-              <small>Сценарій для зйомки</small>
-              <h3>Готова структура на 15 секунд</h3>
-              <div className="remix-script-timeline">
-                {scenario.script.map((step) => (
-                  <article key={step.time}>
-                    <span>{step.time}</span>
-                    <strong>{step.frame}</strong>
-                    <p>{step.voice}</p>
-                  </article>
-                ))}
-              </div>
-              <div className="remix-checklist">
-                {scenario.checklist.map((item) => <span key={item}>{item}</span>)}
-              </div>
-            </div>
-            <div className="insight-card empty remix-script-ready-card">
-              {adaptationState === 'ready' && (
-                <button className="remix-copy-button" type="button" onClick={copyScenario} aria-label="Copy to Clipboard">
-                  <Copy size={15} />
-                </button>
-              )}
-              <h3>3 UA-ремікси</h3>
-              {adaptationState === 'idle' && (
-                <button className="remix-empty-cta" type="button" onClick={adaptScenario}>
-                  <Sparkles size={16} />Згенерувати перший ремікс
-                </button>
-              )}
+              <small>Сценарій на 15 секунд</small>
               {adaptationState === 'loading' && (
-                <div className="remix-skeleton-list" aria-label="Підготовка сценаріїв">
-                  {[1, 2, 3].map((item) => (
-                    <div className="remix-skeleton-card" key={item}>
-                      <span />
-                      <em />
-                      <em />
-                    </div>
-                  ))}
+                <div className="studio-loading">
+                  <span />
+                  <strong>Джеро адаптирует сценарий...</strong>
                 </div>
               )}
-              {adaptationState === 'ready' && (
-                <div className="remix-variant-list">
-                  {scenarioVariants.map((variant) => (
-                    <article className="remix-variant-card" key={variant.title}>
-                      <strong>{variant.title}</strong>
-                      <p>{variant.hook}</p>
-                      <ol>
-                        {variant.structure.map((item) => <li key={item}>{item}</li>)}
-                      </ol>
-                    </article>
-                  ))}
-                </div>
+              {adaptationState !== 'loading' && (
+                <>
+                  <h3>Готова структура</h3>
+                  <div className="remix-script-timeline">
+                    {scenario.script.map((step) => (
+                      <article key={step.time}>
+                        <span>{step.time}</span>
+                        <strong>{step.frame}</strong>
+                        <p>{step.voice}</p>
+                      </article>
+                    ))}
+                  </div>
+                  <button className="dark studio-plan-cta" type="button" onClick={() => { setPage('plan'); notify('Сценарій додано в контент-план'); }}>
+                    <CalendarDays size={16} />Додати в контент-план
+                  </button>
+                </>
               )}
             </div>
           </div>
         </div>
-        <aside className="remix-project-panel">
-          <div>
-            <small>Project controls</small>
-            <h3>Ремікс готовий до виробництва</h3>
-            <p>Сценарій можна поставити в контент-план, скопіювати або експортувати для команди.</p>
-          </div>
-          <button className="dark" type="button" onClick={() => { setPage('plan'); notify('Ремікс додано до контент-плану'); }}>
-            <CalendarDays size={16} />Додати в план
-          </button>
-          <button type="button" onClick={copyScenario}>
-            <Copy size={16} />Скопіювати сценарій
-          </button>
-          <button type="button" onClick={() => notify('Експорт буде доступний після підключення workspace-файлів')}>
-            <Download size={16} />Експорт
-          </button>
-          <div className="remix-control-metrics">
-            <label>
-              <span>Complexity</span>
-              <strong>84%</strong>
-              <i><b style={{ width: '84%' }} /></i>
-            </label>
-            <label>
-              <span>Trend score</span>
-              <strong>{reel.score}</strong>
-              <i><b style={{ width: `${Math.min(reel.score, 100)}%` }} /></i>
-            </label>
-          </div>
-        </aside>
       </div>
     </section>
   );
@@ -2619,7 +2384,7 @@ function AgentPipeline({ workspaceId }) {
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/${workspaceId}/ai/status`)
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/ai/status`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (isMounted) setStatus(payload);
@@ -2634,10 +2399,10 @@ function AgentPipeline({ workspaceId }) {
 
   const providers = status?.providers || {};
   const steps = [
-    ['01', 'Instagram data', providers.instagram?.status || 'configuration_required', 'Reels, captions, insights and comments arrive only after Meta permissions.'],
-    ['02', 'Reel understanding', providers.textAgent?.status || 'fallback_mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
-    ['03', 'Script engine', providers.textAgent?.provider || 'fallback', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
-    ['04', 'Video job', providers.videoGeneration?.status || 'queued_for_later', 'A future video provider receives approved scenes only after human review.'],
+    ['01', 'Instagram data', providers.instagram?.configured ? 'ready' : 'connect source', 'Reels, captions, insights and comments appear after the user connects an approved account.'],
+    ['02', 'Reel understanding', providers.textAgent?.status === 'ready' ? 'ready' : 'draft mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
+    ['03', 'Script engine', providers.textAgent?.provider === 'fallback' ? 'local draft' : 'ready', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
+    ['04', 'Video job', providers.videoGeneration?.configured ? 'ready' : 'approval queue', 'Approved scenes are saved as production tasks before any video provider is used.'],
   ];
   return (
     <div className="agent-pipeline">
@@ -2645,12 +2410,12 @@ function AgentPipeline({ workspaceId }) {
         <div>
           <small>AI Producer Pipeline</small>
           <h3>Reels to analysis to script to video task</h3>
-          <p>Meta will bring the real Instagram data. The agent layer is already shaped to process it without asking public users for API keys.</p>
+          <p>The agent can already draft from saved signals. Connected accounts add real profile context and approved insights when they are available.</p>
         </div>
         <div className="agent-status-cards">
-          <span>{providers.instagram?.configured ? 'Instagram ready' : 'Meta keys pending'}</span>
-          <span>{providers.textAgent?.provider === 'fallback' ? 'Fallback text agent' : `${providers.textAgent?.provider || 'agent'} ready`}</span>
-          <span>{providers.videoGeneration?.configured ? 'Video ready' : 'Video API later'}</span>
+          <span>{providers.instagram?.configured ? 'Instagram ready' : 'Connect account later'}</span>
+          <span>{providers.textAgent?.provider === 'fallback' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`}</span>
+          <span>{providers.videoGeneration?.configured ? 'Video ready' : 'Manual approval first'}</span>
         </div>
       </div>
       <div className="agent-step-grid">
@@ -2685,7 +2450,7 @@ function BrandBrain({ notify, workspaceId }) {
 
   useEffect(() => {
     let isMounted = true;
-    fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted || !payload?.brief) return;
@@ -2716,7 +2481,7 @@ function BrandBrain({ notify, workspaceId }) {
         .filter(Boolean),
     };
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -2788,7 +2553,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
   const loadJobs = async () => {
     setStatus('loading');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`);
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`);
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'video_jobs_failed');
       setJobs(payload.videoJobs || []);
@@ -2805,7 +2570,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
   const createDemoJob = async () => {
     setStatus('saving');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2839,8 +2604,8 @@ function VideoTaskQueue({ notify, workspaceId }) {
       <div className="video-job-grid">
         {(jobs.length ? jobs : [{
           id: 'empty-video-job',
-          status: 'configuration_required',
-          provider: 'not_configured',
+          status: 'draft_ready',
+          provider: 'manual_approval',
           prompt: {
             title: 'Очікуємо першу задачу від агента',
             format: '15-25 sec Reels',
@@ -2923,7 +2688,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
     setInput('');
     setIsThinking(true);
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/chat`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: clean, history }),
@@ -2962,7 +2727,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
   const saveAssistantIdea = async () => {
     return runAgentAction('save_idea');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/ideas`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/ideas`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2989,7 +2754,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       return;
     }
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
       if (!response.ok) throw new Error('script_failed');
       notify('Сценарій створено з ідеї.');
     } catch {
@@ -3000,7 +2765,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
   const createVideoTask = async () => {
     return runAgentAction('create_video_job');
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/video-jobs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3025,7 +2790,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
     };
     setActionStatus(action);
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/agent/actions`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/actions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3048,18 +2813,11 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
   return (
     <section className="page page-assistant">
       <PageTitle
-        title="Асистент блогера"
-        subtitle="Допомагає з ідеями, сценаріями, зйомкою, монтажним ТЗ, контент-планом, коментарями й адаптацією трендів під Україну."
+        title="AI-продюсер"
+        subtitle="Маленька робоча панель для ідей, сценаріїв, плану зйомки, caption і Direct-відповідей."
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
-      <div className="assistant-workspace">
-        <div className="assistant-main-column">
-          <BrandBrain notify={notify} workspaceId={workspaceId} />
-          <div className="assistant-support-grid">
-            <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
-            <AgentPipeline workspaceId={workspaceId} />
-          </div>
-        </div>
+      <div className="assistant-workspace assistant-compact-workspace">
         <aside className="assistant-widget">
           <div className="assistant-widget-head">
             <div>
@@ -3108,6 +2866,22 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
           </div>
         </div>
         </aside>
+        <div className="assistant-main-column">
+          <details className="assistant-setup-drawer">
+            <summary>
+              <span>
+                <strong>Налаштування памʼяті бренду</strong>
+                <small>Ніша, продукт, аудиторія, Tone of Voice і стоп-теми для точніших відповідей.</small>
+              </span>
+              <ChevronDown size={16} />
+            </summary>
+            <BrandBrain notify={notify} workspaceId={workspaceId} />
+          </details>
+          <div className="assistant-support-grid">
+            <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
+            <AgentPipeline workspaceId={workspaceId} />
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -3358,6 +3132,13 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
               </article>
             ))}
           </div>
+          <label className="direct-background-toggle">
+            <input type="checkbox" />
+            <span>
+              <strong>Автоответ в Direct</strong>
+              <small>Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.</small>
+            </span>
+          </label>
           <div className="panel-title"><strong>Планові пости</strong><span>{posts.length}</span></div>
           {posts.map((post) => (
             <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
@@ -3546,31 +3327,60 @@ function SalesDirect({ notify, setPage }) {
   );
 }
 
-function AnalysisSetup({ notify }) {
-  const businessTypes = [
-    ['Кафе / ресторан', 'меню, бронювання, відгуки, локальні події'],
-    ['Магазин одягу', 'дропи, образи, залишки розмірів, Direct-продажі'],
-    ['Салон / beauty', 'вільні вікна, до/після, майстри, довіра'],
-    ['Експерт / блогер', 'прогрів, кейси, консультації, освітній контент'],
-    ['E-commerce', 'каталог, bundles, UGC, retargeting-креативи'],
-    ['Локальна послуга', 'географія, сезонність, записи, рекомендації'],
-  ];
+function AnalysisSetup({ notify, workspaceId }) {
+  const [brandInput, setBrandInput] = useState('');
+  const [status, setStatus] = useState('idle');
+
+  const saveBrandInput = async () => {
+    const clean = brandInput.trim();
+    if (!clean) {
+      notify('Встав Instagram-профіль або коротко опиши бізнес.');
+      return;
+    }
+    setStatus('saving');
+    const isInstagramUrl = /instagram\.com\//i.test(clean);
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessType: isInstagramUrl ? 'Instagram profile' : clean.slice(0, 80),
+          product: clean,
+          audience: 'Auto-detect from profile or description',
+          toneOfVoice: 'Auto-detect',
+          sourceProfileUrl: isInstagramUrl ? clean : '',
+          rawBrandInput: clean,
+        }),
+      });
+      if (!response.ok) throw new Error('brand_brain_save_failed');
+      setStatus('saved');
+      notify('Brand Brain оновлено. Джеро використає це в сценаріях.');
+      window.setTimeout(() => setStatus('idle'), 1800);
+    } catch {
+      setStatus('error');
+      notify('Не вдалося зберегти Brand Brain. Перевір backend.');
+    }
+  };
 
   return (
     <div className="analysis-setup">
-      <div className="business-picker">
+      <div className="business-picker brand-intake-card">
         <div>
-          <small>Профіль бізнесу</small>
-          <h3>Користувач одразу задає рід діяльності</h3>
-          <p>Це краще, ніж намагатися вгадати бізнес по випадковій активності акаунта.</p>
+          <small>Brand Brain</small>
+          <h3>Один вхід замість анкети</h3>
+          <p>Встав Instagram-профіль або коротко опиши бізнес. Джеро збере портрет бренду під капотом і використає його в сценаріях.</p>
         </div>
-        <div className="business-choice-grid">
-          {businessTypes.map(([title, text]) => (
-            <button key={title} onClick={() => notify(`${title}: AI brief оновлено`)}>
-              <strong>{title}</strong>
-              <span>{text}</span>
-            </button>
-          ))}
+        <div className="brand-intake-form">
+          <textarea
+            value={brandInput}
+            onChange={(event) => setBrandInput(event.target.value)}
+            placeholder="https://instagram.com/your_brand або: кавʼярня у Львові, продаємо сніданки і каву, аудиторія 20-35..."
+            rows={5}
+          />
+          <button className="dark" type="button" onClick={saveBrandInput} disabled={status === 'saving'}>
+            <Sparkles size={16} />{status === 'saving' ? 'Аналізуємо...' : 'Зберегти Brand Brain'}
+          </button>
+          <span>{status === 'saved' ? 'Готово: портрет бренду оновлено.' : 'Без ручних 10 полів. Тільки профіль або короткий опис.'}</span>
         </div>
       </div>
     </div>
@@ -3588,7 +3398,7 @@ function BillingSettings({ workspaceId, notify }) {
     try {
       const [plansResponse, billingResponse] = await Promise.all([
         fetch(`${API_BASE}/billing/plans`),
-        fetch(`${API_BASE}/workspaces/${workspaceId}/billing`),
+        authFetch(`${API_BASE}/workspaces/${workspaceId}/billing`),
       ]);
       const plansPayload = await plansResponse.json();
       const billingPayload = await billingResponse.json();
@@ -3614,14 +3424,14 @@ function BillingSettings({ workspaceId, notify }) {
       paymentWindow.document.write('<title>Dzhero payment</title><body style="margin:0;background:#0b0f14;color:#fff;font-family:system-ui;display:grid;place-items:center;min-height:100vh">Відкриваємо оплату...</body>');
     }
     try {
-      const response = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/select-plan`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/billing/select-plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.message || payload.error || 'select_plan_failed');
-      const checkoutResponse = await fetch(`${API_BASE}/workspaces/${workspaceId}/billing/checkout?planId=${planId}`);
+      const checkoutResponse = await authFetch(`${API_BASE}/workspaces/${workspaceId}/billing/checkout?planId=${planId}`);
       const checkoutPayload = await checkoutResponse.json();
       if (!checkoutResponse.ok) throw new Error(checkoutPayload.message || checkoutPayload.error || 'checkout_failed');
       if (checkoutPayload.payment?.paymentUrl) {
@@ -3818,7 +3628,7 @@ function DataSources({ sources, notify, workspaceId }) {
           ['billing', 'Тариф і ліміти'],
         ]}
       />
-      {tab === 'profile' && <AnalysisSetup notify={notify} />}
+      {tab === 'profile' && <AnalysisSetup notify={notify} workspaceId={workspaceId} />}
       {tab === 'api' && (
         <>
           <article className="api-readiness-panel">
