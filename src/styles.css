@@ -12013,3 +12013,506 @@ nav button.active::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* Mobile MVP pass: Dzhero should feel like an app, not a squeezed dashboard. */
+@media (max-width: 760px) {
+  :root {
+    --mobile-bottom-nav: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  body {
+    background: var(--bg) !important;
+  }
+
+  .app:not(.auth-app) {
+    display: block !important;
+    min-height: 100svh !important;
+  }
+
+  .app:not(.auth-app) .shell {
+    padding: 10px 10px calc(var(--mobile-bottom-nav) + 14px) !important;
+  }
+
+  .app:not(.auth-app) .sidebar {
+    inset: auto 10px max(8px, env(safe-area-inset-bottom)) 10px !important;
+    display: grid !important;
+    width: auto !important;
+    height: 64px !important;
+    padding: 7px !important;
+    transform: none !important;
+    overflow: visible !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 18px !important;
+    background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28) !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+  }
+
+  .app:not(.auth-app) .sidebar .brand,
+  .app:not(.auth-app) .sidebar .mobile-menu-close,
+  .app:not(.auth-app) .sidebar .account-switcher,
+  .app:not(.auth-app) .mobile-menu-backdrop,
+  .app:not(.auth-app) .mobile-menu-trigger {
+    display: none !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav {
+    display: grid !important;
+    grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+    gap: 4px !important;
+    width: 100% !important;
+    height: auto !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    place-items: center !important;
+    gap: 3px !important;
+    min-width: 0 !important;
+    min-height: 50px !important;
+    padding: 6px 3px !important;
+    border-radius: 13px !important;
+    font-size: 9.5px !important;
+    line-height: 1.05 !important;
+    text-align: center !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button .nav-label {
+    display: block !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .app:not(.auth-app) .topbar {
+    min-height: 48px !important;
+    margin-bottom: 10px !important;
+    padding: 6px !important;
+    border-radius: 14px !important;
+  }
+
+  .app:not(.auth-app) .topbar-title {
+    min-height: 36px !important;
+  }
+
+  .app:not(.auth-app) .top-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    gap: 6px !important;
+  }
+
+  .app:not(.auth-app) .topbar-quick-action {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+  }
+
+  .app:not(.auth-app) .topbar-quick-action span {
+    display: none !important;
+  }
+
+  .app:not(.auth-app) .top-actions .icon {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    border-radius: 12px !important;
+  }
+
+  .page {
+    gap: 12px !important;
+  }
+
+  .page-title {
+    margin-bottom: 10px !important;
+  }
+
+  .page-title h1 {
+    font-size: 24px !important;
+    line-height: 1.08 !important;
+  }
+
+  .page-title p {
+    max-width: 100% !important;
+    font-size: 12.5px !important;
+    line-height: 1.45 !important;
+  }
+
+  .page-title > div:last-child,
+  .page-title .actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+
+  .page-title button,
+  .search-row button,
+  .reel-link-import button,
+  .home-primary-cta,
+  .studio-plan-cta {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .auth-app {
+    min-height: 100svh !important;
+    padding: 0 !important;
+  }
+
+  .auth-shell {
+    min-height: 100svh !important;
+    width: 100% !important;
+    padding: 14px !important;
+    border-radius: 0 !important;
+    grid-template-columns: 1fr !important;
+    align-content: center !important;
+  }
+
+  .auth-copy,
+  .auth-panel {
+    padding: 18px !important;
+    border-radius: 18px !important;
+  }
+
+  .auth-copy h1 {
+    font-size: 34px !important;
+    line-height: 1.02 !important;
+  }
+
+  .auth-lead,
+  .auth-outcomes {
+    font-size: 13px !important;
+  }
+
+  .auth-demo,
+  .auth-submit {
+    min-height: 48px !important;
+    border-radius: 13px !important;
+  }
+
+  .mvp-home-grid {
+    gap: 10px !important;
+  }
+
+  .mvp-home-hero,
+  .mvp-status-card,
+  .mvp-counter-card {
+    padding: 16px !important;
+    border-radius: 16px !important;
+  }
+
+  .mvp-home-hero {
+    min-height: auto !important;
+  }
+
+  .mvp-home-hero h2 {
+    margin: 8px 0 !important;
+    font-size: 30px !important;
+    line-height: 1.06 !important;
+  }
+
+  .mvp-home-hero p {
+    margin-bottom: 16px !important;
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+  }
+
+  .mvp-status-list div {
+    align-items: start !important;
+    padding: 10px !important;
+  }
+
+  .mvp-counter-card {
+    min-height: 118px !important;
+  }
+
+  .mvp-counter-card strong {
+    font-size: 36px !important;
+  }
+
+  .workflow-rail,
+  .market-strip {
+    overflow-x: auto !important;
+    padding-bottom: 4px !important;
+    scrollbar-width: none !important;
+  }
+
+  .workflow-rail::-webkit-scrollbar,
+  .market-strip::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .search-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .search-row label,
+  .search-row select {
+    width: 100% !important;
+    min-height: 44px !important;
+  }
+
+  .signals-layout {
+    gap: 12px !important;
+  }
+
+  .trends-table-wrap,
+  .trend-analytics-table {
+    overflow: visible !important;
+  }
+
+  .trend-analytics-table .table-head.signals-grid {
+    display: none !important;
+  }
+
+  .reel-row.signals-grid {
+    position: relative !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    gap: 10px !important;
+    align-items: start !important;
+    margin-bottom: 10px !important;
+    padding: 12px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 16px !important;
+    background: var(--surface) !important;
+    box-shadow: var(--shadow-soft) !important;
+  }
+
+  .reel-row.signals-grid > :nth-child(4),
+  .reel-row.signals-grid > :nth-child(5),
+  .reel-row.signals-grid > :nth-child(6),
+  .reel-row.signals-grid > :nth-child(7) {
+    display: none !important;
+  }
+
+  .reel-row .trend-rank {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    width: 34px !important;
+    font-size: 14px !important;
+  }
+
+  .reel-row .reel-info {
+    grid-column: 2 / 4 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .reel-row .reel-info strong {
+    display: -webkit-box !important;
+    overflow: hidden !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    font-size: 13px !important;
+    line-height: 1.25 !important;
+  }
+
+  .reel-row .thumb {
+    width: 58px !important;
+    height: 74px !important;
+    min-width: 58px !important;
+  }
+
+  .reel-row .score {
+    grid-column: 1 / 2 !important;
+    grid-row: 2 !important;
+    justify-self: start !important;
+  }
+
+  .reel-row .signal-adapt-button {
+    grid-column: 2 / 4 !important;
+    grid-row: 2 !important;
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+  }
+
+  .signals-source-panel {
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .signals-source-list {
+    max-height: 260px !important;
+    overflow: auto !important;
+  }
+
+  .remix-layout {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .remix-side-panel,
+  .analysis-stack,
+  .remix-bottom {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    min-width: 0 !important;
+  }
+
+  .phone-card {
+    max-width: 260px !important;
+    margin: 0 auto !important;
+    border-radius: 22px !important;
+  }
+
+  .page-remix-studio .phone-video {
+    height: 300px !important;
+  }
+
+  .analysis-stack .hero-card,
+  .insight-card,
+  .studio-mechanics-card {
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .analysis-stack .hero-card .remix-idea-title {
+    font-size: 24px !important;
+    line-height: 1.08 !important;
+  }
+
+  .remix-script-timeline {
+    gap: 8px !important;
+  }
+
+  .remix-script-timeline article {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    padding: 12px !important;
+  }
+
+  .remix-script-timeline span {
+    width: fit-content !important;
+    min-width: 0 !important;
+    padding: 4px 8px !important;
+  }
+
+  .stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .stats div {
+    min-height: 82px !important;
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .calendar-layout {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .calendar-card,
+  .plan-panel {
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+
+  .calendar-top {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto auto !important;
+    gap: 6px !important;
+  }
+
+  .calendar-top strong {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .weekdays {
+    gap: 4px !important;
+  }
+
+  .calendar-grid {
+    gap: 4px !important;
+  }
+
+  .calendar-day {
+    min-height: 70px !important;
+    padding: 6px !important;
+    border-radius: 10px !important;
+  }
+
+  .calendar-post {
+    padding: 5px !important;
+    border-radius: 8px !important;
+  }
+
+  .calendar-post strong,
+  .calendar-post small {
+    display: none !important;
+  }
+
+  .plan-action-stack article,
+  .plan-task,
+  .direct-background-toggle {
+    border-radius: 14px !important;
+  }
+
+  .brand-intake-card {
+    gap: 12px !important;
+    padding: 14px !important;
+    border-radius: 16px !important;
+  }
+
+  .brand-intake-form textarea {
+    min-height: 118px !important;
+    border-radius: 14px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .auth-copy h1 {
+    font-size: 30px !important;
+  }
+
+  .mvp-home-hero h2 {
+    font-size: 27px !important;
+  }
+
+  .page-title h1 {
+    font-size: 22px !important;
+  }
+
+  .stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  .calendar-day {
+    min-height: 58px !important;
+    padding: 5px !important;
+  }
+
+  .calendar-post label {
+    gap: 3px !important;
+  }
+
+  .calendar-post em {
+    max-width: 44px !important;
+    font-size: 8px !important;
+  }
+}
