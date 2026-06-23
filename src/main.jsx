@@ -2164,9 +2164,11 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
 
   return (
     <>
-      <button className={isOpen ? 'jeryk-launcher open' : 'jeryk-launcher'} type="button" onClick={isOpen ? onClose : onOpen} aria-label={isOpen ? 'Закрити Джерика' : 'Відкрити Джерика'}>
-        {isOpen ? <X size={22} /> : <Bot size={22} />}
-      </button>
+      {!isOpen && (
+        <button className="jeryk-launcher" type="button" onClick={onOpen} aria-label="Відкрити Джерика">
+          <Bot size={22} />
+        </button>
+      )}
       {isOpen && <button className="jeryk-backdrop" type="button" aria-label="Закрити Джерика" onClick={onClose} />}
       <aside className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'} aria-hidden={!isOpen}>
         <div className="jeryk-head">
