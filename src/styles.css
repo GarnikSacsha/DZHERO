@@ -10199,7 +10199,6 @@ nav button.active::before {
 }
 
 .auth-signal-panel span,
-.api-readiness-panel small,
 .remix-command-strip small {
   color: var(--accent);
   font-family: var(--font-display);
@@ -10227,8 +10226,7 @@ nav button.active::before {
   margin-top: 14px;
 }
 
-.auth-flow-list article,
-.api-setup-steps article {
+.auth-flow-list article {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   gap: 12px;
@@ -10239,8 +10237,7 @@ nav button.active::before {
   background: var(--surface-soft);
 }
 
-.auth-flow-list span,
-.api-setup-steps span {
+.auth-flow-list span {
   display: grid;
   place-items: center;
   width: 30px;
@@ -10253,16 +10250,14 @@ nav button.active::before {
   font-weight: 900;
 }
 
-.auth-flow-list strong,
-.api-setup-steps strong {
+.auth-flow-list strong {
   display: block;
   margin-bottom: 3px;
   color: var(--text);
   font-size: 13px;
 }
 
-.auth-flow-list p,
-.api-setup-steps p {
+.auth-flow-list p {
   margin: 0;
   color: var(--muted);
   font-size: 12.5px;
@@ -10335,8 +10330,7 @@ nav button.active::before {
   font-weight: 800;
 }
 
-.home-action-card button,
-.api-readiness-panel button {
+.home-action-card button {
   width: fit-content;
   min-height: 38px;
   padding: 0 14px;
@@ -10347,8 +10341,7 @@ nav button.active::before {
   font-weight: 800;
 }
 
-.remix-command-strip,
-.api-readiness-panel {
+.remix-command-strip {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -10361,27 +10354,12 @@ nav button.active::before {
     var(--surface);
 }
 
-.remix-command-strip strong,
-.api-readiness-panel h3 {
+.remix-command-strip strong {
   display: block;
   margin: 4px 0 0;
   color: var(--text);
   font-size: 18px;
   line-height: 1.35;
-}
-
-.api-readiness-panel p {
-  max-width: 720px;
-  margin: 8px 0 0;
-  color: var(--muted);
-  line-height: 1.55;
-}
-
-.api-readiness-panel button {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
 }
 
 .remix-command-metrics {
@@ -10417,13 +10395,6 @@ nav button.active::before {
   margin-top: 18px;
 }
 
-.api-setup-steps {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin: 14px 0;
-}
-
 @media (max-width: 900px) {
   .home-hero-rail {
     position: static;
@@ -10431,8 +10402,7 @@ nav button.active::before {
     margin-top: 18px;
   }
 
-  .remix-command-strip,
-  .api-readiness-panel {
+  .remix-command-strip {
     align-items: stretch;
     flex-direction: column;
   }
@@ -10441,9 +10411,6 @@ nav button.active::before {
     justify-content: flex-start;
   }
 
-  .api-setup-steps {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Stitch-inspired structure pass */
@@ -12025,6 +11992,71 @@ nav button.active::before {
   color: var(--muted);
 }
 
+.integration-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.integration-choice-card {
+  display: grid;
+  min-height: 250px;
+  align-content: space-between;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.integration-choice-card.muted {
+  opacity: 0.72;
+}
+
+.integration-choice-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 14px;
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--accent);
+}
+
+.integration-choice-card small {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.integration-choice-card h3 {
+  margin: 8px 0;
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.integration-choice-card p {
+  max-width: 420px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.integration-choice-card button {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 850;
+}
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -12032,7 +12064,8 @@ nav button.active::before {
 @media (max-width: 1100px) {
   .mvp-home-grid,
   .signals-layout,
-  .brand-intake-card {
+  .brand-intake-card,
+  .integration-choice-grid {
     grid-template-columns: 1fr;
   }
 }

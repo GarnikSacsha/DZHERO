@@ -3786,16 +3786,18 @@ function BillingSettings({ workspaceId, notify }) {
 
 function DataSources({ sources, notify, workspaceId }) {
   const [tab, setTab] = useState('profile');
-  const redirectUri = `${window.location.origin}/api/auth/instagram/callback`;
-  const integrations = [
-    ['Instagram Professional Login', 'Creator або Business акаунт підключається через офіційний Instagram flow.', 'Очікує налаштування адміністратором'],
-    ['AI-асистент', 'Відповіді, ідеї та сценарії працюють через серверний AI-провайдер.', 'Керується на backend'],
-  ];
-  const apiSetupSteps = [
-    ['01', 'Meta app', 'Instagram API scenario + required permissions'],
-    ['02', 'Redirect URI', redirectUri],
-    ['03', 'Railway env', 'INSTAGRAM_APP_ID, INSTAGRAM_APP_SECRET, INSTAGRAM_REDIRECT_URI, CLIENT_URL'],
-  ];
+  const connectFacebook = async () => {
+    try {
+      const response = await authFetch(`${API_BASE}/auth/meta/start?workspaceId=${workspaceId}`);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
+      window.location.href = payload.authUrl;
+    } catch (error) {
+      notify(error.message === 'meta_not_configured'
+        ? 'Підключення через Facebook буде доступне після налаштування Meta App на backend.'
+        : `Не вдалося відкрити Facebook Login: ${error.message}`);
+    }
+  };
 
   return (
     <section className="page">
@@ -3814,39 +3816,26 @@ function DataSources({ sources, notify, workspaceId }) {
       />
       {tab === 'profile' && <AnalysisSetup notify={notify} workspaceId={workspaceId} />}
       {tab === 'api' && (
-        <>
-          <article className="api-readiness-panel">
+        <div className="integration-choice-grid">
+          <article className="integration-choice-card">
+            <div className="integration-choice-icon"><CircleCheck size={22} /></div>
             <div>
-              <small>Instagram API readiness</small>
-              <h3>Джеро готовий прийняти ключі Meta App</h3>
-              <p>Після App ID/Secret і redirect URI кнопка Instagram Login почне вести в офіційний flow, а callback збере підключений акаунт у workspace.</p>
+              <small>Creator / Business</small>
+              <h3>Instagram</h3>
+              <p>Підключення Creator або Business акаунту для автопостингу та AI Direct.</p>
             </div>
-            <button type="button" onClick={() => navigator.clipboard?.writeText(redirectUri).then(() => notify('Redirect URI скопійовано')).catch(() => notify(redirectUri))}>
-              <Copy size={15} />Скопіювати redirect
-            </button>
+            <button className="dark" type="button" onClick={connectFacebook}>Підключити через Facebook</button>
           </article>
-          <div className="api-setup-steps">
-            {apiSetupSteps.map(([step, title, text]) => (
-              <article key={step}>
-                <span>{step}</span>
-                <div>
-                  <strong>{title}</strong>
-                  <p>{text}</p>
-                </div>
-              </article>
-            ))}
-          </div>
-          <div className="source-grid settings-integrations">
-            {integrations.map(([title, description, status]) => (
-              <article className="insight-card source-card" key={title}>
-                <CircleCheck size={22} />
-                <h3>{title}</h3>
-                <p>{description}</p>
-                <em>{status}</em>
-              </article>
-            ))}
-          </div>
-        </>
+          <article className="integration-choice-card muted">
+            <div className="integration-choice-icon"><Radio size={22} /></div>
+            <div>
+              <small>Coming Soon</small>
+              <h3>TikTok</h3>
+              <p>Підключення TikTok акаунту зʼявиться після завершення review та стабілізації API-доступу.</p>
+            </div>
+            <button type="button" disabled>Coming Soon</button>
+          </article>
+        </div>
       )}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
     </section>
