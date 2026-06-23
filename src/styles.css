@@ -9907,6 +9907,7 @@ nav button.active::before {
   min-height: 54px !important;
   padding: 10px 12px !important;
   gap: 16px !important;
+  align-items: center !important;
   justify-content: flex-end !important;
 }
 
@@ -9958,8 +9959,11 @@ nav button.active::before {
 .topbar-quick-action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 7px;
+  height: 34px;
   min-height: 34px;
+  margin: 0;
   padding: 0 12px;
   border: 1px solid rgba(14, 165, 233, 0.42);
   border-radius: 999px;
@@ -9967,7 +9971,9 @@ nav button.active::before {
   color: var(--text);
   font-size: 12px;
   font-weight: 800;
+  line-height: 1;
   white-space: nowrap;
+  transform: none;
 }
 
 .topbar-quick-action svg {
@@ -9977,7 +9983,11 @@ nav button.active::before {
 .topbar-quick-action:hover {
   border-color: rgba(14, 165, 233, 0.75);
   background: rgba(14, 165, 233, 0.2);
-  transform: translateY(-1px);
+  transform: none;
+}
+
+.topbar-quick-action:focus-visible {
+  transform: none;
 }
 
 @media (max-width: 980px) {
@@ -12503,6 +12513,7 @@ nav button.active::before {
     margin-bottom: 10px !important;
     padding: 6px !important;
     border-radius: 14px !important;
+    align-items: center !important;
   }
 
   .app:not(.auth-app) .topbar-title {
@@ -12511,6 +12522,7 @@ nav button.active::before {
 
   .app:not(.auth-app) .top-actions {
     display: flex !important;
+    align-items: center !important;
     justify-content: flex-end !important;
     gap: 6px !important;
   }
@@ -12520,8 +12532,10 @@ nav button.active::before {
     min-width: 38px !important;
     height: 38px !important;
     min-height: 38px !important;
+    margin: 0 !important;
     padding: 0 !important;
     border-radius: 12px !important;
+    transform: none !important;
   }
 
   .app:not(.auth-app) .topbar-quick-action span {
@@ -13030,9 +13044,15 @@ nav button.active::before {
   }
 
   .app:not(.auth-app) .topbar-quick-action {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    height: 34px !important;
     min-height: 34px !important;
+    margin: 0 !important;
     padding: 0 13px !important;
     border-radius: 999px !important;
+    transform: none !important;
   }
 
   .app:not(.auth-app) .top-actions .icon {
