@@ -1294,8 +1294,8 @@ function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' })
   return (
     <div className={`workflow-rail ${variant === 'compact' ? 'compact' : ''}`}>
       <div className="workflow-rail-head">
-        <small>Dzhero production path</small>
-        <strong>Signal → analysis → remix → plan → sales</strong>
+        <small>Dzhero workflow</small>
+        <strong>Signal -&gt; studio -&gt; weekly plan</strong>
       </div>
       <div className="workflow-steps">
         {steps.map(([id, title, text, target, Icon], index) => {

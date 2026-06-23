@@ -11859,7 +11859,11 @@ nav button.active::before {
 }
 
 .signals-grid {
-  grid-template-columns: 54px minmax(280px, 1.6fr) 82px 90px 90px 92px minmax(150px, 0.8fr) 210px;
+  grid-template-columns: 44px minmax(220px, 1.45fr) 72px 78px 72px 80px minmax(112px, 0.7fr) 154px;
+}
+
+.trends-table-wrap {
+  min-width: 0;
 }
 
 .signal-adapt-button {
@@ -11868,12 +11872,12 @@ nav button.active::before {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 1px solid rgba(14, 165, 233, 0.45);
   border-radius: 10px;
   background: #0EA5E9;
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 850;
 }
 
@@ -12425,6 +12429,14 @@ nav button.active::before {
     gap: 12px !important;
   }
 
+  .page-content-plan .calendar-card {
+    order: 2 !important;
+  }
+
+  .page-content-plan .plan-panel {
+    order: 1 !important;
+  }
+
   .calendar-card,
   .plan-panel {
     padding: 12px !important;
@@ -12482,6 +12494,27 @@ nav button.active::before {
   .brand-intake-form textarea {
     min-height: 118px !important;
     border-radius: 14px !important;
+  }
+
+  .tabs {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    width: 100% !important;
+    gap: 6px !important;
+    overflow: hidden !important;
+  }
+
+  .tabs button {
+    min-width: 0 !important;
+    width: 100% !important;
+    min-height: 40px !important;
+    padding: 0 6px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    border-radius: 12px !important;
+    font-size: 10.5px !important;
+    letter-spacing: 0 !important;
   }
 }
 
