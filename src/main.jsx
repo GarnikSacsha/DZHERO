@@ -935,30 +935,30 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       subheadline: 'Dzhero turns short-form content mechanics into original ideas, scripts, weekly plans, and Direct prompts for your brand.',
       creator: 'Creator or Business',
       panelEyebrow: 'Workspace preview',
-      panelTitle: 'Start with demo',
+      panelTitle: 'Start with Instagram',
       themeTitle: 'Theme',
       instagramLoading: 'Preparing Instagram Login...',
-      instagramButton: 'Connect Instagram later',
+      instagramButton: 'Log in with Instagram',
       pendingTitle: 'Instagram connection pending',
       pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
       personalRejected: 'Personal accounts are not supported',
-      demoButton: 'View demo workspace',
+      demoButton: 'Start with demo',
     }
     : {
       brandSub: 'AI-продюсер для України і глобальних трендів',
       eyebrow: 'Сигнали -> сценарії -> план',
       headline: 'Знайти сигнал. Написати сценарій. Поставити в план.',
-      subheadline: 'Dzhero перетворює short-form механіки у власні ідеї, сценарії, тижневий план і Direct-підказки для бренду.',
+      subheadline: 'Dzhero перетворює short-form механіки у власні ідеї, сценарії, тижневий план та Direct-підказки для бренду.',
       creator: 'Creator або Business',
       panelEyebrow: 'Перегляд workspace',
-      panelTitle: 'Почати з демо',
+      panelTitle: 'Почати з Instagram',
       themeTitle: 'Тема',
       instagramLoading: 'Готуємо Instagram Login...',
-      instagramButton: 'Підключити Instagram пізніше',
+      instagramButton: 'Увійти через Instagram',
       pendingTitle: 'Instagram connection pending',
       pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
       personalRejected: 'Personal не підходить',
-      demoButton: 'Демо-вхід для перегляду',
+      demoButton: 'Почати з демо',
     };
 
   const startInstagramLogin = async () => {
@@ -1032,11 +1032,11 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
           </div>
-          <button className="auth-demo primary" type="button" onClick={enterDemo} disabled={isLoading}>
-            {authCopy.demoButton}
-          </button>
-          <button className="auth-submit auth-meta-button secondary" type="button" onClick={startInstagramLogin} disabled={isLoading}>
+          <button className="auth-submit auth-meta-button primary" type="button" onClick={startInstagramLogin} disabled={isLoading}>
             {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
+          </button>
+          <button className="auth-demo secondary" type="button" onClick={enterDemo} disabled={isLoading}>
+            {authCopy.demoButton}
           </button>
           {instagramConfig && (
             <div className="instagram-pending">
