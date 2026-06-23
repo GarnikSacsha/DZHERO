@@ -29,6 +29,7 @@ import {
   Pencil,
   Plus,
   Radio,
+  RefreshCw,
   Rocket,
   Search,
   Send,
@@ -2445,7 +2446,7 @@ function RemixStudio({ reel, notify, setPage }) {
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title="Студія" subtitle="Витягуємо механіку сигналу і збираємо оригінальний сценарій під бренд." actions={<button className="dark" onClick={adaptScenario}><Sparkles size={16} />Адаптувати сценарій</button>} />
+      <PageTitle title="Студія" subtitle="Витягуємо механіку сигналу і збираємо оригінальний сценарій під бренд." actions={<button onClick={adaptScenario}><RefreshCw size={16} />Перегенерувати</button>} />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
