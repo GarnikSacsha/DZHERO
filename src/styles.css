@@ -12884,3 +12884,24 @@ nav button.active::before {
     font-size: 8px !important;
   }
 }
+
+/* Premium glass auth frame */
+[data-theme="dark"] .auth-shell {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgba(24, 24, 27, 0.75) !important;
+  box-shadow: none !important;
+  backdrop-filter: blur(18px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+}
+
+[data-theme="dark"] .auth-copy,
+[data-theme="dark"] .auth-panel {
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(24, 24, 27, 0.62) !important;
+  backdrop-filter: blur(14px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(125%) !important;
+}
+
+[data-theme="dark"] .auth-panel {
+  background: rgba(18, 18, 20, 0.72) !important;
+}
