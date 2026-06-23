@@ -13128,3 +13128,268 @@ nav button.active::before {
     margin: 0 !important;
   }
 }
+
+/* Final mobile shell repair: use a real drawer menu, not the old bottom nav. */
+@media (max-width: 760px) {
+  :root {
+    --mobile-bottom-nav: 0px;
+  }
+
+  .app:not(.auth-app) {
+    display: block !important;
+    min-height: 100svh !important;
+    overflow-x: hidden !important;
+  }
+
+  .app:not(.auth-app) .shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 100svh !important;
+    padding: 12px 12px calc(92px + env(safe-area-inset-bottom)) !important;
+    overflow-x: hidden !important;
+  }
+
+  .app:not(.auth-app) .topbar {
+    position: sticky !important;
+    top: 8px !important;
+    z-index: 70 !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 8px !important;
+    min-height: 50px !important;
+    margin: 0 0 14px !important;
+    padding: 6px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 16px !important;
+    background: color-mix(in srgb, var(--surface) 88%, transparent) !important;
+    box-shadow: none !important;
+    backdrop-filter: blur(16px) saturate(140%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(140%) !important;
+  }
+
+  .app:not(.auth-app) .topbar-title {
+    display: flex !important;
+    align-items: center !important;
+    min-height: 38px !important;
+    min-width: 0 !important;
+  }
+
+  .app:not(.auth-app) .mobile-menu-trigger {
+    display: grid !important;
+    place-items: center !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    margin: 0 !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    background: var(--surface-strong) !important;
+    color: var(--text) !important;
+  }
+
+  .app:not(.auth-app) .top-actions {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 6px !important;
+    min-width: 0 !important;
+  }
+
+  .app:not(.auth-app) .topbar-quick-action,
+  .app:not(.auth-app) .top-actions .icon {
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    transform: none !important;
+  }
+
+  .app:not(.auth-app) .topbar-quick-action span {
+    display: none !important;
+  }
+
+  .app:not(.auth-app) .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    z-index: 1002 !important;
+    display: grid !important;
+    grid-template-rows: auto minmax(0, 1fr) auto !important;
+    width: min(334px, 88vw) !important;
+    height: 100svh !important;
+    padding: 14px 12px calc(14px + env(safe-area-inset-bottom)) !important;
+    border: 0 !important;
+    border-right: 1px solid var(--border) !important;
+    border-radius: 0 22px 22px 0 !important;
+    background: var(--sidebar) !important;
+    box-shadow: 22px 0 70px rgba(0, 0, 0, 0.36) !important;
+    overflow: hidden !important;
+    transform: translateX(-105%) !important;
+    transition: transform 0.22s ease !important;
+    backdrop-filter: blur(18px) saturate(135%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+  }
+
+  .app:not(.auth-app) .sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  .app:not(.auth-app) .mobile-menu-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 1001 !important;
+    width: 100vw !important;
+    height: 100svh !important;
+    border: 0 !important;
+    background: rgba(3, 7, 14, 0.66) !important;
+    backdrop-filter: blur(2px) !important;
+  }
+
+  .app:not(.auth-app) .sidebar .brand,
+  .app:not(.auth-app) .sidebar .account-switcher {
+    display: flex !important;
+  }
+
+  .app:not(.auth-app) .sidebar .brand {
+    width: calc(100% - 52px) !important;
+    min-height: 54px !important;
+    margin: 0 0 14px !important;
+    padding: 9px 10px !important;
+    border-radius: 14px !important;
+  }
+
+  .app:not(.auth-app) .sidebar .mobile-menu-close {
+    display: grid !important;
+    position: absolute !important;
+    top: 14px !important;
+    right: 12px !important;
+    place-items: center !important;
+    width: 40px !important;
+    height: 40px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    background: var(--surface-strong) !important;
+    color: var(--text) !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    align-content: start !important;
+    gap: 6px !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 2px 12px 0 !important;
+    overflow-y: auto !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-height: 42px !important;
+    padding: 9px 11px !important;
+    border-radius: 12px !important;
+    text-align: left !important;
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button svg {
+    width: 17px !important;
+    height: 17px !important;
+    flex: 0 0 auto !important;
+  }
+
+  .app:not(.auth-app) .sidebar nav button .nav-label {
+    display: inline !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .app:not(.auth-app) .account-switcher.compact {
+    display: grid !important;
+    align-self: end !important;
+    margin-top: 12px !important;
+  }
+
+  .app:not(.auth-app) .jeryk-launcher {
+    right: 16px !important;
+    bottom: calc(18px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer {
+    bottom: calc(10px + env(safe-area-inset-bottom)) !important;
+    transform: translateY(calc(100% + 34px)) !important;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer.open {
+    transform: translateY(0) !important;
+  }
+
+  .app:not(.auth-app) .page-content-plan .calendar-layout {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .page-content-plan .calendar-card,
+  .page-content-plan .plan-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .page-content-plan .plan-panel {
+    order: 1 !important;
+    grid-column: auto !important;
+    display: grid !important;
+    gap: 12px !important;
+    padding: 14px 14px 88px !important;
+    overflow: visible !important;
+  }
+
+  .plan-action-stack {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .plan-action-stack article {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    align-items: start !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 12px !important;
+  }
+
+  .plan-action-stack article div,
+  .plan-action-stack strong,
+  .plan-action-stack p {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  .plan-action-stack p {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+}
