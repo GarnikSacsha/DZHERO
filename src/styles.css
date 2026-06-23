@@ -12130,20 +12130,6 @@ nav button.active::before {
   transform: translateY(-2px) scale(1.03);
 }
 
-.jeryk-launcher.open {
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  background: #18181b !important;
-  background-color: #18181b !important;
-  color: #fff !important;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34) !important;
-}
-
-.jeryk-launcher.open:hover {
-  background: #0f2f44 !important;
-  background-color: #0f2f44 !important;
-  border-color: rgba(14, 165, 233, 0.34) !important;
-}
-
 .jeryk-backdrop {
   position: fixed;
   inset: 0;
