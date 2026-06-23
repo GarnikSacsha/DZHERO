@@ -999,14 +999,14 @@ button {
   transform: translateY(-2px);
 }
 
-.auth-demo.primary {
+.auth-submit.primary {
   margin-top: 0;
-  border-color: transparent;
-  background: var(--accent);
-  color: var(--accent-contrast, #10141d);
+  border-color: rgba(14, 165, 233, 0.45);
+  background: #0EA5E9;
+  color: #ffffff;
 }
 
-.auth-submit.secondary {
+.auth-demo.secondary {
   margin-top: 12px;
   border-color: var(--border) !important;
   background: var(--surface) !important;
@@ -11743,13 +11743,13 @@ nav button.active::before {
   }
 }
 
-.auth-demo.primary {
+.auth-submit.primary {
   border-color: rgba(14, 165, 233, 0.45) !important;
   background: #0EA5E9 !important;
   color: #ffffff !important;
 }
 
-.auth-submit.secondary {
+.auth-demo.secondary {
   border-color: var(--border) !important;
   background: var(--surface) !important;
   color: var(--text) !important;
