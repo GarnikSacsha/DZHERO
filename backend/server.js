@@ -288,6 +288,18 @@ function createId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function normalizeContentPlanPosts(posts) {
+  if (!Array.isArray(posts)) return [];
+  return posts.slice(0, 180).map((post, index) => ({
+    id: String(post?.id || createId('post')).slice(0, 80),
+    day: Math.min(31, Math.max(1, Number(post?.day || index + 1))),
+    title: String(post?.title || '').trim().slice(0, 180) || 'Untitled post',
+    format: ['Reels', 'Stories', 'Post'].includes(post?.format) ? post.format : 'Reels',
+    time: /^\d{2}:\d{2}$/.test(String(post?.time || '')) ? post.time : '10:00',
+    done: Boolean(post?.done),
+  }));
+}
+
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
 }
@@ -1512,6 +1524,23 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   };
   await writeDb(db);
   res.json({ brief: workspace.brief });
+});
+
+app.get('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  res.json({ posts: normalizeContentPlanPosts(workspace.contentPlanPosts || []) });
+});
+
+app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  workspace.contentPlanPosts = normalizeContentPlanPosts(req.body.posts);
+  workspace.contentPlanUpdatedAt = new Date().toISOString();
+  await writeDb(db);
+  res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt });
 });
 
 app.get('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
