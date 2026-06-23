@@ -9302,8 +9302,8 @@ button.dark,
 
 .calendar-post {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
   gap: 7px;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
@@ -9322,6 +9322,8 @@ button.dark,
   align-items: center;
   gap: 6px;
   min-height: 18px;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 .calendar-post input {
@@ -9348,6 +9350,8 @@ button.dark,
 
 .calendar-post strong {
   grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
   overflow: hidden;
   color: var(--text);
   font-size: 12px;
@@ -9357,9 +9361,15 @@ button.dark,
 }
 
 .calendar-post small {
-  grid-column: 2;
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  margin-left: 4px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-soft);
   color: var(--muted-2);
   font-size: 11px;
+  white-space: nowrap;
 }
 
 .plan-task {
@@ -11873,12 +11883,21 @@ nav button.active::before {
   justify-content: center;
   gap: 7px;
   padding: 0 10px;
-  border: 1px solid rgba(14, 165, 233, 0.45);
+  border: 1px solid #27272A;
   border-radius: 10px;
-  background: #0EA5E9;
-  color: #fff;
+  background: transparent;
+  color: var(--text);
   font-size: 11px;
   font-weight: 850;
+  transition: border-color 0.18s ease, background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.reel-row:hover .signal-adapt-button,
+.signal-adapt-button:hover {
+  border-color: rgba(14, 165, 233, 0.58);
+  background: #0EA5E9;
+  color: #fff;
+  transform: translateY(-1px);
 }
 
 .signals-source-panel {
