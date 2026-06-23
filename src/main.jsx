@@ -484,7 +484,7 @@ function App() {
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} />}
-        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setMvpPage} />}
+        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && <DataSources sources={data.sources} notify={notify} workspaceId={workspaceId} />}
       </main>
       {modal?.type === 'reel' || modal === 'reel'
@@ -2201,7 +2201,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
             onKeyDown={(event) => {
               if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendMessage();
             }}
-            placeholder="Напиши Джерику задачу..."
+            placeholder="Напиши Джерику задачу."
             maxLength={600}
           />
           <button className="dark" type="button" onClick={() => sendMessage()} disabled={isThinking || !input.trim()} aria-label="Надіслати">
@@ -3199,7 +3199,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   );
 }
 
-function ContentPlan({ plans, openModal, notify, setPage }) {
+function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
   const today = new Date();
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [modalDay, setModalDay] = useState(null);
@@ -3212,6 +3212,7 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
     time: index % 2 === 0 ? '10:00' : '18:30',
     done: false,
   })));
+  const postsRef = useRef(posts);
   const monthLabel = calendarDate.toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' });
   const daysInMonth = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate();
   const firstWeekday = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay();
@@ -3226,29 +3227,61 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
     ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти рілси одним блоком і закрити тиждень.'],
     ['Prepare Direct', 3, 'Підготувати короткі відповіді для коментарів і Direct.'],
   ];
+  useEffect(() => {
+    postsRef.current = posts;
+  }, [posts]);
+  useEffect(() => {
+    let ignore = false;
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!ignore && payload?.posts?.length) setPosts(payload.posts);
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [workspaceId]);
+  const savePosts = async (nextPosts) => {
+    try {
+      await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts: nextPosts }),
+      });
+    } catch (error) {
+      notify(`Не вдалося зберегти календар: ${error.message}`);
+    }
+  };
   const openPostModal = (day = today.getDate()) => {
     setModalDay(Math.min(Math.max(day, 1), daysInMonth));
     setDraft({ title: '', format: 'Reels', time: '10:00' });
   };
   const createPost = () => {
     if (!draft.title.trim()) return;
-    setPosts((current) => [...current, {
+    const nextPosts = [...postsRef.current, {
       id: `post-${Date.now()}`,
       day: modalDay,
       title: draft.title.trim(),
       format: draft.format,
       time: draft.time,
       done: false,
-    }]);
+    }];
+    setPosts(nextPosts);
+    savePosts(nextPosts);
     setModalDay(null);
     notify('Пост додано в календар');
   };
   const movePost = (postId, day) => {
-    setPosts((current) => current.map((post) => (post.id === postId ? { ...post, day } : post)));
+    const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, day } : post));
+    setPosts(nextPosts);
+    savePosts(nextPosts);
     notify(`Пост перенесено на ${day} число`);
   };
   const toggleDone = (postId) => {
-    setPosts((current) => current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post)));
+    const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post));
+    setPosts(nextPosts);
+    savePosts(nextPosts);
   };
 
   return (
@@ -3290,12 +3323,14 @@ function ContentPlan({ plans, openModal, notify, setPage }) {
                       onClick={(event) => event.stopPropagation()}
                       onDragStart={(event) => event.dataTransfer.setData('text/plain', post.id)}
                     >
-                      <label>
-                        <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
-                        <em>{post.format}</em>
-                      </label>
+                      <div className="calendar-post-meta">
+                        <label>
+                          <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
+                          <em>{post.format}</em>
+                        </label>
+                        <small>{post.time}</small>
+                      </div>
                       <strong>{post.title}</strong>
-                      <small>{post.time}</small>
                     </article>
                   ))}
                 </div>
