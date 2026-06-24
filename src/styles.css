@@ -13393,3 +13393,147 @@ nav button.active::before {
     line-height: 1.45 !important;
   }
 }
+
+/* Content plan resilience: fluid grid, compact event cards, bounded day stacks. */
+.page-content-plan .calendar-layout {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px) !important;
+  align-items: start !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  gap: 16px !important;
+}
+
+.page-content-plan .calendar-card {
+  grid-column: auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.page-content-plan .plan-panel {
+  grid-column: auto !important;
+  width: 100% !important;
+  max-width: 320px !important;
+  min-width: 0 !important;
+  justify-self: end !important;
+}
+
+.page-content-plan .calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+  min-width: 0 !important;
+}
+
+.page-content-plan .calendar-day {
+  min-width: 0 !important;
+  max-height: 190px !important;
+  overflow: hidden !important;
+}
+
+.page-content-plan .calendar-posts {
+  max-height: 136px !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding-right: 2px !important;
+  scrollbar-width: thin;
+}
+
+.page-content-plan .calendar-post {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 5px !important;
+  min-width: 0 !important;
+  padding: 8px !important;
+}
+
+.page-content-plan .calendar-post-meta {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 8px !important;
+  min-width: 0 !important;
+}
+
+.page-content-plan .calendar-post label {
+  display: flex !important;
+  align-items: center !important;
+  min-width: 0 !important;
+}
+
+.page-content-plan .calendar-post small {
+  flex: 0 0 auto !important;
+  padding-left: 0 !important;
+  font-size: 10px !important;
+  line-height: 1 !important;
+}
+
+.calendar-post-format {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.calendar-post-format i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.calendar-post-format.format-reels i {
+  background: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.14);
+}
+
+.calendar-post-format.format-stories i {
+  background: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.14);
+}
+
+.calendar-post-format.format-post i {
+  background: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.14);
+}
+
+.calendar-post-format em {
+  display: inline !important;
+  max-width: 70px !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
+  font-size: inherit !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .page-content-plan .calendar-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 300px) !important;
+  }
+
+  .calendar-post-format em {
+    display: none !important;
+  }
+}
+
+@media (max-width: 980px) {
+  .page-content-plan .calendar-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .page-content-plan .plan-panel {
+    max-width: 100% !important;
+    justify-self: stretch !important;
+  }
+}
