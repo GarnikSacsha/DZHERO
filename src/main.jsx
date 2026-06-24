@@ -3358,9 +3358,12 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
                       <div className="calendar-post-meta">
                         <label>
                           <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
-                          <em>{post.format}</em>
                         </label>
                         <small>{post.time}</small>
+                      </div>
+                      <div className={`calendar-post-format format-${String(post.format).toLowerCase()}`}>
+                        <i />
+                        <em>{post.format}</em>
                       </div>
                       <strong>{post.title}</strong>
                     </article>
