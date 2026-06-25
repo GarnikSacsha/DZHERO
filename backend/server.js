@@ -145,6 +145,7 @@ app.use('/api', cors({
     }
     callback(new Error(`CORS blocked for origin: ${origin}`));
   },
+  credentials: true,
 }));
 app.use(express.json({ limit: '1mb' }));
 
@@ -592,10 +593,51 @@ function createSession(db, userId) {
   return session;
 }
 
+const SESSION_COOKIE_NAME = 'dzhero_session';
+
+function safeDecodeCookieValue(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function parseCookies(req) {
+  const header = String(req.headers.cookie || '');
+  return Object.fromEntries(header.split(';').map((part) => {
+    const [rawKey, ...rawValue] = part.trim().split('=');
+    if (!rawKey) return null;
+    return [safeDecodeCookieValue(rawKey), safeDecodeCookieValue(rawValue.join('='))];
+  }).filter(Boolean));
+}
+
+function getSessionCookieOptions() {
+  return [
+    'Path=/',
+    'HttpOnly',
+    'SameSite=Lax',
+    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    ...(process.env.NODE_ENV === 'production' ? ['Secure'] : []),
+  ].join('; ');
+}
+
+function setSessionCookie(res, token) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${getSessionCookieOptions()}`);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+}
+
 function getBearerToken(req) {
   const header = req.headers.authorization || '';
   if (!header.startsWith('Bearer ')) return '';
   return header.slice('Bearer '.length).trim();
+}
+
+function getAuthToken(req) {
+  return getBearerToken(req) || parseCookies(req)[SESSION_COOKIE_NAME] || '';
 }
 
 function getAdminToken(req) {
@@ -615,7 +657,7 @@ function requireAdmin(req, res) {
 }
 
 function getAuthUser(db, req) {
-  const token = getBearerToken(req);
+  const token = getAuthToken(req);
   const session = db.sessions.find((item) => item.token === token);
   if (!session) return null;
   if (session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) return null;
@@ -1235,6 +1277,7 @@ app.post('/api/auth/register', async (req, res) => {
   ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
   const session = createSession(db, user.id);
   await writeDb(db);
+  setSessionCookie(res, session.token);
   res.status(201).json({ user: publicUser(user), token: session.token });
 });
 
@@ -1249,6 +1292,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
   const session = createSession(db, user.id);
   await writeDb(db);
+  setSessionCookie(res, session.token);
   res.json({ user: publicUser(user), token: session.token });
 });
 
@@ -1274,6 +1318,7 @@ app.post('/api/auth/demo', async (req, res) => {
   ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
   const session = createSession(db, user.id);
   await writeDb(db);
+  setSessionCookie(res, session.token);
   res.json({ user: publicUser(user), token: session.token });
 });
 
@@ -1289,9 +1334,10 @@ app.get('/api/auth/me', async (req, res) => {
 
 app.post('/api/auth/logout', async (req, res) => {
   const db = await readDb();
-  const token = getBearerToken(req);
+  const token = getAuthToken(req);
   db.sessions = db.sessions.filter((session) => session.token !== token);
   await writeDb(db);
+  clearSessionCookie(res);
   res.json({ ok: true });
 });
 
