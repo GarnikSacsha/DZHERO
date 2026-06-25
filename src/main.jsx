@@ -74,6 +74,7 @@ function getAuthHeaders(extraHeaders = {}) {
 
 function authFetch(url, options = {}) {
   return fetch(url, {
+    credentials: 'include',
     ...options,
     headers: getAuthHeaders(options.headers || {}),
   });
@@ -276,14 +277,9 @@ function App() {
 
   useEffect(() => {
     let isMounted = true;
-    if (!authToken) {
-      setAuthStatus('guest');
-      return () => {
-        isMounted = false;
-      };
-    }
     fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${authToken}` },
+      credentials: 'include',
+      headers: getAuthHeaders(),
     })
       .then(async (response) => {
         if (!response.ok) throw new Error('auth_failed');
@@ -323,20 +319,15 @@ function App() {
   };
 
   const handleAuthSuccess = (payload) => {
-    window.localStorage.setItem(AUTH_TOKEN_KEY, payload.token);
-    setAuthToken(payload.token);
+    window.localStorage.removeItem(AUTH_TOKEN_KEY);
+    setAuthToken('cookie');
     setCurrentUser(payload.user);
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
   };
 
   const handleLogout = async () => {
-    if (authToken) {
-      fetch(`${API_BASE}/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${authToken}` },
-      }).catch(() => {});
-    }
+    authFetch(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
     window.localStorage.removeItem(AUTH_TOKEN_KEY);
     setAuthToken('');
     setCurrentUser(null);
@@ -995,7 +986,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/instagram/start`);
+      const response = await fetch(`${API_BASE}/auth/instagram/start`, { credentials: 'include' });
       const payload = await response.json();
       if (!response.ok) {
         if (payload.error === 'instagram_not_configured') {
@@ -1018,7 +1009,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST' });
+      const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST', credentials: 'include' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'demo_error');
       onAuth(payload);
