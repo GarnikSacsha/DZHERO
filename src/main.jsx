@@ -57,8 +57,31 @@ const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
+const BRAND_SCAN_PENDING_KEY = 'dzhero-brand-scan-pending';
+const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
+const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'Tik - Tok', 'Video', 'Stories'];
+const CONTENT_FORMAT_ALIASES = {
+  'short-form': 'Video',
+  shortform: 'Video',
+  reel: 'Reels',
+  reels: 'Reels',
+  story: 'Stories',
+  stories: 'Stories',
+  tiktok: 'Tik - Tok',
+  'tik tok': 'Tik - Tok',
+  'tik-tok': 'Tik - Tok',
+  'tik - tok': 'Tik - Tok',
+  shorts: 'Shorts',
+  'youtube shorts': 'Shorts',
+  youtube: 'Shorts',
+  carousel: 'Post',
+  email: 'Post',
+  note: 'Post',
+  post: 'Post',
+  video: 'Video',
+};
 const DEMO_WORKSPACES = [
   { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
   { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
@@ -78,6 +101,35 @@ function authFetch(url, options = {}) {
     ...options,
     headers: getAuthHeaders(options.headers || {}),
   });
+}
+
+async function readApiError(response, fallback = 'Request failed') {
+  const payload = await response.json().catch(() => ({}));
+  if (response.status === 402 && payload.error === 'plan_limit_reached') {
+    const labels = {
+      agentChat: 'AI-повідомлення',
+      reelImports: 'імпорти сигналів',
+      brandBrainSaves: 'збереження Brand Brain',
+      contentPlanPosts: 'пости в контент-плані',
+    };
+    const label = labels[payload.usageKey] || 'дію';
+    const limit = Number(payload.limit || 0);
+    return limit
+      ? `Ліміт тарифу: ${label} — до ${limit}. Видали зайве або перейди на вищий тариф.`
+      : `Ліміт тарифу для "${label}" вичерпано.`;
+  }
+  return payload.message || payload.error || fallback;
+}
+
+function normalizeContentFormat(format, fallback = 'Post') {
+  const clean = String(format || '').trim();
+  if (CONTENT_FORMATS.includes(clean)) return clean;
+  const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+  return CONTENT_FORMAT_ALIASES[normalized] || fallback;
+}
+
+function normalizeContentIdentity(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function getPublicPage() {
@@ -234,6 +286,7 @@ function App() {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
+  const [sourcesTab, setSourcesTab] = useState(() => window.localStorage.getItem(SOURCES_TAB_KEY) || 'sources');
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
   const activeWorkspace = DEMO_WORKSPACES.find((workspace) => workspace.id === workspaceId) || DEMO_WORKSPACES[0];
@@ -318,6 +371,21 @@ function App() {
     window.__toastTimer = window.setTimeout(() => setToast(''), 2600);
   };
 
+  useEffect(() => {
+    if (!currentUser || !data || remixDraft) return;
+    const pendingScan = window.localStorage.getItem(BRAND_SCAN_PENDING_KEY);
+    if (!pendingScan) return;
+    try {
+      const scan = JSON.parse(pendingScan);
+      window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
+      setRemixDraft(buildReelFromBrandScan(scan));
+      setPage('remix');
+      notify('Brand Scan відкрито в Студії');
+    } catch {
+      window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
+    }
+  }, [currentUser, data, remixDraft]);
+
   const handleAuthSuccess = (payload) => {
     window.localStorage.removeItem(AUTH_TOKEN_KEY);
     setAuthToken('cookie');
@@ -350,7 +418,7 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app auth-app" data-theme={theme}>
-        <AuthGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} />
+        <BrandScanGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -388,6 +456,93 @@ function App() {
     setData((current) => ({ ...current, plans: [[title, 'сьогодні', 'Чернетка'], ...current.plans] }));
     notify('Пост додано в контент-план');
   };
+  const addReelToPlan = async (reel) => {
+    const sourcePlan = reel.scanPlan?.length ? reel.scanPlan : [['Пн', reel.scanExample?.title || reel.title || 'Brand Scan production draft']];
+    const todayDay = new Date().getDate();
+    const daysInCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+    const sourceIdentity = normalizeContentIdentity(
+      reel.sourceUrl
+      || reel.profileUrl
+      || reel.importedMetadata?.url
+      || reel.scanLabel
+      || reel.title
+      || reel.scanExample?.title
+      || 'brand-scan'
+    );
+    const sourceKey = `brand-scan:${sourceIdentity.slice(0, 140)}`;
+    const planPosts = sourcePlan.slice(0, 7).map(([dayLabel, title], index) => {
+      const text = String(title || reel.scanExample?.title || reel.title || 'Brand Scan production draft').trim();
+      const lower = text.toLowerCase();
+      const format = lower.includes('stories') || lower.includes('story') ? 'Stories'
+        : lower.includes('shorts') || lower.includes('youtube') ? 'Shorts'
+          : lower.includes('tiktok') || lower.includes('tik tok') ? 'Tik - Tok'
+            : lower.includes('карус') || lower.includes('carousel') || lower.includes('post') ? 'Post'
+              : 'Reels';
+      return {
+        id: `brand-scan-${Date.now()}-${index}`,
+        day: Math.min(todayDay + index, daysInCurrentMonth),
+        title: text,
+        format,
+        time: index % 2 === 0 ? '10:00' : '18:30',
+        done: false,
+        source: 'brand_scan',
+        sourceKey,
+        dayLabel,
+      };
+    });
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`);
+      const payload = response.ok ? await response.json() : null;
+      const currentPosts = Array.isArray(payload?.posts) ? payload.posts : [];
+      const hasSamePost = (candidate) => currentPosts.some((post) => {
+        const sameSource = post.sourceKey && post.sourceKey === candidate.sourceKey;
+        const sameTitle = normalizeContentIdentity(post.title) === normalizeContentIdentity(candidate.title);
+        const sameFormat = normalizeContentFormat(post.format, 'Post') === normalizeContentFormat(candidate.format, 'Post');
+        return sameSource || (sameTitle && sameFormat);
+      });
+      const uniquePosts = planPosts.filter((post) => !hasSamePost(post));
+      if (!uniquePosts.length) {
+        notify('Цей Brand Scan вже є в контент-плані');
+        return true;
+      }
+      const nextPosts = [...currentPosts, ...uniquePosts];
+      const saveResponse = await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ posts: nextPosts }),
+      });
+      if (!saveResponse.ok) throw new Error(await readApiError(saveResponse, 'content_plan_save_failed'));
+      setData((current) => ({ ...current, plans: [...uniquePosts.map((post) => [post.title, post.time, post.format]), ...current.plans] }));
+      notify(`Brand Scan draft додано в контент-план: ${uniquePosts.length} задачі`);
+      return true;
+    } catch (error) {
+      notify(error?.message || 'Не вдалося додати draft у контент-план. Перевір backend.');
+      return false;
+    }
+  };
+  const saveBrandScanToBrain = async (reel) => {
+    if (!reel?.scanLabel && !reel?.scanExample && !reel?.importedMetadata) {
+      notify('Спочатку відкрий Brand Scan draft.');
+      return false;
+    }
+    const payload = buildBrandBrainFromScanReel(reel);
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error(await readApiError(response, 'brand_brain_save_failed'));
+      notify('Brand Scan збережено в Brand Brain');
+      window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
+      setSourcesTab('profile');
+      setMvpPage('settings');
+      return true;
+    } catch (error) {
+      notify(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
+      return false;
+    }
+  };
   const addManualReel = (payload) => {
     const title = payload.title?.trim() || payload.caption?.trim() || 'Ручний рілс для адаптації';
     const handle = payload.handle?.trim() || '@manual.source';
@@ -414,7 +569,7 @@ function App() {
   const autoImportReelUrl = async (url) => {
     const cleanUrl = String(url || '').trim();
     if (!cleanUrl) return false;
-    notify('Імпортуємо Reels і готуємо UA-адаптацію...');
+    notify('Імпортуємо сигнал і готуємо UA-адаптацію...');
     try {
       const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels/import-url`, {
         method: 'POST',
@@ -434,7 +589,7 @@ function App() {
       setRemixDraft(importedReel);
       setPage('remix');
       notify(importedReel.sourceStatus === 'public_metadata'
-        ? 'Reels імпортовано: адаптація готова'
+        ? 'Сигнал імпортовано: адаптація готова'
         : 'Instagram дав мінімум даних, але базову UA-адаптацію підготовлено');
       return true;
     } catch {
@@ -504,9 +659,25 @@ function App() {
         <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} />}
-        {page === 'plan' && <ContentPlan plans={data.plans} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
-        {page === 'settings' && <DataSources sources={data.sources} notify={notify} workspaceId={workspaceId} />}
+        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
+        {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
+        {page === 'settings' && (
+          <DataSources
+            sources={data.sources}
+            notify={notify}
+            workspaceId={workspaceId}
+            activeTab={sourcesTab}
+            onTabChange={(nextTab) => {
+              setSourcesTab(nextTab);
+              window.localStorage.setItem(SOURCES_TAB_KEY, nextTab);
+            }}
+            onOpenBrandScan={(scan) => {
+              setRemixDraft(buildReelFromBrandScan(scan));
+              setMvpPage('remix');
+              notify('Brand Scan відкрито в Студії');
+            }}
+          />
+        )}
       </main>
       {modal?.type === 'reel' || modal === 'reel'
         ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} initialUrl={typeof modal === 'object' ? modal.url : ''} />
@@ -944,6 +1115,685 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
   return null;
 }
 
+function buildBrandScanPreview(input, publicMetadata = null) {
+  const metadataText = [
+    publicMetadata?.title,
+    publicMetadata?.description,
+    publicMetadata?.handle,
+    publicMetadata?.analysisText,
+  ].filter(Boolean).join(' ');
+  const value = `${input} ${metadataText}`.toLowerCase();
+  const profiles = [
+    {
+      matches: ['fitness', 'workout', 'training', 'тренув', 'фітнес', 'фитнес', 'спорт', 'здоров', 'схуд', 'йога', 'pilates', 'body'],
+      label: 'Фітнес / wellness',
+      cards: [
+        ['Портрет бренду', 'Wellness-акаунт, де аудиторія шукає просту систему, мотивацію, видимий прогрес і відчуття “я теж зможу”.'],
+        ['Контент DNA', 'Коротка обіцянка результату, демонстрація вправи або ритуалу, доказ регулярності і CTA на старт.'],
+        ['Перший фокус', 'Зібрати серію: 20-хвилинне тренування, помилка новачка, міні-челендж на 7 днів.'],
+      ],
+      plan: [
+        ['Пн', 'Short-form: 1 вправа + результат для тіла'],
+        ['Ср', 'Карусель: 5 помилок у домашніх тренуваннях'],
+        ['Пт', 'Stories/Shorts: 7-денний челендж + CTA'],
+      ],
+      ideas: ['тренування', 'прогрес', 'здоровʼя', 'челендж'],
+    },
+    {
+      matches: ['cafe', 'coffee', 'кава', 'кав', 'снідан', 'ресторан', 'бар', 'їжа', 'кухн', 'recipes'],
+      label: 'Кафе / їжа',
+      cards: [
+        ['Портрет бренду', 'Локальний food-бізнес, якому треба показувати смак, атмосферу і причину прийти саме сьогодні.'],
+        ['Контент DNA', 'Апетитний перший кадр, коротка історія продукту, соціальний доказ і простий CTA в Direct.'],
+        ['Перший фокус', 'Зняти три ролики: хіт меню, backstage приготування і “що обрати новому гостю”.'],
+      ],
+      plan: [
+        ['Пн', 'Short-form: страва дня + крупний план'],
+        ['Ср', 'Карусель: 5 причин зайти на сніданок'],
+        ['Пт', 'Stories/Shorts: відгук гостя + CTA'],
+      ],
+      ideas: ['меню-хіт', 'атмосфера', 'відгуки', 'маршрут'],
+    },
+    {
+      matches: ['beauty', 'бьют', 'бʼют', 'салон', 'манікюр', 'волос', 'космет', 'бров', 'makeup', 'spa'],
+      label: 'Бʼюті / сервіс',
+      cards: [
+        ['Портрет бренду', 'Сервісний бізнес, де рішення приймають через довіру, результат “до/після” і відчуття турботи.'],
+        ['Контент DNA', 'Проблема клієнта, процес, видимий результат, мʼякий CTA на запис.'],
+        ['Перший фокус', 'Зібрати серію “до/після”, короткі поради та відповіді на страхи перед записом.'],
+      ],
+      plan: [
+        ['Пн', 'Short-form: до/після + 1 причина результату'],
+        ['Ср', 'Пост: помилки домашнього догляду'],
+        ['Пт', 'Stories: вільні вікна + ключове слово'],
+      ],
+      ideas: ['до/після', 'довіра', 'процес', 'запис'],
+    },
+    {
+      matches: ['shop', 'store', 'магаз', 'одяг', 'товар', 'бренд', 'дроп', 'косметика', 'доставка'],
+      label: 'Магазин / товар',
+      cards: [
+        ['Портрет бренду', 'Товарний бренд, якому треба швидко пояснити цінність, показати деталі і підштовхнути до покупки.'],
+        ['Контент DNA', 'Перший кадр з продуктом, проблема покупця, демонстрація, доказ і CTA “хочу”.'],
+        ['Перший фокус', 'Показати три сценарії: товар у житті, порівняння, комплектація або деталі.'],
+      ],
+      plan: [
+        ['Пн', 'Short-form: товар у реальній ситуації'],
+        ['Ср', 'Карусель: як обрати правильний варіант'],
+        ['Пт', 'Short-form: розпаковка + CTA “хочу”'],
+      ],
+      ideas: ['демо товару', 'порівняння', 'деталі', 'відгук'],
+    },
+    {
+      matches: ['експерт', 'курс', 'консультац', 'коуч', 'юрист', 'психолог', 'маркетолог', 'smm', 'освіт', 'навчан'],
+      label: 'Експерт / послуга',
+      cards: [
+        ['Портрет бренду', 'Експертний бізнес, де продаж іде через чітку думку, приклади, довіру і простий наступний крок.'],
+        ['Контент DNA', 'Сильний тезис, приклад з практики, короткий фреймворк і CTA на консультацію.'],
+        ['Перший фокус', 'Зняти серію з трьох тем: помилка аудиторії, розбір кейсу, міні-метод.'],
+      ],
+      plan: [
+        ['Пн', 'Short-form: 1 помилка клієнтів'],
+        ['Ср', 'Пост: міні-фреймворк у 3 кроки'],
+        ['Пт', 'Short-form: кейс + CTA на консультацію'],
+      ],
+      ideas: ['експертність', 'кейс', 'помилка', 'консультація'],
+    },
+  ];
+  const fallback = {
+    label: 'Локальний бізнес',
+    cards: [
+      ['Портрет бренду', 'Бізнес, якому потрібна регулярна коротка подача без щоденного хаосу і випадкових постів.'],
+      ['Контент DNA', 'Проблема аудиторії, доказ, короткий сценарій, один чіткий CTA.'],
+      ['Перший фокус', 'Зняти не “все підряд”, а три ролики, які ведуть до заявки або покупки.'],
+    ],
+    plan: [
+      ['Пн', 'Short-form: проблема + рішення'],
+      ['Ср', 'Карусель: 5 помилок аудиторії'],
+      ['Пт', 'Proof-пост + CTA'],
+    ],
+    ideas: ['довіра', 'продукт', 'користь', 'заявка'],
+  };
+  return profiles.find((profile) => profile.matches.some((word) => value.includes(word))) || fallback;
+}
+
+function detectBrandScanSource(input) {
+  const value = input.trim().toLowerCase();
+  if (/youtube\.com\/shorts|youtu\.be|youtube\.com/i.test(value)) {
+    return { label: 'YouTube Shorts', tone: 'shorts' };
+  }
+  if (/tiktok\.com|vm\.tiktok\.com/i.test(value)) {
+    return { label: 'TikTok', tone: 'tiktok' };
+  }
+  if (/instagram\.com|@[\w.]+/i.test(value)) {
+    return { label: 'Instagram', tone: 'instagram' };
+  }
+  if (/https?:\/\/|www\./i.test(value)) {
+    return { label: 'Website', tone: 'website' };
+  }
+  return { label: 'Опис бізнесу', tone: 'text' };
+}
+
+function cleanPublicProfileTitle(value, handle = '') {
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw) return '';
+  const withoutInstagramSuffix = raw
+    .replace(/\s*-\s*See Instagram photos and videos.*$/i, '')
+    .replace(/\s*\(\s*@?[\w.]+\s*\)\s*$/i, '')
+    .trim();
+  if (!handle) return withoutInstagramSuffix;
+  const escapedHandle = handle.replace(/^@/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return withoutInstagramSuffix.replace(new RegExp(`\\s*\\(@?${escapedHandle}\\)\\s*$`, 'i'), '').trim();
+}
+
+function hasSourceMetadata(metadata) {
+  return ['public_metadata', 'youtube_api'].includes(metadata?.sourceStatus);
+}
+
+function metadataStatChips(metadata) {
+  const stats = metadata?.stats || {};
+  return [
+    stats.followers && `${stats.followers} followers`,
+    stats.posts && `${stats.posts} posts`,
+    stats.views && `${stats.views} views`,
+    stats.likes && `${stats.likes} likes`,
+    stats.subscribers && `${stats.subscribers} subscribers`,
+    stats.videos && `${stats.videos} videos`,
+  ].filter(Boolean);
+}
+
+function buildPublicMetadataCards(preview, metadata) {
+  if (!hasSourceMetadata(metadata)) return preview.cards;
+  const visibleStats = metadataStatChips(metadata).slice(0, 3).join(' · ');
+  const publicTitle = cleanPublicProfileTitle(metadata.title, metadata.handle);
+  const normalizedHandle = metadata.handle
+    ? metadata.handle.startsWith('@') ? metadata.handle : metadata.handle
+    : '';
+  const profileLine = [normalizedHandle, publicTitle].filter(Boolean).join(' — ');
+  const signalLine = [
+    visibleStats,
+    preview.label && `ніша: ${preview.label}`,
+  ].filter(Boolean).join('. ');
+  return [
+    [
+      'Профіль',
+      profileLine || 'Джеро знайшов відкриту сторінку і використав її meta-опис як контекст.',
+    ],
+    [
+      'Сигнали бренду',
+      signalLine || 'Є базовий контекст для першої генерації.',
+    ],
+    preview.cards?.[2] || ['Перший фокус', 'Зібрати три ролики, які ведуть до заявки або покупки.'],
+  ];
+}
+
+function buildBrandScanExample(scan) {
+  const label = scan?.label || 'Локальний бізнес';
+  const planTitle = scan?.plan?.[0]?.[1] || 'Short-form: проблема + рішення';
+  if (/фітнес|wellness/i.test(label)) {
+    return {
+      title: 'Приклад генерації: відео на 20 секунд',
+      hook: 'Немає години на зал? Почни з 20 хвилин вдома.',
+      script: [
+        ['0-2с', 'Кадр: людина відкладає тренування, на екрані “немає часу”.'],
+        ['3-8с', 'Показати 2 прості вправи без інвентарю, швидкий темп монтажу.'],
+        ['9-15с', 'Доказ: “20 хвилин, 3 рази на тиждень, без складного плану”.'],
+        ['16-20с', 'CTA: “Напиши START, і я надішлю перший міні-комплекс”.'],
+      ],
+      caption: '20 хвилин краще, ніж “почну з понеділка”. Збережи цей міні-старт і напиши START, якщо хочеш перший комплекс.',
+    };
+  }
+  return {
+    title: `Приклад генерації: ${planTitle}`,
+    hook: 'Покажи одну проблему клієнта і дай простий наступний крок.',
+    script: [
+      ['0-2с', 'Перший кадр з болем або бажанням аудиторії.'],
+      ['3-8с', 'Показати продукт, процес або приклад з реального життя.'],
+      ['9-15с', 'Додати доказ: цифра, відгук, деталь або міні-кейс.'],
+      ['16-20с', 'CTA: попросити написати ключове слово в Direct.'],
+    ],
+    caption: 'Один простий крок замість хаотичного контенту. Напиши “план”, і я підкажу, з чого почати.',
+  };
+}
+
+function buildReelFromBrandScan(scan) {
+  const firstPlan = scan?.plan?.[0]?.[1] || 'Short-form: проблема + рішення';
+  const firstCard = scan?.cards?.[0]?.[1] || 'Бізнес, якому потрібна регулярна коротка подача без щоденного хаосу.';
+  const sourceLabel = scan?.sourceType || 'Brand Scan';
+  return {
+    id: `brand-scan-${Date.now()}`,
+    market: 'ua',
+    title: firstPlan,
+    handle: sourceLabel,
+    sourceHandle: sourceLabel,
+    score: 91,
+    views: 'preview',
+    likes: '-',
+    comments: '-',
+    status: [scan?.label || 'Локальний бізнес', ...(scan?.ideas || []).slice(0, 3)],
+    tag: 'D',
+    caption: `${firstCard} Джеро зібрав це з Brand Scan і готує сценарій під перший тиждень.`,
+    transcript: (scan?.cards || []).map(([title, text]) => `${title}: ${text}`).join('\n'),
+    sourceUrl: scan?.source || '',
+    sourceType: scan?.sourceType,
+    sourceStatus: scan?.sourceStatus || 'preview',
+    importedMetadata: scan?.metadata || null,
+    scanPlan: scan?.plan || [],
+    scanCards: scan?.cards || [],
+    scanIdeas: scan?.ideas || [],
+    scanExample: scan?.example || null,
+    scanCapabilities: scan?.capabilities || null,
+    scanLabel: scan?.label || 'Локальний бізнес',
+  };
+}
+
+function buildBrandBrainFromScanReel(reel) {
+  const metadata = reel?.importedMetadata || {};
+  const stats = metadata.stats || {};
+  const cards = Array.isArray(reel?.scanCards) ? reel.scanCards : [];
+  const cardText = Object.fromEntries(cards.map(([title, text]) => [title, text]));
+  const productLine = metadata.description || metadata.title || reel?.title || reel?.scanExample?.title || '';
+  const proofParts = [
+    stats.followers && `${stats.followers} followers`,
+    stats.posts && `${stats.posts} posts`,
+    metadata.title,
+    cardText['Сигнали бренду'],
+  ].filter(Boolean);
+  return {
+    businessType: reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес',
+    product: productLine,
+    audience: cardText['Портрет бренду'] || cardText['Публічний профіль'] || cardText['Профіль'] || '',
+    location: 'онлайн / Україна',
+    toneOfVoice: 'коротко, конкретно, дружньо, без перебільшень',
+    offer: productLine || reel?.scanPlan?.[0]?.[1] || '',
+    cta: reel?.scanExample?.caption || 'вести в Direct через просте ключове слово',
+    proof: proofParts.join(' · '),
+    stopTopics: ['не вигадувати цифри', 'не копіювати чужий контент дослівно', 'не обіцяти результат без доказу'],
+    sourceUrl: reel?.sourceUrl || '',
+    sourceStatus: reel?.sourceStatus || 'preview',
+  };
+}
+
+function composeBrandScanResult(cleanInput, metadata = null, capabilities = null) {
+  const source = detectBrandScanSource(cleanInput);
+  const preview = buildBrandScanPreview(cleanInput, metadata);
+  const resolvedSource = metadata?.source || source;
+  const example = buildBrandScanExample(preview);
+  return {
+    source: cleanInput,
+    sourceType: resolvedSource.label,
+    sourceTone: resolvedSource.tone,
+    ...preview,
+    cards: buildPublicMetadataCards(preview, metadata),
+    studioInsight: preview.cards?.[1]?.[1],
+    example,
+    metadata,
+    capabilities,
+    sourceStatus: metadata?.sourceStatus || (source.tone === 'text' ? 'manual_text' : 'url_only'),
+    title: source.tone === 'text'
+      ? 'Preview по опису бізнесу готовий'
+      : metadata?.sourceStatus === 'youtube_api'
+        ? 'YouTube джерело проаналізовано'
+      : metadata?.sourceStatus === 'public_metadata'
+        ? 'Публічний профіль проаналізовано'
+        : 'Preview по джерелу готовий',
+  };
+}
+
+function GoogleIcon() {
+  return (
+    <svg className="google-auth-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.4h6.5c-.3 1.4-1.1 2.7-2.3 3.5v2.9h3.7c2.2-2 3.6-4.9 3.6-8.5z" />
+      <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.7-2.9c-1 .7-2.4 1.1-4.2 1.1-3.1 0-5.7-2.1-6.7-4.9H1.5v3C3.4 21.3 7.4 24 12 24z" />
+      <path fill="#FBBC05" d="M5.3 14.4c-.2-.7-.4-1.5-.4-2.4s.1-1.6.4-2.4v-3H1.5C.6 8.3 0 10.1 0 12s.6 3.7 1.5 5.4l3.8-3z" />
+      <path fill="#EA4335" d="M12 4.7c1.7 0 3.3.6 4.5 1.8l3.3-3.3C17.9 1.2 15.2 0 12 0 7.4 0 3.4 2.7 1.5 6.6l3.8 3C6.3 6.8 8.9 4.7 12 4.7z" />
+    </svg>
+  );
+}
+
+function BrandScanGate({ onAuth, notify, theme, setTheme }) {
+  const [scanInput, setScanInput] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [scanResult, setScanResult] = useState(null);
+  const [error, setError] = useState('');
+  const [loginPrompt, setLoginPrompt] = useState('');
+  const [instagramConfig, setInstagramConfig] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const previewSignals = [
+    ['Сигнали', '5 ідей із short-form, сайтів і конкурентних механік'],
+    ['Сценарії', '3 структури: хук, контраст, кроки, CTA'],
+    ['План', '7 днів контенту з фокусом на продаж і довіру'],
+    ['Direct', 'Підказка під ключове слово для заявки'],
+  ];
+  const buildPreviewPlan = async () => {
+    const cleanInput = scanInput.trim();
+    if (!cleanInput) {
+      setError('Встав профіль, сайт або коротко опиши бізнес.');
+      return;
+    }
+    setIsScanning(true);
+    let metadata = null;
+    let capabilities = null;
+    try {
+      const response = await fetch(`${API_BASE}/brand-scan/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: cleanInput }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        metadata = payload.metadata || null;
+        capabilities = payload.capabilities || null;
+      }
+    } catch {
+      metadata = null;
+    } finally {
+      setIsScanning(false);
+    }
+    const result = composeBrandScanResult(cleanInput, metadata, capabilities);
+    setError('');
+    setScanResult(result);
+    setLoginPrompt('');
+    notify(metadata?.sourceStatus === 'youtube_api'
+      ? 'Джеро прочитав джерело і зібрав production preview.'
+      : hasSourceMetadata(metadata)
+        ? 'Джеро прочитав публічний опис акаунта.'
+        : 'Джеро зібрав preview-план без підключення акаунта.');
+  };
+
+  const requestLoginForAction = (actionLabel) => {
+    if (scanResult) {
+      window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
+    }
+    setLoginPrompt(actionLabel);
+    notify('Щоб зберегти результат, треба увійти. Preview вже готовий.');
+  };
+
+  const enterDemo = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      if (scanResult) {
+        window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
+      }
+      const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST', credentials: 'include' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'demo_error');
+      onAuth(payload);
+    } catch {
+      setError('Демо-вхід не спрацював. Перевір підключення до сервера.');
+      notify('Сервер не відповідає. Перевір Railway deploy або локальний backend.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startGoogleLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      if (scanResult) {
+        window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
+      }
+      const response = await fetch(`${API_BASE}/auth/google/start`, { credentials: 'include' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'google_not_configured');
+      window.location.href = payload.authUrl;
+    } catch {
+      setError('Google-вхід буде доступний після налаштування GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GOOGLE_REDIRECT_URI.');
+      notify('Google Login ще треба підключити в Railway env.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startEmailLogin = async () => {
+    const email = emailInput.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      setError('Введи email, щоб продовжити.');
+      return;
+    }
+    setError('');
+    setIsLoading(true);
+    try {
+      if (scanResult) {
+        window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
+      }
+      const response = await fetch(`${API_BASE}/auth/email`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'email_auth_failed');
+      notify('Trial workspace відкрито. Можна продовжити з preview.');
+      onAuth(payload);
+    } catch {
+      setError('Email-вхід не спрацював. Перевір backend або спробуй Google.');
+      notify('Email-вхід тимчасово не спрацював.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const startInstagramLogin = async () => {
+    setError('');
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/auth/instagram/start`, { credentials: 'include' });
+      const payload = await response.json();
+      if (!response.ok) {
+        if (payload.error === 'instagram_not_configured') setInstagramConfig(payload);
+        throw new Error(payload.error || 'instagram_not_configured');
+      }
+      window.location.href = payload.authUrl;
+    } catch {
+      setInstagramConfig((current) => current || { error: 'instagram_not_configured' });
+      notify('Preview працює без підключення акаунта.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <main className="auth-page brand-scan-page">
+      <section className="auth-shell brand-scan-shell">
+        <div className="auth-copy brand-scan-copy">
+          <div className="brand auth-brand">
+            <div className="logo">
+              <img src={logoImg} alt="Dzhero Logo" />
+            </div>
+            <div>
+              <strong>Dzhero</strong>
+              <span>AI-продюсер для українського бізнесу</span>
+            </div>
+          </div>
+          <small>Brand Scan</small>
+          <h1>Згенеруй контент-план для свого бізнесу</h1>
+          <p className="auth-lead">Встав Instagram, TikTok, YouTube Shorts, сайт або коротко опиши бізнес. Джеро збере сигнали, ідеї, сценарії та план на тиждень.</p>
+          <div className="auth-scan-form">
+            <textarea
+              value={scanInput}
+              onChange={(event) => setScanInput(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') buildPreviewPlan();
+              }}
+              placeholder="Наприклад: @central.cafe, youtube.com/shorts/... або кавʼярня у Львові, сніданки..."
+              rows={3}
+            />
+            <div className="auth-scan-actions">
+              <button className="auth-submit primary" type="button" onClick={buildPreviewPlan} disabled={isScanning}>
+                <Sparkles size={17} /> {isScanning ? 'Скануємо...' : 'Побудувати контент-план'}
+              </button>
+            </div>
+            <div className="auth-access-card">
+              <button className="google-auth-button" type="button" onClick={startGoogleLogin} disabled={isLoading}>
+                <GoogleIcon />
+                Увійти через Google
+              </button>
+              <div className="auth-divider"><span>або email</span></div>
+              <label className="email-access-field">
+                <span>Email address</span>
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(event) => setEmailInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') startEmailLogin();
+                  }}
+                  placeholder="name@company.com"
+                  autoComplete="email"
+                />
+              </label>
+              <button className="email-auth-button" type="button" onClick={startEmailLogin} disabled={isLoading}>
+                Продовжити з email
+              </button>
+            </div>
+            <p className="auth-privacy-note">
+              Без пароля. Без доступу до акаунта.
+              <button className="demo-link-inline" type="button" onClick={enterDemo} disabled={isLoading}>
+                Подивитись демо
+              </button>
+            </p>
+          </div>
+        </div>
+        <form className="auth-panel brand-scan-panel" onSubmit={(event) => event.preventDefault()}>
+          <div className="auth-panel-head">
+            <div>
+              <small>{scanResult ? 'Preview готовий' : 'Що отримаєш за 30 секунд'}</small>
+              <h2>{scanResult ? scanResult.title : 'Результат, а не технічний кабінет'}</h2>
+            </div>
+            <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            </button>
+          </div>
+          {isScanning && !scanResult ? (
+            <div className="brand-scan-skeleton" aria-live="polite" aria-label="Джеро аналізує джерело">
+              <div className="scan-skeleton-card profile">
+                <small>Сводка профілю</small>
+                <span />
+                <span />
+                <span />
+                <div>
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </div>
+              <div className="scan-skeleton-card topics">
+                <small>Топ-теми</small>
+                <span />
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="scan-skeleton-card plan">
+                <small>Перший план</small>
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+          ) : !scanResult ? (
+            <>
+              <div className="auth-preview-stack">
+                {previewSignals.map(([title, text], index) => (
+                  <article key={title}>
+                    <span>0{index + 1}</span>
+                    <strong>{title}</strong>
+                    <p>{text}</p>
+                  </article>
+                ))}
+              </div>
+              <div className="auth-before-after">
+                <div>
+                  <small>Було</small>
+                  <strong>Кожного дня думати, що постити</strong>
+                </div>
+                <div>
+                  <small>Стало</small>
+                  <strong>Тижневий план, хуки, сценарії та Direct-підказки</strong>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="auth-scan-result">
+              <div className="scan-source">
+                <span>Джерело</span>
+                <strong>{scanResult.source}</strong>
+                <em data-source={scanResult.sourceTone}>{scanResult.sourceType}</em>
+              </div>
+              {hasSourceMetadata(scanResult.metadata) && (
+                <div className="scan-public-meta">
+                  <span>Профіль</span>
+                  <strong>{scanResult.metadata.handle}</strong>
+                  <p>{scanResult.metadata.title || scanResult.metadata.description}</p>
+                  <div>
+                    {metadataStatChips(scanResult.metadata).map((chip) => <b key={chip}>{chip}</b>)}
+                  </div>
+                </div>
+              )}
+              <div className="scan-niche-row">
+                <strong>{scanResult.label}</strong>
+                {scanResult.ideas.map((idea) => <span key={idea}>{idea}</span>)}
+              </div>
+              {scanResult.example && (
+                <div className="scan-example-block">
+                  <div className="scan-example-head">
+                    <small>Перша генерація</small>
+                    <strong>{scanResult.example.title}</strong>
+                  </div>
+                  <div className="scan-example-hook">
+                    <span>Hook</span>
+                    <p>{scanResult.example.hook}</p>
+                  </div>
+                  <div className="scan-example-script">
+                    {scanResult.example.script.map(([time, text]) => (
+                      <span key={time}><b>{time}</b>{text}</span>
+                    ))}
+                  </div>
+                  <div className="scan-example-caption">
+                    <span>Caption</span>
+                    <p>{scanResult.example.caption}</p>
+                  </div>
+                </div>
+              )}
+              <div className="scan-week-block">
+                <div className="scan-week-head">
+                  <small>Перший тиждень</small>
+                  <strong>Що знімати</strong>
+                </div>
+                <div className="scan-week-plan">
+                  {(scanResult.plan || [['Пн', 'Short-form: проблема + рішення'], ['Ср', 'Карусель: 5 помилок'], ['Пт', 'Proof-пост + CTA']]).map(([day, title]) => (
+                    <span key={day}><b>{day}</b>{title}</span>
+                  ))}
+                </div>
+              </div>
+              <div className="guest-studio-preview">
+                <div className="guest-studio-head">
+                  <small>Studio preview</small>
+                  <strong>{scanResult.plan?.[0]?.[1] || 'Short-form: проблема + рішення'}</strong>
+                  <p>{scanResult.studioInsight || 'Джеро перетворює Brand Scan у сценарій, shot-list і перший CTA.'}</p>
+                </div>
+                <div className="guest-studio-grid">
+                  <article>
+                    <span>Hook</span>
+                    <strong>Покажи проблему в перші 2 секунди</strong>
+                  </article>
+                  <article>
+                    <span>Proof</span>
+                    <strong>Додай приклад, процес або результат</strong>
+                  </article>
+                  <article>
+                    <span>CTA</span>
+                    <strong>Запроси написати ключове слово в Direct</strong>
+                  </article>
+                </div>
+                <div className="guest-studio-actions">
+                  <button type="button" onClick={() => requestLoginForAction('зберегти Brand Scan')}>
+                    Зберегти
+                  </button>
+                  <button type="button" onClick={() => requestLoginForAction('додати план у календар')}>
+                    Додати в контент-план
+                  </button>
+                  <button className="primary" type="button" onClick={() => requestLoginForAction('продовжити в Studio')}>
+                    Продовжити
+                  </button>
+                </div>
+              </div>
+              {loginPrompt && (
+                <div className="guest-login-prompt">
+                  <div>
+                    <small>Логін після цінності</small>
+                    <strong>Увійди, щоб {loginPrompt}</strong>
+                    <p>Можна зайти через demo зараз. Джерела і спосіб входу залишаються незалежними.</p>
+                  </div>
+                  <button className="auth-submit primary" type="button" onClick={enterDemo} disabled={isLoading}>
+                    {isLoading ? 'Відкриваємо...' : 'Увійти і продовжити'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="auth-simple-links">
+            <a href="/terms" target="_blank" rel="noreferrer">Умови</a>
+            <a href="/privacy" target="_blank" rel="noreferrer">Приватність</a>
+          </div>
+          {instagramConfig && (
+            <div className="instagram-pending">
+              <strong>Instagram Login pending</strong>
+              <p>Meta App keys ще не підключені на backend. Це не блокує preview-режим.</p>
+            </div>
+          )}
+          {error && <div className="auth-error">{error}</div>}
+        </form>
+      </section>
+    </main>
+  );
+}
+
 function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
   const [error, setError] = useState('');
   const [instagramConfig, setInstagramConfig] = useState(null);
@@ -1144,7 +1994,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
             ))}
             <button type="button" onClick={() => { setPage('settings'); setIsSwitcherOpen(false); }}>
               <span>+ Підключити Instagram</span>
-              <small>реальні акаунти додамо через Meta API</small>
+              <small>реальні акаунти додамо через підключення</small>
             </button>
           </div>
         )}
@@ -1243,7 +2093,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
             ))}
             <button type="button" onClick={() => { selectPage('settings'); setIsSwitcherOpen(false); }}>
               <span>{language === 'en' ? '+ Connect Instagram' : '+ Підключити Instagram'}</span>
-              <small>{language === 'en' ? 'Real accounts through Meta API' : 'Реальні акаунти через Meta API'}</small>
+              <small>{language === 'en' ? 'Real accounts through connection' : 'Реальні акаунти через підключення'}</small>
             </button>
             <button className="workspace-logout" type="button" onClick={() => {
               setIsSwitcherOpen(false);
@@ -1379,7 +2229,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
   }, [workspaceId]);
 
   const onboardingSteps = [
-    ['01', 'Підключити Instagram', 'Meta Login, права доступу, профіль бізнесу.', onboarding.instagramConnected, 'settings'],
+    ['01', 'Підключити Instagram', 'Вхід, права доступу, профіль бізнесу.', onboarding.instagramConnected, 'settings'],
     ['02', 'Навчити бренд', 'Ніша, Tone of Voice, місто, продукти, цілі.', onboarding.brandReady, 'assistant'],
     ['03', 'Зібрати сигнали', 'Рілси, конкуренти, коментарі, тренди та ідеї.', data.reels.length > 0 && data.competitors.length > 0, 'viral'],
     ['04', 'Випустити batch', 'План на тиждень, сторіс, рілси, Direct-відповіді.', data.plans.length > 0, 'plan'],
@@ -1406,6 +2256,15 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
     ['AI', 'Ремікс “AI-контент” готовий до сценарію', 'вчора'],
     ['CRM', 'Конкурентний аналіз для @maker завершено', 'вчора'],
   ];
+  const plannedIdeaTitles = new Set(
+    data.plans
+      .map((plan) => normalizeContentIdentity(Array.isArray(plan) ? plan[0] : plan?.title))
+      .filter(Boolean)
+  );
+  const availableIdeas = data.ideas.filter((idea) => !plannedIdeaTitles.has(normalizeContentIdentity(idea.title)));
+  const previewIdeas = availableIdeas.slice(0, 4);
+  const plannedIdeasCount = Math.max(0, data.ideas.length - availableIdeas.length);
+  const hiddenIdeasCount = Math.max(0, availableIdeas.length - previewIdeas.length);
 
   return (
     <section className="page page-home">
@@ -1420,19 +2279,22 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           <p>Джеро бере найсильніші сигнали, адаптує їх під бренд і складає тижневий план без зайвого менеджменту.</p>
           <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Згенерувати контент-план на тиждень</button>
         </article>
-        <article className="mvp-status-card">
-          <small>Інтеграції</small>
-          <div className="mvp-status-list">
-            <div><span>Meta / Instagram</span><Badge variant={onboarding.instagramConnected ? 'success' : 'warning'}>{onboarding.instagramConnected ? 'Підключено' : 'Очікує'}</Badge></div>
-            <div><span>Short-form signals</span><Badge variant="success">Demo ready</Badge></div>
-            <div><span>Brand Brain</span><Badge variant={onboarding.brandReady ? 'success' : 'warning'}>{onboarding.brandReady ? 'Готово' : 'Заповнити'}</Badge></div>
+        <article className="mvp-counter-card mvp-ideas-card">
+          <div className="mvp-card-head">
+            <span>Готові ідеї</span>
+            <strong>{data.ideas.length}</strong>
           </div>
-          <button type="button" onClick={() => setPage('settings')}>Налаштувати джерела</button>
-        </article>
-        <article className="mvp-counter-card">
-          <span>Готові ідеї</span>
-          <strong>{data.ideas.length}</strong>
-          <p>{data.plans.length} вже у контент-плані</p>
+          <p>{plannedIdeasCount} вже у контент-плані · {availableIdeas.length} ще чекають</p>
+          <div className="mvp-ideas-preview">
+            {previewIdeas.map((idea) => (
+              <button type="button" key={idea.id || idea.title} onClick={() => setPage('plan')}>
+                <small>{idea.source || 'note'}</small>
+                <b>{idea.title}</b>
+              </button>
+            ))}
+          </div>
+          {hiddenIdeasCount > 0 && <p className="mvp-muted-line">+{hiddenIdeasCount} ще в Notes</p>}
+          <button className="dark mvp-card-action" type="button" onClick={() => setPage('plan')}>Відкрити Notes</button>
         </article>
         <article className="mvp-counter-card">
           <span>Сигнали</span>
@@ -1707,7 +2569,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'dzhero-reels.csv';
+    link.download = 'dzhero-signals.csv';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1719,20 +2581,19 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
     <section className="page page-signals">
       <PageTitle
         title="Сигнали"
-        subtitle="Єдина стрічка віральних Reels, short-form і конкурентних механік для адаптації під бренд."
+        subtitle="Єдина стрічка short-form, сайтів і конкурентних механік для адаптації під український ринок."
         actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати сигнал</button></>}
       />
-      <WorkflowRail active="signals" setPage={setPage} notify={notify} variant="compact" />
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав Reels-посилання..." /></label>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав TikTok, Reels, Shorts, сайт чи будь-який сигнал..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
       {pastedReelUrl && (
         <div className="reel-link-import">
           <div>
-            <strong>Знайшов Reels-посилання</strong>
-            <span>Джеро спробує сам витягнути публічні дані з Instagram і одразу підготує UA-адаптацію. Якщо Instagram нічого не віддасть, відкриється запасний ручний режим.</span>
+            <strong>Знайшов посилання на сигнал</strong>
+            <span>Джеро спробує витягнути публічний контекст із джерела і одразу підготує UA-адаптацію. Якщо платформа нічого не віддасть, відкриється запасний ручний режим.</span>
           </div>
           <button className="dark" type="button" onClick={importPastedReel} disabled={isImportingUrl}>
             <Wand2 size={16} />{isImportingUrl ? 'Адаптуємо...' : 'Адаптувати автоматично'}
@@ -1825,7 +2686,7 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
           contentRubrics: tags,
         }),
       });
-      if (!response.ok) throw new Error('save_failed');
+      if (!response.ok) throw new Error(await readApiError(response, 'save_failed'));
       setSaveStatus('saved');
       notify(`Playbook "${title}" збережено в Brand Brain`);
       window.setTimeout(() => {
@@ -2065,6 +2926,39 @@ function getCompetitorMeta(row) {
   return `${marketLabel(row.market)} / ${niche}`;
 }
 
+function renderChatMessageText(text) {
+  return String(text || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*\*/g, '')
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
+}
+
+function TypewriterText({ text, active }) {
+  const cleanText = String(text || '');
+  const [visibleText, setVisibleText] = useState(active ? '' : cleanText);
+
+  useEffect(() => {
+    if (!active) {
+      setVisibleText(cleanText);
+      return undefined;
+    }
+    setVisibleText('');
+    let index = 0;
+    const step = Math.max(1, Math.ceil(cleanText.length / 260));
+    const timer = window.setInterval(() => {
+      index += step;
+      setVisibleText(cleanText.slice(0, index));
+      if (index >= cleanText.length) window.clearInterval(timer);
+    }, 24);
+    return () => window.clearInterval(timer);
+  }, [active, cleanText]);
+
+  return <>{renderChatMessageText(visibleText)}</>;
+}
+
 function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace }) {
   const assistantName = 'Джерик';
   const starterPrompts = [
@@ -2107,14 +3001,6 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
-
-  const renderMessageText = (text) => String(text || '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/\*\*/g, '')
-    .split(/\n{2,}/)
-    .map((block) => block.trim())
-    .filter(Boolean)
-    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
 
   const sendMessage = async (text = input) => {
     const clean = String(text || '').trim();
@@ -2208,7 +3094,11 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
           {messages.map(([role, text], index) => (
             <div className={`jeryk-message ${role}`} key={`${role}-${index}`}>
               <span>{role === 'assistant' ? assistantName : 'Ви'}</span>
-              <div>{renderMessageText(text)}</div>
+              <div>
+                {role === 'assistant'
+                  ? <TypewriterText text={text} active={index === messages.length - 1 && !isThinking} />
+                  : renderChatMessageText(text)}
+              </div>
             </div>
           ))}
         </div>
@@ -2222,7 +3112,10 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') sendMessage();
+              if (event.key !== 'Enter') return;
+              if (event.shiftKey) return;
+              event.preventDefault();
+              sendMessage();
             }}
             placeholder="Напиши Джерику задачу."
             maxLength={600}
@@ -2315,6 +3208,40 @@ function Competitors({ competitors, openModal }) {
 }
 
 function buildRemixScenario(reel) {
+  if (reel.scanExample) {
+    return {
+      quality: ['public_metadata', 'youtube_api'].includes(reel.sourceStatus)
+        ? 'Джеро прочитав публічний профіль і зібрав перший production draft без доступу до акаунта.'
+        : 'Preview draft зібрано з ручного джерела. Для глибокої аналітики треба підключити офіційні джерела.',
+      insight: reel.scanCards?.[1]?.[1] || reel.caption || 'Brand Scan перетворено у сценарій, shot-list і CTA.',
+      checklist: [
+        ...(reel.scanIdeas || []).map((idea) => `Тег бренду: ${idea}`),
+        reel.importedMetadata?.stats?.followers ? `Публічний сигнал: ${reel.importedMetadata.stats.followers} followers` : '',
+        reel.importedMetadata?.stats?.posts ? `Активність профілю: ${reel.importedMetadata.stats.posts} posts` : '',
+      ].filter(Boolean).slice(0, 5),
+      script: (reel.scanExample.script || []).map(([time, text]) => ({
+        time,
+        frame: text,
+        voice: time === '0-2с' || time === '0-2c' ? reel.scanExample.hook : text,
+      })),
+      variants: [
+        {
+          title: reel.scanExample.title,
+          hook: reel.scanExample.hook,
+          structure: [
+            ...(reel.scanExample.script || []).map(([time, text]) => `${time}: ${text}`),
+            `Caption: ${reel.scanExample.caption}`,
+          ],
+        },
+        {
+          title: 'Варіант 2: серія на 7 днів',
+          hook: reel.scanPlan?.[2]?.[1] || reel.title,
+          structure: (reel.scanPlan || []).map(([day, title]) => `${day}: ${title}`),
+        },
+      ],
+    };
+  }
+
   if (reel.remixResult?.remixes?.length) {
     const firstRemix = reel.remixResult.remixes[0];
     const script = (firstRemix.visualFlow || []).map((step) => ({
@@ -2323,7 +3250,7 @@ function buildRemixScenario(reel) {
       voice: [step.onScreenText, step.audioVoiceover].filter(Boolean).join(' — '),
     }));
     return {
-      quality: reel.sourceStatus === 'public_metadata'
+      quality: ['public_metadata', 'youtube_api'].includes(reel.sourceStatus)
         ? 'Автоімпорт знайшов публічні дані й згенерував адаптацію'
         : 'Instagram обмежив дані, але Джеро зібрав базову адаптацію від URL-сигналу',
       insight: reel.remixResult.deconstruction?.coreMechanics || 'Джеро розклав Reels на хук, доказ, локальний контекст і CTA.',
@@ -2413,8 +3340,70 @@ function buildRemixScenario(reel) {
   };
 }
 
-function RemixStudio({ reel, notify, setPage }) {
+function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
+  const metadata = reel.importedMetadata || {};
+  const stats = metadata.stats || {};
+  const example = reel.scanExample;
+  const hasBrandScan = reel.sourceType || reel.scanExample || hasSourceMetadata(metadata) || reel.sourceStatus === 'youtube_api';
+  if (!hasBrandScan) return null;
+
+  return (
+    <div className="brand-studio-panel">
+      <div className="brand-studio-head">
+        <div>
+          <small>Brand Scan draft</small>
+          <h3>{reel.scanLabel || reel.status?.[0] || 'Публічний профіль'}</h3>
+        </div>
+      </div>
+      <div className="brand-studio-meta">
+        <article>
+          <small>Джерело</small>
+          <strong>{metadata.handle || reel.handle}</strong>
+          <p>{metadata.title || reel.sourceUrl || reel.title}</p>
+        </article>
+        <article>
+          <small>Сигнали бренду</small>
+          <strong>{metadataStatChips(metadata)[0] || reel.scanLabel || 'Контекст готовий'}</strong>
+          <p>{stats.posts ? `${stats.posts} posts · ${stats.following || '-'} following` : 'Опис, ніша і контекст для сценаріїв.'}</p>
+        </article>
+      </div>
+      {!!reel.scanIdeas?.length && (
+        <div className="brand-studio-tags">
+          {reel.scanIdeas.map((idea) => <span key={idea}>{idea}</span>)}
+        </div>
+      )}
+      {example && (
+        <div className="brand-studio-example">
+          <small>Перша production-генерація</small>
+          <strong>{example.hook}</strong>
+          <div>
+            {(example.script || []).map(([time, text]) => (
+              <span key={time}><b>{time}</b>{text}</span>
+            ))}
+          </div>
+          <p>{example.caption}</p>
+        </div>
+      )}
+      {!!reel.scanPlan?.length && (
+        <div className="brand-studio-week">
+          <small>Перший тиждень</small>
+          {reel.scanPlan.map(([day, title]) => (
+            <span key={day}><b>{day}</b>{title}</span>
+          ))}
+        </div>
+      )}
+      <div className="brand-studio-actions">
+        <button className="dark" type="button" onClick={() => onSaveBrandBrain?.(reel)} disabled={brainStatus === 'saving'}>
+          <Database size={16} />{brainStatus === 'saving' ? 'Зберігаємо...' : 'Зберегти в Brand Brain'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const [adaptationState, setAdaptationState] = useState('idle');
+  const [brainStatus, setBrainStatus] = useState('idle');
   const reelHandle = reel.handle || reel.sourceHandle || '@instagram.reel';
   const scenario = buildRemixScenario(reel);
   const scenarioVariants = scenario.variants;
@@ -2466,10 +3455,21 @@ function RemixStudio({ reel, notify, setPage }) {
       notify('Сценарій скопійовано!');
     }
   };
+  const saveCurrentBrandBrain = async (currentReel) => {
+    setBrainStatus('saving');
+    const ok = await onSaveBrandBrain?.(currentReel);
+    setBrainStatus(ok ? 'saved' : 'idle');
+    if (ok) window.setTimeout(() => setBrainStatus('idle'), 1800);
+  };
+  const isBrandScanDraft = Boolean(reel.sourceType || reel.scanExample || hasSourceMetadata(reel.importedMetadata || {}) || reel.sourceStatus === 'youtube_api');
+  const addCurrentToPlan = async () => {
+    const ok = await onAddToPlan?.(reel);
+    if (ok !== false) setPage('plan');
+  };
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title="Студія" subtitle="Витягуємо механіку сигналу і збираємо оригінальний сценарій під бренд." actions={<button onClick={adaptScenario}><RefreshCw size={16} />Перегенерувати</button>} />
+      <PageTitle title="Студія" actions={<button onClick={adaptScenario}><RefreshCw size={16} />Перегенерувати</button>} />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -2490,11 +3490,14 @@ function RemixStudio({ reel, notify, setPage }) {
           </div>
         </div>
         <div className="analysis-stack">
-          <div className="insight-card hero-card">
-            <small>Вхідний сигнал</small>
-            <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
-            <p>{reel.transcript || reel.caption || 'Джеро використовує назву, метрики і механіку сигналу. Коли буде підключене джерело, сюди підтягнеться caption або транскрипт.'}</p>
-          </div>
+          <BrandScanStudioPanel reel={reel} onSaveBrandBrain={saveCurrentBrandBrain} brainStatus={brainStatus} />
+          {!isBrandScanDraft && (
+            <div className="insight-card hero-card">
+              <small>Вхідний сигнал</small>
+              <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
+              <p>{reel.transcript || reel.caption || 'Джеро використовує назву, метрики і механіку сигналу. Коли буде підключене джерело, сюди підтягнеться caption або транскрипт.'}</p>
+            </div>
+          )}
           <div className="remix-bottom">
             <div className="insight-card">
               <small>Сценарій на 15 секунд</small>
@@ -2516,7 +3519,7 @@ function RemixStudio({ reel, notify, setPage }) {
                       </article>
                     ))}
                   </div>
-                  <button className="dark studio-plan-cta" type="button" onClick={() => { setPage('plan'); notify('Сценарій додано в контент-план'); }}>
+                  <button className="dark studio-plan-cta" type="button" onClick={addCurrentToPlan}>
                     <CalendarDays size={16} />Додати в контент-план
                   </button>
                 </>
@@ -2607,9 +3610,10 @@ function AgentPipeline({ workspaceId }) {
   const providers = status?.providers || {};
   const steps = [
     ['01', 'Instagram data', providers.instagram?.configured ? 'ready' : 'connect source', 'Reels, captions, insights and comments appear after the user connects an approved account.'],
-    ['02', 'Reel understanding', providers.textAgent?.status === 'ready' ? 'ready' : 'draft mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
-    ['03', 'Script engine', providers.textAgent?.provider === 'fallback' ? 'local draft' : 'ready', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
-    ['04', 'Video job', providers.videoGeneration?.configured ? 'ready' : 'approval queue', 'Approved scenes are saved as production tasks before any video provider is used.'],
+    ['02', 'YouTube Shorts', providers.youtube?.configured ? 'ready' : 'preview only', 'Джеро може брати контекст з Shorts або каналу для сценаріїв.'],
+    ['03', 'Reel understanding', providers.textAgent?.status === 'ready' ? 'ready' : 'draft mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
+    ['04', 'Script engine', providers.textAgent?.provider === 'fallback' ? 'local draft' : 'ready', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
+    ['05', 'Video job', providers.videoGeneration?.configured ? 'ready' : 'approval queue', 'Approved scenes are saved as production tasks before any video provider is used.'],
   ];
   return (
     <div className="agent-pipeline">
@@ -2621,6 +3625,7 @@ function AgentPipeline({ workspaceId }) {
         </div>
         <div className="agent-status-cards">
           <span>{providers.instagram?.configured ? 'Instagram ready' : 'Connect account later'}</span>
+          <span>{providers.youtube?.configured ? 'YouTube ready' : 'YouTube preview'}</span>
           <span>{providers.textAgent?.provider === 'fallback' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`}</span>
           <span>{providers.videoGeneration?.configured ? 'Video ready' : 'Manual approval first'}</span>
         </div>
@@ -2642,6 +3647,7 @@ function AgentPipeline({ workspaceId }) {
 }
 
 function BrandBrain({ notify, workspaceId }) {
+  const [seed, setSeed] = useState('');
   const [brief, setBrief] = useState({
     businessType: '',
     product: '',
@@ -2654,18 +3660,21 @@ function BrandBrain({ notify, workspaceId }) {
     proof: '',
   });
   const [status, setStatus] = useState('loading');
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
     authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
-        if (!isMounted || !payload?.brief) return;
-        setBrief((current) => ({
-          ...current,
-          ...payload.brief,
-          stopTopics: Array.isArray(payload.brief.stopTopics) ? payload.brief.stopTopics.join(', ') : payload.brief.stopTopics || '',
-        }));
+        if (!isMounted) return;
+        if (payload?.brief) {
+          setBrief((current) => ({
+            ...current,
+            ...payload.brief,
+            stopTopics: Array.isArray(payload.brief.stopTopics) ? payload.brief.stopTopics.join(', ') : payload.brief.stopTopics || '',
+          }));
+        }
         setStatus('ready');
       })
       .catch(() => setStatus('error'));
@@ -2676,6 +3685,40 @@ function BrandBrain({ notify, workspaceId }) {
 
   const updateField = (field, value) => {
     setBrief((current) => ({ ...current, [field]: value }));
+  };
+
+  const analyzeSeed = async () => {
+    const cleanSeed = seed.trim();
+    if (!cleanSeed || status === 'analyzing') return;
+    setStatus('analyzing');
+    try {
+      const response = await fetch(`${API_BASE}/brand-scan/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: cleanSeed }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'brand_scan_failed');
+      const scan = composeBrandScanResult(cleanSeed, payload.metadata || null, payload.capabilities || null);
+      const nextBrief = buildBrandBrainFromScanReel(buildReelFromBrandScan(scan));
+      setBrief((current) => ({
+        ...current,
+        ...nextBrief,
+        stopTopics: Array.isArray(nextBrief.stopTopics) ? nextBrief.stopTopics.join(', ') : nextBrief.stopTopics || current.stopTopics,
+      }));
+      setStatus('ready');
+      notify?.('Brand Brain заповнено з джерела. Можна підправити і зберегти.');
+    } catch {
+      setBrief((current) => ({
+        ...current,
+        product: current.product || cleanSeed,
+        audience: current.audience || 'Потенційні клієнти, яким потрібне це рішення зараз',
+        offer: current.offer || cleanSeed,
+        toneOfVoice: current.toneOfVoice || 'коротко, конкретно, дружньо',
+      }));
+      setStatus('ready');
+      notify?.('Не вдалося прочитати джерело автоматично, але я підготував чернетку з опису.');
+    }
   };
 
   const saveBrief = async () => {
@@ -2697,20 +3740,22 @@ function BrandBrain({ notify, workspaceId }) {
       setStatus('saved');
       notify?.('Brand Brain збережено. Асистент уже використовує цей контекст.');
       window.setTimeout(() => setStatus('ready'), 1800);
-    } catch {
+    } catch (error) {
       setStatus('error');
-      notify?.('Не вдалося зберегти Brand Brain. Перевір backend.');
+      notify?.(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
     }
   };
 
-  const fields = [
+  const mainFields = [
     ['businessType', 'Ніша', 'Магазин одягу, кафе, салон краси, фітнес-студія', 'Що це за бізнес простими словами. Наприклад: “кавʼярня в Києві”, “магазин жіночого одягу”, “експерт з таргету”.'],
     ['product', 'Продукт', 'сукні, ланчі, манікюр, консультації, курс, абонемент', 'Що саме продаєте. Не “якість і сервіс”, а конкретно: товар, послуга, курс, запис, консультація.'],
     ['audience', 'ЦА', 'дівчата 20-35, власники малого бізнесу, мами, підприємці', 'Кому продаєте. Хто ця людина, що їй болить і чому вона має купити саме зараз.'],
-    ['location', 'Ринок', 'Україна, Київ, Львів, онлайн, Європа', 'Де працює бізнес: місто, країна або “онлайн”. Це допомагає не радити чужі тренди не в тему.'],
-    ['toneOfVoice', 'Tone of Voice', 'простими словами, дружньо, експертно, без пафосу', 'Як бренд має звучати: спокійно, смішно, преміально, по-дружньому, жорстко, експертно.'],
     ['offer', 'Офер', 'запис на манікюр зі знижкою 15%, консультація, дроп нової колекції', 'Головна пропозиція для клієнта. Що він отримує і чому це вигідно.'],
     ['cta', 'CTA', 'написати в Direct “хочу”, забронювати, перейти за лінком', 'Що людина має зробити після контенту: написати, купити, записатися, залишити заявку.'],
+    ['toneOfVoice', 'Tone of Voice', 'простими словами, дружньо, експертно, без пафосу', 'Як бренд має звучати: спокійно, смішно, преміально, по-дружньому, жорстко, експертно.'],
+  ];
+  const advancedFields = [
+    ['location', 'Ринок', 'Україна, Київ, Львів, онлайн, Європа', 'Де працює бізнес: місто, країна або “онлайн”. Це допомагає не радити чужі тренди не в тему.'],
     ['stopTopics', 'Стоп-теми', 'не обіцяти гарантований заробіток, не копіювати конкурентів', 'Що не можна писати або обіцяти. Через кому: заборонені теми, ризикові фрази, табу бренду.'],
     ['proof', 'Докази', 'відгуки, кейси, цифри, фото до/після, 5 років досвіду', 'Чим доводимо, що вам можна вірити: кейси, цифри, відгуки, фото, результати клієнтів.'],
   ];
@@ -2721,23 +3766,25 @@ function BrandBrain({ notify, workspaceId }) {
         <div>
           <small>Brand Brain</small>
           <h3>Памʼять агента про бізнес</h3>
-          <p>Це контекст, який Асистент отримує перед відповіддю: що продаємо, кому, яким тоном, що не можна обіцяти і який CTA вести.</p>
+          <p>Встав профіль, сайт або короткий опис. Джеро сам збере чернетку ЦА, офера, CTA і тону, а ти тільки підправиш важливе.</p>
         </div>
         <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
           <Database size={16} />{status === 'saving' ? 'Зберігаю...' : 'Зберегти памʼять'}
         </button>
       </div>
-      <div className="brand-help">
-        <strong>Як заповнювати</strong>
-        <p>Пиши як людині, не як маркетологу. Одне поле = одна проста відповідь. Якщо не знаєш точно, напиши приблизно: асистент все одно використає це як напрямок.</p>
-        <div>
-          <span>Добре: “салон манікюру у Львові, записи через Direct”</span>
-          <span>Погано: “якісний сервіс для всіх”</span>
-        </div>
+      <div className="brand-brain-intake">
+        <textarea
+          value={seed}
+          onChange={(event) => setSeed(event.target.value)}
+          placeholder="Instagram, YouTube, TikTok, сайт або коротко: кавʼярня у Львові, сніданки, аудиторія 20-35..."
+        />
+        <button className="dark" type="button" onClick={analyzeSeed} disabled={!seed.trim() || status === 'analyzing'}>
+          <Sparkles size={16} />{status === 'analyzing' ? 'Аналізую...' : 'Проаналізувати і заповнити'}
+        </button>
       </div>
       <div className="brand-brain-grid">
-        {fields.map(([field, label, placeholder, help]) => (
-          <label className={field === 'proof' || field === 'stopTopics' ? 'brand-field wide' : 'brand-field'} key={field}>
+        {mainFields.map(([field, label, placeholder, help]) => (
+          <label className="brand-field" key={field}>
             <span>{label}</span>
             <textarea
               value={brief[field] || ''}
@@ -2749,6 +3796,26 @@ function BrandBrain({ notify, workspaceId }) {
           </label>
         ))}
       </div>
+      <button className="brand-advanced-toggle" type="button" onClick={() => setIsAdvancedOpen((value) => !value)}>
+        <span>{isAdvancedOpen ? 'Сховати деталі' : 'Додаткові правила'}</span>
+        <ChevronDown size={16} />
+      </button>
+      {isAdvancedOpen && (
+        <div className="brand-brain-grid brand-brain-advanced">
+          {advancedFields.map(([field, label, placeholder, help]) => (
+            <label className={field === 'proof' || field === 'stopTopics' ? 'brand-field wide' : 'brand-field'} key={field}>
+              <span>{label}</span>
+              <textarea
+                value={brief[field] || ''}
+                onChange={(event) => updateField(field, event.target.value)}
+                placeholder={placeholder}
+                rows={field === 'proof' || field === 'stopTopics' ? 3 : 2}
+              />
+              <small>{help}</small>
+            </label>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -2802,7 +3869,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
         <div>
           <small>Video generation queue</small>
           <h3>Задачі на відео після сценарію</h3>
-          <p>Тут видно, куди потрапляє результат агента. Реальна генерація буде ввімкнена після підключення video provider API, а поки задача зберігає prompt, сцени, CTA і статус approval.</p>
+          <p>Тут видно, куди потрапляє результат агента. Поки задача зберігає prompt, сцени, CTA і статус approval.</p>
         </div>
         <button className="dark" type="button" onClick={createDemoJob} disabled={status === 'saving'}>
           <Rocket size={16} />{status === 'saving' ? 'Створюю...' : 'Додати test task'}
@@ -2982,7 +4049,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
         }),
       });
       if (!response.ok) throw new Error('video_task_failed');
-      notify('Video task створено. Генерація відео чекає підключення provider API.');
+      notify('Video task створено. Генерація відео чекає підключення медіа-генератора.');
     } catch {
       notify('Не вдалося створити video task.');
     }
@@ -2993,7 +4060,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
     const labels = {
       save_idea: 'Ідею збережено.',
       generate_script: 'Ідею збережено і сценарій створено.',
-      create_video_job: 'Video task створено. Генерація відео чекає підключення provider API.',
+      create_video_job: 'Video task створено. Генерація відео чекає підключення медіа-генератора.',
     };
     setActionStatus(action);
     try {
@@ -3222,11 +4289,26 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   );
 }
 
-function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
+function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId }) {
   const today = new Date();
+  const formatSuggestions = CONTENT_FORMATS;
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [modalDay, setModalDay] = useState(null);
+  const [editingPostId, setEditingPostId] = useState('');
+  const [isNotesOpen, setIsNotesOpen] = useState(true);
   const [draft, setDraft] = useState({ title: '', format: 'Reels', time: '10:00' });
+  const notesStorageKey = `dzhero-content-notes-${workspaceId || 'default'}`;
+  const [noteDraft, setNoteDraft] = useState({ title: '', body: '' });
+  const [manualNotes, setManualNotes] = useState(() => {
+    if (!isBrowser) return [];
+    try {
+      const stored = window.localStorage.getItem(`dzhero-content-notes-${workspaceId || 'default'}`);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
   const [posts, setPosts] = useState(() => plans.map((plan, index) => ({
     id: `seed-${index}`,
     day: Math.min(index + 3, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()),
@@ -3245,6 +4327,7 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
   ], [daysInMonth, firstWeekday]);
   const doneCount = posts.filter((post) => post.done).length;
   const pendingPosts = posts.filter((post) => !post.done);
+  const allNotes = useMemo(() => [...manualNotes, ...ideas], [manualNotes, ideas]);
   const weeklyActions = [
     ['Review scripts', pendingPosts.length, 'Перевірити хук, доказ і CTA перед зйомкою.'],
     ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти рілси одним блоком і закрити тиждень.'],
@@ -3254,11 +4337,17 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
     postsRef.current = posts;
   }, [posts]);
   useEffect(() => {
+    if (!isBrowser) return;
+    window.localStorage.setItem(notesStorageKey, JSON.stringify(manualNotes));
+  }, [notesStorageKey, manualNotes]);
+  useEffect(() => {
     let ignore = false;
     authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
-        if (!ignore && payload?.posts?.length) setPosts(payload.posts);
+        if (!ignore && payload?.posts?.length) {
+          setPosts(payload.posts.map((post) => ({ ...post, format: normalizeContentFormat(post.format, 'Post') })));
+        }
       })
       .catch(() => {});
     return () => {
@@ -3276,24 +4365,44 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
       notify(`Не вдалося зберегти календар: ${error.message}`);
     }
   };
-  const openPostModal = (day = today.getDate()) => {
-    setModalDay(Math.min(Math.max(day, 1), daysInMonth));
-    setDraft({ title: '', format: 'Reels', time: '10:00' });
+  const closePostModal = () => {
+    setModalDay(null);
+    setEditingPostId('');
   };
-  const createPost = () => {
+  const openPostModal = (day = today.getDate(), post = null) => {
+    setModalDay(Math.min(Math.max(day, 1), daysInMonth));
+    setEditingPostId(post?.id || '');
+    setDraft(post
+      ? { title: post.title || '', format: normalizeContentFormat(post.format, 'Post'), time: post.time || '10:00' }
+      : { title: '', format: 'Reels', time: '10:00' });
+  };
+  const savePost = () => {
     if (!draft.title.trim()) return;
-    const nextPosts = [...postsRef.current, {
-      id: `post-${Date.now()}`,
-      day: modalDay,
+    const cleanDraft = {
       title: draft.title.trim(),
-      format: draft.format,
+      format: normalizeContentFormat(draft.format, 'Post'),
       time: draft.time,
-      done: false,
-    }];
+    };
+    const nextPosts = editingPostId
+      ? postsRef.current.map((post) => (post.id === editingPostId ? { ...post, ...cleanDraft, day: modalDay } : post))
+      : [...postsRef.current, {
+        id: `post-${Date.now()}`,
+        day: modalDay,
+        ...cleanDraft,
+        done: false,
+      }];
     setPosts(nextPosts);
     savePosts(nextPosts);
-    setModalDay(null);
-    notify('Пост додано в календар');
+    closePostModal();
+    notify(editingPostId ? 'Подію оновлено в календарі' : 'Подію додано в календар');
+  };
+  const deletePost = () => {
+    if (!editingPostId) return;
+    const nextPosts = postsRef.current.filter((post) => post.id !== editingPostId);
+    setPosts(nextPosts);
+    savePosts(nextPosts);
+    closePostModal();
+    notify('Подію видалено з календаря');
   };
   const movePost = (postId, day) => {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, day } : post));
@@ -3305,6 +4414,55 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post));
     setPosts(nextPosts);
     savePosts(nextPosts);
+  };
+  const addIdeaToPlan = (idea, index) => {
+    const title = String(idea?.title || idea?.hook || 'Ідея для контенту').trim();
+    const nextPost = {
+      id: `idea-note-${Date.now()}-${index}`,
+      day: Math.min(today.getDate() + postsRef.current.length, daysInMonth),
+      title,
+      format: 'Post',
+      time: '10:00',
+      done: false,
+      source: idea?.source || 'notes',
+    };
+    const nextPosts = [...postsRef.current, nextPost];
+    setPosts(nextPosts);
+    savePosts(nextPosts);
+    notify('Ідею додано в контент-план');
+  };
+  const addManualNote = (event) => {
+    event.preventDefault();
+    const title = noteDraft.title.trim();
+    const body = noteDraft.body.trim();
+    if (!title && !body) {
+      notify('Напиши хоча б коротку note');
+      return;
+    }
+    const note = {
+      id: `manual-note-${Date.now()}`,
+      source: 'manual note',
+      title: title || body.slice(0, 80),
+      hook: body || title,
+      status: 'saved',
+    };
+    setManualNotes((current) => [note, ...current]);
+    setNoteDraft({ title: '', body: '' });
+    notify('Note збережено');
+  };
+  const deleteManualNote = (noteId) => {
+    setManualNotes((current) => current.filter((note) => note.id !== noteId));
+    notify('Note видалено');
+  };
+  const postFormatClass = (format) => {
+    const normalized = String(format || '').toLowerCase();
+    if (normalized.includes('story') || normalized.includes('стор')) return 'format-stories';
+    if (normalized.includes('short')) return 'format-shorts';
+    if (normalized.includes('tik')) return 'format-tiktok';
+    if (normalized.includes('video')) return 'format-video';
+    if (normalized.includes('post') || normalized.includes('пост')) return 'format-post';
+    if (normalized.includes('reel')) return 'format-reels';
+    return 'format-custom';
   };
 
   return (
@@ -3343,16 +4501,16 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
                       className={post.done ? 'calendar-post done' : 'calendar-post'}
                       key={post.id}
                       draggable
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event) => { event.stopPropagation(); openPostModal(cell.day, post); }}
                       onDragStart={(event) => event.dataTransfer.setData('text/plain', post.id)}
                     >
                       <div className="calendar-post-meta">
-                        <label>
+                        <label onClick={(event) => event.stopPropagation()}>
                           <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
                         </label>
                         <small>{post.time}</small>
                       </div>
-                      <div className={`calendar-post-format format-${String(post.format).toLowerCase()}`}>
+                      <div className={`calendar-post-format ${postFormatClass(post.format)}`}>
                         <i />
                         <em>{post.format}</em>
                       </div>
@@ -3380,7 +4538,7 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
           <label className="direct-background-toggle">
             <input type="checkbox" />
             <span>
-              <strong>Автоответ в Direct</strong>
+              <strong>Автовідповідь в Direct</strong>
               <small>Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.</small>
             </span>
           </label>
@@ -3402,10 +4560,61 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
           ))}
         </aside>
       </div>
+      <section className="content-notes-panel">
+        <button className="content-notes-toggle" type="button" onClick={() => setIsNotesOpen((value) => !value)}>
+          <span>Notes</span>
+          <strong>{allNotes.length} ідей</strong>
+          <ChevronDown size={16} />
+        </button>
+        {isNotesOpen && (
+          <div className="content-notes-list">
+            <form className="content-note-composer" onSubmit={addManualNote}>
+              <input
+                value={noteDraft.title}
+                onChange={(event) => setNoteDraft((current) => ({ ...current, title: event.target.value }))}
+                placeholder="Назва note"
+              />
+              <textarea
+                value={noteDraft.body}
+                onChange={(event) => setNoteDraft((current) => ({ ...current, body: event.target.value }))}
+                placeholder="Ідея, інсайт, гіпотеза або короткий сценарій..."
+              />
+              <button type="submit"><Plus size={15} />Додати note</button>
+            </form>
+            {allNotes.length ? allNotes.map((idea, index) => (
+              <article key={idea.id || `${idea.title}-${index}`}>
+                <div>
+                  <small>{idea.source || idea.status || 'generated'}</small>
+                  <strong>{idea.title || idea.hook}</strong>
+                  <p>{idea.hook || idea.angle || 'Ідея готова до сценарію або календаря.'}</p>
+                </div>
+                <div className="content-note-actions">
+                  {String(idea.id || '').startsWith('manual-note-') && (
+                    <button className="ghost danger" type="button" onClick={() => deleteManualNote(idea.id)}>
+                      <X size={14} />
+                    </button>
+                  )}
+                  <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
+                    <CalendarDays size={15} />Додати в план
+                  </button>
+                </div>
+              </article>
+            )) : (
+              <article>
+                <div>
+                  <small>Поки порожньо</small>
+                  <strong>Згенеруй перші ідеї на головній</strong>
+                  <p>Тут зʼявляться варіанти, які можна вручну переносити в календар.</p>
+                </div>
+              </article>
+            )}
+          </div>
+        )}
+      </section>
       {modalDay && (
-        <div className="modal-backdrop" onClick={() => setModalDay(null)}>
+        <div className="modal-backdrop" onClick={closePostModal}>
           <div className="quick-modal calendar-post-modal" onClick={(event) => event.stopPropagation()}>
-            <h2>Новий пост</h2>
+            <h2>{editingPostId ? 'Редагувати подію' : 'Нова подія'}</h2>
             <div className="calendar-post-form">
               <label>
                 <span>Дата</span>
@@ -3418,19 +4627,25 @@ function ContentPlan({ plans, openModal, notify, setPage, workspaceId }) {
               <label>
                 <span>Формат</span>
                 <select value={draft.format} onChange={(event) => setDraft((current) => ({ ...current, format: event.target.value }))}>
-                  <option>Reels</option>
-                  <option>Stories</option>
-                  <option>Post</option>
+                  {formatSuggestions.map((format) => <option key={format} value={format} />)}
                 </select>
               </label>
+              <div className="calendar-format-memory wide">
+                {formatSuggestions.slice(0, 8).map((format) => (
+                  <button type="button" key={format} onClick={() => setDraft((current) => ({ ...current, format }))}>
+                    {format}
+                  </button>
+                ))}
+              </div>
               <label className="wide">
                 <span>Текст / тема</span>
                 <textarea autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Перша строчка майбутнього поста" />
               </label>
             </div>
             <div className="modal-actions">
-              <button onClick={() => setModalDay(null)}>Скасувати</button>
-              <button className="dark" onClick={createPost}>Додати в календар</button>
+              {editingPostId && <button className="danger" type="button" onClick={deletePost}>Видалити</button>}
+              <button onClick={closePostModal}>Скасувати</button>
+              <button className="dark" onClick={savePost}>{editingPostId ? 'Зберегти зміни' : 'Додати в календар'}</button>
             </div>
           </div>
         </div>
@@ -3597,13 +4812,13 @@ function AnalysisSetup({ notify, workspaceId }) {
           rawBrandInput: clean,
         }),
       });
-      if (!response.ok) throw new Error('brand_brain_save_failed');
+      if (!response.ok) throw new Error(await readApiError(response, 'brand_brain_save_failed'));
       setStatus('saved');
       notify('Brand Brain оновлено. Джеро використає це в сценаріях.');
       window.setTimeout(() => setStatus('idle'), 1800);
-    } catch {
+    } catch (error) {
       setStatus('error');
-      notify('Не вдалося зберегти Brand Brain. Перевір backend.');
+      notify(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
     }
   };
 
@@ -3706,6 +4921,8 @@ function BillingSettings({ workspaceId, notify }) {
   const currentPlanId = billing?.plan?.id;
   const subscriptionStatusLabel = (() => {
     if (billing?.plan?.id === 'demo') return 'Безкоштовний тестовий доступ';
+    if (billing?.plan?.id === 'trial' && billing?.trial?.expired) return 'Trial завершився';
+    if (billing?.plan?.id === 'trial') return `Free Trial · ${billing?.trial?.daysRemaining ?? 0} дн. залишилось`;
     if (billing?.subscription?.status === 'active') return 'Активний доступ';
     if (billing?.subscription?.status === 'pending_payment') return 'Очікує підтвердження оплати';
     if (billing?.subscription?.status === 'trialing') return 'Тестовий період';
@@ -3714,30 +4931,38 @@ function BillingSettings({ workspaceId, notify }) {
   const usageRows = [
     ['AI повідомлення', 'agentChat'],
     ['Reels imports', 'reelImports'],
+    ['Brand Brain saves', 'brandBrainSaves'],
     ['Конкуренти', 'competitors'],
     ['Instagram акаунти', 'instagramAccounts'],
   ];
   const planLimitRows = [
     ['agentChat', MessageSquareText, 'AI повідомлень'],
     ['reelImports', Video, 'Reels imports'],
+    ['brandBrainSaves', Database, 'Brand Brain saves'],
     ['competitors', Target, 'конкурентів'],
     ['instagramAccounts', UsersRound, 'Instagram акаунтів'],
   ];
   const planFeatureLabels = {
+    guest_preview: '1 guest preview до логіну',
+    brand_scan_trial: '3 source scans / drafts',
+    brand_brain_once: '1 збереження Brand Brain',
+    studio_drafts_limited: 'Лімітований доступ до Studio',
     brand_brain: 'Brand brain і контент-план',
     assistant: 'AI асистент для сценаріїв',
     remix_studio: 'Remix Studio',
     instagram_login: 'Instagram login ready',
     everything_starter: 'Усе зі Starter',
-    team: 'Команда для спільної роботи',
+    weekly_batches: 'Тижневі production-batch плани',
+    deep_brand_memory: 'Розширена памʼять бренда',
+    content_notes: 'Notes, календар і сценарії без ліміту',
     ai_direct: 'AI Direct для CRM',
     exports: 'Експорти для клієнтів',
     sync_queue: 'Sync queue',
     everything_pro: 'Усе з Pro',
-    team_full_access: 'Повний доступ до модуля Команда',
     ai_direct_unlimited: 'Безлімітний AI Direct',
-    multi_client_workspaces: 'Мультиклієнтські простори',
-    approval_flow: 'Approval flow для контенту',
+    multi_client_workspaces: 'Кілька брендів / клієнтів',
+    approval_flow: 'Approval flow для продакшену',
+    priority_support: 'Пріоритетна підтримка',
   };
 
   return (
@@ -3749,6 +4974,17 @@ function BillingSettings({ workspaceId, notify }) {
           <p>{subscriptionStatusLabel}</p>
         </div>
       </section>
+
+      {billing?.plan?.id === 'trial' && (
+        <section className="trial-note">
+          <div>
+            <small>Trial без карти</small>
+            <h3>Можна потикати продукт, але без ризику спалити бюджет</h3>
+            <p>Free Trial дає короткий доступ до Studio, Brand Brain і Асистента. Коли ліміт закінчиться, більше генерацій і розширений аналіз відкриваються через Starter або Pro.</p>
+          </div>
+          <strong>{billing?.trial?.daysRemaining ?? 0} дн.</strong>
+        </section>
+      )}
 
       <div className="billing-usage-grid">
         {usageRows.map(([label, key]) => {
@@ -3773,6 +5009,7 @@ function BillingSettings({ workspaceId, notify }) {
         {plans.map((plan) => {
           const isCurrent = plan.id === currentPlanId;
           const isDemo = plan.id === 'demo';
+          const isTrial = plan.id === 'trial';
           return (
             <article className={isCurrent ? 'billing-plan active' : 'billing-plan'} key={plan.id}>
               <small>{plan.billingPeriod}</small>
@@ -3787,7 +5024,7 @@ function BillingSettings({ workspaceId, notify }) {
                 ))}
                 {(plan.features || [])
                   .filter((feature) => planFeatureLabels[feature])
-                  .slice(0, plan.id === 'agency' ? 4 : 2)
+                  .slice(0, plan.id === 'pro' ? 5 : plan.id === 'agency' ? 4 : isTrial ? 4 : 2)
                   .map((feature) => (
                     <li className="billing-plan-feature" key={feature}>
                       <CircleCheck size={15} />
@@ -3798,10 +5035,10 @@ function BillingSettings({ workspaceId, notify }) {
               <button
                 className={isCurrent ? 'billing-plan-button current' : 'billing-plan-button'}
                 type="button"
-                disabled={isCurrent || isDemo}
+                disabled={isCurrent || isDemo || isTrial}
                 onClick={() => selectPlan(plan.id)}
               >
-                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : 'Оплатити тариф'}
+                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : isTrial ? 'Trial після логіну' : 'Оплатити тариф'}
               </button>
             </article>
           );
@@ -3845,8 +5082,55 @@ function BillingSettings({ workspaceId, notify }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId }) {
-  const [tab, setTab] = useState('profile');
+function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange }) {
+  const tab = activeTab;
+  const setTab = onTabChange || (() => {});
+  const [sourceInput, setSourceInput] = useState('');
+  const [sourcePreview, setSourcePreview] = useState(null);
+  const [sourceError, setSourceError] = useState('');
+  const [isScanning, setIsScanning] = useState(false);
+  const connectedSources = Array.isArray(sources) ? sources : [];
+  const sourceTypes = [
+    ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
+    ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
+    ['YouTube Shorts', 'Можна додати', 'Встав Shorts або канал, щоб зібрати контекст для контент-плану.', 'shorts'],
+    ['Website', 'Можна додати', 'Сайт або landing page дає позиціонування, офер і мову бренду.', 'website'],
+    ['Manual brief', 'Завжди доступно', 'Короткого опису бізнесу достатньо, якщо бренд тільки запускається.', 'text'],
+  ];
+
+  const buildSourcePreview = async () => {
+    const cleanInput = sourceInput.trim();
+    if (!cleanInput) {
+      setSourceError('Встав Instagram, TikTok, YouTube Shorts, сайт або короткий опис бізнесу.');
+      return;
+    }
+    setIsScanning(true);
+    setSourceError('');
+    let metadata = null;
+    let capabilities = null;
+    try {
+      const response = await fetch(`${API_BASE}/brand-scan/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: cleanInput }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        metadata = payload.metadata || null;
+        capabilities = payload.capabilities || null;
+      }
+    } catch {
+      metadata = null;
+    } finally {
+      setIsScanning(false);
+    }
+    const result = composeBrandScanResult(cleanInput, metadata, capabilities);
+    setSourcePreview(result);
+    notify(hasSourceMetadata(result.metadata)
+      ? 'Джеро прочитав публічний профіль і зібрав production preview.'
+      : 'Джеро зібрав preview з опису.');
+  };
+
   const connectFacebook = async () => {
     try {
       const response = await authFetch(`${API_BASE}/auth/meta/start?workspaceId=${workspaceId}`);
@@ -3863,41 +5147,128 @@ function DataSources({ sources, notify, workspaceId }) {
   return (
     <section className="page">
       <PageTitle
-        title="Налаштування"
-        subtitle="Оберіть профіль бізнесу та перевірте підключення сервісів."
+        title="Джерела"
+        subtitle="Додай профіль, сайт або короткий опис бізнесу. Джеро збере контекст і перетворить його на план."
       />
       <Tabs
         active={tab}
         onChange={setTab}
         items={[
-          ['profile', 'Профіль бізнесу'],
-          ['api', 'Інтеграції API'],
+          ['sources', 'Sources Hub'],
+          ['profile', 'Памʼять бренда'],
           ['billing', 'Тариф і ліміти'],
         ]}
       />
-      {tab === 'profile' && <AnalysisSetup notify={notify} workspaceId={workspaceId} />}
-      {tab === 'api' && (
-        <div className="integration-choice-grid">
-          <article className="integration-choice-card">
-            <div className="integration-choice-icon"><CircleCheck size={22} /></div>
+      {tab === 'sources' && (
+        <div className="sources-hub">
+          <div className="sources-command">
             <div>
-              <small>Creator / Business</small>
-              <h3>Instagram</h3>
-              <p>Підключення Creator або Business акаунту для автопостингу та AI Direct.</p>
+              <small>Quick source scan</small>
+              <h2>Додай Instagram, TikTok, Shorts, сайт або brief</h2>
+              <p>Джеро спробує прочитати відкритий контекст, визначить нішу, збере першу генерацію і відкриє це в Studio.</p>
             </div>
-            <button className="dark" type="button" onClick={connectFacebook}>Підключити через Facebook</button>
-          </article>
-          <article className="integration-choice-card muted">
-            <div className="integration-choice-icon"><Radio size={22} /></div>
-            <div>
-              <small>Coming Soon</small>
-              <h3>TikTok</h3>
-              <p>Підключення TikTok акаунту зʼявиться після завершення review та стабілізації API-доступу.</p>
+            <div className="source-scan-form">
+              <textarea
+                value={sourceInput}
+                onChange={(event) => setSourceInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') buildSourcePreview();
+                }}
+                placeholder="https://www.instagram.com/wowbody_app/ або коротко: бʼюті-студія, манікюр, запис через Direct..."
+                rows={4}
+              />
+              <div>
+                <button className="dark" type="button" onClick={buildSourcePreview} disabled={isScanning}>
+                  <Sparkles size={16} /> {isScanning ? 'Скануємо...' : 'Проаналізувати джерело'}
+                </button>
+                {sourceError && <span>{sourceError}</span>}
+              </div>
             </div>
-            <button type="button" disabled>Coming Soon</button>
-          </article>
+          </div>
+
+          <div className="source-type-grid">
+            {sourceTypes.map(([title, status, text, tone]) => (
+              <article className="source-type-card" key={title}>
+                <div>
+                  <em data-source={tone}>{status}</em>
+                  <h3>{title}</h3>
+                </div>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+
+          {sourcePreview && (
+            <article className="source-preview-result">
+              <div className="source-preview-head">
+                <div>
+                  <small>Brand Scan</small>
+                  <h3>{sourcePreview.title}</h3>
+                </div>
+                <button className="dark" type="button" onClick={() => onOpenBrandScan?.(sourcePreview)}>
+                  <Wand2 size={16} /> Відкрити в Studio
+                </button>
+              </div>
+              <div className="scan-source">
+                <span>Джерело</span>
+                <strong>{sourcePreview.source}</strong>
+                <em data-source={sourcePreview.sourceTone}>{sourcePreview.sourceType}</em>
+              </div>
+              {hasSourceMetadata(sourcePreview.metadata) && (
+                <div className="scan-public-meta">
+                  <span>Профіль</span>
+                  <strong>{sourcePreview.metadata.handle}</strong>
+                  <p>{sourcePreview.metadata.title || sourcePreview.metadata.description}</p>
+                  <div>
+                    {metadataStatChips(sourcePreview.metadata).map((chip) => <b key={chip}>{chip}</b>)}
+                  </div>
+                </div>
+              )}
+              <div className="scan-niche-row">
+                <strong>{sourcePreview.label}</strong>
+                {sourcePreview.ideas.map((idea) => <span key={idea}>{idea}</span>)}
+              </div>
+              {sourcePreview.example && (
+                <div className="scan-example-block">
+                  <div className="scan-example-head">
+                    <small>Перша генерація</small>
+                    <strong>{sourcePreview.example.title}</strong>
+                  </div>
+                  <div className="scan-example-hook">
+                    <span>Hook</span>
+                    <p>{sourcePreview.example.hook}</p>
+                  </div>
+                  <div className="scan-example-script">
+                    {sourcePreview.example.script.map(([time, text]) => (
+                      <span key={time}><b>{time}</b>{text}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </article>
+          )}
+
+          <div className="sources-bottom-grid">
+            <article className="source-api-roadmap">
+              <small>Connected sources</small>
+              <h3>{connectedSources.length ? 'Активні джерела' : 'Поки без підключених джерел'}</h3>
+              {connectedSources.length ? (
+                <div className="connected-source-list">
+                  {connectedSources.map((source) => (
+                    <span key={source.id || source.label}>
+                      <strong>{source.label || source.handle || source.url}</strong>
+                      <em>{source.type || 'source'}</em>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p>Це нормально для старту. Додай профіль, сайт або короткий опис, щоб зібрати перший контекст бренду.</p>
+              )}
+            </article>
+          </div>
         </div>
       )}
+      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
     </section>
   );

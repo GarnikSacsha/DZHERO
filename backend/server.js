@@ -24,9 +24,10 @@ const PAYMENT_CARD_HOLDER = process.env.PAYMENT_CARD_HOLDER || '';
 const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
 const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
-const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true';
+const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+const OAUTH_STATE_TTL_MS = Number(process.env.OAUTH_STATE_TTL_MINUTES || 10) * 60 * 1000;
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -34,6 +35,14 @@ const META_APP_ID = process.env.META_APP_ID || '';
 const META_APP_SECRET = process.env.META_APP_SECRET || '';
 const META_REDIRECT_URI = process.env.META_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/meta/callback`;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://127.0.0.1:5173';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/callback/google`;
+const GOOGLE_AUTH_BASE_URL = process.env.GOOGLE_AUTH_BASE_URL || 'https://accounts.google.com/o/oauth2/v2/auth';
+const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo';
+const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID || META_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || META_APP_SECRET;
 const INSTAGRAM_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/instagram/callback`;
@@ -66,8 +75,27 @@ const PLAN_CATALOG = [
       workspaces: 1,
       teamMembers: 1,
       instagramAccounts: 0,
+      brandBrainSaves: 1,
+      contentPlanPosts: 7,
     },
     features: ['demo_workspace', 'mock_market_data', 'agent_chat_limited', 'manual_reel_import'],
+  },
+  {
+    id: 'trial',
+    name: 'Free Trial',
+    billingPeriod: '3 days',
+    priceUah: 0,
+    limits: {
+      agentChat: 5,
+      reelImports: 3,
+      competitors: 2,
+      workspaces: 1,
+      teamMembers: 1,
+      instagramAccounts: 0,
+      brandBrainSaves: 1,
+      contentPlanPosts: 7,
+    },
+    features: ['guest_preview', 'brand_scan_trial', 'brand_brain_once', 'studio_drafts_limited'],
   },
   {
     id: 'starter',
@@ -81,6 +109,8 @@ const PLAN_CATALOG = [
       workspaces: 1,
       teamMembers: 1,
       instagramAccounts: 1,
+      brandBrainSaves: 10,
+      contentPlanPosts: 100,
     },
     features: ['brand_brain', 'assistant', 'remix_studio', 'content_plan', 'instagram_login'],
   },
@@ -91,13 +121,15 @@ const PLAN_CATALOG = [
     priceUah: 1490,
     limits: {
       agentChat: 600,
-      reelImports: 180,
-      competitors: 20,
+      reelImports: 250,
+      competitors: 30,
       workspaces: 3,
-      teamMembers: 5,
+      teamMembers: 1,
       instagramAccounts: 3,
+      brandBrainSaves: 150,
+      contentPlanPosts: 500,
     },
-    features: ['everything_starter', 'team', 'ai_direct', 'exports', 'sync_queue'],
+    features: ['everything_starter', 'weekly_batches', 'deep_brand_memory', 'content_notes', 'ai_direct', 'exports', 'sync_queue'],
   },
   {
     id: 'agency',
@@ -109,22 +141,49 @@ const PLAN_CATALOG = [
       reelImports: 500,
       competitors: 50,
       workspaces: 10,
-      teamMembers: 20,
+      teamMembers: 1,
       instagramAccounts: 10,
+      brandBrainSaves: 500,
+      contentPlanPosts: 2000,
     },
-    features: ['everything_pro', 'team_full_access', 'ai_direct_unlimited', 'multi_client_workspaces', 'approval_flow'],
+    features: ['everything_pro', 'multi_client_workspaces', 'ai_direct_unlimited', 'approval_flow', 'priority_support'],
   },
 ];
+
+const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'Tik - Tok', 'Video', 'Stories'];
+const CONTENT_FORMAT_ALIASES = {
+  'short-form': 'Video',
+  shortform: 'Video',
+  reel: 'Reels',
+  reels: 'Reels',
+  story: 'Stories',
+  stories: 'Stories',
+  tiktok: 'Tik - Tok',
+  'tik tok': 'Tik - Tok',
+  'tik-tok': 'Tik - Tok',
+  'tik - tok': 'Tik - Tok',
+  shorts: 'Shorts',
+  'youtube shorts': 'Shorts',
+  youtube: 'Shorts',
+  carousel: 'Post',
+  email: 'Post',
+  note: 'Post',
+  post: 'Post',
+  video: 'Video',
+};
 
 const USAGE_METRICS = {
   agentChat: 'agent_chat',
   reelImports: 'reel_imports',
   competitors: 'competitors',
+  brandBrainSaves: 'brand_brain_saves',
 };
 
 const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
+  'http://127.0.0.1:5174',
   'http://localhost:5173',
+  'http://localhost:5174',
   'https://dzhero.com.ua',
   'https://insta-producer-production.up.railway.app',
   CLIENT_URL,
@@ -133,7 +192,20 @@ const allowedOrigins = new Set([
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      baseUri: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+      fontSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'", ...Array.from(allowedOrigins), 'https://www.googleapis.com'],
+      formAction: ["'self'"],
+    },
+  } : false,
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -170,10 +242,24 @@ const expensiveLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const publicPreviewDailyLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: Number(process.env.PUBLIC_PREVIEW_DAILY_LIMIT || 10),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'preview_daily_limit_reached',
+    message: 'Daily public preview limit reached. Sign in to continue with your plan limits.',
+  },
+});
+
 app.use('/api', apiLimiter);
+app.use('/api', verifyTrustedWriteRequest);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/email', authLimiter);
 app.use('/api/auth/demo', authLimiter);
+app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
@@ -291,14 +377,24 @@ function createId(prefix) {
 
 function normalizeContentPlanPosts(posts) {
   if (!Array.isArray(posts)) return [];
-  return posts.slice(0, 180).map((post, index) => ({
+  return posts.slice(0, 2000).map((post, index) => ({
     id: String(post?.id || createId('post')).slice(0, 80),
     day: Math.min(31, Math.max(1, Number(post?.day || index + 1))),
     title: String(post?.title || '').trim().slice(0, 180) || 'Untitled post',
-    format: ['Reels', 'Stories', 'Post'].includes(post?.format) ? post.format : 'Reels',
+    format: normalizeContentFormat(post?.format),
     time: /^\d{2}:\d{2}$/.test(String(post?.time || '')) ? post.time : '10:00',
     done: Boolean(post?.done),
+    source: String(post?.source || '').trim().slice(0, 80),
+    sourceKey: String(post?.sourceKey || '').trim().slice(0, 180),
+    dayLabel: String(post?.dayLabel || '').trim().slice(0, 24),
   }));
+}
+
+function normalizeContentFormat(format, fallback = 'Post') {
+  const clean = String(format || '').trim();
+  if (CONTENT_FORMATS.includes(clean)) return clean;
+  const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
+  return CONTENT_FORMAT_ALIASES[normalized] || fallback;
 }
 
 function normalizeEmail(email) {
@@ -327,6 +423,49 @@ function publicUser(user) {
   };
 }
 
+function ensureOAuthUser(db, profile) {
+  const email = normalizeEmail(profile.email);
+  if (!email || !email.includes('@')) {
+    throw new Error('OAuth provider did not return a verified email.');
+  }
+  let user = db.users.find((item) => normalizeEmail(item.email) === email);
+  if (user) {
+    user.name = user.name || profile.name || email.split('@')[0];
+    user.avatarUrl = user.avatarUrl || profile.picture || '';
+    user.oauthProviders = Array.from(new Set([...(user.oauthProviders || []), profile.provider]));
+    user.lastLoginAt = new Date().toISOString();
+    return user;
+  }
+
+  const name = String(profile.name || email.split('@')[0] || 'User').trim();
+  const workspace = {
+    id: createId('ws'),
+    name: `${name} workspace`,
+    owner: name,
+    mode: 'own_business',
+    marketFocus: ['ua', 'us', 'eu', 'global'],
+    createdAt: new Date().toISOString(),
+    brief: {},
+  };
+  user = {
+    id: createId('usr'),
+    name,
+    email,
+    role: 'owner',
+    workspaceId: workspace.id,
+    passwordHash: hashPassword(crypto.randomBytes(18).toString('hex')),
+    oauthProviders: [profile.provider],
+    oauthSubject: profile.sub || null,
+    avatarUrl: profile.picture || '',
+    createdAt: new Date().toISOString(),
+    lastLoginAt: new Date().toISOString(),
+  };
+  db.workspaces.unshift(workspace);
+  db.users.unshift(user);
+  ensureWorkspaceSubscription(db, workspace.id, { planId: 'trial' });
+  return user;
+}
+
 function publicPlan(plan) {
   return {
     id: plan.id,
@@ -347,7 +486,7 @@ function getUsagePeriod(date = new Date()) {
 }
 
 function getDefaultPlanId(workspaceId) {
-  return String(workspaceId || '').startsWith('ws_demo_') ? 'demo' : 'starter';
+  return String(workspaceId || '').startsWith('ws_demo_') ? 'demo' : 'trial';
 }
 
 function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
@@ -356,15 +495,19 @@ function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
   if (existing) return existing;
   const now = new Date();
   const planId = options.planId || getDefaultPlanId(workspaceId);
+  const isDemo = planId === 'demo';
+  const isTrial = planId === 'trial';
+  const trialDays = Number(options.trialDays || 3);
+  const periodDays = isTrial ? trialDays : 30;
   const subscription = {
     id: createId('sub'),
     workspaceId,
     planId,
-    status: planId === 'demo' ? 'demo' : 'trialing',
+    status: isDemo ? 'demo' : isTrial ? 'trialing' : 'active',
     provider: 'manual',
     currentPeriodStart: now.toISOString(),
-    currentPeriodEnd: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-    trialEndsAt: planId === 'demo' ? null : new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    currentPeriodEnd: new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
+    trialEndsAt: isTrial ? new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000).toISOString() : null,
     cancelAtPeriodEnd: false,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -400,18 +543,30 @@ function buildEntitlements(db, workspaceId) {
   const usage = {
     agentChat: getUsageCounter(db, workspaceId, USAGE_METRICS.agentChat, period).value,
     reelImports: getUsageCounter(db, workspaceId, USAGE_METRICS.reelImports, period).value,
+    brandBrainSaves: getUsageCounter(db, workspaceId, USAGE_METRICS.brandBrainSaves, period).value,
     competitors: db.competitors.filter((item) => item.workspaceId === workspaceId).length,
     instagramAccounts: db.instagramAccounts.filter((item) => item.workspaceId === workspaceId).length,
+    contentPlanPosts: normalizeContentPlanPosts(db.workspaces.find((item) => item.id === workspaceId)?.contentPlanPosts || []).length,
   };
   const remaining = {
     agentChat: Math.max(0, plan.limits.agentChat - usage.agentChat),
     reelImports: Math.max(0, plan.limits.reelImports - usage.reelImports),
+    brandBrainSaves: Math.max(0, plan.limits.brandBrainSaves - usage.brandBrainSaves),
     competitors: Math.max(0, plan.limits.competitors - usage.competitors),
     instagramAccounts: Math.max(0, plan.limits.instagramAccounts - usage.instagramAccounts),
+    contentPlanPosts: Math.max(0, plan.limits.contentPlanPosts - usage.contentPlanPosts),
+  };
+  const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
+  const trial = {
+    active: subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
+    expired: subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
+    endsAt: subscription.trialEndsAt,
+    daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (24 * 60 * 60 * 1000))) : null,
   };
   return {
     plan: publicPlan(plan),
     subscription,
+    trial,
     period,
     usage,
     remaining,
@@ -420,6 +575,17 @@ function buildEntitlements(db, workspaceId) {
 
 function assertUsageAvailable(db, workspaceId, usageKey, amount = 1) {
   const entitlements = buildEntitlements(db, workspaceId);
+  if (entitlements.trial.expired) {
+    const error = new Error('trial_expired');
+    error.status = 402;
+    error.payload = {
+      error: 'trial_expired',
+      plan: entitlements.plan,
+      trial: entitlements.trial,
+      message: 'Free Trial has ended. Choose a paid plan to continue.',
+    };
+    throw error;
+  }
   const limit = entitlements.plan.limits[usageKey];
   const used = entitlements.usage[usageKey] || 0;
   if (Number.isFinite(limit) && used + amount > limit) {
@@ -448,7 +614,7 @@ function incrementUsage(db, workspaceId, metric, amount = 1) {
 
 function activateWorkspacePlan(db, workspaceId, planId, options = {}) {
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || plan.id === 'demo') {
+  if (!plan || ['demo', 'trial'].includes(plan.id)) {
     throw new Error('valid_paid_plan_required');
   }
   const now = new Date();
@@ -507,6 +673,52 @@ function parseAllowedSignalUrl(rawUrl) {
   return parsed.toString();
 }
 
+function detectPublicSource(input) {
+  const value = String(input || '').trim();
+  const lower = value.toLowerCase();
+  if (/youtube\.com\/shorts|youtu\.be|youtube\.com/i.test(lower)) {
+    return { label: 'YouTube Shorts', tone: 'shorts' };
+  }
+  if (/tiktok\.com|vm\.tiktok\.com|vt\.tiktok\.com/i.test(lower)) {
+    return { label: 'TikTok', tone: 'tiktok' };
+  }
+  if (/instagram\.com|^@[\w.]+$/i.test(value)) {
+    return { label: 'Instagram', tone: 'instagram' };
+  }
+  if (/https?:\/\/|www\./i.test(lower)) {
+    return { label: 'Website', tone: 'website' };
+  }
+  return { label: 'Опис бізнесу', tone: 'text' };
+}
+
+function normalizePublicSourceUrl(input, sourceTone) {
+  const raw = String(input || '').trim();
+  const withProtocol = raw.startsWith('www.') ? `https://${raw}` : raw;
+  const instagramHandle = raw.match(/^@([a-z0-9._]+)$/i)?.[1];
+  if (instagramHandle || (sourceTone === 'instagram' && /^[a-z0-9._]+$/i.test(raw))) {
+    return `https://www.instagram.com/${instagramHandle || raw.replace(/^@/, '')}/`;
+  }
+  let parsed;
+  try {
+    parsed = new URL(withProtocol);
+  } catch {
+    return null;
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  const hostname = parsed.hostname.toLowerCase();
+  if (
+    hostname === 'localhost'
+    || hostname.endsWith('.local')
+    || /^127\./.test(hostname)
+    || /^10\./.test(hostname)
+    || /^192\.168\./.test(hostname)
+    || /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
+  ) {
+    return null;
+  }
+  return parsed.toString();
+}
+
 function extractMetaContent(html, key) {
   const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const propertyPattern = new RegExp(`<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i');
@@ -517,6 +729,290 @@ function extractMetaContent(html, key) {
 function getInstagramHandleFromMeta(title = '', description = '') {
   const handle = title.match(/@([a-z0-9._]+)/i)?.[1] || description.match(/@([a-z0-9._]+)/i)?.[1];
   return handle ? `@${handle}` : '@instagram.reel';
+}
+
+function getPublicHandleFromMeta(source, url, title = '', description = '') {
+  const fromText = title.match(/@([a-z0-9._]+)/i)?.[1] || description.match(/@([a-z0-9._]+)/i)?.[1];
+  if (fromText) return `@${fromText}`;
+  try {
+    const parsed = new URL(url);
+    if (source.tone === 'instagram' || source.tone === 'tiktok') {
+      const firstPath = parsed.pathname.split('/').filter(Boolean)[0];
+      return firstPath ? `@${firstPath.replace(/^@/, '')}` : parsed.hostname;
+    }
+    return parsed.hostname.replace(/^www\./, '');
+  } catch {
+    return source.label;
+  }
+}
+
+function extractNumberFromDescription(description, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(description || '').match(new RegExp(`([\\d,.]+\\s*[KMB]?)\\s+${escaped}`, 'i'));
+  return match?.[1] || '';
+}
+
+function extractPublicStats(description = '') {
+  return {
+    followers: extractNumberFromDescription(description, 'Followers'),
+    following: extractNumberFromDescription(description, 'Following'),
+    posts: extractNumberFromDescription(description, 'Posts'),
+  };
+}
+
+function formatCompactNumber(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number) || number <= 0) return '';
+  if (number >= 1_000_000_000) return `${(number / 1_000_000_000).toFixed(number >= 10_000_000_000 ? 0 : 1).replace(/\.0$/, '')}B`;
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(number >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(number >= 10_000 ? 0 : 1).replace(/\.0$/, '')}K`;
+  return String(number);
+}
+
+function parseYouTubeInput(rawInput) {
+  const raw = String(rawInput || '').trim();
+  const withProtocol = raw.startsWith('www.') ? `https://${raw}` : raw;
+  try {
+    const url = new URL(withProtocol);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (host === 'youtu.be' && parts[0]) return { type: 'video', videoId: parts[0], url: url.toString() };
+    if (!['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(host)) return null;
+    if (url.searchParams.get('v')) return { type: 'video', videoId: url.searchParams.get('v'), url: url.toString() };
+    if (['shorts', 'embed', 'live'].includes(parts[0]) && parts[1]) return { type: 'video', videoId: parts[1], url: url.toString() };
+    if (parts[0] === 'channel' && parts[1]) return { type: 'channel', channelId: parts[1], url: url.toString() };
+    if (parts[0]?.startsWith('@')) return { type: 'handle', handle: parts[0].slice(1), url: url.toString() };
+    if (['c', 'user'].includes(parts[0]) && parts[1]) return { type: 'query', query: parts[1], url: url.toString() };
+    if (parts[0]) return { type: 'query', query: parts[0], url: url.toString() };
+  } catch {
+    const handle = raw.match(/^@([a-z0-9._-]+)$/i)?.[1];
+    if (handle) return { type: 'handle', handle, url: `https://www.youtube.com/@${handle}` };
+  }
+  return null;
+}
+
+async function fetchYouTubeApi(resource, params) {
+  const url = new URL(`https://www.googleapis.com/youtube/v3/${resource}`);
+  Object.entries({ ...params, key: YOUTUBE_API_KEY }).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, value);
+  });
+  const response = await fetch(url, {
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+    },
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.error?.message || `YouTube API HTTP ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
+    error.payload = data;
+    throw error;
+  }
+  return data;
+}
+
+function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
+  const snippet = video?.snippet || {};
+  const stats = video?.statistics || {};
+  const channelSnippet = channel?.snippet || {};
+  const channelStats = channel?.statistics || {};
+  const title = snippet.title || '';
+  const description = snippet.description || '';
+  const channelTitle = snippet.channelTitle || channelSnippet.title || 'YouTube channel';
+  const customUrl = channelSnippet.customUrl || '';
+  const handle = customUrl?.startsWith('@') ? customUrl : channelTitle;
+  const publishedAt = snippet.publishedAt || '';
+  const analysisText = [
+    title,
+    description,
+    channelTitle,
+    stats.viewCount && `${formatCompactNumber(stats.viewCount)} views`,
+    stats.likeCount && `${formatCompactNumber(stats.likeCount)} likes`,
+    channelStats.subscriberCount && `${formatCompactNumber(channelStats.subscriberCount)} subscribers`,
+  ].filter(Boolean).join(' ');
+  return {
+    source: { label: 'YouTube Shorts', tone: 'shorts' },
+    input: String(rawInput || '').trim(),
+    url: video?.id ? `https://www.youtube.com/watch?v=${video.id}` : String(rawInput || '').trim(),
+    title,
+    description,
+    handle,
+    image: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || channelSnippet.thumbnails?.high?.url,
+    publishedAt,
+    stats: {
+      views: formatCompactNumber(stats.viewCount),
+      likes: formatCompactNumber(stats.likeCount),
+      comments: formatCompactNumber(stats.commentCount),
+      subscribers: formatCompactNumber(channelStats.subscriberCount),
+      videos: formatCompactNumber(channelStats.videoCount),
+    },
+    youtube: {
+      videoId: video?.id || '',
+      channelId: snippet.channelId || channel?.id || '',
+      channelTitle,
+      duration: video?.contentDetails?.duration || '',
+      categoryId: snippet.categoryId || '',
+      tags: Array.isArray(snippet.tags) ? snippet.tags.slice(0, 12) : [],
+    },
+    sourceStatus: 'youtube_api',
+    analysisText,
+  };
+}
+
+function mapYouTubeChannelMetadata(channel, rawInput = '') {
+  const snippet = channel?.snippet || {};
+  const stats = channel?.statistics || {};
+  const title = snippet.title || 'YouTube channel';
+  const description = snippet.description || '';
+  const customUrl = snippet.customUrl || '';
+  const handle = customUrl?.startsWith('@') ? customUrl : title;
+  return {
+    source: { label: 'YouTube Channel', tone: 'shorts' },
+    input: String(rawInput || '').trim(),
+    url: channel?.id ? `https://www.youtube.com/channel/${channel.id}` : String(rawInput || '').trim(),
+    title,
+    description,
+    handle,
+    image: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url,
+    publishedAt: snippet.publishedAt || '',
+    stats: {
+      subscribers: formatCompactNumber(stats.subscriberCount),
+      views: formatCompactNumber(stats.viewCount),
+      videos: formatCompactNumber(stats.videoCount),
+    },
+    youtube: {
+      channelId: channel?.id || '',
+      channelTitle: title,
+      customUrl,
+      country: snippet.country || '',
+    },
+    sourceStatus: 'youtube_api',
+    analysisText: [title, description, `${formatCompactNumber(stats.subscriberCount)} subscribers`, `${formatCompactNumber(stats.videoCount)} videos`].filter(Boolean).join(' '),
+  };
+}
+
+async function fetchYouTubeMetadata(rawInput) {
+  if (!YOUTUBE_API_KEY) return null;
+  const parsed = parseYouTubeInput(rawInput);
+  if (!parsed) return null;
+
+  if (parsed.type === 'video') {
+    const videoData = await fetchYouTubeApi('videos', {
+      part: 'snippet,statistics,contentDetails',
+      id: parsed.videoId,
+      maxResults: '1',
+    });
+    const video = videoData.items?.[0];
+    if (!video) return null;
+    let channel = null;
+    if (video.snippet?.channelId) {
+      const channelData = await fetchYouTubeApi('channels', {
+        part: 'snippet,statistics',
+        id: video.snippet.channelId,
+        maxResults: '1',
+      });
+      channel = channelData.items?.[0] || null;
+    }
+    return mapYouTubeVideoMetadata(video, channel, rawInput);
+  }
+
+  if (parsed.type === 'channel') {
+    const channelData = await fetchYouTubeApi('channels', {
+      part: 'snippet,statistics',
+      id: parsed.channelId,
+      maxResults: '1',
+    });
+    const channel = channelData.items?.[0];
+    return channel ? mapYouTubeChannelMetadata(channel, rawInput) : null;
+  }
+
+  const query = parsed.type === 'handle' ? `@${parsed.handle}` : parsed.query;
+  const searchData = await fetchYouTubeApi('search', {
+    part: 'snippet',
+    q: query,
+    type: 'channel',
+    maxResults: '1',
+  });
+  const channelId = searchData.items?.[0]?.snippet?.channelId;
+  if (!channelId) return null;
+  const channelData = await fetchYouTubeApi('channels', {
+    part: 'snippet,statistics',
+    id: channelId,
+    maxResults: '1',
+  });
+  const channel = channelData.items?.[0];
+  return channel ? mapYouTubeChannelMetadata(channel, rawInput) : null;
+}
+
+async function fetchPublicSourceMetadata(rawInput) {
+  const source = detectPublicSource(rawInput);
+  const fallback = {
+    source,
+    input: String(rawInput || '').trim(),
+    url: '',
+    title: '',
+    description: '',
+    handle: source.label,
+    stats: {},
+    sourceStatus: source.tone === 'text' ? 'manual_text' : 'url_only',
+    analysisText: String(rawInput || '').trim(),
+  };
+  if (source.tone === 'text') return fallback;
+
+  const url = normalizePublicSourceUrl(rawInput, source.tone);
+  if (!url) return { ...fallback, sourceStatus: 'invalid_public_url' };
+
+  if (source.tone === 'shorts') {
+    try {
+      const youtubeMetadata = await fetchYouTubeMetadata(rawInput);
+      if (youtubeMetadata) return youtubeMetadata;
+    } catch (error) {
+      fallback.youtubeError = error.message;
+    }
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/1.0; +https://dzhero.com.ua)',
+      },
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      return { ...fallback, url, sourceStatus: `metadata_unavailable_${response.status}` };
+    }
+
+    const html = await response.text();
+    const rawTitle = extractMetaContent(html, 'og:title') || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
+    const rawDescription = extractMetaContent(html, 'og:description') || extractMetaContent(html, 'description') || '';
+    const title = decodeHtml(rawTitle)
+      .replace(/\s*•\s*Instagram.*$/i, '')
+      .replace(/\s*on Instagram.*$/i, '')
+      .replace(/\s*-\s*TikTok.*$/i, '')
+      .trim();
+    const description = decodeHtml(rawDescription);
+    const stats = extractPublicStats(description);
+    const handle = getPublicHandleFromMeta(source, url, rawTitle, rawDescription);
+    const image = extractMetaContent(html, 'og:image');
+    const analysisText = [title, description, handle, rawInput].filter(Boolean).join(' ');
+
+    return {
+      ...fallback,
+      url,
+      title,
+      description,
+      handle,
+      image,
+      stats,
+      sourceStatus: title || description ? 'public_metadata' : 'url_only',
+      analysisText,
+    };
+  } catch (error) {
+    return { ...fallback, url, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
+  }
 }
 
 async function fetchPublicReelMetadata(reelUrl) {
@@ -640,6 +1136,35 @@ function getAuthToken(req) {
   return getBearerToken(req) || parseCookies(req)[SESSION_COOKIE_NAME] || '';
 }
 
+function isTrustedRequestUrl(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return allowedOrigins.has(`${url.protocol}//${url.host}`);
+  } catch {
+    return false;
+  }
+}
+
+function verifyTrustedWriteRequest(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    next();
+    return;
+  }
+  if (getBearerToken(req)) {
+    next();
+    return;
+  }
+  const origin = String(req.headers.origin || '');
+  const referer = String(req.headers.referer || '');
+  const trusted = (origin && allowedOrigins.has(origin)) || (!origin && isTrustedRequestUrl(referer));
+  if (trusted || (!origin && !referer && process.env.NODE_ENV !== 'production')) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: 'untrusted_origin', message: 'Write requests must originate from Dzhero.' });
+}
+
 function getAdminToken(req) {
   return String(req.headers['x-admin-token'] || '').trim();
 }
@@ -681,6 +1206,38 @@ function canAccessWorkspace(user, workspaceId) {
   return false;
 }
 
+function pruneOAuthStates(db) {
+  db.metaStates ||= [];
+  const cutoff = Date.now() - OAUTH_STATE_TTL_MS;
+  db.metaStates = db.metaStates
+    .filter((item) => !item.usedAt && (!item.createdAt || Date.parse(item.createdAt) >= cutoff))
+    .slice(0, 80);
+}
+
+function createOAuthState(db, provider, payload = {}) {
+  pruneOAuthStates(db);
+  const state = crypto.randomBytes(24).toString('hex');
+  db.metaStates.unshift({
+    state,
+    provider,
+    createdAt: new Date().toISOString(),
+    usedAt: null,
+    ...payload,
+  });
+  return state;
+}
+
+function findValidOAuthState(db, state, provider) {
+  pruneOAuthStates(db);
+  const record = db.metaStates.find((item) => (
+    item.state === state
+    && item.provider === provider
+    && !item.usedAt
+    && Date.parse(item.createdAt || 0) + OAUTH_STATE_TTL_MS > Date.now()
+  ));
+  return record || null;
+}
+
 function buildMetaAuthUrl(state) {
   const params = new URLSearchParams({
     client_id: META_APP_ID,
@@ -711,6 +1268,22 @@ function buildInstagramAuthUrl(state) {
   };
 }
 
+function buildGoogleAuthUrl(state) {
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: GOOGLE_SCOPES,
+    state,
+    access_type: 'offline',
+    prompt: 'select_account',
+  });
+  return {
+    authUrl: `${GOOGLE_AUTH_BASE_URL}?${params.toString()}`,
+    state,
+  };
+}
+
 async function fetchMetaJson(url, options) {
   if (typeof fetch !== 'function') {
     throw new Error('Node.js fetch is required for Meta API calls. Use Node 18+.');
@@ -721,6 +1294,21 @@ async function fetchMetaJson(url, options) {
     const message = data?.error?.message || `Meta API HTTP ${response.status}`;
     const error = new Error(message);
     error.meta = data;
+    throw error;
+  }
+  return data;
+}
+
+async function fetchGoogleJson(url, options) {
+  if (typeof fetch !== 'function') {
+    throw new Error('Node.js fetch is required for Google OAuth. Use Node 18+.');
+  }
+  const response = await fetch(url, options);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = data?.error_description || data?.error || `Google OAuth HTTP ${response.status}`;
+    const error = new Error(message);
+    error.google = data;
     throw error;
   }
   return data;
@@ -751,12 +1339,33 @@ async function exchangeInstagramCode(code) {
   });
 }
 
+async function exchangeGoogleCode(code) {
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    grant_type: 'authorization_code',
+    code,
+  });
+  return fetchGoogleJson(GOOGLE_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+}
+
 async function getInstagramProfile(accessToken) {
   const params = new URLSearchParams({
     fields: 'id,user_id,username,account_type,profile_picture_url',
     access_token: accessToken,
   });
   return fetchMetaJson(`${INSTAGRAM_GRAPH_BASE_URL}/me?${params.toString()}`);
+}
+
+async function getGoogleProfile(accessToken) {
+  return fetchGoogleJson(GOOGLE_USERINFO_URL, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 async function getMetaPages(accessToken) {
@@ -850,6 +1459,11 @@ function getAiProviderStatus() {
       configured: Boolean(INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET),
       status: INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET ? 'ready' : 'configuration_required',
       requiredEnv: ['INSTAGRAM_APP_ID', 'INSTAGRAM_APP_SECRET', 'INSTAGRAM_REDIRECT_URI'],
+    },
+    youtube: {
+      configured: Boolean(YOUTUBE_API_KEY),
+      status: YOUTUBE_API_KEY ? 'ready' : 'preview_only',
+      requiredEnv: ['YOUTUBE_API_KEY'],
     },
     textAgent: {
       configured: Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY),
@@ -971,6 +1585,42 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+app.post('/api/brand-scan/preview', async (req, res, next) => {
+  try {
+    const input = String(req.body.input || '').trim();
+    if (!input) {
+      res.status(400).json({ error: 'input_required', message: 'Paste a public source URL or describe the business.' });
+      return;
+    }
+    if (input.length > 2000) {
+      res.status(413).json({ error: 'input_too_large', message: 'Brand Scan input is too long.' });
+      return;
+    }
+    const metadata = await fetchPublicSourceMetadata(input);
+    res.json({
+      input,
+      source: metadata.source,
+      metadata,
+      capabilities: {
+        mode: metadata.sourceStatus === 'youtube_api'
+          ? 'youtube_data_api'
+          : metadata.sourceStatus === 'public_metadata'
+            ? 'public_profile_preview'
+            : 'manual_preview',
+        officialApi: metadata.sourceStatus === 'youtube_api',
+        statsAreOfficial: metadata.sourceStatus === 'youtube_api',
+        note: metadata.sourceStatus === 'public_metadata'
+          ? 'Public page metadata was used. No private account data, official API metrics, or post-level analytics were accessed.'
+          : metadata.sourceStatus === 'youtube_api'
+            ? 'YouTube Data API returned public video/channel metadata. No private account access was requested.'
+          : 'The platform did not expose usable public metadata, so Dzhero used the pasted text/source as manual context.',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.post('/api/data-deletion/request', async (req, res) => {
   const email = normalizeEmail(req.body.email);
   const instagramHandle = String(req.body.instagramHandle || '').trim();
@@ -1053,15 +1703,16 @@ app.get('/api/auth/meta/start', async (req, res) => {
     return;
   }
   const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
   const workspaceId = req.query.workspaceId || 'ws_demo_ua';
-  if (!requireWorkspace(db, workspaceId, res)) return;
-  const state = crypto.randomBytes(16).toString('hex');
-  db.metaStates.unshift({
-    state,
-    workspaceId,
-    createdAt: new Date().toISOString(),
-    usedAt: null,
-  });
+  const workspace = requireWorkspace(db, workspaceId, res);
+  if (!workspace) return;
+  if (!canAccessWorkspace(user, workspace.id)) {
+    res.status(403).json({ error: 'workspace_forbidden' });
+    return;
+  }
+  const state = createOAuthState(db, 'meta', { workspaceId, userId: user.id });
   await writeDb(db);
   const { authUrl } = buildMetaAuthUrl(state);
   res.json({ authUrl, state, redirectUri: META_REDIRECT_URI, scopes: META_SCOPES.split(',') });
@@ -1080,19 +1731,36 @@ app.get('/api/auth/instagram/start', async (req, res) => {
     return;
   }
   const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
   const workspaceId = req.query.workspaceId || 'ws_demo_ua';
-  if (!requireWorkspace(db, workspaceId, res)) return;
-  const state = crypto.randomBytes(16).toString('hex');
-  db.metaStates.unshift({
-    state,
-    workspaceId,
-    provider: 'instagram',
-    createdAt: new Date().toISOString(),
-    usedAt: null,
-  });
+  const workspace = requireWorkspace(db, workspaceId, res);
+  if (!workspace) return;
+  if (!canAccessWorkspace(user, workspace.id)) {
+    res.status(403).json({ error: 'workspace_forbidden' });
+    return;
+  }
+  const state = createOAuthState(db, 'instagram', { workspaceId, userId: user.id });
   await writeDb(db);
   const { authUrl } = buildInstagramAuthUrl(state);
   res.json({ authUrl, state, redirectUri: INSTAGRAM_REDIRECT_URI, scopes: INSTAGRAM_SCOPES.split(',') });
+});
+
+app.get('/api/auth/google/start', async (req, res) => {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.status(501).json({
+      error: 'google_not_configured',
+      message: 'Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and GOOGLE_REDIRECT_URI in .env before using Google Login.',
+      redirectUri: GOOGLE_REDIRECT_URI,
+      requiredEnv: ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI'],
+    });
+    return;
+  }
+  const db = await readDb();
+  const state = createOAuthState(db, 'google');
+  await writeDb(db);
+  const { authUrl } = buildGoogleAuthUrl(state);
+  res.json({ authUrl, state, redirectUri: GOOGLE_REDIRECT_URI, scopes: GOOGLE_SCOPES.split(' ') });
 });
 
 app.get('/api/auth/meta/callback', async (req, res) => {
@@ -1110,8 +1778,12 @@ app.get('/api/auth/meta/callback', async (req, res) => {
   }
   try {
     const db = await readDb();
-    const stateRecord = db.metaStates.find((item) => item.state === req.query.state);
-    const workspaceId = stateRecord?.workspaceId || 'ws_demo_ua';
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'instagram');
+    if (!stateRecord) {
+      res.status(400).send('Instagram Login state is invalid or expired.');
+      return;
+    }
+    const workspaceId = stateRecord.workspaceId;
     const tokenResult = await exchangeMetaCode(String(req.query.code));
     const pages = await getMetaPages(tokenResult.access_token);
     const connectedAccounts = pages
@@ -1135,7 +1807,7 @@ app.get('/api/auth/meta/callback', async (req, res) => {
 
     db.instagramAccounts = db.instagramAccounts.filter((account) => account.workspaceId !== workspaceId);
     db.instagramAccounts.unshift(...connectedAccounts);
-    if (stateRecord) stateRecord.usedAt = new Date().toISOString();
+    stateRecord.usedAt = new Date().toISOString();
     createSyncJob(db, workspaceId, 'meta_account_discovery', {
       pagesFound: pages.length,
       instagramAccountsFound: connectedAccounts.length,
@@ -1145,6 +1817,50 @@ app.get('/api/auth/meta/callback', async (req, res) => {
   } catch (err) {
     console.error('[MetaLogin]', err);
     res.status(502).send(`Meta Login token exchange failed: ${err.message}`);
+  }
+});
+
+app.get('/api/auth/callback/google', async (req, res) => {
+  if (req.query.error) {
+    res.status(400).send(`Google Login error: ${req.query.error_description || req.query.error}`);
+    return;
+  }
+  if (!req.query.code) {
+    res.status(400).send('Google Login callback received without code.');
+    return;
+  }
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    res.status(501).send('Google Login is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+    return;
+  }
+  try {
+    const db = await readDb();
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'google');
+    if (!stateRecord) {
+      res.status(400).send('Google Login state is invalid or expired.');
+      return;
+    }
+    const tokenResult = await exchangeGoogleCode(String(req.query.code));
+    const profile = await getGoogleProfile(tokenResult.access_token);
+    if (profile.email_verified === false) {
+      res.status(403).send('Google account email is not verified.');
+      return;
+    }
+    const user = ensureOAuthUser(db, {
+      provider: 'google',
+      sub: profile.sub,
+      email: profile.email,
+      name: profile.name,
+      picture: profile.picture,
+    });
+    stateRecord.usedAt = new Date().toISOString();
+    const session = createSession(db, user.id);
+    await writeDb(db);
+    setSessionCookie(res, session.token);
+    res.redirect(`${CLIENT_URL}/?auth=google`);
+  } catch (err) {
+    console.error('[GoogleLogin]', err);
+    res.status(502).send(`Google Login token exchange failed: ${err.message}`);
   }
 });
 
@@ -1163,8 +1879,12 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
   }
   try {
     const db = await readDb();
-    const stateRecord = db.metaStates.find((item) => item.state === req.query.state);
-    const workspaceId = stateRecord?.workspaceId || 'ws_demo_ua';
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'meta');
+    if (!stateRecord) {
+      res.status(400).send('Meta Login state is invalid or expired.');
+      return;
+    }
+    const workspaceId = stateRecord.workspaceId;
     const tokenResult = await exchangeInstagramCode(String(req.query.code));
     const profile = await getInstagramProfile(tokenResult.access_token).catch(() => ({
       id: tokenResult.user_id,
@@ -1196,7 +1916,7 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
       account.workspaceId !== workspaceId || account.instagramId !== connectedAccount.instagramId
     ));
     db.instagramAccounts.unshift(connectedAccount);
-    if (stateRecord) stateRecord.usedAt = new Date().toISOString();
+    stateRecord.usedAt = new Date().toISOString();
     createSyncJob(db, workspaceId, 'instagram_account_connected', {
       provider: 'instagram_login',
       accountType: connectedAccount.accountType,
@@ -1274,7 +1994,7 @@ app.post('/api/auth/register', async (req, res) => {
   };
   db.workspaces.unshift(workspace);
   db.users.unshift(user);
-  ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
+  ensureWorkspaceSubscription(db, workspace.id, { planId: 'trial' });
   const session = createSession(db, user.id);
   await writeDb(db);
   setSessionCookie(res, session.token);
@@ -1294,6 +2014,45 @@ app.post('/api/auth/login', async (req, res) => {
   await writeDb(db);
   setSessionCookie(res, session.token);
   res.json({ user: publicUser(user), token: session.token });
+});
+
+app.post('/api/auth/email', async (req, res) => {
+  const db = await readDb();
+  const email = normalizeEmail(req.body.email);
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'valid_email_required' });
+    return;
+  }
+  let user = db.users.find((item) => item.email === email);
+  if (!user) {
+    const name = email.split('@')[0] || 'User';
+    const workspace = {
+      id: createId('ws'),
+      name: `${name} workspace`,
+      owner: name,
+      mode: 'own_business',
+      marketFocus: ['ua', 'us', 'eu', 'global'],
+      createdAt: new Date().toISOString(),
+      brief: {},
+    };
+    user = {
+      id: createId('usr'),
+      name,
+      email,
+      role: 'owner',
+      workspaceId: workspace.id,
+      passwordHash: hashPassword(crypto.randomBytes(18).toString('hex')),
+      authProvider: 'email_trial',
+      createdAt: new Date().toISOString(),
+    };
+    db.workspaces.unshift(workspace);
+    db.users.unshift(user);
+  }
+  ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'trial' });
+  const session = createSession(db, user.id);
+  await writeDb(db);
+  setSessionCookie(res, session.token);
+  res.status(user.authProvider === 'email_trial' ? 201 : 200).json({ user: publicUser(user), token: session.token });
 });
 
 app.post('/api/auth/demo', async (req, res) => {
@@ -1396,7 +2155,7 @@ app.post('/api/workspaces', async (req, res) => {
   };
   db.workspaces.unshift(workspace);
   user.workspaceIds = Array.from(new Set([...(user.workspaceIds || []), workspace.id]));
-  ensureWorkspaceSubscription(db, workspace.id, { planId: 'starter' });
+  ensureWorkspaceSubscription(db, workspace.id, { planId: 'trial' });
   await writeDb(db);
   res.status(201).json({ workspace });
 });
@@ -1415,7 +2174,7 @@ app.get('/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
   if (!workspace) return;
   const planId = String(req.query.planId || '').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || plan.id === 'demo') {
+  if (!plan || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -1448,7 +2207,7 @@ app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) =>
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const planId = String(req.body.planId || '').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || plan.id === 'demo') {
+  if (!plan || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -1475,7 +2234,7 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const planId = String(req.body.planId || 'pro').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || plan.id === 'demo') {
+  if (!plan || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -1502,7 +2261,7 @@ app.post('/api/admin/testers/grant', async (req, res) => {
   }
   const planId = String(req.body.planId || 'agency').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || plan.id === 'demo') {
+  if (!plan || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -1563,13 +2322,15 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves');
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
     updatedAt: new Date().toISOString(),
   };
+  incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
   await writeDb(db);
-  res.json({ brief: workspace.brief });
+  res.json({ brief: workspace.brief, billing: buildEntitlements(db, req.params.workspaceId) });
 });
 
 app.get('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
@@ -1583,10 +2344,26 @@ app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  workspace.contentPlanPosts = normalizeContentPlanPosts(req.body.posts);
+  const nextPosts = normalizeContentPlanPosts(req.body.posts);
+  const billing = buildEntitlements(db, req.params.workspaceId);
+  const limit = billing.plan.limits.contentPlanPosts;
+  if (Number.isFinite(limit) && nextPosts.length > limit) {
+    res.status(402).json({
+      error: 'plan_limit_reached',
+      usageKey: 'contentPlanPosts',
+      limit,
+      used: billing.usage.contentPlanPosts,
+      requested: nextPosts.length,
+      remaining: billing.remaining.contentPlanPosts,
+      plan: billing.plan,
+      message: 'Content plan post limit reached for this plan.',
+    });
+    return;
+  }
+  workspace.contentPlanPosts = nextPosts;
   workspace.contentPlanUpdatedAt = new Date().toISOString();
   await writeDb(db);
-  res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt });
+  res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt, billing: buildEntitlements(db, req.params.workspaceId) });
 });
 
 app.get('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
@@ -2011,6 +2788,7 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves');
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
@@ -2024,8 +2802,9 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   db.aiMemory.unshift(memory);
+  incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
   await writeDb(db);
-  res.json({ brief: workspace.brief, memory });
+  res.json({ brief: workspace.brief, memory, billing: buildEntitlements(db, req.params.workspaceId) });
 });
 
 app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
@@ -2037,6 +2816,10 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     res.status(400).json({ error: 'message_required' });
     return;
   }
+  if (message.length > 4000) {
+    res.status(413).json({ error: 'message_too_large', message: 'Agent message is too long.' });
+    return;
+  }
   let billing;
   try {
     billing = assertUsageAvailable(db, req.params.workspaceId, 'agentChat');
@@ -2044,7 +2827,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     res.status(err.status || 402).json(err.payload || { error: err.message });
     return;
   }
-  const history = Array.isArray(req.body.history) ? req.body.history : [];
+  const history = Array.isArray(req.body.history) ? req.body.history.slice(-20) : [];
   const snapshot = {
     reels: db.reels.filter((item) => item.workspaceId === req.params.workspaceId),
     ideas: db.ideas.filter((item) => item.workspaceId === req.params.workspaceId),
@@ -2278,7 +3061,11 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ error: 'internal_server_error' });
+  if (err.status && err.payload) {
+    res.status(err.status).json(err.payload);
+    return;
+  }
+  res.status(err.status || 500).json({ error: err.message || 'internal_server_error' });
 });
 
 app.use(express.static(CLIENT_DIST_PATH));

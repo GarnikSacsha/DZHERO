@@ -13,6 +13,8 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : async 
   }
 };
 
+const DEFAULT_GEMINI_REMIX_MODEL = 'gemini-3.5-flash';
+
 // The Structured JSON Schema requested
 const REMIX_OUTPUT_SCHEMA = {
   deconstruction: {
@@ -56,7 +58,7 @@ const REMIX_OUTPUT_SCHEMA = {
 
 // System Prompt for the LLM
 const REMIX_SYSTEM_PROMPT = `
-You are the core AI of the Dzhero SMM platform ("Ремикс-студия"), a state-of-the-art marketing assistant designed for SMM experts and local business owners in Ukraine.
+You are the core AI of the Dzhero SMM platform ("Ремикс-студия"), a practical marketing producer for SMM experts and local business owners in Ukraine.
 Your primary task is "Global Scouting & UA Adaptation": taking a highly viral global English Reel/Short video ("Global Insight"), deconstructing its marketing essence, filtering it for cultural viability, and rewriting it into 3 highly engaging, localized, and natural-sounding Reels scripts in Ukrainian (UA).
 
 Here are your instructions:
@@ -75,11 +77,18 @@ Here are your instructions:
    - Produce exactly 3 distinct script adaptations in natural, modern, native Ukrainian.
    - Avoid Google Translate-style or dry textbook language. Use natural spoken Ukrainian, slang if appropriate, and highly engaging conversational structures.
    - Align each remix with the Ukrainian Business Brief provided (Niche, Product/Offer, Location, and Tone of Voice).
+   - NEVER use these generic AI words or phrases: "унікальний", "революційний", "зануртесь", "сфера", "інноваційний", "не пропустіть", "ключ до успіху", "готовий змінити життя?", "відкрийте для себе".
+   - Never invent private metrics, client results, testimonials, or revenue numbers. If proof is missing, use safe proof placeholders such as "покажи відгук", "покажи процес", "покажи результат".
    - Format each remix with:
      - A unique creative angle/title.
      - A killer Hook (Хук) for the first 2 seconds.
      - A step-by-step Visual Flow (Visual Row / Сценарій) mapping timestamp ranges, action descriptions, on-screen text overlays, and spoken audio voiceover.
      - A clear local Call to Action (CTA) tailored to Instagram Direct messages, comments, or bio links.
+
+FEW-SHOT QUALITY TARGETS:
+- Pain + visual shock: "От через це ти втрачаєш клієнтів щодня." Show one visible operational failure, then one fix.
+- Myth-busting: "Перестань лити гроші в таргет, якщо ця штука не налаштована." Destroy a common belief and show a cheaper retention loop.
+- BTS authority: "Як я роблю контент на тиждень за одну годину." Show the actual workflow, not a motivational monologue.
 
 4. STRICT JSON OUTPUT FORMAT:
    Return ONLY a valid JSON object matching this schema. Do not enclose it in markdown code blocks unless requested by JSON mode, but strictly output valid parsing JSON.
@@ -160,7 +169,7 @@ async function generateRemix(globalInsight, businessBrief) {
  * Gemini SDK or REST API integration
  */
 async function generateWithGemini(apiKey, globalInsight, businessBrief) {
-  const model = "gemini-1.5-flash";
+  const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = `
@@ -185,14 +194,15 @@ Please deconstruct and generate 3 custom adaptations. Respond strictly with a JS
     body: JSON.stringify({
       contents: [{
         role: "user",
-        parts: [
-          { text: REMIX_SYSTEM_PROMPT },
-          { text: prompt }
-        ]
+        parts: [{ text: prompt }]
       }],
+      systemInstruction: {
+        parts: [{ text: REMIX_SYSTEM_PROMPT }]
+      },
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.7
+        temperature: 0.75,
+        topP: 0.9
       }
     })
   });
