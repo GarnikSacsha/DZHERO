@@ -2065,6 +2065,14 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
 
 function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, isOpen, onClose }) {
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
+  const accountName = currentUser?.name || currentUser?.email?.split('@')?.[0] || (language === 'en' ? 'Your account' : 'Твій кабінет');
+  const accountEmail = currentUser?.email || (language === 'en' ? 'Demo session' : 'Демо-сесія');
+  const accountInitial = (currentUser?.name || currentUser?.email || 'D').trim()[0]?.toUpperCase() || 'D';
+  const providerLabel = currentUser?.provider === 'google'
+    ? 'Google'
+    : currentUser?.provider === 'email'
+      ? 'Email'
+      : (language === 'en' ? 'Demo' : 'Demo');
   const tourTargets = {
     home: 'sidebar-home',
     viral: 'sidebar-transcript',
@@ -2123,6 +2131,23 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
         {primaryItems.map(renderNavButton)}
       </nav>
       <div className="account-switcher compact">
+        <section className="user-account-card" aria-label={language === 'en' ? 'Current account' : 'Поточний кабінет'}>
+          <div className="user-account-top">
+            <div className="avatar user-avatar">{accountInitial}</div>
+            <div>
+              <small>{language === 'en' ? 'Signed in as' : 'Увійшли як'}</small>
+              <strong>{accountName}</strong>
+              <span>{accountEmail}</span>
+            </div>
+          </div>
+          <div className="user-account-meta">
+            <span>{providerLabel}</span>
+            <span>{activeWorkspace?.type || (language === 'en' ? 'Workspace' : 'Workspace')}</span>
+          </div>
+          <button type="button" onClick={() => selectPage('settings')}>
+            {language === 'en' ? 'Account, tariff and sources' : 'Кабінет, тариф і джерела'}
+          </button>
+        </section>
         {isSwitcherOpen && (
           <div className="workspace-menu">
             {workspaces.map((workspace) => (
