@@ -668,6 +668,10 @@ function parseAllowedSignalUrl(rawUrl) {
     'www.tiktok.com',
     'vm.tiktok.com',
     'vt.tiktok.com',
+    'youtube.com',
+    'www.youtube.com',
+    'm.youtube.com',
+    'youtu.be',
   ]);
   if (!allowedHosts.has(parsed.hostname.toLowerCase())) return null;
   return parsed.toString();
@@ -2545,7 +2549,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     if (!url) {
       res.status(400).json({
         error: 'supported_signal_url_required',
-        message: 'Paste a valid public Instagram or TikTok URL.',
+        message: 'Paste a valid public Instagram, TikTok, or YouTube URL.',
       });
       return;
     }

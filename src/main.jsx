@@ -2637,13 +2637,43 @@ function TikTokSignalsDemo({ notify, setPage }) {
   );
 }
 
+function isSignalUrl(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return false;
+  const withProtocol = /^https?:\/\//i.test(clean) ? clean : `https://${clean}`;
+  try {
+    const parsed = new URL(withProtocol);
+    const host = parsed.hostname.toLowerCase();
+    return [
+      'instagram.com',
+      'www.instagram.com',
+      'tiktok.com',
+      'www.tiktok.com',
+      'vm.tiktok.com',
+      'vt.tiktok.com',
+      'youtube.com',
+      'www.youtube.com',
+      'm.youtube.com',
+      'youtu.be',
+    ].includes(host);
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSignalUrl(value) {
+  const clean = String(value || '').trim();
+  return /^https?:\/\//i.test(clean) ? clean : `https://${clean}`;
+}
+
 function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onAdapt, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
-  const pastedReelUrl = /instagram\.com\/(reel|reels|p)\//i.test(query.trim()) ? query.trim() : '';
+  const trimmedQuery = query.trim();
+  const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
   const filteredReels = reels
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
@@ -2721,7 +2751,24 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       )}
       <div className="signals-layout">
         <div className="trends-table-wrap">
-          <ReelsTable reels={filteredReels} scoreSortDirection={scoreSortDirection} onToggleScoreSort={toggleScoreSort} onOpenPreview={setPreviewReel} onAdapt={onAdapt} />
+          <ReelsTable
+            reels={filteredReels}
+            scoreSortDirection={scoreSortDirection}
+            onToggleScoreSort={toggleScoreSort}
+            onOpenPreview={setPreviewReel}
+            onAdapt={onAdapt}
+            emptyState={pastedReelUrl
+              ? {
+                  title: 'Посилання готове до імпорту',
+                  text: 'Це схоже на зовнішній сигнал. Натисни імпорт вище або Enter, і Джеро спробує витягнути контекст у Studio.',
+                }
+              : trimmedQuery
+                ? {
+                    title: 'Нічого не знайшли',
+                    text: 'Спробуй інший запит або встав посилання на TikTok, Reels, YouTube Shorts чи сайт.',
+                  }
+                : null}
+          />
         </div>
         <aside className="signals-source-panel">
           <div className="panel-title"><strong>Джерела</strong><span>{competitors.length} акаунтів</span></div>
@@ -3253,7 +3300,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
   );
 }
 
-function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt }) {
+function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
   return (
     <div className="table-card trend-analytics-table">
       <div className="table-head trend-grid signals-grid">
@@ -3286,6 +3333,12 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
           </button>
         </div>
       ))}
+      {!reels.length && emptyState && (
+        <div className="signals-empty-state">
+          <strong>{emptyState.title}</strong>
+          <p>{emptyState.text}</p>
+        </div>
+      )}
     </div>
   );
 }
