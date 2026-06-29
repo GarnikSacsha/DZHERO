@@ -311,10 +311,14 @@ function App() {
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
+  const [userWorkspaces, setUserWorkspaces] = useState([]);
   const [sourcesTab, setSourcesTab] = useState(() => window.localStorage.getItem(SOURCES_TAB_KEY) || 'sources');
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
-  const activeWorkspace = DEMO_WORKSPACES.find((workspace) => workspace.id === workspaceId) || DEMO_WORKSPACES[0];
+  const availableWorkspaces = userWorkspaces.length ? userWorkspaces : DEMO_WORKSPACES;
+  const activeWorkspace = availableWorkspaces.find((workspace) => workspace.id === workspaceId)
+    || availableWorkspaces[0]
+    || DEMO_WORKSPACES[0];
   const setMvpPage = (nextPage) => {
     const allowedPages = new Set(['home', 'viral', 'remix', 'plan', 'settings']);
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
@@ -367,6 +371,36 @@ function App() {
   }, [workspaceId]);
 
   useEffect(() => {
+    if (!currentUser) {
+      setUserWorkspaces([]);
+      return undefined;
+    }
+    let isMounted = true;
+    authFetch(`${API_BASE}/workspaces`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!isMounted) return;
+        const workspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
+        setUserWorkspaces(workspaces);
+        const hasActiveWorkspace = workspaces.some((workspace) => workspace.id === workspaceId);
+        const fallbackWorkspaceId = currentUser.workspaceId || workspaces[0]?.id;
+        if (!hasActiveWorkspace && fallbackWorkspaceId) {
+          setWorkspaceId(fallbackWorkspaceId);
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        const fallbackWorkspaceId = currentUser.workspaceId;
+        if (fallbackWorkspaceId && fallbackWorkspaceId !== workspaceId) {
+          setWorkspaceId(fallbackWorkspaceId);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, workspaceId]);
+
+  useEffect(() => {
     const timers = [0, 80, 250].map((delay) => window.setTimeout(() => applyInterfaceLanguage(language), delay));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
   }, [language, page, market, data, modal, toast, currentUser, authStatus, theme, remixDraft, workspaceId]);
@@ -384,6 +418,7 @@ function App() {
       .then((payload) => {
         if (!isMounted) return;
         setCurrentUser(payload.user);
+        if (payload.user?.workspaceId) setWorkspaceId(payload.user.workspaceId);
         setAuthStatus('ready');
       })
       .catch(() => {
@@ -433,6 +468,7 @@ function App() {
     window.localStorage.removeItem(AUTH_TOKEN_KEY);
     setAuthToken('cookie');
     setCurrentUser(payload.user);
+    if (payload.user?.workspaceId) setWorkspaceId(payload.user.workspaceId);
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
   };
@@ -689,7 +725,7 @@ function App() {
         page={page}
         setPage={setMvpPage}
         currentUser={currentUser}
-        workspaces={DEMO_WORKSPACES}
+        workspaces={availableWorkspaces}
         activeWorkspace={activeWorkspace}
         language={language}
         onWorkspaceChange={switchWorkspace}
