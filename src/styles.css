@@ -7944,6 +7944,24 @@ nav button:hover,
   background: var(--dark);
 }
 
+.auth-top-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.top-actions .language-switch {
+  flex: 0 0 auto;
+}
+
+.top-actions .icon.active,
+.auth-top-controls .icon.active {
+  border-color: rgba(14, 165, 233, 0.56);
+  background: rgba(14, 165, 233, 0.14);
+  color: var(--accent);
+}
+
 [data-theme="dark"] .language-switch {
   border-color: #253044;
   background: #101620;
