@@ -82,6 +82,10 @@ const CONTENT_FORMAT_ALIASES = {
   post: 'Post',
   video: 'Video',
 };
+const THEME_MODE_KEY = 'insta-producer-theme-mode-v1';
+const LEGACY_THEME_KEY = 'insta-producer-theme-v2';
+const DAY_THEME_START_HOUR = 7;
+const NIGHT_THEME_START_HOUR = 21;
 const DEMO_WORKSPACES = [
   { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
   { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
@@ -89,6 +93,25 @@ const DEMO_WORKSPACES = [
   { id: 'ws_demo_beauty', name: 'Beauty Room', handle: '@beauty.room', type: 'Beauty' },
   { id: 'ws_demo_expert', name: 'Expert Lab', handle: '@expert.lab', type: 'Експерт' },
 ];
+
+function getAutoTheme(date = new Date()) {
+  const hour = date.getHours();
+  return hour >= NIGHT_THEME_START_HOUR || hour < DAY_THEME_START_HOUR ? 'dark' : 'light';
+}
+
+function getInitialThemeMode() {
+  const savedMode = window.localStorage.getItem(THEME_MODE_KEY);
+  if (['auto', 'dark', 'light'].includes(savedMode)) return savedMode;
+  const legacyTheme = window.localStorage.getItem(LEGACY_THEME_KEY);
+  if (['dark', 'light'].includes(legacyTheme)) return legacyTheme;
+  return 'auto';
+}
+
+function getNextThemeMode(themeMode) {
+  if (themeMode === 'auto') return 'dark';
+  if (themeMode === 'dark') return 'light';
+  return 'auto';
+}
 
 function getAuthHeaders(extraHeaders = {}) {
   const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
@@ -277,7 +300,9 @@ function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState('');
   const [remixDraft, setRemixDraft] = useState(null);
-  const [theme, setTheme] = useState(() => window.localStorage.getItem('insta-producer-theme-v2') || 'dark');
+  const [themeMode, setThemeMode] = useState(getInitialThemeMode);
+  const [autoTheme, setAutoTheme] = useState(getAutoTheme);
+  const theme = themeMode === 'auto' ? autoTheme : themeMode;
   const [language, setLanguage] = useState(() => window.localStorage.getItem('insta-producer-language') || 'uk');
   const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(AUTH_TOKEN_KEY) || '');
   const [currentUser, setCurrentUser] = useState(null);
@@ -312,8 +337,26 @@ function App() {
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem('insta-producer-theme-v2', theme);
-  }, [theme]);
+    window.localStorage.setItem(THEME_MODE_KEY, themeMode);
+    window.localStorage.setItem(LEGACY_THEME_KEY, theme);
+  }, [themeMode, theme]);
+
+  useEffect(() => {
+    if (themeMode !== 'auto') return undefined;
+    const syncAutoTheme = () => setAutoTheme(getAutoTheme());
+    syncAutoTheme();
+    const now = new Date();
+    const msUntilNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+    let intervalId;
+    const timeoutId = window.setTimeout(() => {
+      syncAutoTheme();
+      intervalId = window.setInterval(syncAutoTheme, 60 * 1000);
+    }, Math.max(1000, msUntilNextMinute));
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (intervalId) window.clearInterval(intervalId);
+    };
+  }, [themeMode]);
 
   useEffect(() => {
     window.localStorage.setItem('insta-producer-language', language);
@@ -418,7 +461,7 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app auth-app" data-theme={theme}>
-        <BrandScanGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} setTheme={setTheme} />
+        <BrandScanGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -656,7 +699,7 @@ function App() {
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} setTheme={setTheme} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
+        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
@@ -1411,7 +1454,7 @@ function GoogleIcon() {
   );
 }
 
-function BrandScanGate({ onAuth, notify, theme, setTheme }) {
+function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, language, setLanguage }) {
   const [scanInput, setScanInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [scanResult, setScanResult] = useState(null);
@@ -1625,9 +1668,15 @@ function BrandScanGate({ onAuth, notify, theme, setTheme }) {
               <small>{scanResult ? 'Preview готовий' : 'Що отримаєш за 30 секунд'}</small>
               <h2>{scanResult ? scanResult.title : 'Результат, а не технічний кабінет'}</h2>
             </div>
-            <button className="icon" type="button" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
+            <div className="auth-top-controls">
+              <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
+                <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UK</button>
+                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+              </div>
+              <button className={themeMode === 'auto' ? 'icon active' : 'icon'} type="button" title={themeMode === 'auto' ? 'Auto theme' : 'Тема'} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
           </div>
           {isScanning && !scanResult ? (
             <div className="brand-scan-skeleton" aria-live="polite" aria-label="Джеро аналізує джерело">
@@ -2120,11 +2169,14 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   );
 }
 
-function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
+function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
     : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
   const ctaTarget = 'home';
+  const themeTitle = themeMode === 'auto'
+    ? (language === 'en' ? 'Auto theme: local time' : 'Автотема: за локальним часом')
+    : (language === 'en' ? 'Theme' : 'Тема');
 
   return (
     <header className="topbar">
@@ -2138,8 +2190,14 @@ function Topbar({ theme, setTheme, language, setLanguage, setPage, page, onOpenM
           <Sparkles size={15} />
           <span>{ctaLabel}</span>
         </button>
+        <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
+          <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UK</button>
+          <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+        </div>
         <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
-        <button className="icon" title="Тема" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+        <button className={themeMode === 'auto' ? 'icon active' : 'icon'} title={themeTitle} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
       </div>
     </header>
   );
