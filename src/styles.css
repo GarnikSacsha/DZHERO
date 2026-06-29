@@ -12295,6 +12295,29 @@ nav button.active::before {
   min-width: 0;
 }
 
+.signals-empty-state {
+  display: grid;
+  gap: 8px;
+  padding: 34px 18px 38px;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+}
+
+.signals-empty-state strong {
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.signals-empty-state p {
+  max-width: 560px;
+  margin: 0;
+  color: var(--muted-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .signal-adapt-button {
   display: inline-flex;
   min-height: 38px;
@@ -12964,6 +12987,12 @@ nav button.active::before {
 
 .jeryk-launcher:hover {
   transform: translateY(-2px) scale(1.03);
+}
+
+@media (min-width: 1180px) {
+  .app:not(.auth-app):has(.page-content-plan) .jeryk-launcher {
+    right: 360px;
+  }
 }
 
 .jeryk-backdrop {
