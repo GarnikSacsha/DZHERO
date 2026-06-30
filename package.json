@@ -11,17 +11,17 @@
   "dependencies": {
     "@emnapi/core": "1.11.1",
     "@emnapi/runtime": "1.11.1",
-    "@vitejs/plugin-react": "6.0.1",
+    "@vitejs/plugin-react": "6.0.3",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
     "helmet": "^8.2.0",
-    "lucide-react": "1.14.0",
-    "pg": "^8.21.0",
-    "playwright": "^1.60.0",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
-    "shepherd.js": "^13.0.0",
-    "vite": "^8.0.16"
+    "lucide-react": "1.22.0",
+    "pg": "^8.22.0",
+    "playwright": "^1.61.1",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "shepherd.js": "^15.2.2",
+    "vite": "^8.1.2"
   }
 }
