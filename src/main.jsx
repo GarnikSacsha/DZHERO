@@ -667,9 +667,9 @@ function App() {
       setData((current) => ({ ...current, reels: [importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)] }));
       setRemixDraft(importedReel);
       setPage('remix');
-      notify(importedReel.sourceStatus === 'public_metadata'
+      notify(['public_metadata', 'youtube_api', 'youtube_oembed'].includes(importedReel.sourceStatus)
         ? 'Сигнал імпортовано: адаптація готова'
-        : 'Instagram дав мінімум даних, але базову UA-адаптацію підготовлено');
+        : 'Джерело дало мінімум даних, але базову UA-адаптацію підготовлено');
       return true;
     } catch {
       notify('Автоімпорт не вдався. Відкриваю ручний режим як запасний варіант.');
@@ -1326,7 +1326,7 @@ function cleanPublicProfileTitle(value, handle = '') {
 }
 
 function hasSourceMetadata(metadata) {
-  return ['public_metadata', 'youtube_api'].includes(metadata?.sourceStatus);
+  return ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus);
 }
 
 function metadataStatChips(metadata) {
@@ -1471,7 +1471,7 @@ function composeBrandScanResult(cleanInput, metadata = null, capabilities = null
     sourceStatus: metadata?.sourceStatus || (source.tone === 'text' ? 'manual_text' : 'url_only'),
     title: source.tone === 'text'
       ? 'Preview по опису бізнесу готовий'
-      : metadata?.sourceStatus === 'youtube_api'
+      : ['youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus)
         ? 'YouTube джерело проаналізовано'
       : metadata?.sourceStatus === 'public_metadata'
         ? 'Публічний профіль проаналізовано'
@@ -1534,7 +1534,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     setError('');
     setScanResult(result);
     setLoginPrompt('');
-    notify(metadata?.sourceStatus === 'youtube_api'
+    notify(['youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus)
       ? 'Джеро прочитав джерело і зібрав production preview.'
       : hasSourceMetadata(metadata)
         ? 'Джеро прочитав публічний опис акаунта.'
@@ -3382,7 +3382,7 @@ function Competitors({ competitors, openModal }) {
 function buildRemixScenario(reel) {
   if (reel.scanExample) {
     return {
-      quality: ['public_metadata', 'youtube_api'].includes(reel.sourceStatus)
+      quality: ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(reel.sourceStatus)
         ? 'Джеро прочитав публічний профіль і зібрав перший production draft без доступу до акаунта.'
         : 'Preview draft зібрано з ручного джерела. Для глибокої аналітики треба підключити офіційні джерела.',
       insight: reel.scanCards?.[1]?.[1] || reel.caption || 'Brand Scan перетворено у сценарій, shot-list і CTA.',
@@ -3422,7 +3422,7 @@ function buildRemixScenario(reel) {
       voice: [step.onScreenText, step.audioVoiceover].filter(Boolean).join(' — '),
     }));
     return {
-      quality: ['public_metadata', 'youtube_api'].includes(reel.sourceStatus)
+      quality: ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(reel.sourceStatus)
         ? 'Автоімпорт знайшов публічні дані й згенерував адаптацію'
         : 'Instagram обмежив дані, але Джеро зібрав базову адаптацію від URL-сигналу',
       insight: reel.remixResult.deconstruction?.coreMechanics || 'Джеро розклав Reels на хук, доказ, локальний контекст і CTA.',
@@ -3516,7 +3516,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
   const metadata = reel.importedMetadata || {};
   const stats = metadata.stats || {};
   const example = reel.scanExample;
-  const hasBrandScan = reel.sourceType || reel.scanExample || hasSourceMetadata(metadata) || reel.sourceStatus === 'youtube_api';
+  const hasBrandScan = reel.sourceType || reel.scanExample || hasSourceMetadata(metadata) || ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus);
   if (!hasBrandScan) return null;
 
   return (
@@ -3633,7 +3633,7 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
     setBrainStatus(ok ? 'saved' : 'idle');
     if (ok) window.setTimeout(() => setBrainStatus('idle'), 1800);
   };
-  const isBrandScanDraft = Boolean(reel.sourceType || reel.scanExample || hasSourceMetadata(reel.importedMetadata || {}) || reel.sourceStatus === 'youtube_api');
+  const isBrandScanDraft = Boolean(reel.sourceType || reel.scanExample || hasSourceMetadata(reel.importedMetadata || {}) || ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus));
   const addCurrentToPlan = async () => {
     const ok = await onAddToPlan?.(reel);
     if (ok !== false) setPage('plan');

@@ -1,4 +1,5 @@
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
@@ -9,6 +10,25 @@ const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
+
+function loadLocalEnv() {
+  const envPath = path.join(__dirname, '..', '.env');
+  if (!fsSync.existsSync(envPath)) return;
+  const rows = fsSync.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  rows.forEach((row) => {
+    const line = row.trim();
+    if (!line || line.startsWith('#')) return;
+    const match = line.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
+    if (!match || process.env[match[1]] !== undefined) return;
+    let value = match[2].trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value.replace(/\\n/g, '\n');
+  });
+}
+
+loadLocalEnv();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -897,6 +917,43 @@ function mapYouTubeChannelMetadata(channel, rawInput = '') {
   };
 }
 
+async function fetchYouTubeOEmbedMetadata(rawInput) {
+  const parsed = parseYouTubeInput(rawInput);
+  if (!parsed || parsed.type !== 'video') return null;
+  const endpoint = new URL('https://www.youtube.com/oembed');
+  endpoint.searchParams.set('url', parsed.url);
+  endpoint.searchParams.set('format', 'json');
+  const response = await fetch(endpoint, {
+    headers: {
+      accept: 'application/json',
+      'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+    },
+  });
+  if (!response.ok) return null;
+  const data = await response.json().catch(() => null);
+  if (!data?.title) return null;
+  const authorName = data.author_name || 'YouTube channel';
+  return {
+    source: { label: 'YouTube Shorts', tone: 'shorts' },
+    input: String(rawInput || '').trim(),
+    url: parsed.url,
+    title: data.title,
+    description: '',
+    handle: data.author_url || authorName,
+    image: data.thumbnail_url || '',
+    publishedAt: '',
+    stats: {},
+    youtube: {
+      videoId: parsed.videoId || '',
+      channelTitle: authorName,
+      authorUrl: data.author_url || '',
+      provider: data.provider_name || 'YouTube',
+    },
+    sourceStatus: 'youtube_oembed',
+    analysisText: [data.title, authorName, parsed.url].filter(Boolean).join(' '),
+  };
+}
+
 async function fetchYouTubeMetadata(rawInput) {
   if (!YOUTUBE_API_KEY) return null;
   const parsed = parseYouTubeInput(rawInput);
@@ -974,6 +1031,15 @@ async function fetchPublicSourceMetadata(rawInput) {
       if (youtubeMetadata) return youtubeMetadata;
     } catch (error) {
       fallback.youtubeError = error.message;
+    }
+    try {
+      const oEmbedMetadata = await fetchYouTubeOEmbedMetadata(rawInput);
+      if (oEmbedMetadata) return {
+        ...oEmbedMetadata,
+        youtubeError: fallback.youtubeError,
+      };
+    } catch (error) {
+      fallback.youtubeOEmbedError = error.message;
     }
   }
 
@@ -1065,10 +1131,11 @@ async function fetchPublicReelMetadata(reelUrl) {
 }
 
 function buildGlobalInsightFromReelMetadata(metadata) {
+  const sourceLabel = metadata.source?.label || (metadata.sourceStatus === 'youtube_api' ? 'YouTube Shorts' : 'Instagram Reels');
   const script = metadata.description || [
-    `User supplied Instagram Reels URL: ${metadata.url}.`,
+    `User supplied ${sourceLabel} URL: ${metadata.url}.`,
     metadata.shortcode ? `Shortcode: ${metadata.shortcode}.` : '',
-    'Public Instagram metadata is limited, so infer a reusable Reels mechanic: strong first-frame promise, visible problem, proof, and Direct/comment CTA.',
+    `Public ${sourceLabel} metadata is limited, so infer a reusable short-form mechanic: strong first-frame promise, visible problem, proof, and Direct/comment CTA.`,
   ].filter(Boolean).join(' ');
 
   return {
@@ -1608,13 +1675,15 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
       capabilities: {
         mode: metadata.sourceStatus === 'youtube_api'
           ? 'youtube_data_api'
-          : metadata.sourceStatus === 'public_metadata'
+          : ['public_metadata', 'youtube_oembed'].includes(metadata.sourceStatus)
             ? 'public_profile_preview'
             : 'manual_preview',
         officialApi: metadata.sourceStatus === 'youtube_api',
         statsAreOfficial: metadata.sourceStatus === 'youtube_api',
         note: metadata.sourceStatus === 'public_metadata'
           ? 'Public page metadata was used. No private account data, official API metrics, or post-level analytics were accessed.'
+          : metadata.sourceStatus === 'youtube_oembed'
+            ? 'YouTube public oEmbed returned video title, author, and thumbnail. Official API metrics were not accessed.'
           : metadata.sourceStatus === 'youtube_api'
             ? 'YouTube Data API returned public video/channel metadata. No private account access was requested.'
           : 'The platform did not expose usable public metadata, so Dzhero used the pasted text/source as manual context.',
@@ -2554,7 +2623,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       return;
     }
 
-    const metadata = await fetchPublicReelMetadata(url);
+    const metadata = await fetchPublicSourceMetadata(url);
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
     const mergedBrief = {
       niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Кафе/Ресторан',
@@ -2570,7 +2639,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       sourceId: null,
       sourceHandle: metadata.handle,
       handle: metadata.handle,
-      sourceUrl: url,
+      sourceUrl: metadata.url || url,
       sourceStatus: metadata.sourceStatus,
       market: req.body.market || 'global',
       title: metadata.title,
@@ -2589,14 +2658,14 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       createdAt: new Date().toISOString(),
     };
     const analysis = analyzeReel(importedReel, workspace);
-    importedReel.score = Math.max(analysis.score, metadata.sourceStatus === 'public_metadata' ? 78 : 70);
+    importedReel.score = Math.max(analysis.score, ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(metadata.sourceStatus) ? 78 : 70);
     importedReel.analysis = analysis;
     db.reels.unshift(importedReel);
     db.remixes.unshift({
       id: createId('remix'),
       workspaceId: req.params.workspaceId,
       reelId: importedReel.id,
-      sourceUrl: url,
+      sourceUrl: metadata.url || url,
       provider: getAiProviderStatus().textAgent.provider,
       result: remixResult,
       createdAt: new Date().toISOString(),
