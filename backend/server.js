@@ -63,6 +63,12 @@ const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googlea
 const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo';
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const UNLIMITED_ACCESS_EMAILS = new Set(
+  String(process.env.UNLIMITED_ACCESS_EMAILS || process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((email) => normalizeEmail(email))
+    .filter(Boolean)
+);
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
@@ -500,6 +506,46 @@ function publicPlan(plan) {
   };
 }
 
+function getWorkspaceUsers(db, workspaceId) {
+  return (db.users || []).filter((user) => (
+    user.workspaceId === workspaceId
+    || (Array.isArray(user.workspaceIds) && user.workspaceIds.includes(workspaceId))
+  ));
+}
+
+function userHasUnlimitedAccess(user) {
+  return Boolean(
+    user
+    && (
+      user.role === 'admin'
+      || UNLIMITED_ACCESS_EMAILS.has(normalizeEmail(user.email))
+    )
+  );
+}
+
+function workspaceHasUnlimitedAccess(db, workspaceId, actorUser = null) {
+  if (userHasUnlimitedAccess(actorUser)) return true;
+  return getWorkspaceUsers(db, workspaceId).some((user) => (
+    user.role === 'admin'
+    || UNLIMITED_ACCESS_EMAILS.has(normalizeEmail(user.email))
+  ));
+}
+
+function buildUnlimitedPlan(basePlan) {
+  const limits = Object.fromEntries(
+    Object.keys(basePlan.limits || {}).map((key) => [key, null])
+  );
+  return {
+    ...basePlan,
+    id: 'owner_unlimited',
+    name: 'Owner Unlimited',
+    billingPeriod: 'internal',
+    priceUah: 0,
+    limits,
+    features: Array.from(new Set([...(basePlan.features || []), 'owner_unlimited'])),
+  };
+}
+
 function getPlan(planId) {
   return PLAN_CATALOG.find((plan) => plan.id === planId) || PLAN_CATALOG[0];
 }
@@ -559,9 +605,11 @@ function getUsageCounter(db, workspaceId, metric, period = getUsagePeriod()) {
   return counter;
 }
 
-function buildEntitlements(db, workspaceId) {
+function buildEntitlements(db, workspaceId, actorUser = null) {
   const subscription = ensureWorkspaceSubscription(db, workspaceId);
-  const plan = getPlan(subscription.planId);
+  const basePlan = getPlan(subscription.planId);
+  const unlimited = workspaceHasUnlimitedAccess(db, workspaceId, actorUser);
+  const plan = unlimited ? buildUnlimitedPlan(basePlan) : basePlan;
   const period = getUsagePeriod();
   const usage = {
     agentChat: getUsageCounter(db, workspaceId, USAGE_METRICS.agentChat, period).value,
@@ -571,18 +619,16 @@ function buildEntitlements(db, workspaceId) {
     instagramAccounts: db.instagramAccounts.filter((item) => item.workspaceId === workspaceId).length,
     contentPlanPosts: normalizeContentPlanPosts(db.workspaces.find((item) => item.id === workspaceId)?.contentPlanPosts || []).length,
   };
-  const remaining = {
-    agentChat: Math.max(0, plan.limits.agentChat - usage.agentChat),
-    reelImports: Math.max(0, plan.limits.reelImports - usage.reelImports),
-    brandBrainSaves: Math.max(0, plan.limits.brandBrainSaves - usage.brandBrainSaves),
-    competitors: Math.max(0, plan.limits.competitors - usage.competitors),
-    instagramAccounts: Math.max(0, plan.limits.instagramAccounts - usage.instagramAccounts),
-    contentPlanPosts: Math.max(0, plan.limits.contentPlanPosts - usage.contentPlanPosts),
-  };
+  const remaining = Object.fromEntries(
+    Object.keys(usage).map((key) => {
+      const limit = plan.limits[key];
+      return [key, Number.isFinite(limit) ? Math.max(0, limit - usage[key]) : null];
+    })
+  );
   const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
   const trial = {
-    active: subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
-    expired: subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
+    active: !unlimited && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
+    expired: !unlimited && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
     endsAt: subscription.trialEndsAt,
     daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (24 * 60 * 60 * 1000))) : null,
   };
@@ -593,11 +639,13 @@ function buildEntitlements(db, workspaceId) {
     period,
     usage,
     remaining,
+    unlimited,
   };
 }
 
-function assertUsageAvailable(db, workspaceId, usageKey, amount = 1) {
-  const entitlements = buildEntitlements(db, workspaceId);
+function assertUsageAvailable(db, workspaceId, usageKey, amount = 1, actorUser = null) {
+  const entitlements = buildEntitlements(db, workspaceId, actorUser);
+  if (entitlements.unlimited) return entitlements;
   if (entitlements.trial.expired) {
     const error = new Error('trial_expired');
     error.status = 402;
@@ -2465,7 +2513,7 @@ app.post('/api/workspaces', async (req, res) => {
 app.get('/api/workspaces/:workspaceId/billing', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-  const billing = buildEntitlements(db, req.params.workspaceId);
+  const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
   await writeDb(db);
   res.json(billing);
 });
@@ -2546,7 +2594,7 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
     note: req.body.note || 'manual activation',
   });
   await writeDb(db);
-  res.json(buildEntitlements(db, req.params.workspaceId));
+  res.json(buildEntitlements(db, req.params.workspaceId, req.authUser));
 });
 
 app.post('/api/admin/testers/grant', async (req, res) => {
@@ -2624,7 +2672,7 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves');
+  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
@@ -2632,7 +2680,7 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   };
   incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
   await writeDb(db);
-  res.json({ brief: workspace.brief, billing: buildEntitlements(db, req.params.workspaceId) });
+  res.json({ brief: workspace.brief, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
 
 app.get('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
@@ -2647,7 +2695,7 @@ app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
   const nextPosts = normalizeContentPlanPosts(req.body.posts);
-  const billing = buildEntitlements(db, req.params.workspaceId);
+  const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
   const limit = billing.plan.limits.contentPlanPosts;
   if (Number.isFinite(limit) && nextPosts.length > limit) {
     res.status(402).json({
@@ -2665,7 +2713,7 @@ app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
   workspace.contentPlanPosts = nextPosts;
   workspace.contentPlanUpdatedAt = new Date().toISOString();
   await writeDb(db);
-  res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt, billing: buildEntitlements(db, req.params.workspaceId) });
+  res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
 
 app.get('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
@@ -2798,7 +2846,7 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   try {
-    assertUsageAvailable(db, req.params.workspaceId, 'competitors');
+    assertUsageAvailable(db, req.params.workspaceId, 'competitors', 1, req.authUser);
   } catch (err) {
     res.status(err.status || 402).json(err.payload || { error: err.message });
     return;
@@ -2819,7 +2867,7 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   db.competitors.unshift(competitor);
-  const billing = buildEntitlements(db, req.params.workspaceId);
+  const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
   await writeDb(db);
   res.status(201).json({ competitor, billing });
 });
@@ -2837,7 +2885,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
     try {
-      assertUsageAvailable(db, req.params.workspaceId, 'reelImports');
+      assertUsageAvailable(db, req.params.workspaceId, 'reelImports', 1, req.authUser);
     } catch (err) {
       res.status(err.status || 402).json(err.payload || { error: err.message });
       return;
@@ -2908,7 +2956,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       sourceStatus: metadata.sourceStatus,
     });
     incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports);
-    const billing = buildEntitlements(db, req.params.workspaceId);
+    const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
     await writeDb(db);
     res.status(201).json({
       reel: importedReel,
@@ -3094,7 +3142,7 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves');
+  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
@@ -3110,7 +3158,7 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   db.aiMemory.unshift(memory);
   incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
   await writeDb(db);
-  res.json({ brief: workspace.brief, memory, billing: buildEntitlements(db, req.params.workspaceId) });
+  res.json({ brief: workspace.brief, memory, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
 
 app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
@@ -3128,7 +3176,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
   }
   let billing;
   try {
-    billing = assertUsageAvailable(db, req.params.workspaceId, 'agentChat');
+    billing = assertUsageAvailable(db, req.params.workspaceId, 'agentChat', 1, req.authUser);
   } catch (err) {
     res.status(err.status || 402).json(err.payload || { error: err.message });
     return;
@@ -3169,7 +3217,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
       createdAt: new Date().toISOString(),
     });
     incrementUsage(db, req.params.workspaceId, USAGE_METRICS.agentChat);
-    billing = buildEntitlements(db, req.params.workspaceId);
+    billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
     await writeDb(db);
     res.status(201).json({
       reply: result.text,
