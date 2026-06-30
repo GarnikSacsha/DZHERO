@@ -3643,6 +3643,12 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
     if (ok) window.setTimeout(() => setBrainStatus('idle'), 1800);
   };
   const isBrandScanDraft = Boolean(reel.sourceType || reel.scanExample || hasSourceMetadata(reel.importedMetadata || {}) || ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus));
+  const exactSourceStats = reel.importedMetadata?.rawStats || {};
+  const formatExactStat = (value, label) => {
+    const numberValue = Number(value);
+    if (!Number.isFinite(numberValue) || numberValue <= 0) return undefined;
+    return `${numberValue.toLocaleString('en-US')} ${label}`;
+  };
   const addCurrentToPlan = async () => {
     const ok = await onAddToPlan?.(reel);
     if (ok !== false) setPage('plan');
@@ -3662,7 +3668,7 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
               <button onClick={() => notify(mediaImage ? 'Це thumbnail з публічного джерела. Відео-плеєр додамо окремим шаром.' : 'Превʼю відео буде доступне після підключення медіа')}>▶</button>
               <strong>{phoneLabel}<br />TO UA</strong>
             </div>
-            <div className="phone-stats"><span>{reel.views}<br /><small>Перегл.</small></span><span>{reel.likes}<br /><small>Лайки</small></span><span>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
+            <div className="phone-stats"><span title={formatExactStat(exactSourceStats.views, 'views')}>{reel.views}<br /><small>Перегл.</small></span><span title={formatExactStat(exactSourceStats.likes, 'likes')}>{reel.likes}<br /><small>Лайки</small></span><span title={formatExactStat(exactSourceStats.comments, 'comments')}>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
           <div className="insight-card studio-mechanics-card">
             <small>Механіка ролика</small>

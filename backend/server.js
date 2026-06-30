@@ -872,6 +872,13 @@ function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
       subscribers: formatCompactNumber(channelStats.subscriberCount),
       videos: formatCompactNumber(channelStats.videoCount),
     },
+    rawStats: {
+      views: stats.viewCount || '',
+      likes: stats.likeCount || '',
+      comments: stats.commentCount || '',
+      subscribers: channelStats.subscriberCount || '',
+      videos: channelStats.videoCount || '',
+    },
     youtube: {
       videoId: video?.id || '',
       channelId: snippet.channelId || channel?.id || '',
@@ -905,6 +912,11 @@ function mapYouTubeChannelMetadata(channel, rawInput = '') {
       subscribers: formatCompactNumber(stats.subscriberCount),
       views: formatCompactNumber(stats.viewCount),
       videos: formatCompactNumber(stats.videoCount),
+    },
+    rawStats: {
+      subscribers: stats.subscriberCount || '',
+      views: stats.viewCount || '',
+      videos: stats.videoCount || '',
     },
     youtube: {
       channelId: channel?.id || '',
@@ -2626,10 +2638,10 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const metadata = await fetchPublicSourceMetadata(url);
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
     const mergedBrief = {
-      niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Кафе/Ресторан',
-      product: req.body.businessBrief?.product || workspace.brief?.product || 'Спешелті кава та десерти',
-      location: req.body.businessBrief?.location || workspace.brief?.location || 'Київ',
-      toneOfVoice: req.body.businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'дружній, але професійний',
+      niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Локальний бізнес',
+      product: req.body.businessBrief?.product || workspace.brief?.product || 'продукт або послуга бренду',
+      location: req.body.businessBrief?.location || workspace.brief?.location || 'Україна',
+      toneOfVoice: req.body.businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень',
     };
 
     const remixResult = await generateRemix(globalInsight, mergedBrief);
@@ -3123,10 +3135,10 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
 
     // Merge supplied brief with workspace stored brief if empty
     const mergedBrief = {
-      niche: businessBrief?.niche || workspace.brief?.businessType || 'Кафе/Ресторан',
-      product: businessBrief?.product || workspace.brief?.product || 'Спешелти кава та десерти',
-      location: businessBrief?.location || workspace.brief?.location || 'Київ',
-      toneOfVoice: businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'дружній, але професійний'
+      niche: businessBrief?.niche || workspace.brief?.businessType || 'Локальний бізнес',
+      product: businessBrief?.product || workspace.brief?.product || 'продукт або послуга бренду',
+      location: businessBrief?.location || workspace.brief?.location || 'Україна',
+      toneOfVoice: businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень'
     };
 
     const result = await generateRemix(globalInsight, mergedBrief);
