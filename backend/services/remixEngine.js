@@ -65,6 +65,9 @@ Here are your instructions:
 
 1. DECONSTRUCTION PHASE:
    - Identify the psychological and marketing core of the original trend.
+   - If Video Intelligence is present, prioritize visible facts, transcript/captions, and thumbnail/frame descriptions over generic assumptions.
+   - Do not change the source scene into another random niche. If the original visible mechanic is "person stretches leg", adapt the visual mechanic (flexibility, surprise, impossible-looking movement, physical proof), not a coffee pour or unrelated product demo.
+   - When only a thumbnail is available, say "visible thumbnail/frame suggests" internally and keep the scenario grounded in what is actually visible.
    - Strip away all foreign cultural artifacts: US memes, references to dollars/Euros, expensive studio setups, global enterprise brands, and massive production budgets.
    - Break it down into pure human psychology and a core marketing funnel (e.g., "Hook -> Agitate Pain -> Introduce AI/Simple Solution -> Interactive CTA").
 
@@ -184,6 +187,7 @@ Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
 Original Hook: ${globalInsight.hook}
 Original Script/Text: ${globalInsight.script}
 Marketing Mechanics: ${globalInsight.marketingMechanics}
+Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
 
 Please deconstruct and generate 3 custom adaptations. Respond strictly with a JSON object that satisfies the output schema.
 `;
@@ -239,6 +243,7 @@ Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
 Original Hook: ${globalInsight.hook}
 Original Script/Text: ${globalInsight.script}
 Marketing Mechanics: ${globalInsight.marketingMechanics}
+Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
 `;
 
   const response = await fetch(url, {

@@ -63,6 +63,9 @@ const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googlea
 const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo';
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID || META_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || META_APP_SECRET;
 const INSTAGRAM_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/instagram/callback`;
@@ -793,6 +796,210 @@ function formatCompactNumber(value) {
   return String(number);
 }
 
+function compactText(value, maxLength = 1600) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
+}
+
+function parseXmlAttributes(value = '') {
+  const attrs = {};
+  String(value || '').replace(/([a-zA-Z_:.-]+)="([^"]*)"/g, (_, key, raw) => {
+    attrs[key] = decodeHtml(raw);
+    return '';
+  });
+  return attrs;
+}
+
+async function fetchYouTubeTranscript(videoId) {
+  if (!videoId) return null;
+  try {
+    const listUrl = new URL('https://video.google.com/timedtext');
+    listUrl.searchParams.set('type', 'list');
+    listUrl.searchParams.set('v', videoId);
+    const listResponse = await fetch(listUrl, {
+      headers: {
+        accept: 'application/xml,text/xml,*/*',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+      },
+    });
+    if (!listResponse.ok) return null;
+    const listXml = await listResponse.text();
+    const tracks = [...listXml.matchAll(/<track\b([^>]*)>/gi)]
+      .map((match) => parseXmlAttributes(match[1]))
+      .filter((track) => track.lang_code);
+    if (!tracks.length) return null;
+    const preferred = tracks.find((track) => /^uk/i.test(track.lang_code))
+      || tracks.find((track) => /^ru/i.test(track.lang_code))
+      || tracks.find((track) => /^en/i.test(track.lang_code))
+      || tracks[0];
+    const transcriptUrl = new URL('https://video.google.com/timedtext');
+    transcriptUrl.searchParams.set('v', videoId);
+    transcriptUrl.searchParams.set('lang', preferred.lang_code);
+    if (preferred.name) transcriptUrl.searchParams.set('name', preferred.name);
+    transcriptUrl.searchParams.set('fmt', 'json3');
+    const transcriptResponse = await fetch(transcriptUrl, {
+      headers: {
+        accept: 'application/json,text/xml,*/*',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+      },
+    });
+    if (!transcriptResponse.ok) return null;
+    const raw = await transcriptResponse.text();
+    let transcriptText = '';
+    try {
+      const payload = JSON.parse(raw);
+      transcriptText = (payload.events || [])
+        .flatMap((event) => event.segs || [])
+        .map((segment) => segment.utf8 || '')
+        .join(' ');
+    } catch {
+      transcriptText = [...raw.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)]
+        .map((match) => decodeHtml(match[1]))
+        .join(' ');
+    }
+    const text = compactText(transcriptText, 2600);
+    if (!text) return null;
+    return {
+      source: 'youtube_timedtext',
+      language: preferred.lang_code,
+      trackName: preferred.name || preferred.lang_original || '',
+      text,
+    };
+  } catch (error) {
+    return { source: 'youtube_timedtext', error: error.message };
+  }
+}
+
+async function fetchImageInlineData(imageUrl) {
+  if (!imageUrl) return null;
+  try {
+    const response = await fetch(imageUrl, {
+      headers: {
+        accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+      },
+    });
+    if (!response.ok) return null;
+    const contentType = response.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
+    if (!contentType.startsWith('image/')) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > 5 * 1024 * 1024) return null;
+    return {
+      mimeType: contentType,
+      data: buffer.toString('base64'),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseGeminiJson(text = '') {
+  const clean = String(text || '').trim().replace(/^```json\s*/i, '').replace(/```$/i, '').trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    const match = clean.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+async function analyzeSourceImageWithGemini(metadata) {
+  if (!GEMINI_API_KEY || !metadata?.image) return null;
+  const inlineData = await fetchImageInlineData(metadata.image);
+  if (!inlineData) return null;
+  try {
+    const response = await fetch(`${GEMINI_API_BASE}/models/${GEMINI_VISION_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              text: [
+                'Analyze this public short-form video thumbnail for a Ukrainian content producer.',
+                'Do not invent hidden frames. Describe only visible visual facts and safe likely mechanics from the thumbnail/title/description.',
+                'Return valid JSON with keys: visualSummary, visibleSubjects, movementGuess, hookMechanic, shotSignals, adaptationGuardrails.',
+                `Title: ${metadata.title || ''}`,
+                `Description: ${metadata.description || ''}`,
+                `Source: ${metadata.source?.label || ''}`,
+              ].join('\n'),
+            },
+            { inlineData },
+          ],
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.35,
+          topP: 0.8,
+          maxOutputTokens: 1200,
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) return { source: 'gemini_thumbnail_vision', error: payload?.error?.message || `Gemini vision HTTP ${response.status}` };
+    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+    const parsed = parseGeminiJson(text);
+    if (!parsed) return null;
+    return {
+      source: 'gemini_thumbnail_vision',
+      model: GEMINI_VISION_MODEL,
+      visualSummary: compactText(parsed.visualSummary, 520),
+      visibleSubjects: Array.isArray(parsed.visibleSubjects) ? parsed.visibleSubjects.slice(0, 6).map((item) => compactText(item, 140)) : [],
+      movementGuess: compactText(parsed.movementGuess, 260),
+      hookMechanic: compactText(parsed.hookMechanic, 320),
+      shotSignals: Array.isArray(parsed.shotSignals) ? parsed.shotSignals.slice(0, 5).map((item) => compactText(item, 180)) : [],
+      adaptationGuardrails: Array.isArray(parsed.adaptationGuardrails) ? parsed.adaptationGuardrails.slice(0, 5).map((item) => compactText(item, 180)) : [],
+    };
+  } catch (error) {
+    return { source: 'gemini_thumbnail_vision', error: error.message };
+  }
+}
+
+async function enrichVideoIntelligence(metadata) {
+  const transcript = metadata.youtube?.videoId ? await fetchYouTubeTranscript(metadata.youtube.videoId) : null;
+  const visual = await analyzeSourceImageWithGemini(metadata);
+  const intelligence = {
+    sourceStatus: metadata.sourceStatus,
+    sourceLabel: metadata.source?.label || '',
+    confidence: {
+      metadata: metadata.sourceStatus === 'youtube_api' ? 'official' : metadata.sourceStatus === 'public_metadata' ? 'public_page' : 'limited',
+      transcript: transcript?.text ? 'available' : 'missing',
+      visual: visual?.visualSummary ? 'thumbnail_vision' : 'missing',
+      frames: 'not_sampled_yet',
+    },
+    transcript,
+    visual,
+    facts: {
+      title: metadata.title || '',
+      description: metadata.description || '',
+      handle: metadata.handle || '',
+      stats: metadata.stats || {},
+      rawStats: metadata.rawStats || {},
+      duration: metadata.youtube?.duration || '',
+      publishedAt: metadata.publishedAt || '',
+    },
+  };
+  const analysisParts = [
+    metadata.analysisText,
+    transcript?.text && `Transcript/captions: ${transcript.text}`,
+    visual?.visualSummary && `Visible thumbnail: ${visual.visualSummary}`,
+    visual?.hookMechanic && `Visual hook mechanic: ${visual.hookMechanic}`,
+    visual?.movementGuess && `Likely movement: ${visual.movementGuess}`,
+    visual?.adaptationGuardrails?.length && `Guardrails: ${visual.adaptationGuardrails.join('; ')}`,
+  ].filter(Boolean);
+  return {
+    ...metadata,
+    videoIntelligence: intelligence,
+    analysisText: compactText(analysisParts.join(' '), 4200),
+  };
+}
+
 function parseYouTubeInput(rawInput) {
   const raw = String(rawInput || '').trim();
   const withProtocol = raw.startsWith('www.') ? `https://${raw}` : raw;
@@ -1040,16 +1247,16 @@ async function fetchPublicSourceMetadata(rawInput) {
   if (source.tone === 'shorts') {
     try {
       const youtubeMetadata = await fetchYouTubeMetadata(rawInput);
-      if (youtubeMetadata) return youtubeMetadata;
+      if (youtubeMetadata) return await enrichVideoIntelligence(youtubeMetadata);
     } catch (error) {
       fallback.youtubeError = error.message;
     }
     try {
       const oEmbedMetadata = await fetchYouTubeOEmbedMetadata(rawInput);
-      if (oEmbedMetadata) return {
+      if (oEmbedMetadata) return await enrichVideoIntelligence({
         ...oEmbedMetadata,
         youtubeError: fallback.youtubeError,
-      };
+      });
     } catch (error) {
       fallback.youtubeOEmbedError = error.message;
     }
@@ -1081,7 +1288,7 @@ async function fetchPublicSourceMetadata(rawInput) {
     const image = extractMetaContent(html, 'og:image');
     const analysisText = [title, description, handle, rawInput].filter(Boolean).join(' ');
 
-    return {
+    return await enrichVideoIntelligence({
       ...fallback,
       url,
       title,
@@ -1091,7 +1298,7 @@ async function fetchPublicSourceMetadata(rawInput) {
       stats,
       sourceStatus: title || description ? 'public_metadata' : 'url_only',
       analysisText,
-    };
+    });
   } catch (error) {
     return { ...fallback, url, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
   }
@@ -1144,10 +1351,18 @@ async function fetchPublicReelMetadata(reelUrl) {
 
 function buildGlobalInsightFromReelMetadata(metadata) {
   const sourceLabel = metadata.source?.label || (metadata.sourceStatus === 'youtube_api' ? 'YouTube Shorts' : 'Instagram Reels');
+  const intelligence = metadata.videoIntelligence || {};
+  const transcriptText = intelligence.transcript?.text || '';
+  const visual = intelligence.visual || {};
   const script = metadata.description || [
     `User supplied ${sourceLabel} URL: ${metadata.url}.`,
     metadata.shortcode ? `Shortcode: ${metadata.shortcode}.` : '',
-    `Public ${sourceLabel} metadata is limited, so infer a reusable short-form mechanic: strong first-frame promise, visible problem, proof, and Direct/comment CTA.`,
+    transcriptText ? `Transcript/captions: ${transcriptText}` : '',
+    visual.visualSummary ? `Visible frame/thumbnail facts: ${visual.visualSummary}` : '',
+    visual.hookMechanic ? `Observed visual hook mechanic: ${visual.hookMechanic}` : '',
+    visual.shotSignals?.length ? `Shot signals: ${visual.shotSignals.join('; ')}` : '',
+    visual.adaptationGuardrails?.length ? `Do not violate these visual guardrails: ${visual.adaptationGuardrails.join('; ')}` : '',
+    `Public ${sourceLabel} metadata is limited, so infer only from available metadata, captions and visible image facts. Do not pretend full video frames were analyzed unless frame data exists.`,
   ].filter(Boolean).join(' ');
 
   return {
@@ -1155,8 +1370,9 @@ function buildGlobalInsightFromReelMetadata(metadata) {
     hook: metadata.description || metadata.title,
     script,
     marketingMechanics: metadata.description
-      ? 'Deconstruct the caption/title into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
-      : 'URL-only import. Create a pragmatic Ukrainian adaptation framework from the visible source signal and avoid pretending video frames were analyzed.',
+      ? 'Deconstruct the caption/title plus transcript/thumbnail intelligence into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
+      : 'Create a pragmatic Ukrainian adaptation from the available source signal, transcript if present, and visible thumbnail facts. Avoid pretending unavailable frames were analyzed.',
+    videoIntelligence: intelligence,
   };
 }
 
@@ -1692,6 +1908,7 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
             : 'manual_preview',
         officialApi: metadata.sourceStatus === 'youtube_api',
         statsAreOfficial: metadata.sourceStatus === 'youtube_api',
+        intelligence: metadata.videoIntelligence?.confidence || null,
         note: metadata.sourceStatus === 'public_metadata'
           ? 'Public page metadata was used. No private account data, official API metrics, or post-level analytics were accessed.'
           : metadata.sourceStatus === 'youtube_oembed'

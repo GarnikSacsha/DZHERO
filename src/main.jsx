@@ -2666,15 +2666,42 @@ function normalizeSignalUrl(value) {
   return /^https?:\/\//i.test(clean) ? clean : `https://${clean}`;
 }
 
+function getSignalSourceGroup(reel = {}) {
+  const sourceLabel = String(reel.scanLabel || reel.sourceType || reel.importedMetadata?.source?.label || '').toLowerCase();
+  const sourceStatus = String(reel.sourceStatus || '').toLowerCase();
+  const sourceUrl = String(reel.sourceUrl || reel.importedMetadata?.url || '').toLowerCase();
+  const statusText = Array.isArray(reel.status) ? reel.status.join(' ').toLowerCase() : '';
+  if (sourceLabel.includes('youtube') || sourceStatus.includes('youtube') || sourceUrl.includes('youtube') || sourceUrl.includes('youtu.be') || statusText.includes('youtube')) return 'youtube';
+  if (sourceLabel.includes('tiktok') || sourceUrl.includes('tiktok') || statusText.includes('tiktok')) return 'tiktok';
+  if (sourceLabel.includes('instagram') || sourceLabel.includes('reels') || sourceUrl.includes('instagram') || statusText.includes('instagram')) return 'instagram';
+  if (sourceLabel.includes('website') || /^https?:\/\//i.test(sourceUrl)) return 'website';
+  return 'bank';
+}
+
 function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onAdapt, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState('all');
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
+  const sourceTabs = [
+    ['all', 'Усі'],
+    ['youtube', 'YouTube'],
+    ['instagram', 'Instagram'],
+    ['tiktok', 'TikTok'],
+    ['website', 'Website'],
+  ];
+  const sourceCounts = reels.reduce((acc, reel) => {
+    const group = getSignalSourceGroup(reel);
+    acc.all += 1;
+    acc[group] = (acc[group] || 0) + 1;
+    return acc;
+  }, { all: 0, youtube: 0, instagram: 0, tiktok: 0, website: 0 });
   const filteredReels = reels
+    .filter((reel) => sourceFilter === 'all' || getSignalSourceGroup(reel) === sourceFilter)
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
@@ -2738,6 +2765,19 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
         <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
       </div>
+      <div className="signal-source-tabs" aria-label="Фільтр джерел сигналів">
+        {sourceTabs.map(([value, label]) => (
+          <button
+            className={sourceFilter === value ? 'active' : ''}
+            type="button"
+            key={value}
+            onClick={() => setSourceFilter(value)}
+          >
+            <span>{label}</span>
+            <b>{sourceCounts[value] || 0}</b>
+          </button>
+        ))}
+      </div>
       {pastedReelUrl && (
         <div className="reel-link-import">
           <div>
@@ -2762,11 +2802,16 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
                   title: 'Посилання готове до імпорту',
                   text: 'Це схоже на зовнішній сигнал. Натисни імпорт вище або Enter, і Джеро спробує витягнути контекст у Studio.',
                 }
-              : trimmedQuery
+                : trimmedQuery
                 ? {
                     title: 'Нічого не знайшли',
                     text: 'Спробуй інший запит або встав посилання на TikTok, Reels, YouTube Shorts чи сайт.',
                   }
+                : sourceFilter !== 'all'
+                  ? {
+                      title: 'У цьому джерелі поки пусто',
+                      text: 'Встав посилання або додай сигнал вручну. Джеро покаже його тут після імпорту.',
+                    }
                 : null}
           />
         </div>
