@@ -5216,17 +5216,18 @@ function BillingSettings({ workspaceId, notify }) {
 
       <div className="billing-usage-grid">
         {usageRows.map(([label, key]) => {
-          const limit = billing?.plan?.limits?.[key] ?? 0;
+          const limit = billing?.plan?.limits?.[key];
           const used = billing?.usage?.[key] ?? 0;
-          const remaining = billing?.remaining?.[key] ?? 0;
-          const width = limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+          const isUnlimited = billing?.unlimited || limit == null;
+          const remaining = isUnlimited ? 'Безліміт' : (billing?.remaining?.[key] ?? 0);
+          const width = !isUnlimited && limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
           return (
             <article className="billing-usage-card" key={key}>
               <div>
                 <small>{label}</small>
                 <strong>{remaining}</strong>
               </div>
-              <p>{used} / {limit} використано</p>
+              <p>{isUnlimited ? `${used} використано · без ліміту` : `${used} / ${limit} використано`}</p>
               <span><i style={{ width: `${width}%` }} /></span>
             </article>
           );
