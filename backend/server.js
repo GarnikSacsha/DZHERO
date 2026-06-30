@@ -290,6 +290,7 @@ app.use('/api/auth/email', authLimiter);
 app.use('/api/auth/demo', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/reels/youtube/popular', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/remix/generate', expensiveLimiter);
@@ -1272,6 +1273,50 @@ async function fetchYouTubeMetadata(rawInput) {
   });
   const channel = channelData.items?.[0];
   return channel ? mapYouTubeChannelMetadata(channel, rawInput) : null;
+}
+
+function normalizeYouTubeRegionCode(value) {
+  const region = String(value || '').trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(region) ? region : 'UA';
+}
+
+function normalizeYouTubeCategoryId(value) {
+  const categoryId = String(value || '').trim();
+  return /^\d{1,3}$/.test(categoryId) ? categoryId : '';
+}
+
+async function fetchYouTubePopularMetadata(options = {}) {
+  if (!YOUTUBE_API_KEY) {
+    const error = new Error('youtube_api_key_missing');
+    error.status = 503;
+    throw error;
+  }
+  const regionCode = normalizeYouTubeRegionCode(options.regionCode);
+  const categoryId = normalizeYouTubeCategoryId(options.categoryId);
+  const maxResults = Math.min(Math.max(Number(options.maxResults || 8), 1), 12);
+  const popularData = await fetchYouTubeApi('videos', {
+    part: 'snippet,statistics,contentDetails',
+    chart: 'mostPopular',
+    regionCode,
+    videoCategoryId: categoryId,
+    maxResults: String(maxResults),
+  });
+  const videos = popularData.items || [];
+  const channelIds = [...new Set(videos.map((video) => video.snippet?.channelId).filter(Boolean))];
+  const channels = new Map();
+  if (channelIds.length) {
+    const channelData = await fetchYouTubeApi('channels', {
+      part: 'snippet,statistics',
+      id: channelIds.join(','),
+      maxResults: String(channelIds.length),
+    });
+    (channelData.items || []).forEach((channel) => channels.set(channel.id, channel));
+  }
+  return videos.map((video) => mapYouTubeVideoMetadata(
+    video,
+    channels.get(video.snippet?.channelId) || null,
+    `https://www.youtube.com/watch?v=${video.id}`,
+  ));
 }
 
 async function fetchPublicSourceMetadata(rawInput) {
@@ -2877,6 +2922,84 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const reels = db.reels.filter((item) => item.workspaceId === req.params.workspaceId);
   res.json({ reels });
+});
+
+app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    const maxResults = Math.min(Math.max(Number(req.body.maxResults || 8), 1), 12);
+    try {
+      assertUsageAvailable(db, req.params.workspaceId, 'reelImports', maxResults, req.authUser);
+    } catch (err) {
+      res.status(err.status || 402).json(err.payload || { error: err.message });
+      return;
+    }
+
+    const metadataItems = await fetchYouTubePopularMetadata({
+      regionCode: req.body.regionCode,
+      categoryId: req.body.categoryId,
+      maxResults,
+    });
+    const existingVideoIds = new Set(db.reels
+      .filter((reel) => reel.workspaceId === req.params.workspaceId)
+      .map((reel) => reel.importedMetadata?.youtube?.videoId || parseYouTubeInput(reel.sourceUrl)?.videoId)
+      .filter(Boolean));
+    const importedReels = [];
+    for (const metadata of metadataItems) {
+      const videoId = metadata.youtube?.videoId;
+      if (videoId && existingVideoIds.has(videoId)) continue;
+      const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
+      const sourceLabel = metadata.source?.label || 'YouTube';
+      const tagSeed = metadata.youtube?.channelTitle || metadata.handle || sourceLabel;
+      const importedReel = {
+        id: createId('reel'),
+        workspaceId: req.params.workspaceId,
+        sourceId: null,
+        sourceHandle: metadata.handle,
+        handle: metadata.handle,
+        sourceUrl: metadata.url,
+        sourceStatus: metadata.sourceStatus,
+        scanLabel: sourceLabel,
+        market: req.body.market || (normalizeYouTubeRegionCode(req.body.regionCode) === 'UA' ? 'ua' : 'global'),
+        title: metadata.title || 'YouTube signal',
+        caption: metadata.description || '',
+        transcript: '',
+        image: metadata.image || '',
+        views: metadata.stats?.views || 0,
+        likes: metadata.stats?.likes || 0,
+        comments: metadata.stats?.comments || 0,
+        shares: 0,
+        saves: 0,
+        hook: globalInsight.hook || metadata.title || 'YouTube signal',
+        status: ['YouTube popular', metadata.sourceStatus, 'ready_to_adapt'],
+        tag: (String(tagSeed).replace(/^@/, '').replace(/^https?:\/\/(www\.)?/, '')[0] || 'Y').toUpperCase(),
+        importedMetadata: metadata,
+        createdAt: new Date().toISOString(),
+      };
+      const analysis = analyzeReel(importedReel, workspace);
+      importedReel.score = Math.max(analysis.score, 76);
+      importedReel.analysis = analysis;
+      importedReels.push(importedReel);
+      if (videoId) existingVideoIds.add(videoId);
+    }
+
+    db.reels.unshift(...importedReels);
+    if (importedReels.length) {
+      createSyncJob(db, req.params.workspaceId, 'youtube_popular_imported', {
+        count: importedReels.length,
+        regionCode: normalizeYouTubeRegionCode(req.body.regionCode),
+        categoryId: normalizeYouTubeCategoryId(req.body.categoryId),
+      });
+      incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports, importedReels.length);
+    }
+    const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
+    await writeDb(db);
+    res.status(201).json({ reels: importedReels, skipped: metadataItems.length - importedReels.length, billing });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next) => {
