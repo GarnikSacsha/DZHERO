@@ -658,7 +658,7 @@ function App() {
           market: market === 'all' ? 'global' : market,
         }),
       });
-      if (!response.ok) throw new Error('import_failed');
+      if (!response.ok) throw new Error(await readApiError(response, 'auto_import_failed'));
       const payload = await response.json();
       const importedReel = {
         ...payload.reel,
@@ -671,8 +671,8 @@ function App() {
         ? 'Сигнал імпортовано: адаптація готова'
         : 'Джерело дало мінімум даних, але базову UA-адаптацію підготовлено');
       return true;
-    } catch {
-      notify('Автоімпорт не вдався. Відкриваю ручний режим як запасний варіант.');
+    } catch (error) {
+      notify(`Автоімпорт не вдався: ${error?.message || 'невідома помилка'}. Відкриваю ручний режим.`);
       setModal({ type: 'reel', url: cleanUrl });
       return false;
     }
@@ -2168,14 +2168,15 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       </nav>
       <div className="account-switcher compact">
         <section className="user-account-card" aria-label={language === 'en' ? 'Current account' : 'Поточний кабінет'}>
-          <div className="user-account-top">
+          <button className="user-account-top user-account-trigger" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
             <div className="avatar user-avatar">{accountInitial}</div>
             <div>
               <small>{language === 'en' ? 'Signed in as' : 'Увійшли як'}</small>
               <strong>{accountName}</strong>
               <span>{accountEmail}</span>
             </div>
-          </div>
+            <ChevronDown size={14} />
+          </button>
           <div className="user-account-meta">
             <span>{providerLabel}</span>
             <span>{activeWorkspace?.type || (language === 'en' ? 'Workspace' : 'Workspace')}</span>
@@ -2214,17 +2215,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
             </button>
           </div>
         )}
-        <button className="account" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
-          <div className="avatar">{activeWorkspace?.name?.[0]?.toUpperCase() || currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
-          <div>
-            <strong>{activeWorkspace?.name || currentUser?.name || 'Admin'}</strong>
-            <span>{activeWorkspace?.handle || currentUser?.email || 'workspace'}</span>
-          </div>
-          <ChevronDown size={14} />
-        </button>
-        <button className="logout-button" type="button" title={language === 'en' ? 'Log out' : 'Вийти'} onClick={onLogout}>
-          <LogOut size={14} />
-        </button>
       </div>
     </aside>
   );
