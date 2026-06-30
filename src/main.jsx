@@ -677,6 +677,33 @@ function App() {
       return false;
     }
   };
+  const pullYouTubePopular = async ({ regionCode = 'UA', categoryId = '' } = {}) => {
+    notify('Підтягуємо YouTube popular у Signals...');
+    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels/youtube/popular`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        regionCode,
+        categoryId,
+        maxResults: 8,
+        market: regionCode === 'UA' ? 'ua' : 'global',
+      }),
+    });
+    if (!response.ok) throw new Error(await readApiError(response, 'youtube_popular_failed'));
+    const payload = await response.json();
+    const incomingReels = (payload.reels || []).map((reel) => ({
+      ...reel,
+      handle: reel.handle || reel.sourceHandle || '@youtube',
+    }));
+    setData((current) => {
+      const incomingIds = new Set(incomingReels.map((reel) => reel.id));
+      return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
+    });
+    notify(incomingReels.length
+      ? `YouTube Signals: +${incomingReels.length}. Можна адаптувати під бренд.`
+      : 'YouTube Signals вже були в стрічці, дублі не додавались.');
+    return payload;
+  };
   const pushIdeaToPlan = (idea) => {
     setData((current) => ({ ...current, plans: [[idea.title, idea.source, 'Відібрано'], ...current.plans] }));
     notify('Ідею перенесено в контент-план');
@@ -737,7 +764,7 @@ function App() {
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && (
@@ -2668,13 +2695,16 @@ function getSignalSourceGroup(reel = {}) {
   return 'bank';
 }
 
-function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onAdapt, setPage }) {
+function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onPullYouTubePopular, onAdapt, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [youtubeRegion, setYoutubeRegion] = useState('UA');
+  const [youtubeCategory, setYoutubeCategory] = useState('');
+  const [isPullingYoutube, setIsPullingYoutube] = useState(false);
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
   const sourceTabs = [
@@ -2709,6 +2739,18 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       await onImportUrl(pastedReelUrl);
     } finally {
       setIsImportingUrl(false);
+    }
+  };
+  const pullYoutubePopular = async () => {
+    if (!onPullYouTubePopular || isPullingYoutube) return;
+    setIsPullingYoutube(true);
+    try {
+      await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: youtubeCategory });
+      setSourceFilter('youtube');
+    } catch (error) {
+      notify(`YouTube popular не підтягнувся: ${error?.message || 'невідома помилка'}`);
+    } finally {
+      setIsPullingYoutube(false);
     }
   };
 
@@ -2768,6 +2810,39 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
           </button>
         ))}
       </div>
+      {sourceFilter === 'youtube' && (
+        <div className="youtube-popular-panel">
+          <div>
+            <strong>YouTube popular</strong>
+            <span>Підтягує популярні ролики в Signals. Потім кожен можна окремо адаптувати під бренд.</span>
+          </div>
+          <label>
+            <span>Регіон</span>
+            <select value={youtubeRegion} onChange={(event) => setYoutubeRegion(event.target.value)}>
+              <option value="UA">Україна</option>
+              <option value="US">США</option>
+              <option value="GB">Британія</option>
+              <option value="DE">Німеччина</option>
+              <option value="PL">Польща</option>
+            </select>
+          </label>
+          <label>
+            <span>Категорія</span>
+            <select value={youtubeCategory} onChange={(event) => setYoutubeCategory(event.target.value)}>
+              <option value="">Усі</option>
+              <option value="24">Entertainment</option>
+              <option value="23">Comedy</option>
+              <option value="26">Howto & Style</option>
+              <option value="27">Education</option>
+              <option value="28">Science & Tech</option>
+              <option value="22">People & Blogs</option>
+            </select>
+          </label>
+          <button className="dark" type="button" onClick={pullYoutubePopular} disabled={isPullingYoutube}>
+            <RefreshCw size={16} />{isPullingYoutube ? 'Підтягуємо...' : 'Підтягнути популярні'}
+          </button>
+        </div>
+      )}
       {pastedReelUrl && (
         <div className="reel-link-import">
           <div>

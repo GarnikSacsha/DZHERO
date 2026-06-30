@@ -9508,6 +9508,64 @@ button.dark,
   color: var(--accent);
 }
 
+.youtube-popular-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 150px 190px auto;
+  gap: 10px;
+  align-items: end;
+  margin: -4px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(14, 165, 233, 0.26);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(20, 184, 166, 0.06)), var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.youtube-popular-panel > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.youtube-popular-panel strong {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.youtube-popular-panel span {
+  color: var(--muted-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.youtube-popular-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.youtube-popular-panel label > span {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.youtube-popular-panel select {
+  min-height: 38px;
+}
+
+.youtube-popular-panel button {
+  min-height: 38px;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .youtube-popular-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
 .manual-reel-modal {
   width: min(680px, calc(100vw - 28px));
 }
