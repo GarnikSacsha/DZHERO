@@ -3317,7 +3317,13 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
         <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
           <div className="reel-info">
-            <button className={`thumb market-${reel.market}`} type="button" onClick={() => onOpenPreview(reel)} aria-label={`Відкрити прев'ю ${reel.title}`}>
+            <button
+              className={`thumb market-${reel.market}`}
+              type="button"
+              onClick={() => onOpenPreview(reel)}
+              aria-label={`Відкрити прев'ю ${reel.title}`}
+              style={reel.image || reel.importedMetadata?.image ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.04), rgba(3, 7, 18, 0.64)), url("${reel.image || reel.importedMetadata?.image}")` } : undefined}
+            >
               <span>{reel.views}</span>
               <i className="thumb-play" aria-hidden="true" />
             </button>
@@ -3524,7 +3530,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
       <div className="brand-studio-head">
         <div>
           <small>Brand Scan draft</small>
-          <h3>{reel.scanLabel || reel.status?.[0] || 'Публічний профіль'}</h3>
+          <h3>{reel.scanLabel || metadata.source?.label || reel.status?.[0] || 'Публічний профіль'}</h3>
         </div>
       </div>
       <div className="brand-studio-meta">
@@ -3576,7 +3582,10 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
 function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
-  const reelHandle = reel.handle || reel.sourceHandle || '@instagram.reel';
+  const sourceMetadata = reel.importedMetadata || {};
+  const reelHandle = sourceMetadata.youtube?.channelTitle || reel.handle || reel.sourceHandle || '@instagram.reel';
+  const mediaImage = reel.image || sourceMetadata.image || '';
+  const phoneLabel = sourceMetadata.source?.label === 'YouTube Shorts' ? 'SHORTS' : 'GLOBAL';
   const scenario = buildRemixScenario(reel);
   const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
@@ -3646,7 +3655,13 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
         <div className="remix-side-panel">
           <div className="phone-card">
             <div className="phone-head"><b>{reelHandle.replace(/^@/, '')}</b><span>⋮</span></div>
-            <div className={`phone-video market-${reel.market}`}><button onClick={() => notify('Превʼю відео буде доступне після підключення медіа')}>▶</button><strong>GLOBAL<br />TO UA</strong></div>
+            <div
+              className={`phone-video market-${reel.market} ${mediaImage ? 'has-media' : ''}`}
+              style={mediaImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.86)), url("${mediaImage}")` } : undefined}
+            >
+              <button onClick={() => notify(mediaImage ? 'Це thumbnail з публічного джерела. Відео-плеєр додамо окремим шаром.' : 'Превʼю відео буде доступне після підключення медіа')}>▶</button>
+              <strong>{phoneLabel}<br />TO UA</strong>
+            </div>
             <div className="phone-stats"><span>{reel.views}<br /><small>Перегл.</small></span><span>{reel.likes}<br /><small>Лайки</small></span><span>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
           <div className="insight-card studio-mechanics-card">

@@ -2633,6 +2633,8 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     };
 
     const remixResult = await generateRemix(globalInsight, mergedBrief);
+    const sourceLabel = metadata.source?.label || 'URL import';
+    const tagSeed = metadata.youtube?.channelTitle || metadata.handle || sourceLabel;
     const importedReel = {
       id: createId('reel'),
       workspaceId: req.params.workspaceId,
@@ -2641,18 +2643,20 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       handle: metadata.handle,
       sourceUrl: metadata.url || url,
       sourceStatus: metadata.sourceStatus,
+      scanLabel: sourceLabel,
       market: req.body.market || 'global',
       title: metadata.title,
       caption: metadata.description,
       transcript: '',
-      views: 0,
-      likes: 0,
-      comments: 0,
+      image: metadata.image || '',
+      views: metadata.stats?.views || 0,
+      likes: metadata.stats?.likes || 0,
+      comments: metadata.stats?.comments || 0,
       shares: 0,
       saves: 0,
       hook: globalInsight.hook,
-      status: ['url_import', metadata.sourceStatus, 'ua_remix_ready'],
-      tag: (metadata.handle.replace('@', '')[0] || 'R').toUpperCase(),
+      status: [sourceLabel, metadata.sourceStatus, 'ua_remix_ready'],
+      tag: (String(tagSeed).replace(/^@/, '').replace(/^https?:\/\/(www\.)?/, '')[0] || 'R').toUpperCase(),
       remixResult,
       importedMetadata: metadata,
       createdAt: new Date().toISOString(),
