@@ -1634,11 +1634,12 @@ function buildMetaAuthUrl(state) {
     client_id: META_APP_ID,
     redirect_uri: META_REDIRECT_URI,
     response_type: 'code',
-    scope: META_SCOPES,
     state,
   });
   if (META_LOGIN_CONFIG_ID) {
     params.set('config_id', META_LOGIN_CONFIG_ID);
+  } else {
+    params.set('scope', META_SCOPES);
   }
   return {
     authUrl: `${META_AUTH_BASE_URL}?${params.toString()}`,
@@ -2115,7 +2116,7 @@ app.get('/api/auth/meta/start', async (req, res) => {
     authUrl,
     state,
     redirectUri: META_REDIRECT_URI,
-    scopes: META_SCOPES.split(','),
+    scopes: META_LOGIN_CONFIG_ID ? [] : META_SCOPES.split(','),
     configId: META_LOGIN_CONFIG_ID || null,
   });
 });
