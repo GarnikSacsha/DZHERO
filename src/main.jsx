@@ -5500,6 +5500,9 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
                 <button className="dark" type="button" onClick={buildSourcePreview} disabled={isScanning}>
                   <Sparkles size={16} /> {isScanning ? 'Скануємо...' : 'Проаналізувати джерело'}
                 </button>
+                <button className="dark source-connect-inline" type="button" onClick={connectFacebook}>
+                  <Link2 size={16} /> Підключити реальний акаунт
+                </button>
                 {sourceError && <span>{sourceError}</span>}
               </div>
             </div>

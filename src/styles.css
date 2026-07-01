@@ -12834,6 +12834,11 @@ nav button.active::before {
   font-weight: 800;
 }
 
+.source-connect-inline {
+  border-color: rgba(14, 165, 233, 0.35);
+  background: rgba(14, 165, 233, 0.08);
+}
+
 .source-type-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
