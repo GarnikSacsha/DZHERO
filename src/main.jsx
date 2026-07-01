@@ -20,6 +20,7 @@ import {
   Gauge,
   Globe2,
   Home,
+  Link2,
   Lightbulb,
   LogOut,
   Menu,
@@ -5582,6 +5583,9 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
               ) : (
                 <p>Це нормально для старту. Додай профіль, сайт або короткий опис, щоб зібрати перший контекст бренду.</p>
               )}
+              <button className="dark source-connect-button" type="button" onClick={connectFacebook}>
+                <Link2 size={16} /> Підключити Instagram / Facebook
+              </button>
             </article>
           </div>
         </div>

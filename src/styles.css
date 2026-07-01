@@ -12954,6 +12954,12 @@ nav button.active::before {
   font-weight: 800;
 }
 
+.source-connect-button {
+  width: 100%;
+  margin-top: 14px;
+  justify-content: center;
+}
+
 @media (max-width: 1120px) {
   .source-type-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
