@@ -56,7 +56,7 @@ const isLocalPage = isBrowser && ['localhost', '127.0.0.1', '::1'].includes(wind
 const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(rawApiUrl);
 const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
-const AUTH_TOKEN_KEY = 'insta-producer-auth-token';
+const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
 const BRAND_SCAN_PENDING_KEY = 'dzhero-brand-scan-pending';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
@@ -115,8 +115,7 @@ function getNextThemeMode(themeMode) {
 }
 
 function getAuthHeaders(extraHeaders = {}) {
-  const token = window.localStorage.getItem(AUTH_TOKEN_KEY);
-  return token ? { ...extraHeaders, Authorization: `Bearer ${token}` } : extraHeaders;
+  return extraHeaders;
 }
 
 function authFetch(url, options = {}) {
@@ -313,7 +312,7 @@ function App() {
   const [autoTheme, setAutoTheme] = useState(getAutoTheme);
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
   const [language, setLanguage] = useState(() => window.localStorage.getItem('insta-producer-language') || 'uk');
-  const [authToken, setAuthToken] = useState(() => window.localStorage.getItem(AUTH_TOKEN_KEY) || '');
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -432,15 +431,14 @@ function App() {
       })
       .catch(() => {
         if (!isMounted) return;
-        window.localStorage.removeItem(AUTH_TOKEN_KEY);
-        setAuthToken('');
+        window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
         setCurrentUser(null);
         setAuthStatus('guest');
       });
     return () => {
       isMounted = false;
     };
-  }, [authToken]);
+  }, [sessionRevision]);
 
   const filtered = useMemo(() => {
     if (!data) return null;
@@ -474,8 +472,8 @@ function App() {
   }, [currentUser, data, remixDraft]);
 
   const handleAuthSuccess = (payload) => {
-    window.localStorage.removeItem(AUTH_TOKEN_KEY);
-    setAuthToken('cookie');
+    window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+    setSessionRevision((revision) => revision + 1);
     setCurrentUser(payload.user);
     if (payload.user?.workspaceId) setWorkspaceId(payload.user.workspaceId);
     setAuthStatus('ready');
@@ -484,8 +482,8 @@ function App() {
 
   const handleLogout = async () => {
     authFetch(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
-    window.localStorage.removeItem(AUTH_TOKEN_KEY);
-    setAuthToken('');
+    window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
+    setSessionRevision((revision) => revision + 1);
     setCurrentUser(null);
     setAuthStatus('guest');
     notify('Ви вийшли з акаунта');
@@ -1620,7 +1618,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;
     } catch {
-      setError('Google-вхід буде доступний після налаштування GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET і GOOGLE_REDIRECT_URI.');
+      setError('Google-вхід буде доступний після завершення налаштування входу.');
       notify('Google Login ще треба підключити в Railway env.');
     } finally {
       setIsLoading(false);

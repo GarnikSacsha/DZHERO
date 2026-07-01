@@ -48,6 +48,7 @@ const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 const OAUTH_STATE_TTL_MS = Number(process.env.OAUTH_STATE_TTL_MINUTES || 10) * 60 * 1000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
 const META_AUTH_BASE_URL = process.env.META_AUTH_BASE_URL || 'https://www.facebook.com/v20.0/dialog/oauth';
 const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.facebook.com/v20.0';
@@ -64,6 +65,13 @@ const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googlea
 const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo';
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || '';
+const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || '';
+const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/tiktok/callback`;
+const TIKTOK_AUTH_BASE_URL = process.env.TIKTOK_AUTH_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/';
+const TIKTOK_TOKEN_URL = process.env.TIKTOK_TOKEN_URL || 'https://open.tiktokapis.com/v2/oauth/token/';
+const TIKTOK_USERINFO_URL = process.env.TIKTOK_USERINFO_URL || 'https://open.tiktokapis.com/v2/user/info/';
+const TIKTOK_SCOPES = process.env.TIKTOK_SCOPES || 'user.info.basic,user.info.profile,user.info.stats';
 const UNLIMITED_ACCESS_EMAILS = new Set(
   String(process.env.UNLIMITED_ACCESS_EMAILS || process.env.ADMIN_EMAILS || '')
     .split(',')
@@ -96,6 +104,7 @@ function parseCsvEnv(value) {
 
 const META_SCOPE_LIST = parseCsvEnv(META_SCOPES);
 const INSTAGRAM_SCOPE_LIST = parseCsvEnv(INSTAGRAM_SCOPES);
+const TIKTOK_SCOPE_LIST = parseCsvEnv(TIKTOK_SCOPES);
 const CAN_DISCOVER_META_ACCOUNTS = Boolean(META_LOGIN_CONFIG_ID || META_SCOPE_LIST.includes('pages_show_list'));
 
 const PLAN_CATALOG = [
@@ -228,7 +237,7 @@ const allowedOrigins = new Set([
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 app.use(helmet({
-  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+  contentSecurityPolicy: IS_PRODUCTION ? {
     directives: {
       defaultSrc: ["'self'"],
       baseUri: ["'self'"],
@@ -264,6 +273,13 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+const oauthLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 180,
@@ -291,10 +307,19 @@ const publicPreviewDailyLimiter = rateLimit({
 
 app.use('/api', apiLimiter);
 app.use('/api', verifyTrustedWriteRequest);
+app.use('/api/auth/meta/start', oauthLimiter);
+app.use('/api/auth/instagram/start', oauthLimiter);
+app.use('/api/auth/google/start', oauthLimiter);
+app.use('/api/auth/tiktok/start', oauthLimiter);
+app.use('/api/auth/meta/callback', oauthLimiter);
+app.use('/api/auth/instagram/callback', oauthLimiter);
+app.use('/api/auth/callback/google', oauthLimiter);
+app.use('/api/auth/tiktok/callback', oauthLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/auth/email', authLimiter);
 app.use('/api/auth/demo', authLimiter);
+app.use('/api/data-deletion/request', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/youtube/popular', expensiveLimiter);
@@ -327,6 +352,7 @@ function normalizeDbShape(db = {}) {
   db.sources ||= [];
   db.metaStates ||= [];
   db.instagramAccounts ||= [];
+  db.tiktokAccounts ||= [];
   db.aiMemory ||= [];
   db.aiJobs ||= [];
   db.remixes ||= [];
@@ -446,7 +472,11 @@ function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
 function verifyPassword(password, storedHash) {
   const [salt, hash] = String(storedHash || '').split(':');
   if (!salt || !hash) return false;
-  return hashPassword(password, salt) === storedHash;
+  const candidate = hashPassword(password, salt);
+  const expectedBuffer = Buffer.from(storedHash);
+  const candidateBuffer = Buffer.from(candidate);
+  return expectedBuffer.length === candidateBuffer.length
+    && crypto.timingSafeEqual(expectedBuffer, candidateBuffer);
 }
 
 function publicUser(user) {
@@ -1531,7 +1561,7 @@ function getSessionCookieOptions() {
     'HttpOnly',
     'SameSite=Lax',
     `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
-    ...(process.env.NODE_ENV === 'production' ? ['Secure'] : []),
+    ...(IS_PRODUCTION ? ['Secure'] : []),
   ].join('; ');
 }
 
@@ -1540,7 +1570,7 @@ function setSessionCookie(res, token) {
 }
 
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
 }
 
 function getBearerToken(req) {
@@ -1575,7 +1605,7 @@ function verifyTrustedWriteRequest(req, res, next) {
   const origin = String(req.headers.origin || '');
   const referer = String(req.headers.referer || '');
   const trusted = (origin && allowedOrigins.has(origin)) || (!origin && isTrustedRequestUrl(referer));
-  if (trusted || (!origin && !referer && process.env.NODE_ENV !== 'production')) {
+  if (trusted || (!origin && !referer && !IS_PRODUCTION)) {
     next();
     return;
   }
@@ -1705,6 +1735,20 @@ function buildGoogleAuthUrl(state) {
   };
 }
 
+function buildTikTokAuthUrl(state) {
+  const params = new URLSearchParams({
+    client_key: TIKTOK_CLIENT_KEY,
+    redirect_uri: TIKTOK_REDIRECT_URI,
+    response_type: 'code',
+    scope: TIKTOK_SCOPES,
+    state,
+  });
+  return {
+    authUrl: `${TIKTOK_AUTH_BASE_URL}?${params.toString()}`,
+    state,
+  };
+}
+
 async function fetchMetaJson(url, options) {
   if (typeof fetch !== 'function') {
     throw new Error('Node.js fetch is required for Meta API calls. Use Node 18+.');
@@ -1775,6 +1819,21 @@ async function exchangeGoogleCode(code) {
   });
 }
 
+async function exchangeTikTokCode(code) {
+  const params = new URLSearchParams({
+    client_key: TIKTOK_CLIENT_KEY,
+    client_secret: TIKTOK_CLIENT_SECRET,
+    code,
+    grant_type: 'authorization_code',
+    redirect_uri: TIKTOK_REDIRECT_URI,
+  });
+  return fetchMetaJson(TIKTOK_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+}
+
 async function getInstagramProfile(accessToken) {
   const params = new URLSearchParams({
     fields: 'id,user_id,username,account_type,profile_picture_url',
@@ -1787,6 +1846,36 @@ async function getGoogleProfile(accessToken) {
   return fetchGoogleJson(GOOGLE_USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+}
+
+function getTikTokTokenPayload(tokenResult = {}) {
+  return tokenResult.data || tokenResult;
+}
+
+async function getTikTokProfile(accessToken) {
+  const url = new URL(TIKTOK_USERINFO_URL);
+  url.searchParams.set('fields', [
+    'open_id',
+    'union_id',
+    'avatar_url',
+    'avatar_url_100',
+    'avatar_large_url',
+    'display_name',
+    'profile_deep_link',
+    'bio_description',
+    'is_verified',
+    'follower_count',
+    'following_count',
+    'likes_count',
+    'video_count',
+  ].join(','));
+  const result = await fetchMetaJson(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      accept: 'application/json',
+    },
+  });
+  return result.data?.user || result.user || {};
 }
 
 async function getMetaPages(accessToken) {
@@ -1984,14 +2073,100 @@ function buildScriptFromIdea(idea = {}, workspace = {}) {
   };
 }
 
+const LEGAL_PAGES = {
+  privacy: {
+    title: 'Privacy Policy',
+    subtitle: 'How Dzhero collects, uses, stores, and protects user and business data.',
+    sections: [
+      ['Who we are', 'Dzhero is a web-based AI workspace that helps marketers, creators, and small businesses analyze short-form content signals and prepare original content plans.'],
+      ['Data we collect', 'Dzhero may collect account information such as name, email address, connected social account identifiers, profile information, profile links, avatar images, and account statistics when a user authorizes a supported platform such as TikTok, Google, Meta, Instagram, or YouTube. Users may also provide business briefs, source links, notes, content ideas, drafts, and workspace settings.'],
+      ['TikTok data', 'When a user connects TikTok through Login Kit, Dzhero uses the approved permissions to identify the connected account, show profile context, and display profile statistics such as follower count, following count, likes count, and video count inside the user workspace. Dzhero does not sell TikTok data and does not post to TikTok or modify a TikTok account unless a user explicitly authorizes a future product feature for that purpose.'],
+      ['How we use data', 'Dzhero uses data to provide the service, authenticate users, connect user-owned sources, analyze public and authorized content signals, generate content ideas, prepare scripts, build content plans, prevent abuse, enforce usage limits, and improve product reliability.'],
+      ['AI processing', 'Dzhero may send user-provided briefs, source metadata, notes, and selected content context to AI service providers to generate drafts and recommendations. Users are responsible for reviewing AI output before publishing or using it externally.'],
+      ['Sharing and service providers', 'Dzhero shares data only with service providers needed to operate the product, such as hosting, database, authentication, analytics, and AI infrastructure providers. Dzhero does not sell personal data.'],
+      ['Security', 'Dzhero uses server-side storage for service credentials and access tokens, limits access to production secrets, and applies authentication and workspace access checks to protect user data.'],
+      ['Retention and deletion', 'Dzhero keeps account, workspace, connected source, generated draft, and usage data while the account is active or as needed to provide the service. Users may request deletion of their account, connected account data, AI memory, and generated drafts through the data deletion page or support contact.'],
+      ['Contact', 'For privacy, data access, or deletion requests, contact Dzhero support through the support channel provided in the app or submit a request at /data-deletion.'],
+    ],
+  },
+  terms: {
+    title: 'Terms of Service',
+    subtitle: 'Rules for using Dzhero.',
+    sections: [
+      ['Use of service', 'Dzhero helps marketers, creators, businesses, and SMM teams analyze short-form content signals, prepare drafts, and organize content plans. Users remain responsible for the content they publish and for complying with applicable laws and platform rules.'],
+      ['Account and access', 'Users must provide accurate account information and keep access to their account secure. Users may connect only accounts, websites, and sources they own or are authorized to use.'],
+      ['Connected platforms', 'Some features use platform integrations such as TikTok Login Kit, Google, Meta, Instagram, and YouTube. Access to these integrations depends on the permissions granted by the user and by the platform. Dzhero uses connected platform data only to provide the requested workspace features.'],
+      ['AI output', 'AI drafts are suggestions, not final legal, financial or professional advice. Human review is required before publishing or messaging customers.'],
+      ['Content ownership', 'Users keep ownership of the business information, notes, briefs, and drafts they create in Dzhero. Users must not use Dzhero to copy third-party videos, audio, branding, private data, or protected creative assets without permission.'],
+      ['Acceptable use', 'Users must not use Dzhero to break platform rules, scrape private data, impersonate others, distribute harmful content, or attempt to access accounts, workspaces, or systems without permission.'],
+      ['Service availability', 'Dzhero may change, suspend, or discontinue features as the product evolves or as third-party platform requirements change. Dzhero is provided on an as-is basis to the extent permitted by law.'],
+      ['Termination', 'Dzhero may limit or terminate access if a user violates these terms, misuses integrations, creates security risk, or uses the service in a way that may harm other users, Dzhero, or connected platforms.'],
+    ],
+  },
+};
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderLegalPage(page) {
+  const content = LEGAL_PAGES[page];
+  const sections = content.sections.map(([title, text]) => (
+    `<section><h2>${escapeHtml(title)}</h2><p>${escapeHtml(text)}</p></section>`
+  )).join('');
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(content.title)} | Dzhero</title>
+  <meta name="description" content="${escapeHtml(content.subtitle)}">
+  <style>
+    body{margin:0;background:#f7f7f8;color:#111827;font-family:Inter,Arial,sans-serif;line-height:1.6}
+    main{max-width:860px;margin:0 auto;padding:48px 20px}
+    article{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:32px;box-shadow:0 18px 45px rgba(15,23,42,.08)}
+    a{color:#111827} small{color:#6b7280;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+    h1{font-size:40px;line-height:1.1;margin:12px 0 8px} h2{font-size:20px;margin:28px 0 8px}
+    p{margin:0 0 12px}.brand{display:inline-flex;gap:10px;align-items:center;margin-bottom:22px;text-decoration:none;font-weight:800}
+  </style>
+</head>
+<body>
+  <main>
+    <a class="brand" href="/">Dzhero</a>
+    <article>
+      <small>Dzhero legal document</small>
+      <h1>${escapeHtml(content.title)}</h1>
+      <p>${escapeHtml(content.subtitle)}</p>
+      ${sections}
+    </article>
+  </main>
+</body>
+</html>`;
+}
+
+app.get(['/privacy', '/privacy/'], (req, res) => {
+  res.type('html').send(renderLegalPage('privacy'));
+});
+
+app.get(['/terms', '/terms/'], (req, res) => {
+  res.type('html').send(renderLegalPage('terms'));
+});
+
 app.get('/api/health', async (req, res) => {
   const db = await readDb();
-  res.json({
+  const health = {
     ok: true,
     service: 'dzhero-api',
     version: '0.1.0',
     storage: DATABASE_URL ? 'postgres' : 'json',
-    counts: {
+  };
+  if (!IS_PRODUCTION || (ADMIN_TOKEN && getAdminToken(req) === ADMIN_TOKEN)) {
+    health.counts = {
       workspaces: db.workspaces.length,
       users: db.users.length,
       competitors: db.competitors.length,
@@ -2002,8 +2177,9 @@ app.get('/api/health', async (req, res) => {
       instagramAccounts: db.instagramAccounts.length,
       syncJobs: db.syncJobs.length,
       dataDeletionRequests: db.dataDeletionRequests.length,
-    },
-  });
+    };
+  }
+  res.json(health);
 });
 
 app.post('/api/brand-scan/preview', async (req, res, next) => {
@@ -2193,6 +2369,33 @@ app.get('/api/auth/google/start', async (req, res) => {
   res.json({ authUrl, state, redirectUri: GOOGLE_REDIRECT_URI, scopes: GOOGLE_SCOPES.split(' ') });
 });
 
+app.get('/api/auth/tiktok/start', async (req, res) => {
+  if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET) {
+    res.status(501).json({
+      error: 'tiktok_not_configured',
+      message: 'Set TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET and TIKTOK_REDIRECT_URI before using TikTok Login.',
+      redirectUri: TIKTOK_REDIRECT_URI,
+      requiredEnv: ['TIKTOK_CLIENT_KEY', 'TIKTOK_CLIENT_SECRET', 'TIKTOK_REDIRECT_URI'],
+      scopes: TIKTOK_SCOPE_LIST,
+    });
+    return;
+  }
+  const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  const workspaceId = req.query.workspaceId || user.workspaceId || 'ws_demo_ua';
+  const workspace = requireWorkspace(db, workspaceId, res);
+  if (!workspace) return;
+  if (!canAccessWorkspace(user, workspace.id)) {
+    res.status(403).json({ error: 'workspace_forbidden' });
+    return;
+  }
+  const state = createOAuthState(db, 'tiktok', { workspaceId, userId: user.id });
+  await writeDb(db);
+  const { authUrl } = buildTikTokAuthUrl(state);
+  res.json({ authUrl, state, redirectUri: TIKTOK_REDIRECT_URI, scopes: TIKTOK_SCOPE_LIST });
+});
+
 app.get('/api/auth/meta/callback', async (req, res) => {
   if (req.query.error) {
     res.status(400).send(`Meta Login error: ${req.query.error_description || req.query.error}`);
@@ -2257,7 +2460,7 @@ app.get('/api/auth/meta/callback', async (req, res) => {
     res.redirect(`${CLIENT_URL}/?meta=connected&accounts=${connectedAccounts.length}`);
   } catch (err) {
     console.error('[MetaLogin]', err);
-    res.status(502).send(`Meta Login token exchange failed: ${err.message}`);
+    res.status(502).send('Meta Login could not be completed. Please try again.');
   }
 });
 
@@ -2301,7 +2504,7 @@ app.get('/api/auth/callback/google', async (req, res) => {
     res.redirect(`${CLIENT_URL}/?auth=google`);
   } catch (err) {
     console.error('[GoogleLogin]', err);
-    res.status(502).send(`Google Login token exchange failed: ${err.message}`);
+    res.status(502).send('Google Login could not be completed. Please try again.');
   }
 });
 
@@ -2367,7 +2570,77 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
     res.redirect(`${CLIENT_URL}/?instagram=connected&accounts=1`);
   } catch (err) {
     console.error('[InstagramLogin]', err);
-    res.status(502).send(`Instagram Login token exchange failed: ${err.message}`);
+    res.status(502).send('Instagram Login could not be completed. Please try again.');
+  }
+});
+
+app.get('/api/auth/tiktok/callback', async (req, res) => {
+  if (req.query.error) {
+    res.status(400).send(`TikTok Login error: ${req.query.error_description || req.query.error}`);
+    return;
+  }
+  if (!req.query.code) {
+    res.status(400).send('TikTok Login callback received without code.');
+    return;
+  }
+  if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET) {
+    res.status(501).send('TikTok Login is not configured.');
+    return;
+  }
+  try {
+    const db = await readDb();
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'tiktok');
+    if (!stateRecord) {
+      res.status(400).send('TikTok Login state is invalid or expired.');
+      return;
+    }
+    const workspaceId = stateRecord.workspaceId;
+    const tokenResult = getTikTokTokenPayload(await exchangeTikTokCode(String(req.query.code)));
+    const accessToken = tokenResult.access_token || '';
+    const profile = accessToken ? await getTikTokProfile(accessToken) : {};
+    const openId = String(profile.open_id || tokenResult.open_id || '');
+    const connectedAccount = {
+      id: createId('tt'),
+      workspaceId,
+      provider: 'tiktok_login',
+      openId,
+      unionId: profile.union_id || '',
+      displayName: profile.display_name || (openId ? `TikTok ${openId.slice(0, 6)}` : 'TikTok account'),
+      profileDeepLink: profile.profile_deep_link || '',
+      avatarUrl: profile.avatar_large_url || profile.avatar_url_100 || profile.avatar_url || '',
+      bioDescription: profile.bio_description || '',
+      isVerified: Boolean(profile.is_verified),
+      stats: {
+        followers: profile.follower_count ?? null,
+        following: profile.following_count ?? null,
+        likes: profile.likes_count ?? null,
+        videos: profile.video_count ?? null,
+      },
+      permissions: TIKTOK_SCOPE_LIST,
+      status: 'connected',
+      connectedAt: new Date().toISOString(),
+      tokenMeta: {
+        tokenType: tokenResult.token_type || 'bearer',
+        expiresIn: tokenResult.expires_in || null,
+        refreshExpiresIn: tokenResult.refresh_expires_in || null,
+      },
+    };
+
+    db.tiktokAccounts = db.tiktokAccounts.filter((account) => (
+      account.workspaceId !== workspaceId || account.openId !== connectedAccount.openId
+    ));
+    db.tiktokAccounts.unshift(connectedAccount);
+    stateRecord.usedAt = new Date().toISOString();
+    createSyncJob(db, workspaceId, 'tiktok_account_connected', {
+      provider: 'tiktok_login',
+      scopes: connectedAccount.permissions,
+      hasStats: Object.values(connectedAccount.stats).some((value) => value !== null),
+    });
+    await writeDb(db);
+    res.redirect(`${CLIENT_URL}/?tiktok=connected&accounts=1`);
+  } catch (err) {
+    console.error('[TikTokLogin]', err);
+    res.status(502).send('TikTok Login could not be completed. Please try again.');
   }
 });
 
@@ -2544,6 +2817,7 @@ app.post('/api/auth/logout', async (req, res) => {
 });
 
 app.get('/api/schema', (req, res) => {
+  if (IS_PRODUCTION && !requireAdmin(req, res)) return;
   res.json({
     entities: [
       'users',
@@ -3437,7 +3711,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     console.error('[AgentChat]', err);
     res.status(502).json({
       error: 'agent_provider_failed',
-      message: err.message,
+      message: IS_PRODUCTION ? 'AI provider request failed. Please try again.' : err.message,
       provider: 'gemini',
     });
   }
@@ -3621,12 +3895,23 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
 });
 
 app.use((err, req, res, next) => {
-  console.error(err);
+  const requestId = crypto.randomBytes(6).toString('hex');
+  console.error(`[${requestId}]`, err);
   if (err.status && err.payload) {
-    res.status(err.status).json(err.payload);
+    res.status(err.status).json({
+      ...err.payload,
+      requestId,
+    });
     return;
   }
-  res.status(err.status || 500).json({ error: err.message || 'internal_server_error' });
+  const status = Number(err.status || 500);
+  const error = status >= 500 && IS_PRODUCTION
+    ? 'internal_server_error'
+    : String(err.message || 'internal_server_error');
+  const message = status >= 500 && IS_PRODUCTION
+    ? 'Something went wrong. Please try again.'
+    : undefined;
+  res.status(status).json({ error, message, requestId });
 });
 
 app.use(express.static(CLIENT_DIST_PATH));
