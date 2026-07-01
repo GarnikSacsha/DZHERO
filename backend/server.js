@@ -85,10 +85,18 @@ const INSTAGRAM_SCOPES = process.env.INSTAGRAM_SCOPES || [
   'instagram_business_manage_messages',
   'instagram_business_content_publish',
 ].join(',');
-const META_SCOPES = process.env.META_SCOPES || [
-  'email',
-  'instagram_basic',
-].join(',');
+const META_SCOPES = process.env.META_SCOPES || '';
+
+function parseCsvEnv(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+const META_SCOPE_LIST = parseCsvEnv(META_SCOPES);
+const INSTAGRAM_SCOPE_LIST = parseCsvEnv(INSTAGRAM_SCOPES);
+const CAN_DISCOVER_META_ACCOUNTS = Boolean(META_LOGIN_CONFIG_ID || META_SCOPE_LIST.includes('pages_show_list'));
 
 const PLAN_CATALOG = [
   {
@@ -1092,11 +1100,24 @@ async function fetchYouTubeApi(resource, params) {
   return data;
 }
 
+function selectYouTubeThumbnail(...thumbnailSets) {
+  const preferredSizes = ['maxres', 'standard', 'high', 'medium', 'default'];
+  for (const thumbnails of thumbnailSets) {
+    if (!thumbnails) continue;
+    for (const size of preferredSizes) {
+      const url = thumbnails[size]?.url;
+      if (url) return url;
+    }
+  }
+  return '';
+}
+
 function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
   const snippet = video?.snippet || {};
   const stats = video?.statistics || {};
   const channelSnippet = channel?.snippet || {};
   const channelStats = channel?.statistics || {};
+  const thumbnailUrl = selectYouTubeThumbnail(snippet.thumbnails, channelSnippet.thumbnails);
   const title = snippet.title || '';
   const description = snippet.description || '';
   const channelTitle = snippet.channelTitle || channelSnippet.title || 'YouTube channel';
@@ -1118,7 +1139,7 @@ function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
     title,
     description,
     handle,
-    image: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || channelSnippet.thumbnails?.high?.url,
+    image: thumbnailUrl,
     publishedAt,
     stats: {
       views: formatCompactNumber(stats.viewCount),
@@ -1141,6 +1162,7 @@ function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
       duration: video?.contentDetails?.duration || '',
       categoryId: snippet.categoryId || '',
       tags: Array.isArray(snippet.tags) ? snippet.tags.slice(0, 12) : [],
+      thumbnailUrl,
     },
     sourceStatus: 'youtube_api',
     analysisText,
@@ -1150,6 +1172,7 @@ function mapYouTubeVideoMetadata(video, channel = null, rawInput = '') {
 function mapYouTubeChannelMetadata(channel, rawInput = '') {
   const snippet = channel?.snippet || {};
   const stats = channel?.statistics || {};
+  const thumbnailUrl = selectYouTubeThumbnail(snippet.thumbnails);
   const title = snippet.title || 'YouTube channel';
   const description = snippet.description || '';
   const customUrl = snippet.customUrl || '';
@@ -1161,7 +1184,7 @@ function mapYouTubeChannelMetadata(channel, rawInput = '') {
     title,
     description,
     handle,
-    image: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url,
+    image: thumbnailUrl,
     publishedAt: snippet.publishedAt || '',
     stats: {
       subscribers: formatCompactNumber(stats.subscriberCount),
@@ -1178,6 +1201,7 @@ function mapYouTubeChannelMetadata(channel, rawInput = '') {
       channelTitle: title,
       customUrl,
       country: snippet.country || '',
+      thumbnailUrl,
     },
     sourceStatus: 'youtube_api',
     analysisText: [title, description, `${formatCompactNumber(stats.subscriberCount)} subscribers`, `${formatCompactNumber(stats.videoCount)} videos`].filter(Boolean).join(' '),
@@ -1200,6 +1224,7 @@ async function fetchYouTubeOEmbedMetadata(rawInput) {
   const data = await response.json().catch(() => null);
   if (!data?.title) return null;
   const authorName = data.author_name || 'YouTube channel';
+  const thumbnailUrl = data.thumbnail_url || '';
   return {
     source: { label: 'YouTube Shorts', tone: 'shorts' },
     input: String(rawInput || '').trim(),
@@ -1207,7 +1232,7 @@ async function fetchYouTubeOEmbedMetadata(rawInput) {
     title: data.title,
     description: '',
     handle: data.author_url || authorName,
-    image: data.thumbnail_url || '',
+    image: thumbnailUrl,
     publishedAt: '',
     stats: {},
     youtube: {
@@ -1215,6 +1240,7 @@ async function fetchYouTubeOEmbedMetadata(rawInput) {
       channelTitle: authorName,
       authorUrl: data.author_url || '',
       provider: data.provider_name || 'YouTube',
+      thumbnailUrl,
     },
     sourceStatus: 'youtube_oembed',
     analysisText: [data.title, authorName, parsed.url].filter(Boolean).join(' '),
@@ -1638,7 +1664,7 @@ function buildMetaAuthUrl(state) {
   });
   if (META_LOGIN_CONFIG_ID) {
     params.set('config_id', META_LOGIN_CONFIG_ID);
-  } else {
+  } else if (META_SCOPE_LIST.length) {
     params.set('scope', META_SCOPES);
   }
   return {
@@ -2094,8 +2120,8 @@ app.get('/api/auth/meta/start', async (req, res) => {
       error: 'meta_not_configured',
       message: 'Set META_APP_ID, META_APP_SECRET and META_REDIRECT_URI in .env before using Meta Login.',
       redirectUri: META_REDIRECT_URI,
-      requiredEnv: ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI', 'META_SCOPES'],
-      optionalEnv: ['META_LOGIN_CONFIG_ID'],
+      requiredEnv: ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI'],
+      optionalEnv: ['META_LOGIN_CONFIG_ID', 'META_SCOPES'],
     });
     return;
   }
@@ -2116,8 +2142,9 @@ app.get('/api/auth/meta/start', async (req, res) => {
     authUrl,
     state,
     redirectUri: META_REDIRECT_URI,
-    scopes: META_LOGIN_CONFIG_ID ? [] : META_SCOPES.split(','),
+    scopes: META_LOGIN_CONFIG_ID ? [] : META_SCOPE_LIST,
     configId: META_LOGIN_CONFIG_ID || null,
+    accountDiscoveryEnabled: CAN_DISCOVER_META_ACCOUNTS,
   });
 });
 
@@ -2146,7 +2173,7 @@ app.get('/api/auth/instagram/start', async (req, res) => {
   const state = createOAuthState(db, 'instagram', { workspaceId, userId: user.id });
   await writeDb(db);
   const { authUrl } = buildInstagramAuthUrl(state);
-  res.json({ authUrl, state, redirectUri: INSTAGRAM_REDIRECT_URI, scopes: INSTAGRAM_SCOPES.split(',') });
+  res.json({ authUrl, state, redirectUri: INSTAGRAM_REDIRECT_URI, scopes: INSTAGRAM_SCOPE_LIST });
 });
 
 app.get('/api/auth/google/start', async (req, res) => {
@@ -2188,6 +2215,17 @@ app.get('/api/auth/meta/callback', async (req, res) => {
     }
     const workspaceId = stateRecord.workspaceId;
     const tokenResult = await exchangeMetaCode(String(req.query.code));
+    if (!CAN_DISCOVER_META_ACCOUNTS) {
+      stateRecord.usedAt = new Date().toISOString();
+      createSyncJob(db, workspaceId, 'meta_login_verified', {
+        accountDiscoveryEnabled: false,
+        scopes: META_SCOPE_LIST,
+        configId: META_LOGIN_CONFIG_ID || null,
+      });
+      await writeDb(db);
+      res.redirect(`${CLIENT_URL}/?meta=connected&accounts=0&discovery=disabled`);
+      return;
+    }
     const pages = await getMetaPages(tokenResult.access_token);
     const connectedAccounts = pages
       .filter((page) => page.instagram_business_account)
@@ -2199,7 +2237,7 @@ app.get('/api/auth/meta/callback', async (req, res) => {
         instagramId: page.instagram_business_account.id,
         username: page.instagram_business_account.username || page.instagram_business_account.name || '',
         profilePictureUrl: page.instagram_business_account.profile_picture_url || '',
-        permissions: META_SCOPES.split(','),
+        permissions: META_SCOPE_LIST,
         status: 'connected',
         connectedAt: new Date().toISOString(),
         tokenMeta: {
@@ -2306,7 +2344,7 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
       username: profile.username || `instagram_${accountId}`,
       accountType: profile.account_type || 'PROFESSIONAL',
       profilePictureUrl: profile.profile_picture_url || '',
-      permissions: INSTAGRAM_SCOPES.split(','),
+      permissions: INSTAGRAM_SCOPE_LIST,
       status: 'connected',
       connectedAt: new Date().toISOString(),
       tokenMeta: {
@@ -2348,7 +2386,9 @@ app.get('/api/auth/meta/status', async (req, res) => {
   res.json({
     configured: Boolean(META_APP_ID && META_APP_SECRET),
     redirectUri: META_REDIRECT_URI,
-    scopes: META_SCOPES.split(','),
+    scopes: META_SCOPE_LIST,
+    configId: META_LOGIN_CONFIG_ID || null,
+    accountDiscoveryEnabled: CAN_DISCOVER_META_ACCOUNTS,
     connectedAccounts: accounts.map((account) => ({
       id: account.id,
       username: account.username,
@@ -2981,6 +3021,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
             youtube: metadata.youtube || existingReel.importedMetadata?.youtube,
             source: metadata.source || existingReel.importedMetadata?.source || { label: sourceLabel, tone: 'shorts' },
             url: metadata.url || existingReel.importedMetadata?.url || existingReel.sourceUrl,
+            image: metadata.image || existingReel.importedMetadata?.image || existingReel.image || '',
           },
         });
         returnedReels.push(existingReel);
