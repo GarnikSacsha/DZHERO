@@ -700,9 +700,13 @@ function App() {
       const incomingIds = new Set(incomingReels.map((reel) => reel.id));
       return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
     });
-    notify(incomingReels.length
-      ? `YouTube Signals: +${incomingReels.length}. Можна адаптувати під бренд.`
-      : 'YouTube Signals вже були в стрічці, дублі не додавались.');
+    const importedCount = Number(payload.importedCount ?? incomingReels.length);
+    const reusedCount = Number(payload.reusedCount ?? 0);
+    notify(importedCount
+      ? `YouTube Signals: +${importedCount}. Можна адаптувати під бренд.`
+      : incomingReels.length
+        ? `YouTube Signals вже в стрічці: показую ${reusedCount || incomingReels.length}.`
+        : 'YouTube Signals вже були в стрічці, дублі не додавались.');
     return payload;
   };
   const pushIdeaToPlan = (idea) => {
