@@ -198,7 +198,7 @@ function PublicLegalPage({ page }) {
       sections: [
         ['Data we process', 'Dzhero may process account profile data, authorized Instagram content metadata, insights, comments, business brief data, content ideas and AI-generated drafts after the user grants permissions.'],
         ['How we use data', 'Data is used to analyze content performance, generate ideas, prepare scripts, plan posts and help the user manage their Instagram production workflow.'],
-        ['API keys', 'Public users are never asked to provide API keys. Product API keys are stored only in backend or deployment environment variables.'],
+        ['Security', 'Dzhero never asks public users for private technical credentials. Service credentials are stored only in the backend environment.'],
         ['Retention', 'Demo JSON storage is temporary for MVP testing. Production storage should support deletion, export and retention controls.'],
         ['Contact', 'For privacy requests, contact the Dzhero product owner through the support channel provided in the app.'],
       ],
@@ -678,7 +678,7 @@ function App() {
     }
   };
   const pullYouTubePopular = async ({ regionCode = 'UA', categoryId = '' } = {}) => {
-    notify('Підтягуємо YouTube popular у Signals...');
+    notify('Підтягуємо популярні YouTube-ролики у Signals...');
     const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels/youtube/popular`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2748,7 +2748,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: youtubeCategory });
       setSourceFilter('youtube');
     } catch (error) {
-      notify(`YouTube popular не підтягнувся: ${error?.message || 'невідома помилка'}`);
+      notify(`Популярні YouTube-ролики не підтягнулись: ${error?.message || 'невідома помилка'}`);
     } finally {
       setIsPullingYoutube(false);
     }
@@ -2768,7 +2768,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       reel.views,
       reel.likes,
       reel.comments,
-      reel.status.join('; '),
+      reel.status.map(compactStatusLabel).join('; '),
     ]);
     const csv = [header, ...rows]
       .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
@@ -2813,7 +2813,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       {sourceFilter === 'youtube' && (
         <div className="youtube-popular-panel">
           <div>
-            <strong>YouTube popular</strong>
+            <strong>Популярні YouTube</strong>
             <span>Підтягує популярні ролики в Signals. Потім кожен можна окремо адаптувати під бренд.</span>
           </div>
           <label>
@@ -3099,6 +3099,20 @@ function StrategyBrain({ notify, setPage }) {
 
 function compactStatusLabel(status) {
   const normalized = String(status || '').toLowerCase();
+  const map = {
+    youtube_api: 'YouTube',
+    youtube_oembed: 'YouTube',
+    youtube_popular: 'Популярне',
+    public_metadata: 'Контекст',
+    metadata_fetch_failed: 'Обмежено',
+    ready_to_adapt: 'Готово',
+    ua_remix_ready: 'UA-адаптація',
+    manual_text: 'Brief',
+    url_only: 'URL',
+  };
+  if (map[normalized]) return map[normalized];
+  if (normalized.includes('api')) return normalized.includes('youtube') ? 'YouTube' : 'Джерело';
+  if (normalized.includes('ready')) return 'Готово';
   if (normalized.includes('проход')) return 'Gate';
   if (normalized.includes('us')) return 'US';
   if (normalized.includes('eu')) return 'EU';
@@ -3111,7 +3125,7 @@ function compactStatusLabel(status) {
   if (normalized.includes('creator')) return 'Creator';
   if (normalized.includes('актив')) return 'Active';
   if (normalized.includes('sync')) return 'Sync';
-  return String(status || '').slice(0, 12);
+  return String(status || '').replace(/_/g, ' ').trim().slice(0, 14);
 }
 
 function getBadgeVariant(value) {
@@ -3432,7 +3446,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
               type="button"
               onClick={() => onOpenPreview(reel)}
               aria-label={`Відкрити прев'ю ${reel.title}`}
-              style={reel.image || reel.importedMetadata?.image ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.04), rgba(3, 7, 18, 0.64)), url("${reel.image || reel.importedMetadata?.image}")` } : undefined}
+              style={reel.image || reel.importedMetadata?.image ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${reel.image || reel.importedMetadata?.image}")` } : undefined}
             >
               <span>{reel.views}</span>
               <i className="thumb-play" aria-hidden="true" />
@@ -3443,7 +3457,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
           <strong>{reel.views}</strong>
           <span>{reel.likes}</span>
           <span>{marketLabel(reel.market)}</span>
-          <div className="status-list status-badges">{reel.status.map((s) => <em title={s} key={s}>{compactStatusLabel(s)}</em>)}</div>
+          <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s)} key={s}>{compactStatusLabel(s)}</em>)}</div>
           <button className="signal-adapt-button" type="button" onClick={() => onAdapt?.(reel)}>
             <Wand2 size={14} />Адаптувати під мій бренд
           </button>
@@ -3912,11 +3926,11 @@ function AgentPipeline({ workspaceId }) {
 
   const providers = status?.providers || {};
   const steps = [
-    ['01', 'Instagram data', providers.instagram?.configured ? 'ready' : 'connect source', 'Reels, captions, insights and comments appear after the user connects an approved account.'],
-    ['02', 'YouTube Shorts', providers.youtube?.configured ? 'ready' : 'preview only', 'Джеро може брати контекст з Shorts або каналу для сценаріїв.'],
-    ['03', 'Reel understanding', providers.textAgent?.status === 'ready' ? 'ready' : 'draft mode', 'The agent scores hooks, topic, audience fit, copy risk and UA adaptation potential.'],
-    ['04', 'Script engine', providers.textAgent?.provider === 'fallback' ? 'local draft' : 'ready', 'Ideas become Ukrainian scripts, shot lists, captions and Direct CTA.'],
-    ['05', 'Video job', providers.videoGeneration?.configured ? 'ready' : 'approval queue', 'Approved scenes are saved as production tasks before any video provider is used.'],
+    ['01', 'Instagram', providers.instagram?.configured ? 'готово' : 'підключити', 'Рілси, описи й коментарі зʼявляться після підключення джерела.'],
+    ['02', 'YouTube Shorts', providers.youtube?.configured ? 'готово' : 'preview', 'Джеро може брати контекст з Shorts або каналу для сценаріїв.'],
+    ['03', 'Розбір сигналу', providers.textAgent?.status === 'ready' ? 'готово' : 'чернетка', 'Асистент оцінює хук, тему, аудиторію, ризики тексту й потенціал UA-адаптації.'],
+    ['04', 'Сценарії', providers.textAgent?.provider === 'fallback' ? 'чернетка' : 'готово', 'Ідеї перетворюються на сценарії, shot-list, caption і CTA в Direct.'],
+    ['05', 'Video task', providers.videoGeneration?.configured ? 'готово' : 'після апруву', 'Затверджені сцени зберігаються як production-задачі перед генерацією відео.'],
   ];
   return (
     <div className="agent-pipeline">
@@ -5554,14 +5568,14 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
 
           <div className="sources-bottom-grid">
             <article className="source-api-roadmap">
-              <small>Connected sources</small>
+              <small>Джерела</small>
               <h3>{connectedSources.length ? 'Активні джерела' : 'Поки без підключених джерел'}</h3>
               {connectedSources.length ? (
                 <div className="connected-source-list">
                   {connectedSources.map((source) => (
                     <span key={source.id || source.label}>
                       <strong>{source.label || source.handle || source.url}</strong>
-                      <em>{source.type || 'source'}</em>
+                      <em>{source.type || 'джерело'}</em>
                     </span>
                   ))}
                 </div>

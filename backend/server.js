@@ -2003,12 +2003,10 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
         statsAreOfficial: metadata.sourceStatus === 'youtube_api',
         intelligence: metadata.videoIntelligence?.confidence || null,
         note: metadata.sourceStatus === 'public_metadata'
-          ? 'Public page metadata was used. No private account data, official API metrics, or post-level analytics were accessed.'
-          : metadata.sourceStatus === 'youtube_oembed'
-            ? 'YouTube public oEmbed returned video title, author, and thumbnail. Official API metrics were not accessed.'
-          : metadata.sourceStatus === 'youtube_api'
-            ? 'YouTube Data API returned public video/channel metadata. No private account access was requested.'
-          : 'The platform did not expose usable public metadata, so Dzhero used the pasted text/source as manual context.',
+          ? 'Dzhero використав відкритий опис сторінки. Приватні дані акаунта не читались.'
+          : ['youtube_oembed', 'youtube_api'].includes(metadata.sourceStatus)
+            ? 'Dzhero використав відкриті дані YouTube: назву, автора, превʼю та доступні лічильники.'
+          : 'Платформа не віддала достатньо відкритого контексту, тому Dzhero використав посилання або вставлений текст як ручний brief.',
       },
     });
   } catch (err) {
@@ -2973,7 +2971,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
         shares: 0,
         saves: 0,
         hook: globalInsight.hook || metadata.title || 'YouTube signal',
-        status: ['YouTube popular', metadata.sourceStatus, 'ready_to_adapt'],
+        status: ['YouTube', 'Популярне', 'Готово'],
         tag: (String(tagSeed).replace(/^@/, '').replace(/^https?:\/\/(www\.)?/, '')[0] || 'Y').toUpperCase(),
         importedMetadata: metadata,
         createdAt: new Date().toISOString(),
@@ -3055,7 +3053,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       shares: 0,
       saves: 0,
       hook: globalInsight.hook,
-      status: [sourceLabel, metadata.sourceStatus, 'ua_remix_ready'],
+      status: [sourceLabel, 'Контекст готовий', 'UA-адаптація'],
       tag: (String(tagSeed).replace(/^@/, '').replace(/^https?:\/\/(www\.)?/, '')[0] || 'R').toUpperCase(),
       remixResult,
       importedMetadata: metadata,
