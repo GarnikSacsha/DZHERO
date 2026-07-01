@@ -5450,16 +5450,16 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
       : 'Джеро зібрав preview з опису.');
   };
 
-  const connectFacebook = async () => {
+  const connectInstagram = async () => {
     try {
-      const response = await authFetch(`${API_BASE}/auth/meta/start?workspaceId=${workspaceId}`);
+      const response = await authFetch(`${API_BASE}/auth/instagram/start?workspaceId=${workspaceId}`);
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
+      if (!response.ok) throw new Error(payload.error || 'instagram_not_configured');
       window.location.href = payload.authUrl;
     } catch (error) {
-      notify(error.message === 'meta_not_configured'
-        ? 'Підключення через Facebook буде доступне після налаштування Meta App на backend.'
-        : `Не вдалося відкрити Facebook Login: ${error.message}`);
+      notify(error.message === 'instagram_not_configured'
+        ? 'Підключення Instagram буде доступне після налаштування Instagram App на backend.'
+        : `Не вдалося відкрити Instagram Login: ${error.message}`);
     }
   };
 
@@ -5500,8 +5500,8 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
                 <button className="dark" type="button" onClick={buildSourcePreview} disabled={isScanning}>
                   <Sparkles size={16} /> {isScanning ? 'Скануємо...' : 'Проаналізувати джерело'}
                 </button>
-                <button className="dark source-connect-inline" type="button" onClick={connectFacebook}>
-                  <Link2 size={16} /> Підключити реальний акаунт
+                <button className="dark source-connect-inline" type="button" onClick={connectInstagram}>
+                  <Link2 size={16} /> Підключити Instagram
                 </button>
                 {sourceError && <span>{sourceError}</span>}
               </div>
@@ -5586,8 +5586,8 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
               ) : (
                 <p>Це нормально для старту. Додай профіль, сайт або короткий опис, щоб зібрати перший контекст бренду.</p>
               )}
-              <button className="dark source-connect-button" type="button" onClick={connectFacebook}>
-                <Link2 size={16} /> Підключити Instagram / Facebook
+              <button className="dark source-connect-button" type="button" onClick={connectInstagram}>
+                <Link2 size={16} /> Підключити Instagram
               </button>
             </article>
           </div>
