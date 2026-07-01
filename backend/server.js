@@ -2272,9 +2272,9 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
   }
   try {
     const db = await readDb();
-    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'meta');
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'instagram');
     if (!stateRecord) {
-      res.status(400).send('Meta Login state is invalid or expired.');
+      res.status(400).send('Instagram Login state is invalid or expired.');
       return;
     }
     const workspaceId = stateRecord.workspaceId;
