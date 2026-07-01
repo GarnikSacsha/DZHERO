@@ -2950,14 +2950,42 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       categoryId: req.body.categoryId,
       maxResults,
     });
-    const existingVideoIds = new Set(db.reels
-      .filter((reel) => reel.workspaceId === req.params.workspaceId)
-      .map((reel) => reel.importedMetadata?.youtube?.videoId || parseYouTubeInput(reel.sourceUrl)?.videoId)
-      .filter(Boolean));
+    const existingByVideoId = new Map();
+    for (const reel of db.reels.filter((item) => item.workspaceId === req.params.workspaceId)) {
+      const videoId = reel.importedMetadata?.youtube?.videoId || parseYouTubeInput(reel.sourceUrl)?.videoId;
+      if (videoId && !existingByVideoId.has(videoId)) existingByVideoId.set(videoId, reel);
+    }
     const importedReels = [];
+    const returnedReels = [];
     for (const metadata of metadataItems) {
       const videoId = metadata.youtube?.videoId;
-      if (videoId && existingVideoIds.has(videoId)) continue;
+      if (videoId && existingByVideoId.has(videoId)) {
+        const existingReel = existingByVideoId.get(videoId);
+        const sourceLabel = metadata.source?.label || existingReel.scanLabel || existingReel.sourceType || 'YouTube';
+        const status = Array.isArray(existingReel.status) ? existingReel.status : [];
+        Object.assign(existingReel, {
+          sourceUrl: existingReel.sourceUrl || metadata.url,
+          sourceStatus: existingReel.sourceStatus || metadata.sourceStatus,
+          scanLabel: existingReel.scanLabel || sourceLabel,
+          sourceType: existingReel.sourceType || sourceLabel,
+          sourceHandle: existingReel.sourceHandle || metadata.handle,
+          handle: existingReel.handle || metadata.handle || existingReel.sourceHandle || '@youtube',
+          image: existingReel.image || metadata.image || '',
+          views: existingReel.views || metadata.stats?.views || 0,
+          likes: existingReel.likes || metadata.stats?.likes || 0,
+          comments: existingReel.comments || metadata.stats?.comments || 0,
+          status: Array.from(new Set([...status, 'YouTube', 'Популярне'])),
+          importedMetadata: {
+            ...(existingReel.importedMetadata || {}),
+            ...metadata,
+            youtube: metadata.youtube || existingReel.importedMetadata?.youtube,
+            source: metadata.source || existingReel.importedMetadata?.source || { label: sourceLabel, tone: 'shorts' },
+            url: metadata.url || existingReel.importedMetadata?.url || existingReel.sourceUrl,
+          },
+        });
+        returnedReels.push(existingReel);
+        continue;
+      }
       const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
       const sourceLabel = metadata.source?.label || 'YouTube';
       const tagSeed = metadata.youtube?.channelTitle || metadata.handle || sourceLabel;
@@ -2990,7 +3018,8 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       importedReel.score = Math.max(analysis.score, 76);
       importedReel.analysis = analysis;
       importedReels.push(importedReel);
-      if (videoId) existingVideoIds.add(videoId);
+      returnedReels.push(importedReel);
+      if (videoId) existingByVideoId.set(videoId, importedReel);
     }
 
     db.reels.unshift(...importedReels);
@@ -3004,7 +3033,13 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
     }
     const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
     await writeDb(db);
-    res.status(201).json({ reels: importedReels, skipped: metadataItems.length - importedReels.length, billing });
+    res.status(201).json({
+      reels: returnedReels,
+      importedCount: importedReels.length,
+      reusedCount: returnedReels.length - importedReels.length,
+      skipped: metadataItems.length - returnedReels.length,
+      billing,
+    });
   } catch (error) {
     next(error);
   }
