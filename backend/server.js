@@ -54,6 +54,7 @@ const META_GRAPH_BASE_URL = process.env.META_GRAPH_BASE_URL || 'https://graph.fa
 const META_APP_ID = process.env.META_APP_ID || '';
 const META_APP_SECRET = process.env.META_APP_SECRET || '';
 const META_REDIRECT_URI = process.env.META_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/meta/callback`;
+const META_LOGIN_CONFIG_ID = process.env.META_LOGIN_CONFIG_ID || process.env.FACEBOOK_LOGIN_CONFIG_ID || '';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://127.0.0.1:5173';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -85,10 +86,8 @@ const INSTAGRAM_SCOPES = process.env.INSTAGRAM_SCOPES || [
   'instagram_business_content_publish',
 ].join(',');
 const META_SCOPES = process.env.META_SCOPES || [
+  'email',
   'instagram_basic',
-  'instagram_manage_insights',
-  'pages_show_list',
-  'pages_read_engagement',
 ].join(',');
 
 const PLAN_CATALOG = [
@@ -1638,6 +1637,9 @@ function buildMetaAuthUrl(state) {
     scope: META_SCOPES,
     state,
   });
+  if (META_LOGIN_CONFIG_ID) {
+    params.set('config_id', META_LOGIN_CONFIG_ID);
+  }
   return {
     authUrl: `${META_AUTH_BASE_URL}?${params.toString()}`,
     state,
@@ -2092,6 +2094,7 @@ app.get('/api/auth/meta/start', async (req, res) => {
       message: 'Set META_APP_ID, META_APP_SECRET and META_REDIRECT_URI in .env before using Meta Login.',
       redirectUri: META_REDIRECT_URI,
       requiredEnv: ['META_APP_ID', 'META_APP_SECRET', 'META_REDIRECT_URI', 'META_SCOPES'],
+      optionalEnv: ['META_LOGIN_CONFIG_ID'],
     });
     return;
   }
@@ -2108,7 +2111,13 @@ app.get('/api/auth/meta/start', async (req, res) => {
   const state = createOAuthState(db, 'meta', { workspaceId, userId: user.id });
   await writeDb(db);
   const { authUrl } = buildMetaAuthUrl(state);
-  res.json({ authUrl, state, redirectUri: META_REDIRECT_URI, scopes: META_SCOPES.split(',') });
+  res.json({
+    authUrl,
+    state,
+    redirectUri: META_REDIRECT_URI,
+    scopes: META_SCOPES.split(','),
+    configId: META_LOGIN_CONFIG_ID || null,
+  });
 });
 
 app.get('/api/auth/instagram/start', async (req, res) => {

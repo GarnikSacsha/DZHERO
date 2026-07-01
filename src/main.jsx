@@ -1649,15 +1649,15 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/instagram/start`, { credentials: 'include' });
+      const response = await fetch(`${API_BASE}/auth/meta/start`, { credentials: 'include' });
       const payload = await response.json();
       if (!response.ok) {
-        if (payload.error === 'instagram_not_configured') setInstagramConfig(payload);
-        throw new Error(payload.error || 'instagram_not_configured');
+        if (payload.error === 'meta_not_configured') setInstagramConfig(payload);
+        throw new Error(payload.error || 'meta_not_configured');
       }
       window.location.href = payload.authUrl;
     } catch {
-      setInstagramConfig((current) => current || { error: 'instagram_not_configured' });
+      setInstagramConfig((current) => current || { error: 'meta_not_configured' });
       notify('Preview працює без підключення акаунта.');
     } finally {
       setIsLoading(false);
@@ -1949,17 +1949,17 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/instagram/start`, { credentials: 'include' });
+      const response = await fetch(`${API_BASE}/auth/meta/start`, { credentials: 'include' });
       const payload = await response.json();
       if (!response.ok) {
-        if (payload.error === 'instagram_not_configured') {
+        if (payload.error === 'meta_not_configured') {
           setInstagramConfig(payload);
         }
-        throw new Error(payload.error || 'instagram_not_configured');
+        throw new Error(payload.error || 'meta_not_configured');
       }
       window.location.href = payload.authUrl;
     } catch (authError) {
-      if (authError.message !== 'instagram_not_configured') {
+      if (authError.message !== 'meta_not_configured') {
         setError('Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.');
       }
       notify('Instagram Login готовий у UI, але потрібні ключі Meta App');
@@ -5452,12 +5452,12 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
 
   const connectInstagram = async () => {
     try {
-      const response = await authFetch(`${API_BASE}/auth/instagram/start?workspaceId=${workspaceId}`);
+      const response = await authFetch(`${API_BASE}/auth/meta/start?workspaceId=${workspaceId}`);
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'instagram_not_configured');
+      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
       window.location.href = payload.authUrl;
     } catch (error) {
-      notify(error.message === 'instagram_not_configured'
+      notify(error.message === 'meta_not_configured'
         ? 'Підключення Instagram буде доступне після налаштування Instagram App на backend.'
         : `Не вдалося відкрити Instagram Login: ${error.message}`);
     }
