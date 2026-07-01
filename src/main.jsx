@@ -195,32 +195,40 @@ function PublicLegalPage({ page }) {
   const pages = {
     privacy: {
       title: 'Privacy Policy',
-      subtitle: 'How Dzhero handles Instagram and business data.',
+      subtitle: 'How Dzhero collects, uses, stores, and protects user and business data.',
       sections: [
-        ['Data we process', 'Dzhero may process account profile data, authorized Instagram content metadata, insights, comments, business brief data, content ideas and AI-generated drafts after the user grants permissions.'],
-        ['How we use data', 'Data is used to analyze content performance, generate ideas, prepare scripts, plan posts and help the user manage their Instagram production workflow.'],
-        ['Security', 'Dzhero never asks public users for private technical credentials. Service credentials are stored only in the backend environment.'],
-        ['Retention', 'Demo JSON storage is temporary for MVP testing. Production storage should support deletion, export and retention controls.'],
-        ['Contact', 'For privacy requests, contact the Dzhero product owner through the support channel provided in the app.'],
+        ['Who we are', 'Dzhero is a web-based AI workspace that helps marketers, creators, and small businesses analyze short-form content signals and prepare original content plans.'],
+        ['Data we collect', 'Dzhero may collect account information such as name, email address, connected social account identifiers, profile information, profile links, avatar images, and account statistics when a user authorizes a supported platform such as TikTok, Google, Meta, Instagram, or YouTube. Users may also provide business briefs, source links, notes, content ideas, drafts, and workspace settings.'],
+        ['TikTok data', 'When a user connects TikTok through Login Kit, Dzhero uses the approved permissions to identify the connected account, show profile context, and display profile statistics such as follower count, following count, likes count, and video count inside the user workspace. Dzhero does not sell TikTok data and does not post to TikTok or modify a TikTok account unless a user explicitly authorizes a future product feature for that purpose.'],
+        ['How we use data', 'Dzhero uses data to provide the service, authenticate users, connect user-owned sources, analyze public and authorized content signals, generate content ideas, prepare scripts, build content plans, prevent abuse, enforce usage limits, and improve product reliability.'],
+        ['AI processing', 'Dzhero may send user-provided briefs, source metadata, notes, and selected content context to AI service providers to generate drafts and recommendations. Users are responsible for reviewing AI output before publishing or using it externally.'],
+        ['Sharing and service providers', 'Dzhero shares data only with service providers needed to operate the product, such as hosting, database, authentication, analytics, and AI infrastructure providers. Dzhero does not sell personal data.'],
+        ['Security', 'Dzhero uses server-side storage for service credentials and access tokens, limits access to production secrets, and applies authentication and workspace access checks to protect user data.'],
+        ['Retention and deletion', 'Dzhero keeps account, workspace, connected source, generated draft, and usage data while the account is active or as needed to provide the service. Users may request deletion of their account, connected account data, AI memory, and generated drafts through the data deletion page or support contact.'],
+        ['Contact', 'For privacy, data access, or deletion requests, contact Dzhero support through the support channel provided in the app or submit a request at /data-deletion.'],
       ],
     },
     terms: {
       title: 'Terms of Service',
       subtitle: 'Rules for using Dzhero.',
       sections: [
-        ['Use of service', 'Dzhero helps creators, businesses and SMM teams analyze content signals and prepare drafts. Users remain responsible for what they publish.'],
-        ['Instagram requirements', 'Official Instagram access requires a Creator or Business account and permissions approved through Meta where required.'],
+        ['Use of service', 'Dzhero helps marketers, creators, businesses, and SMM teams analyze short-form content signals, prepare drafts, and organize content plans. Users remain responsible for the content they publish and for complying with applicable laws and platform rules.'],
+        ['Account and access', 'Users must provide accurate account information and keep access to their account secure. Users may connect only accounts, websites, and sources they own or are authorized to use.'],
+        ['Connected platforms', 'Some features use platform integrations such as TikTok Login Kit, Google, Meta, Instagram, and YouTube. Access to these integrations depends on the permissions granted by the user and by the platform. Dzhero uses connected platform data only to provide the requested workspace features.'],
         ['AI output', 'AI drafts are suggestions, not final legal, financial or professional advice. Human review is required before publishing or messaging customers.'],
-        ['Content ownership', 'Dzhero should adapt content mechanics, not copy third-party videos, audio, branding or protected creative assets.'],
+        ['Content ownership', 'Users keep ownership of the business information, notes, briefs, and drafts they create in Dzhero. Users must not use Dzhero to copy third-party videos, audio, branding, private data, or protected creative assets without permission.'],
+        ['Acceptable use', 'Users must not use Dzhero to break platform rules, scrape private data, impersonate others, distribute harmful content, or attempt to access accounts, workspaces, or systems without permission.'],
+        ['Service availability', 'Dzhero may change, suspend, or discontinue features as the product evolves or as third-party platform requirements change. Dzhero is provided on an as-is basis to the extent permitted by law.'],
+        ['Termination', 'Dzhero may limit or terminate access if a user violates these terms, misuses integrations, creates security risk, or uses the service in a way that may harm other users, Dzhero, or connected platforms.'],
       ],
     },
     dataDeletion: {
       title: 'Data Deletion Instructions',
       subtitle: 'How users can request deletion of Dzhero data.',
       sections: [
-        ['Request deletion', 'A user can request deletion of their workspace, connected account data, AI memory and generated drafts by contacting Dzhero support.'],
-        ['Instagram disconnect', 'Users can also remove Dzhero permissions from their Meta or Instagram account settings.'],
-        ['Processing', 'After a verified deletion request, Dzhero should remove account tokens, workspace records, AI memory, generated drafts and stored sync jobs associated with that user, unless retention is required by law.'],
+        ['Request deletion', 'A user can request deletion of their workspace, connected account data, AI memory, generated drafts, and stored sync records by submitting the form below or contacting Dzhero support.'],
+        ['Disconnect platforms', 'Users can also remove Dzhero permissions from the settings of connected platforms such as TikTok, Google, Meta, Instagram, or YouTube. Disconnecting a platform may stop new data access, but users should still submit a deletion request if they want Dzhero to remove stored workspace data.'],
+        ['Processing', 'After a verified deletion request, Dzhero removes account tokens, connected account records, workspace records, AI memory, generated drafts, and stored sync jobs associated with that user, unless retention is required by law or needed for security and abuse prevention.'],
       ],
     },
   };
@@ -232,7 +240,7 @@ function PublicLegalPage({ page }) {
         <strong>Dzhero</strong>
       </a>
       <article>
-        <small>Meta review document</small>
+        <small>Dzhero legal document</small>
         <h1>{content.title}</h1>
         <p>{content.subtitle}</p>
         {content.sections.map(([title, text]) => (
@@ -3429,6 +3437,13 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
   );
 }
 
+function getReelPreviewImage(reel) {
+  return reel?.image
+    || reel?.importedMetadata?.image
+    || reel?.importedMetadata?.youtube?.thumbnailUrl
+    || '';
+}
+
 function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
   return (
     <div className="table-card trend-analytics-table">
@@ -3442,7 +3457,9 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
         <span>Теги</span>
         <span></span>
       </div>
-      {reels.map((reel, index) => (
+      {reels.map((reel, index) => {
+        const previewImage = getReelPreviewImage(reel);
+        return (
         <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
           <div className="reel-info">
@@ -3451,7 +3468,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
               type="button"
               onClick={() => onOpenPreview(reel)}
               aria-label={`Відкрити прев'ю ${reel.title}`}
-              style={reel.image || reel.importedMetadata?.image ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${reel.image || reel.importedMetadata?.image}")` } : undefined}
+              style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${previewImage}")` } : undefined}
             >
               <span>{reel.views}</span>
               <i className="thumb-play" aria-hidden="true" />
@@ -3467,7 +3484,8 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
             <Wand2 size={14} />Адаптувати під мій бренд
           </button>
         </div>
-      ))}
+        );
+      })}
       {!reels.length && emptyState && (
         <div className="signals-empty-state">
           <strong>{emptyState.title}</strong>
