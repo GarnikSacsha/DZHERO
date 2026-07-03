@@ -2740,7 +2740,6 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
-  const [isPreviewPlayerOpen, setIsPreviewPlayerOpen] = useState(false);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
@@ -2831,7 +2830,6 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   };
   const closePreview = () => {
     setPreviewReel(null);
-    setIsPreviewPlayerOpen(false);
   };
 
   return (
@@ -2952,29 +2950,18 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
             <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
               <X size={16} />
             </button>
-            {getYouTubeEmbedUrl(previewReel) && isPreviewPlayerOpen ? (
-              <div className="video-preview-player">
-                <iframe
-                  title={previewReel.title || 'YouTube Shorts preview'}
-                  src={getYouTubeEmbedUrl(previewReel)}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <div
-                className={`video-preview-frame market-${previewReel.market} ${getReelPreviewImage(previewReel) ? 'has-media' : ''}`}
-                style={getReelPreviewImage(previewReel) ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${getReelPreviewImage(previewReel)}")` } : undefined}
-              >
-                <span className="video-preview-play" aria-hidden="true" />
-                <strong>{previewReel.handle}</strong>
-                {getYouTubeEmbedUrl(previewReel) && (
-                  <button className="video-preview-play-here" type="button" onClick={() => setIsPreviewPlayerOpen(true)}>
-                    Play in Dzhero
-                  </button>
-                )}
-              </div>
-            )}
+            <div
+              className={`video-preview-frame market-${previewReel.market} ${getReelPreviewImage(previewReel) ? 'has-media' : ''}`}
+              style={getReelPreviewImage(previewReel) ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${getReelPreviewImage(previewReel)}")` } : undefined}
+            >
+              <span className="video-preview-play" aria-hidden="true" />
+              <strong>{previewReel.handle}</strong>
+              {getSignalSourceUrl(previewReel) && (
+                <a className="video-preview-play-here" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">
+                  Відкрити відео
+                </a>
+              )}
+            </div>
             <div>
               <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
               <h3>{previewReel.title}</h3>
@@ -3938,8 +3925,8 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
   const youtubeContextSummary = cleanTranscriptPreview
     ? `Є транскрипт ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${cleanTranscriptPreview.slice(0, 220)}${cleanTranscriptPreview.length > 220 ? '...' : ''}`
     : cleanVideoSummary
-      ? `Gemini video: ${cleanVideoSummary.slice(0, 260)}${cleanVideoSummary.length > 260 ? '...' : ''}`
-      : 'YouTube не віддав нормальний transcript або video summary. Додай 1-2 речення в Video notes, і Джеро перебудує сценарій з цього контексту.';
+      ? `Відео-аналіз: ${cleanVideoSummary.slice(0, 260)}${cleanVideoSummary.length > 260 ? '...' : ''}`
+      : 'YouTube не дав транскрипт. Джеро вже може працювати з назвою, метриками й превʼю, а за потреби можна додати коротку нотатку про сюжет.';
   const effectiveReel = generatedRemix ? { ...reel, remixResult: generatedRemix } : reel;
   const scenario = buildRemixScenario(effectiveReel, sanitizeSourceContext(observedContext));
   const scenarioVariants = scenario.variants;
@@ -4042,40 +4029,47 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
               className={`phone-video market-${reel.market} ${mediaImage ? 'has-media' : ''}`}
               style={mediaImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.86)), url("${mediaImage}")` } : undefined}
             >
-              <button onClick={() => notify(mediaImage ? 'Це thumbnail з публічного джерела. Відео-плеєр додамо окремим шаром.' : 'Превʼю відео буде доступне після підключення медіа')}>▶</button>
+              <button onClick={() => {
+                const sourceUrl = getSignalSourceUrl(reel);
+                if (sourceUrl) {
+                  window.open(sourceUrl, '_blank', 'noopener,noreferrer');
+                  return;
+                }
+                notify('Оригінал відео недоступний, але Джеро вже використовує превʼю та метрики сигналу.');
+              }}>▶</button>
               <strong>{phoneLabel}<br />TO UA</strong>
             </div>
             <div className="phone-stats"><span title={formatExactStat(exactSourceStats.views, 'views')}>{reel.views}<br /><small>Перегл.</small></span><span title={formatExactStat(exactSourceStats.likes, 'likes')}>{reel.likes}<br /><small>Лайки</small></span><span title={formatExactStat(exactSourceStats.comments, 'comments')}>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
           {hasYouTubeIntelligence && (
             <div className="insight-card studio-mechanics-card">
-              <small>YouTube intelligence</small>
+              <small>Дані з YouTube</small>
               <h3>{readiness?.level === 'high' ? 'Достатньо контексту' : readiness?.level === 'medium' ? 'Контекст зібрано частково' : 'Потрібна перевірка'}</h3>
               <p>{youtubeContextSummary}</p>
               <div className="remix-signal-map">
-                <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'API metadata' : 'Public preview'}</span>
-                <span>{cleanVideoSummary ? 'Gemini video' : cleanTranscriptPreview ? 'Transcript' : 'No captions'}</span>
-                <span>{videoIntelligence.visual?.visualSummary ? 'Thumbnail vision' : 'Thumbnail'}</span>
-                <span>{readiness?.adaptationReady ? 'Ready' : 'Review'}</span>
+                <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'Метрики' : 'Превʼю'}</span>
+                <span>{cleanVideoSummary ? 'Відео-аналіз' : cleanTranscriptPreview ? 'Транскрипт' : 'Без субтитрів'}</span>
+                <span>{videoIntelligence.visual?.visualSummary ? 'Превʼю' : 'Кадр'}</span>
+                <span>{readiness?.adaptationReady ? 'Готово' : 'Чернетка'}</span>
               </div>
             </div>
           )}
-          {hasYouTubeIntelligence && !cleanTranscriptPreview && !cleanVideoSummary && (
+          {hasYouTubeIntelligence && !generatedRemix && !cleanTranscriptPreview && !cleanVideoSummary && (
             <div className="insight-card studio-observation-card">
-              <small>Video notes</small>
-              <h3>Add what happens in the video</h3>
-              <p>Watch the Short in the player and write 1-2 sentences: who speaks, what the twist is, and how it ends. Dzhero will rebuild the script from that context.</p>
+              <small>Нотатка до відео</small>
+              <h3>Опиши сюжет у 1-2 реченнях</h3>
+              <p>Якщо хочеш точніше, коротко напиши: хто в кадрі, який поворот і чим усе закінчується. Джеро перебудує сценарій з цього контексту.</p>
               <textarea
                 value={observedContext}
                 onChange={(event) => setObservedContext(event.target.value)}
-                placeholder="Example: two people argue, one gives an ultimatum, the other agrees quickly. The funny twist is that the win happens without long arguments."
+                placeholder="Наприклад: людина просить пропустити її в черзі, отримує відмову, а потім виявляється, що саме вона мала виграти приз."
               />
             </div>
           )}
           <div className="insight-card studio-mechanics-card">
             <small>Механіка ролика</small>
-            <h3>{marketLabel(reel.market)} → мій бренд</h3>
-            <p>{scenario.insight}</p>
+            <h3>Сигнал → мій бренд</h3>
+            <p>{generatedRemix ? 'Джеро вже врахував механіку оригіналу в сценарії нижче: несподіваний поворот, коротка напруга і фінальний виграш для глядача.' : 'Джеро бере не сюжет ролика, а його механіку: конфлікт, очікування, поворот і простий фінальний CTA.'}</p>
             <div className="remix-signal-map">
               <span>Перший кадр</span>
               <span>Доказ</span>
