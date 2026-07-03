@@ -10,6 +10,7 @@ const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
+const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -3593,9 +3594,16 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
-    const maxResults = Math.min(Math.max(Number(req.body.maxResults || 8), 1), 12);
+    const requestedMaxResults = Math.min(Math.max(Number(req.body.maxResults || 8), 1), 12);
+    const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
+    const maxResults = getAllowedBatchSize({
+      requested: requestedMaxResults,
+      limit: entitlements.plan.limits.reelImports,
+      used: entitlements.usage.reelImports,
+      unlimited: entitlements.unlimited,
+    });
     try {
-      assertUsageAvailable(db, req.params.workspaceId, 'reelImports', maxResults, req.authUser);
+      assertUsageAvailable(db, req.params.workspaceId, 'reelImports', Math.max(1, maxResults), req.authUser);
     } catch (err) {
       res.status(err.status || 402).json(err.payload || { error: err.message });
       return;

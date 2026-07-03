@@ -131,6 +131,17 @@ function authFetch(url, options = {}) {
 
 async function readApiError(response, fallback = 'Request failed') {
   const payload = await response.json().catch(() => ({}));
+  const normalizeErrorValue = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (value.message && typeof value.message === 'string') return value.message;
+    if (value.error && typeof value.error === 'string') return value.error;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  };
   if (response.status === 402 && payload.error === 'plan_limit_reached') {
     const labels = {
       agentChat: 'AI-повідомлення',
@@ -144,7 +155,7 @@ async function readApiError(response, fallback = 'Request failed') {
       ? `Ліміт тарифу: ${label} — до ${limit}. Видали зайве або перейди на вищий тариф.`
       : `Ліміт тарифу для "${label}" вичерпано.`;
   }
-  return payload.message || payload.error || fallback;
+  return normalizeErrorValue(payload.message) || normalizeErrorValue(payload.error) || normalizeErrorValue(payload) || fallback;
 }
 
 function normalizeContentFormat(format, fallback = 'Post') {
