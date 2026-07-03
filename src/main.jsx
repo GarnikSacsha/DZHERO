@@ -2711,6 +2711,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
+  const [isPreviewPlayerOpen, setIsPreviewPlayerOpen] = useState(false);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
@@ -2795,6 +2796,14 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
     URL.revokeObjectURL(url);
     notify('CSV експорт завантажено');
   };
+  const openPreview = (reel) => {
+    setPreviewReel(reel);
+    setIsPreviewPlayerOpen(false);
+  };
+  const closePreview = () => {
+    setPreviewReel(null);
+    setIsPreviewPlayerOpen(false);
+  };
 
   return (
     <section className="page page-signals">
@@ -2871,7 +2880,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
             reels={filteredReels}
             scoreSortDirection={scoreSortDirection}
             onToggleScoreSort={toggleScoreSort}
-            onOpenPreview={setPreviewReel}
+            onOpenPreview={openPreview}
             onAdapt={onAdapt}
             emptyState={pastedReelUrl
               ? {
@@ -2909,12 +2918,12 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
         </aside>
       </div>
       {previewReel && (
-        <div className="video-preview-backdrop" onClick={() => setPreviewReel(null)}>
+        <div className="video-preview-backdrop" onClick={closePreview}>
           <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
             <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
               <X size={16} />
             </button>
-            {getYouTubeEmbedUrl(previewReel) ? (
+            {getYouTubeEmbedUrl(previewReel) && isPreviewPlayerOpen ? (
               <div className="video-preview-player">
                 <iframe
                   title={previewReel.title || 'YouTube Shorts preview'}
@@ -2924,9 +2933,17 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
                 />
               </div>
             ) : (
-              <div className={`video-preview-frame market-${previewReel.market}`}>
+              <div
+                className={`video-preview-frame market-${previewReel.market} ${getReelPreviewImage(previewReel) ? 'has-media' : ''}`}
+                style={getReelPreviewImage(previewReel) ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${getReelPreviewImage(previewReel)}")` } : undefined}
+              >
                 <span className="video-preview-play" aria-hidden="true" />
                 <strong>{previewReel.handle}</strong>
+                {getYouTubeEmbedUrl(previewReel) && (
+                  <button className="video-preview-play-here" type="button" onClick={() => setIsPreviewPlayerOpen(true)}>
+                    Play in Dzhero
+                  </button>
+                )}
               </div>
             )}
             <div>

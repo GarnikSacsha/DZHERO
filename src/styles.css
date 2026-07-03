@@ -2036,6 +2036,10 @@ h3 { font-size: 16px; }
   font-size: 14px;
 }
 
+.video-preview-frame.has-media::before {
+  background: linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.72));
+}
+
 .video-preview-play {
   position: relative;
   z-index: 1;
@@ -2056,6 +2060,29 @@ h3 { font-size: 16px; }
   border-top: 17px solid transparent;
   border-bottom: 17px solid transparent;
   border-left: 27px solid #fff;
+}
+
+.video-preview-play-here {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  z-index: 2;
+  transform: translateX(-50%);
+  min-height: 38px;
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  border-radius: 999px;
+  padding: 0 16px;
+  background: rgba(14, 165, 233, 0.92);
+  color: #06111f;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+  box-shadow: 0 12px 30px rgba(14, 165, 233, 0.28);
+}
+
+.video-preview-play-here:hover {
+  background: #7dd3fc;
+  transform: translateX(-50%) translateY(-1px);
 }
 
 .video-preview-modal small {
