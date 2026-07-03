@@ -633,6 +633,23 @@ const EN_TEXT = {
   'Німеччина': 'Germany',
   'Британія': 'Britain',
   'США': 'USA',
+  'Популярне з YouTube': 'Popular on YouTube',
+  'Знайдемо ролики, які зараз набирають перегляди. Кожен сигнал можна відкрити в Студії й адаптувати під бренд.': 'Find videos gaining views right now. Each signal can be opened in Studio and adapted for your brand.',
+  'Регіон': 'Region',
+  'Категорія': 'Category',
+  'Усі': 'All',
+  'Розваги': 'Entertainment',
+  'Гумор': 'Comedy',
+  'Стиль і побут': 'How-to and style',
+  'Освіта': 'Education',
+  'Технології': 'Technology',
+  'Люди й блоги': 'People and blogs',
+  'Шукаємо...': 'Searching...',
+  'Знайти ролики': 'Find videos',
+  'Тут ще немає сигналів': 'No signals here yet',
+  'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.': 'Paste a link or add a signal manually. After import, it will appear in this tab.',
+  'СИГНАЛ': 'SIGNAL',
+  'ОЦІНКА': 'SCORE',
 
   'Студія': 'Studio',
   'Перегенерувати': 'Regenerate',
@@ -807,11 +824,10 @@ function translateValue(value, lang) {
   return translated;
 }
 
-export function applyInterfaceLanguage(lang) {
-  if (typeof document === 'undefined') return;
-  document.documentElement.lang = lang === 'en' ? 'en' : 'uk';
-  if (lang !== 'en') return;
+let englishMutationObserver = null;
+let englishMutationTimer = null;
 
+function translateDocumentText(lang) {
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = node.parentElement;
@@ -838,5 +854,39 @@ export function applyInterfaceLanguage(lang) {
       const translated = translateValue(value, lang);
       if (translated !== value) element.setAttribute(attribute, translated);
     });
+  });
+}
+
+export function applyInterfaceLanguage(lang) {
+  if (typeof document === 'undefined') return;
+  document.documentElement.lang = lang === 'en' ? 'en' : 'uk';
+  if (englishMutationObserver) {
+    englishMutationObserver.disconnect();
+    englishMutationObserver = null;
+  }
+  if (englishMutationTimer) {
+    window.clearTimeout(englishMutationTimer);
+    englishMutationTimer = null;
+  }
+  if (lang !== 'en') return;
+
+  translateDocumentText(lang);
+
+  englishMutationObserver = new MutationObserver(() => {
+    if (englishMutationTimer) window.clearTimeout(englishMutationTimer);
+    englishMutationTimer = window.setTimeout(() => {
+      englishMutationObserver?.disconnect();
+      translateDocumentText('en');
+      englishMutationObserver?.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    }, 20);
+  });
+  englishMutationObserver.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true,
   });
 }
