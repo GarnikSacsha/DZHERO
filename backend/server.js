@@ -11,6 +11,7 @@ const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
+const { shouldRetryPopularWithoutCategory } = require('./services/youtubePopularFallback.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -1637,13 +1638,23 @@ async function fetchYouTubePopularMetadata(options = {}) {
   const regionCode = normalizeYouTubeRegionCode(options.regionCode);
   const categoryId = normalizeYouTubeCategoryId(options.categoryId);
   const maxResults = Math.min(Math.max(Number(options.maxResults || 8), 1), 12);
-  const popularData = await fetchYouTubeApi('videos', {
+  const popularParams = {
     part: 'snippet,statistics,contentDetails',
     chart: 'mostPopular',
     regionCode,
     videoCategoryId: categoryId,
     maxResults: String(maxResults),
-  });
+  };
+  let popularData;
+  try {
+    popularData = await fetchYouTubeApi('videos', popularParams);
+  } catch (error) {
+    if (!shouldRetryPopularWithoutCategory(error, categoryId)) throw error;
+    popularData = await fetchYouTubeApi('videos', {
+      ...popularParams,
+      videoCategoryId: '',
+    });
+  }
   const videos = popularData.items || [];
   const channelIds = [...new Set(videos.map((video) => video.snippet?.channelId).filter(Boolean))];
   const channels = new Map();
