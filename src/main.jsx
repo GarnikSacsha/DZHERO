@@ -326,7 +326,9 @@ function App() {
   const [sourcesTab, setSourcesTab] = useState(() => window.localStorage.getItem(SOURCES_TAB_KEY) || 'sources');
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
-  const availableWorkspaces = userWorkspaces.length ? userWorkspaces : DEMO_WORKSPACES;
+  const availableWorkspaces = currentUser
+    ? (userWorkspaces.length ? userWorkspaces : DEMO_WORKSPACES.filter((workspace) => workspace.id === currentUser.workspaceId))
+    : [];
   const activeWorkspace = availableWorkspaces.find((workspace) => workspace.id === workspaceId)
     || availableWorkspaces[0]
     || DEMO_WORKSPACES[0];
@@ -484,10 +486,23 @@ function App() {
   };
 
   const handleLogout = async () => {
-    authFetch(`${API_BASE}/auth/logout`, { method: 'POST' }).catch(() => {});
+    setAuthStatus('checking');
+    try {
+      await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+    } catch {
+      // Keep the UI logout deterministic even if the network hiccups.
+    }
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
-    setSessionRevision((revision) => revision + 1);
+    window.localStorage.removeItem(WORKSPACE_KEY);
     setCurrentUser(null);
+    setUserWorkspaces([]);
+    setRemixDraft(null);
+    setAssistantAutoPrompt(null);
+    setIsAssistantOpen(false);
+    setIsSidebarOpen(false);
+    setWorkspaceId(DEMO_WORKSPACES[0].id);
+    setPage('home');
+    setSessionRevision((revision) => revision + 1);
     setAuthStatus('guest');
     notify('Ви вийшли з акаунта');
   };
