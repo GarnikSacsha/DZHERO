@@ -1217,19 +1217,93 @@ async function analyzeSourceImageWithGemini(metadata) {
   }
 }
 
-function buildVideoIntelligenceReadiness({ metadata, transcript, visual }) {
+async function analyzeYouTubeVideoWithGemini(metadata) {
+  const videoUrl = metadata?.url || metadata?.youtube?.url || '';
+  if (!GEMINI_API_KEY || !metadata?.youtube?.videoId || !videoUrl) return null;
+  try {
+    const response = await fetch(`${GEMINI_API_BASE}/models/${process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          role: 'user',
+          parts: [
+            {
+              text: [
+                'Analyze this public YouTube Shorts video for Dzhero, an AI producer for Ukrainian businesses.',
+                'Use the actual video/audio when available. Do not rely only on title or thumbnail if video understanding is available.',
+                'Return valid JSON only with keys: videoSummary, spokenText, onScreenText, hook, twist, sceneBeats, contentMechanic, ukrainianAdaptation, shotList, ctaIdeas, guardrails.',
+                'Keep it practical for creating an original Ukrainian adaptation. Do not suggest copying the original video, audio, faces, or copyrighted creative.',
+                `Title: ${metadata.title || ''}`,
+                `Description: ${metadata.description || ''}`,
+                `Channel: ${metadata.handle || metadata.youtube?.channelTitle || ''}`,
+                `Stats: ${JSON.stringify(metadata.stats || {})}`,
+              ].join('\n'),
+            },
+            {
+              fileData: {
+                mimeType: 'video/mp4',
+                fileUri: videoUrl,
+              },
+            },
+          ],
+        }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.25,
+          topP: 0.75,
+          maxOutputTokens: 1800,
+        },
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        source: 'gemini_youtube_video',
+        status: 'error',
+        error: payload?.error?.message || `Gemini video HTTP ${response.status}`,
+      };
+    }
+    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+    const parsed = parseGeminiJson(text);
+    if (!parsed) return { source: 'gemini_youtube_video', status: 'unavailable', reason: 'empty_or_unparseable_response' };
+    return {
+      source: 'gemini_youtube_video',
+      status: 'available',
+      model: process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL,
+      videoSummary: compactText(parsed.videoSummary, 700),
+      spokenText: compactText(parsed.spokenText, 1200),
+      onScreenText: compactText(parsed.onScreenText, 700),
+      hook: compactText(parsed.hook, 360),
+      twist: compactText(parsed.twist, 360),
+      contentMechanic: compactText(parsed.contentMechanic, 520),
+      ukrainianAdaptation: compactText(parsed.ukrainianAdaptation, 700),
+      sceneBeats: Array.isArray(parsed.sceneBeats) ? parsed.sceneBeats.slice(0, 8).map((item) => compactText(item, 220)) : [],
+      shotList: Array.isArray(parsed.shotList) ? parsed.shotList.slice(0, 8).map((item) => compactText(item, 220)) : [],
+      ctaIdeas: Array.isArray(parsed.ctaIdeas) ? parsed.ctaIdeas.slice(0, 5).map((item) => compactText(item, 160)) : [],
+      guardrails: Array.isArray(parsed.guardrails) ? parsed.guardrails.slice(0, 6).map((item) => compactText(item, 180)) : [],
+    };
+  } catch (error) {
+    return { source: 'gemini_youtube_video', status: 'error', error: error.message };
+  }
+}
+
+function buildVideoIntelligenceReadiness({ metadata, transcript, visual, video }) {
   const hasTranscript = Boolean(transcript?.text);
   const hasVisual = Boolean(visual?.visualSummary);
+  const hasVideo = Boolean(video?.videoSummary || video?.spokenText || video?.contentMechanic);
   const hasStats = Boolean(metadata?.rawStats?.views || metadata?.stats?.views);
   const score = [
-    metadata?.sourceStatus === 'youtube_api' ? 34 : 14,
-    hasStats ? 16 : 0,
-    hasTranscript ? 30 : 0,
-    hasVisual ? 20 : 0,
+    metadata?.sourceStatus === 'youtube_api' ? 24 : 12,
+    hasStats ? 12 : 0,
+    hasVideo ? 38 : 0,
+    hasTranscript ? 16 : 0,
+    hasVisual ? 10 : 0,
   ].reduce((sum, value) => sum + value, 0);
   const level = score >= 80 ? 'high' : score >= 55 ? 'medium' : 'limited';
   const gaps = [
-    !hasTranscript && 'captions/transcript unavailable',
+    !hasVideo && 'full video understanding unavailable',
+    !hasTranscript && 'captions unavailable',
     !hasVisual && 'thumbnail vision unavailable',
     !hasStats && 'public stats limited',
   ].filter(Boolean);
@@ -1241,6 +1315,7 @@ function buildVideoIntelligenceReadiness({ metadata, transcript, visual }) {
     summary: [
       metadata?.sourceStatus === 'youtube_api' ? 'official YouTube metadata' : 'limited public metadata',
       hasStats ? 'stats' : '',
+      hasVideo ? 'Gemini video understanding' : '',
       hasTranscript ? `transcript ${transcript.language || ''}`.trim() : '',
       hasVisual ? 'thumbnail vision' : '',
     ].filter(Boolean).join(' + '),
@@ -1249,8 +1324,11 @@ function buildVideoIntelligenceReadiness({ metadata, transcript, visual }) {
 
 async function enrichVideoIntelligence(metadata) {
   const transcript = metadata.youtube?.videoId ? await fetchYouTubeTranscript(metadata.youtube.videoId) : null;
-  const visual = await analyzeSourceImageWithGemini(metadata);
-  const readiness = buildVideoIntelligenceReadiness({ metadata, transcript, visual });
+  const [video, visual] = await Promise.all([
+    analyzeYouTubeVideoWithGemini(metadata),
+    analyzeSourceImageWithGemini(metadata),
+  ]);
+  const readiness = buildVideoIntelligenceReadiness({ metadata, transcript, visual, video });
   const intelligence = {
     sourceStatus: metadata.sourceStatus,
     sourceLabel: metadata.source?.label || '',
@@ -1258,10 +1336,12 @@ async function enrichVideoIntelligence(metadata) {
       metadata: metadata.sourceStatus === 'youtube_api' ? 'official' : metadata.sourceStatus === 'public_metadata' ? 'public_page' : 'limited',
       transcript: transcript?.text ? 'available' : 'missing',
       visual: visual?.visualSummary ? 'thumbnail_vision' : 'missing',
-      frames: 'not_sampled_yet',
+      video: video?.status === 'available' ? 'gemini_video_understanding' : 'missing',
+      frames: video?.status === 'available' ? 'gemini_video_understanding' : 'not_sampled_yet',
     },
     readiness,
     transcript,
+    video,
     visual,
     facts: {
       title: metadata.title || '',
@@ -1275,6 +1355,12 @@ async function enrichVideoIntelligence(metadata) {
   };
   const analysisParts = [
     metadata.analysisText,
+    video?.videoSummary && `Gemini video summary: ${video.videoSummary}`,
+    video?.spokenText && `Gemini spoken/audio text: ${video.spokenText}`,
+    video?.onScreenText && `On-screen text: ${video.onScreenText}`,
+    video?.contentMechanic && `Video mechanic: ${video.contentMechanic}`,
+    video?.ukrainianAdaptation && `Ukrainian adaptation: ${video.ukrainianAdaptation}`,
+    video?.sceneBeats?.length && `Scene beats: ${video.sceneBeats.join('; ')}`,
     transcript?.text && `Transcript/captions: ${transcript.text}`,
     visual?.visualSummary && `Visible thumbnail: ${visual.visualSummary}`,
     visual?.hookMechanic && `Visual hook mechanic: ${visual.hookMechanic}`,
@@ -1668,16 +1754,18 @@ async function enrichVideoIntelligenceSafe(metadata) {
           metadata: metadata.sourceStatus === 'youtube_api' ? 'official' : 'limited',
           transcript: 'missing',
           visual: 'missing',
+          video: 'missing',
           frames: 'not_sampled_yet',
         },
         readiness: {
-          score: metadata.sourceStatus === 'youtube_api' ? 34 : 14,
+          score: metadata.sourceStatus === 'youtube_api' ? 24 : 12,
           level: 'limited',
           adaptationReady: false,
           gaps: ['video intelligence failed'],
           summary: 'metadata only',
         },
         transcript: { source: 'youtube_timedtext', status: 'error', error: error.message, text: '', segments: [] },
+        video: { source: 'gemini_youtube_video', status: 'error', error: error.message },
         visual: null,
         facts: {
           title: metadata.title || '',
@@ -1742,11 +1830,19 @@ function buildGlobalInsightFromReelMetadata(metadata) {
   const sourceLabel = metadata.source?.label || (metadata.sourceStatus === 'youtube_api' ? 'YouTube Shorts' : 'Instagram Reels');
   const intelligence = metadata.videoIntelligence || {};
   const transcriptText = intelligence.transcript?.text || '';
+  const video = intelligence.video || {};
   const visual = intelligence.visual || {};
   const readiness = intelligence.readiness || {};
-  const script = metadata.description || [
+  const script = [
+    metadata.description || '',
     `User supplied ${sourceLabel} URL: ${metadata.url}.`,
     metadata.shortcode ? `Shortcode: ${metadata.shortcode}.` : '',
+    video.videoSummary ? `Gemini video summary: ${video.videoSummary}` : '',
+    video.spokenText ? `Gemini spoken/on-audio text: ${video.spokenText}` : '',
+    video.onScreenText ? `Gemini on-screen text: ${video.onScreenText}` : '',
+    video.contentMechanic ? `Gemini video mechanic: ${video.contentMechanic}` : '',
+    video.sceneBeats?.length ? `Gemini scene beats: ${video.sceneBeats.join('; ')}` : '',
+    video.ukrainianAdaptation ? `Gemini Ukrainian adaptation notes: ${video.ukrainianAdaptation}` : '',
     transcriptText ? `Transcript/captions: ${transcriptText}` : '',
     visual.visualSummary ? `Visible frame/thumbnail facts: ${visual.visualSummary}` : '',
     visual.hookMechanic ? `Observed visual hook mechanic: ${visual.hookMechanic}` : '',
@@ -1761,10 +1857,12 @@ function buildGlobalInsightFromReelMetadata(metadata) {
     title: metadata.title,
     hook: metadata.description || metadata.title,
     script,
-    marketingMechanics: metadata.description
-      ? 'Deconstruct the caption/title plus transcript/thumbnail intelligence into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
+    marketingMechanics: video.videoSummary
+      ? 'Use Gemini video understanding as the primary source. Extract the actual hook, action, twist, proof and CTA from video summary, scene beats and spoken/on-screen text. Adapt the mechanic for a Ukrainian business without copying the original.'
       : transcriptText
         ? 'Use the transcript/captions as the primary source. Extract the spoken hook, payoff, objection and CTA. Keep the adaptation grounded in the transcript and visible thumbnail facts.'
+        : metadata.description
+        ? 'Deconstruct the caption/title plus transcript/thumbnail intelligence into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
         : 'Create a pragmatic Ukrainian adaptation from the available source signal and visible thumbnail facts. Avoid pretending unavailable frames were analyzed.',
     videoIntelligence: intelligence,
   };
