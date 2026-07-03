@@ -646,6 +646,7 @@ const EN_TEXT = {
   'Люди й блоги': 'People and blogs',
   'Шукаємо...': 'Searching...',
   'Знайти ролики': 'Find videos',
+  'Відкрити оригінал': 'Open original',
   'Тут ще немає сигналів': 'No signals here yet',
   'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.': 'Paste a link or add a signal manually. After import, it will appear in this tab.',
   'СИГНАЛ': 'SIGNAL',

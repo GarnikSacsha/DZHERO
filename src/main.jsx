@@ -2914,13 +2914,27 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
             <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
               <X size={16} />
             </button>
-            <div className={`video-preview-frame market-${previewReel.market}`}>
-              <span className="video-preview-play" aria-hidden="true" />
-              <strong>{previewReel.handle}</strong>
-            </div>
+            {getYouTubeEmbedUrl(previewReel) ? (
+              <div className="video-preview-player">
+                <iframe
+                  title={previewReel.title || 'YouTube Shorts preview'}
+                  src={getYouTubeEmbedUrl(previewReel)}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+            ) : (
+              <div className={`video-preview-frame market-${previewReel.market}`}>
+                <span className="video-preview-play" aria-hidden="true" />
+                <strong>{previewReel.handle}</strong>
+              </div>
+            )}
             <div>
               <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
               <h3>{previewReel.title}</h3>
+              {getSignalSourceUrl(previewReel) && (
+                <a className="video-preview-source" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">Відкрити оригінал</a>
+              )}
               <p>Прев'ю сигналу для швидкого відбору. Джеро витягує механіку, а не копіює ролик.</p>
             </div>
             <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); setPreviewReel(null); }}>Адаптувати під мій бренд</button>
@@ -3440,6 +3454,38 @@ function getReelPreviewImage(reel) {
     || reel?.importedMetadata?.image
     || reel?.importedMetadata?.youtube?.thumbnailUrl
     || '';
+}
+
+function getYouTubeVideoIdFromReel(reel) {
+  const directId = reel?.importedMetadata?.youtube?.videoId;
+  if (directId) return String(directId).trim();
+  const rawUrl = reel?.sourceUrl || reel?.importedMetadata?.url || reel?.url || '';
+  if (!rawUrl) return '';
+  try {
+    const url = new URL(rawUrl);
+    if (url.hostname.includes('youtu.be')) return url.pathname.split('/').filter(Boolean)[0] || '';
+    if (url.pathname.includes('/shorts/')) return url.pathname.split('/shorts/')[1]?.split(/[/?#]/)[0] || '';
+    if (url.pathname.includes('/embed/')) return url.pathname.split('/embed/')[1]?.split(/[/?#]/)[0] || '';
+    return url.searchParams.get('v') || '';
+  } catch {
+    const match = String(rawUrl).match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([^?&#/]+)/i);
+    return match?.[1] || '';
+  }
+}
+
+function getYouTubeEmbedUrl(reel) {
+  const videoId = getYouTubeVideoIdFromReel(reel);
+  if (!videoId) return '';
+  const url = new URL(`https://www.youtube.com/embed/${videoId}`);
+  url.searchParams.set('autoplay', '1');
+  url.searchParams.set('playsinline', '1');
+  url.searchParams.set('rel', '0');
+  url.searchParams.set('modestbranding', '1');
+  return url.toString();
+}
+
+function getSignalSourceUrl(reel) {
+  return reel?.sourceUrl || reel?.importedMetadata?.url || '';
 }
 
 function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
