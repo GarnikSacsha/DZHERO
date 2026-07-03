@@ -3576,7 +3576,7 @@ function Competitors({ competitors, openModal }) {
   );
 }
 
-function buildRemixScenario(reel) {
+function buildRemixScenario(reel, observedContext = '') {
   if (reel.scanExample) {
     return {
       quality: ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(reel.sourceStatus)
@@ -3644,8 +3644,21 @@ function buildRemixScenario(reel) {
     };
   }
 
-  const sourceText = [reel.transcript, reel.caption, reel.angle, reel.title].filter(Boolean).join(' ').trim();
-  const hasSourceText = sourceText.length > 80;
+  const intelligence = reel.importedMetadata?.videoIntelligence || {};
+  const visual = intelligence.visual || {};
+  const sourceText = [
+    observedContext,
+    reel.transcript,
+    reel.caption,
+    reel.importedMetadata?.description,
+    reel.importedMetadata?.title,
+    visual.visualSummary,
+    visual.hookMechanic,
+    Array.isArray(visual.shotSignals) ? visual.shotSignals.join('. ') : '',
+    reel.angle,
+    reel.title,
+  ].filter(Boolean).join(' ').trim();
+  const hasSourceText = sourceText.length > 35;
   const cleanTitle = (reel.title || 'Рілс для адаптації').replace('...', '').trim();
   const sourceSentences = sourceText
     .split(/[.!?\n]+/)
@@ -3773,6 +3786,10 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
 function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
+  const [observedContext, setObservedContext] = useState('');
+  useEffect(() => {
+    setObservedContext('');
+  }, [reel.id, reel.sourceUrl, reel.title]);
   const sourceMetadata = reel.importedMetadata || {};
   const reelHandle = sourceMetadata.youtube?.channelTitle || reel.handle || reel.sourceHandle || '@instagram.reel';
   const mediaImage = getReelPreviewImage(reel);
@@ -3781,7 +3798,7 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const transcriptInfo = videoIntelligence.transcript || {};
   const readiness = videoIntelligence.readiness || null;
   const hasYouTubeIntelligence = ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus) || Boolean(sourceMetadata.youtube);
-  const scenario = buildRemixScenario(reel);
+  const scenario = buildRemixScenario(reel, observedContext);
   const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
     setAdaptationState('loading');
@@ -3880,6 +3897,18 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
                 <span>{videoIntelligence.visual?.visualSummary ? 'Thumbnail vision' : 'Thumbnail'}</span>
                 <span>{readiness?.adaptationReady ? 'Ready' : 'Review'}</span>
               </div>
+            </div>
+          )}
+          {hasYouTubeIntelligence && !transcriptInfo.text && (
+            <div className="insight-card studio-observation-card">
+              <small>Video notes</small>
+              <h3>Add what happens in the video</h3>
+              <p>Watch the Short in the player and write 1-2 sentences: who speaks, what the twist is, and how it ends. Dzhero will rebuild the script from that context.</p>
+              <textarea
+                value={observedContext}
+                onChange={(event) => setObservedContext(event.target.value)}
+                placeholder="Example: two people argue, one gives an ultimatum, the other agrees quickly. The funny twist is that the win happens without long arguments."
+              />
             </div>
           )}
           <div className="insight-card studio-mechanics-card">
