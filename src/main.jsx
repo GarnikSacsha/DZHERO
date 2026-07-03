@@ -3505,6 +3505,44 @@ function getSignalSourceUrl(reel) {
   return reel?.sourceUrl || reel?.importedMetadata?.url || '';
 }
 
+function formatYouTubeDuration(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const match = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+  if (!match) return raw;
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
+  if (!totalSeconds) return '';
+  if (totalSeconds < 60) return `${totalSeconds}с`;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${totalMinutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+function getReelDurationLabel(reel) {
+  return formatYouTubeDuration(
+    reel?.duration
+      || reel?.importedMetadata?.duration
+      || reel?.importedMetadata?.youtube?.duration
+      || reel?.importedMetadata?.videoIntelligence?.facts?.duration,
+  );
+}
+
+function getReelPublishedLabel(reel) {
+  const rawDate = reel?.publishedAt || reel?.createdAt || reel?.importedMetadata?.publishedAt || reel?.importedMetadata?.videoIntelligence?.facts?.publishedAt;
+  if (!rawDate) return '';
+  const date = new Date(rawDate);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('uk-UA', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date).replace(',', '');
+}
+
 function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
   return (
     <div className="table-card trend-analytics-table">
@@ -3520,6 +3558,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
       </div>
       {reels.map((reel, index) => {
         const previewImage = getReelPreviewImage(reel);
+        const metaLine = [marketLabel(reel.market), getReelDurationLabel(reel), getReelPublishedLabel(reel)].filter(Boolean).join(' · ');
         return (
         <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
@@ -3534,7 +3573,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
               <span>{reel.views}</span>
               <i className="thumb-play" aria-hidden="true" />
             </button>
-            <div><strong>{reel.title}</strong><small>{marketLabel(reel.market)} · 52с · 06 тра 13:42</small></div>
+            <div><strong>{reel.title}</strong><small>{metaLine}</small></div>
           </div>
           <Score value={reel.score} />
           <strong>{reel.views}</strong>
@@ -3663,14 +3702,18 @@ function buildRemixScenario(reel, observedContext = '') {
 
   const intelligence = reel.importedMetadata?.videoIntelligence || {};
   const visual = intelligence.visual || {};
+  const video = intelligence.video || {};
   const sourceText = [
     observedContext,
-    reel.importedMetadata?.videoIntelligence?.video?.videoSummary,
-    reel.importedMetadata?.videoIntelligence?.video?.spokenText,
-    reel.importedMetadata?.videoIntelligence?.video?.onScreenText,
-    reel.importedMetadata?.videoIntelligence?.video?.contentMechanic,
-    reel.importedMetadata?.videoIntelligence?.video?.ukrainianAdaptation,
-    Array.isArray(reel.importedMetadata?.videoIntelligence?.video?.sceneBeats) ? reel.importedMetadata.videoIntelligence.video.sceneBeats.join('. ') : '',
+    video.videoSummary,
+    video.spokenText,
+    video.onScreenText,
+    video.hook,
+    video.twist,
+    video.contentMechanic,
+    video.ukrainianAdaptation,
+    Array.isArray(video.sceneBeats) ? video.sceneBeats.join('. ') : '',
+    Array.isArray(video.shotList) ? video.shotList.join('. ') : '',
     reel.transcript,
     reel.caption,
     reel.importedMetadata?.description,
@@ -3688,15 +3731,17 @@ function buildRemixScenario(reel, observedContext = '') {
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 14)
     .slice(0, 4);
-  const coreSignal = sourceSentences[0] || cleanTitle;
-  const proofSignal = sourceSentences[1] || 'покажи реальний приклад, цифру або міні-кейс';
-  const frictionSignal = sourceSentences[2] || 'зніми заперечення: дорого, складно, немає часу або команди';
+  const videoShotList = Array.isArray(video.shotList) ? video.shotList.filter(Boolean) : [];
+  const videoBeats = Array.isArray(video.sceneBeats) ? video.sceneBeats.filter(Boolean) : [];
+  const coreSignal = video.hook || video.contentMechanic || videoBeats[0] || sourceSentences[0] || cleanTitle;
+  const proofSignal = video.twist || videoBeats[1] || sourceSentences[1] || 'покажи конкретний поворот, контраст або доказ, який тримає увагу';
+  const frictionSignal = video.ukrainianAdaptation || videoBeats[2] || sourceSentences[2] || 'перенеси механіку в локальну ситуацію без копіювання персонажів, звуку або сцени';
   const cta = 'Напиши "ХОЧУ" в Direct або залиш коментар, і я надішлю шаблон під твою нішу.';
 
   return {
     quality: hasSourceText ? 'Є достатньо контексту для першого сценарію' : 'Потрібен caption або транскрипт, щоб сценарій став точнішим',
     insight: hasSourceText
-      ? `Головна механіка: ${coreSignal}. Її треба перенести не дослівно, а через український біль, доказ і простий CTA.`
+      ? `Головна механіка: ${coreSignal}. Її треба перенести не дослівно, а через локальний контекст, власний кадр і простий CTA.`
       : 'Зараз є тільки загальна ідея/посилання, тому Джеро може зібрати структуру, але для сильного сценарію треба додати, що саме відбувається у відео.',
     checklist: [
       'Перший кадр: чіткий біль або несподіване твердження за 1-2 секунди.',
@@ -3706,22 +3751,22 @@ function buildRemixScenario(reel, observedContext = '') {
     script: [
       {
         time: '0-2 c',
-        frame: 'Крупний план / екран з проблемою',
+        frame: videoShotList[0] || 'Крупний план / екран з головним конфліктом',
         voice: `Хук: "${coreSignal.length > 90 ? coreSignal.slice(0, 90) + '...' : coreSignal}"`,
       },
       {
         time: '2-6 c',
-        frame: 'Покажи контраст "як роблять зараз" vs "як треба"',
-        voice: `Пояснення: ${proofSignal}. Дай один конкретний приклад з українського бізнесу.`,
+        frame: videoShotList[1] || 'Покажи контраст, реакцію або поворот, який тримає увагу',
+        voice: `Пояснення: ${proofSignal}. Перенеси це у свою ситуацію без копіювання оригіналу.`,
       },
       {
         time: '6-11 c',
-        frame: '3 швидкі кроки / чеклист на екрані',
+        frame: videoShotList[2] || '2-3 швидкі кадри, які розкривають механіку або жарт',
         voice: `Структура: проблема -> рішення -> доказ. ${frictionSignal}.`,
       },
       {
         time: '11-15 c',
-        frame: 'Результат, скрін, відгук або короткий підсумок',
+        frame: videoShotList[3] || 'Результат, реакція, скрін або короткий підсумок',
         voice: `CTA: ${cta}`,
       },
     ],

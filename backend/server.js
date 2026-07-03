@@ -1220,40 +1220,31 @@ async function analyzeSourceImageWithGemini(metadata) {
 async function analyzeYouTubeVideoWithGemini(metadata) {
   const videoUrl = metadata?.url || metadata?.youtube?.url || '';
   if (!GEMINI_API_KEY || !metadata?.youtube?.videoId || !videoUrl) return null;
+  const model = process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL;
+  const prompt = [
+    'Analyze this public YouTube Shorts video for Dzhero, an AI producer for Ukrainian businesses.',
+    'Use the actual video frames, audio, captions, title, and description. If the video cannot be accessed, say that clearly in JSON.',
+    'Return valid JSON only with keys: videoSummary, spokenText, onScreenText, hook, twist, sceneBeats, contentMechanic, ukrainianAdaptation, shotList, ctaIdeas, guardrails.',
+    'Make the Ukrainian adaptation specific to the observed mechanic. Do not default to generic business advice if the source is comedy, prank, story, movie, or entertainment.',
+    'Do not suggest copying the original video, audio, faces, characters, or copyrighted creative.',
+    `Title: ${metadata.title || ''}`,
+    `Description: ${metadata.description || ''}`,
+    `Channel: ${metadata.handle || metadata.youtube?.channelTitle || ''}`,
+    `Stats: ${JSON.stringify(metadata.stats || {})}`,
+  ].join('\n');
   try {
-    const response = await fetch(`${GEMINI_API_BASE}/models/${process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(`${GEMINI_API_BASE}/interactions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': GEMINI_API_KEY,
+      },
       body: JSON.stringify({
-        contents: [{
-          role: 'user',
-          parts: [
-            {
-              text: [
-                'Analyze this public YouTube Shorts video for Dzhero, an AI producer for Ukrainian businesses.',
-                'Use the actual video/audio when available. Do not rely only on title or thumbnail if video understanding is available.',
-                'Return valid JSON only with keys: videoSummary, spokenText, onScreenText, hook, twist, sceneBeats, contentMechanic, ukrainianAdaptation, shotList, ctaIdeas, guardrails.',
-                'Keep it practical for creating an original Ukrainian adaptation. Do not suggest copying the original video, audio, faces, or copyrighted creative.',
-                `Title: ${metadata.title || ''}`,
-                `Description: ${metadata.description || ''}`,
-                `Channel: ${metadata.handle || metadata.youtube?.channelTitle || ''}`,
-                `Stats: ${JSON.stringify(metadata.stats || {})}`,
-              ].join('\n'),
-            },
-            {
-              fileData: {
-                mimeType: 'video/mp4',
-                fileUri: videoUrl,
-              },
-            },
-          ],
-        }],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.25,
-          topP: 0.75,
-          maxOutputTokens: 1800,
-        },
+        model,
+        input: [
+          { type: 'video', uri: videoUrl },
+          { type: 'text', text: prompt },
+        ],
       }),
     });
     const payload = await response.json().catch(() => ({}));
@@ -1264,13 +1255,20 @@ async function analyzeYouTubeVideoWithGemini(metadata) {
         error: payload?.error?.message || `Gemini video HTTP ${response.status}`,
       };
     }
-    const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim();
+    const outputText = Array.isArray(payload.output)
+      ? payload.output.map((item) => item.content?.map((part) => part.text || '').join('')).join('')
+      : '';
+    const text = [
+      payload.output_text,
+      outputText,
+      payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join(''),
+    ].filter(Boolean).join('\n').trim();
     const parsed = parseGeminiJson(text);
     if (!parsed) return { source: 'gemini_youtube_video', status: 'unavailable', reason: 'empty_or_unparseable_response' };
     return {
       source: 'gemini_youtube_video',
       status: 'available',
-      model: process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL,
+      model,
       videoSummary: compactText(parsed.videoSummary, 700),
       spokenText: compactText(parsed.spokenText, 1200),
       onScreenText: compactText(parsed.onScreenText, 700),
