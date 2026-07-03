@@ -896,6 +896,155 @@ function parseXmlAttributes(value = '') {
   return attrs;
 }
 
+function normalizeTranscriptText(value = '', maxLength = 3600) {
+  return compactText(
+    String(value || '')
+      .replace(/\s+([,.!?;:])/g, '$1')
+      .replace(/\s+/g, ' '),
+    maxLength
+  );
+}
+
+function parseYouTubeTranscriptPayload(raw = '') {
+  const source = String(raw || '').trim();
+  if (!source) return { text: '', segments: [] };
+  try {
+    const payload = JSON.parse(source);
+    const segments = (payload.events || [])
+      .filter((event) => Array.isArray(event.segs))
+      .map((event) => ({
+        startMs: Number(event.tStartMs || 0),
+        durationMs: Number(event.dDurationMs || 0),
+        text: normalizeTranscriptText((event.segs || []).map((segment) => segment.utf8 || '').join(' '), 500),
+      }))
+      .filter((segment) => segment.text);
+    return {
+      text: normalizeTranscriptText(segments.map((segment) => segment.text).join(' ')),
+      segments: segments.slice(0, 80),
+    };
+  } catch {
+    const segments = [...source.matchAll(/<text\b([^>]*)>([\s\S]*?)<\/text>/gi)]
+      .map((match) => {
+        const attrs = parseXmlAttributes(match[1]);
+        return {
+          startMs: Math.round(Number(attrs.start || 0) * 1000),
+          durationMs: Math.round(Number(attrs.dur || 0) * 1000),
+          text: normalizeTranscriptText(decodeHtml(match[2]), 500),
+        };
+      })
+      .filter((segment) => segment.text);
+    return {
+      text: normalizeTranscriptText(segments.map((segment) => segment.text).join(' ')),
+      segments: segments.slice(0, 80),
+    };
+  }
+}
+
+function getPreferredYouTubeTranscriptTracks(tracks = []) {
+  const rankLanguage = (lang = '') => {
+    const normalized = String(lang || '').toLowerCase();
+    if (normalized.startsWith('uk')) return 0;
+    if (normalized.startsWith('ru')) return 1;
+    if (normalized.startsWith('en')) return 2;
+    return 3;
+  };
+  return [...tracks].sort((a, b) => (
+    rankLanguage(a.lang_code) - rankLanguage(b.lang_code)
+    || (a.kind === 'asr' ? 1 : 0) - (b.kind === 'asr' ? 1 : 0)
+    || String(a.lang_code || '').localeCompare(String(b.lang_code || ''))
+  ));
+}
+
+function extractJsonArrayAfterKey(source = '', key = '') {
+  const keyIndex = source.indexOf(`"${key}"`);
+  if (keyIndex < 0) return null;
+  const start = source.indexOf('[', keyIndex);
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === '[') {
+      depth += 1;
+    } else if (char === ']') {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
+async function fetchYouTubePlayerCaptionTracks(videoId) {
+  try {
+    const watchUrl = new URL('https://www.youtube.com/watch');
+    watchUrl.searchParams.set('v', videoId);
+    watchUrl.searchParams.set('hl', 'en');
+    const response = await fetch(watchUrl, {
+      headers: {
+        accept: 'text/html,application/xhtml+xml',
+        'accept-language': 'en-US,en;q=0.9,uk;q=0.8,ru;q=0.7',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+      },
+      redirect: 'follow',
+    });
+    if (!response.ok) return [];
+    const html = await response.text();
+    const rawTracks = extractJsonArrayAfterKey(html, 'captionTracks');
+    if (!rawTracks) return [];
+    return JSON.parse(rawTracks).map((track) => ({
+      lang_code: track.languageCode || '',
+      lang_original: track.name?.simpleText || track.name?.runs?.map((run) => run.text).join('') || '',
+      name: track.name?.simpleText || '',
+      kind: track.kind || '',
+      baseUrl: track.baseUrl || '',
+    })).filter((track) => track.lang_code && track.baseUrl);
+  } catch {
+    return [];
+  }
+}
+
+async function fetchTranscriptFromPlayerTrack(track) {
+  if (!track?.baseUrl) return null;
+  const formats = ['json3', 'srv3', ''];
+  for (const fmt of formats) {
+    const url = new URL(track.baseUrl);
+    if (fmt) url.searchParams.set('fmt', fmt);
+    const response = await fetch(url, {
+      headers: {
+        accept: 'application/json,text/xml,*/*',
+        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+      },
+    });
+    if (!response.ok) continue;
+    const parsed = parseYouTubeTranscriptPayload(await response.text());
+    if (!parsed.text) continue;
+    return {
+      source: 'youtube_player_captions',
+      status: 'available',
+      language: track.lang_code,
+      languageName: track.lang_original || '',
+      trackName: track.name || '',
+      isAutoGenerated: track.kind === 'asr',
+      text: parsed.text,
+      segments: parsed.segments,
+    };
+  }
+  return null;
+}
+
 async function fetchYouTubeTranscript(videoId) {
   if (!videoId) return null;
   try {
@@ -913,46 +1062,67 @@ async function fetchYouTubeTranscript(videoId) {
     const tracks = [...listXml.matchAll(/<track\b([^>]*)>/gi)]
       .map((match) => parseXmlAttributes(match[1]))
       .filter((track) => track.lang_code);
-    if (!tracks.length) return null;
-    const preferred = tracks.find((track) => /^uk/i.test(track.lang_code))
-      || tracks.find((track) => /^ru/i.test(track.lang_code))
-      || tracks.find((track) => /^en/i.test(track.lang_code))
-      || tracks[0];
-    const transcriptUrl = new URL('https://video.google.com/timedtext');
-    transcriptUrl.searchParams.set('v', videoId);
-    transcriptUrl.searchParams.set('lang', preferred.lang_code);
-    if (preferred.name) transcriptUrl.searchParams.set('name', preferred.name);
-    transcriptUrl.searchParams.set('fmt', 'json3');
-    const transcriptResponse = await fetch(transcriptUrl, {
-      headers: {
-        accept: 'application/json,text/xml,*/*',
-        'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
-      },
-    });
-    if (!transcriptResponse.ok) return null;
-    const raw = await transcriptResponse.text();
-    let transcriptText = '';
-    try {
-      const payload = JSON.parse(raw);
-      transcriptText = (payload.events || [])
-        .flatMap((event) => event.segs || [])
-        .map((segment) => segment.utf8 || '')
-        .join(' ');
-    } catch {
-      transcriptText = [...raw.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/gi)]
-        .map((match) => decodeHtml(match[1]))
-        .join(' ');
+    const playerTracks = tracks.length ? [] : await fetchYouTubePlayerCaptionTracks(videoId);
+    const allTracks = tracks.length ? tracks : playerTracks;
+    if (!allTracks.length) return {
+      source: 'youtube_captions',
+      status: 'unavailable',
+      reason: 'no_caption_tracks',
+      text: '',
+      segments: [],
+    };
+    for (const track of getPreferredYouTubeTranscriptTracks(playerTracks).slice(0, 4)) {
+      const transcript = await fetchTranscriptFromPlayerTrack(track);
+      if (transcript?.text) return transcript;
     }
-    const text = compactText(transcriptText, 2600);
-    if (!text) return null;
+    const attempts = [];
+    getPreferredYouTubeTranscriptTracks(allTracks).slice(0, 4).forEach((track) => {
+      ['json3', 'srv3', ''].forEach((fmt) => {
+        attempts.push({ track, fmt, includeName: true, includeKind: true });
+        attempts.push({ track, fmt, includeName: false, includeKind: true });
+      });
+    });
+    for (const attempt of attempts) {
+      const transcriptUrl = new URL('https://video.google.com/timedtext');
+      transcriptUrl.searchParams.set('v', videoId);
+      transcriptUrl.searchParams.set('lang', attempt.track.lang_code);
+      if (attempt.fmt) transcriptUrl.searchParams.set('fmt', attempt.fmt);
+      if (attempt.includeName && attempt.track.name) transcriptUrl.searchParams.set('name', attempt.track.name);
+      if (attempt.includeKind && attempt.track.kind) transcriptUrl.searchParams.set('kind', attempt.track.kind);
+      const transcriptResponse = await fetch(transcriptUrl, {
+        headers: {
+          accept: 'application/json,text/xml,*/*',
+          'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/0.1; +https://dzhero.com.ua)',
+        },
+      });
+      if (!transcriptResponse.ok) continue;
+      const parsed = parseYouTubeTranscriptPayload(await transcriptResponse.text());
+      if (!parsed.text) continue;
+      return {
+        source: 'youtube_timedtext',
+        status: 'available',
+        language: attempt.track.lang_code,
+        languageName: attempt.track.lang_original || attempt.track.lang_translated || '',
+        trackName: attempt.track.name || '',
+        isAutoGenerated: attempt.track.kind === 'asr',
+        text: parsed.text,
+        segments: parsed.segments,
+      };
+    }
     return {
-      source: 'youtube_timedtext',
-      language: preferred.lang_code,
-      trackName: preferred.name || preferred.lang_original || '',
-      text,
+      source: 'youtube_captions',
+      status: 'unavailable',
+      reason: 'caption_tracks_empty',
+      tracks: allTracks.slice(0, 8).map((track) => ({
+        language: track.lang_code,
+        name: track.name || '',
+        kind: track.kind || '',
+      })),
+      text: '',
+      segments: [],
     };
   } catch (error) {
-    return { source: 'youtube_timedtext', error: error.message };
+    return { source: 'youtube_timedtext', status: 'error', error: error.message, text: '', segments: [] };
   }
 }
 
@@ -1047,9 +1217,40 @@ async function analyzeSourceImageWithGemini(metadata) {
   }
 }
 
+function buildVideoIntelligenceReadiness({ metadata, transcript, visual }) {
+  const hasTranscript = Boolean(transcript?.text);
+  const hasVisual = Boolean(visual?.visualSummary);
+  const hasStats = Boolean(metadata?.rawStats?.views || metadata?.stats?.views);
+  const score = [
+    metadata?.sourceStatus === 'youtube_api' ? 34 : 14,
+    hasStats ? 16 : 0,
+    hasTranscript ? 30 : 0,
+    hasVisual ? 20 : 0,
+  ].reduce((sum, value) => sum + value, 0);
+  const level = score >= 80 ? 'high' : score >= 55 ? 'medium' : 'limited';
+  const gaps = [
+    !hasTranscript && 'captions/transcript unavailable',
+    !hasVisual && 'thumbnail vision unavailable',
+    !hasStats && 'public stats limited',
+  ].filter(Boolean);
+  return {
+    score,
+    level,
+    adaptationReady: score >= 55,
+    gaps,
+    summary: [
+      metadata?.sourceStatus === 'youtube_api' ? 'official YouTube metadata' : 'limited public metadata',
+      hasStats ? 'stats' : '',
+      hasTranscript ? `transcript ${transcript.language || ''}`.trim() : '',
+      hasVisual ? 'thumbnail vision' : '',
+    ].filter(Boolean).join(' + '),
+  };
+}
+
 async function enrichVideoIntelligence(metadata) {
   const transcript = metadata.youtube?.videoId ? await fetchYouTubeTranscript(metadata.youtube.videoId) : null;
   const visual = await analyzeSourceImageWithGemini(metadata);
+  const readiness = buildVideoIntelligenceReadiness({ metadata, transcript, visual });
   const intelligence = {
     sourceStatus: metadata.sourceStatus,
     sourceLabel: metadata.source?.label || '',
@@ -1059,6 +1260,7 @@ async function enrichVideoIntelligence(metadata) {
       visual: visual?.visualSummary ? 'thumbnail_vision' : 'missing',
       frames: 'not_sampled_yet',
     },
+    readiness,
     transcript,
     visual,
     facts: {
@@ -1081,6 +1283,7 @@ async function enrichVideoIntelligence(metadata) {
   ].filter(Boolean);
   return {
     ...metadata,
+    transcriptText: transcript?.text || '',
     videoIntelligence: intelligence,
     analysisText: compactText(analysisParts.join(' '), 4200),
   };
@@ -1452,6 +1655,44 @@ async function fetchPublicSourceMetadata(rawInput) {
   }
 }
 
+async function enrichVideoIntelligenceSafe(metadata) {
+  try {
+    return await enrichVideoIntelligence(metadata);
+  } catch (error) {
+    return {
+      ...metadata,
+      videoIntelligence: {
+        sourceStatus: metadata.sourceStatus,
+        sourceLabel: metadata.source?.label || '',
+        confidence: {
+          metadata: metadata.sourceStatus === 'youtube_api' ? 'official' : 'limited',
+          transcript: 'missing',
+          visual: 'missing',
+          frames: 'not_sampled_yet',
+        },
+        readiness: {
+          score: metadata.sourceStatus === 'youtube_api' ? 34 : 14,
+          level: 'limited',
+          adaptationReady: false,
+          gaps: ['video intelligence failed'],
+          summary: 'metadata only',
+        },
+        transcript: { source: 'youtube_timedtext', status: 'error', error: error.message, text: '', segments: [] },
+        visual: null,
+        facts: {
+          title: metadata.title || '',
+          description: metadata.description || '',
+          handle: metadata.handle || '',
+          stats: metadata.stats || {},
+          rawStats: metadata.rawStats || {},
+          duration: metadata.youtube?.duration || '',
+          publishedAt: metadata.publishedAt || '',
+        },
+      },
+    };
+  }
+}
+
 async function fetchPublicReelMetadata(reelUrl) {
   const shortcode = extractInstagramShortcode(reelUrl);
   const fallback = {
@@ -1502,6 +1743,7 @@ function buildGlobalInsightFromReelMetadata(metadata) {
   const intelligence = metadata.videoIntelligence || {};
   const transcriptText = intelligence.transcript?.text || '';
   const visual = intelligence.visual || {};
+  const readiness = intelligence.readiness || {};
   const script = metadata.description || [
     `User supplied ${sourceLabel} URL: ${metadata.url}.`,
     metadata.shortcode ? `Shortcode: ${metadata.shortcode}.` : '',
@@ -1510,6 +1752,8 @@ function buildGlobalInsightFromReelMetadata(metadata) {
     visual.hookMechanic ? `Observed visual hook mechanic: ${visual.hookMechanic}` : '',
     visual.shotSignals?.length ? `Shot signals: ${visual.shotSignals.join('; ')}` : '',
     visual.adaptationGuardrails?.length ? `Do not violate these visual guardrails: ${visual.adaptationGuardrails.join('; ')}` : '',
+    readiness.summary ? `Source quality: ${readiness.summary}. Readiness: ${readiness.level}.` : '',
+    readiness.gaps?.length ? `Known gaps: ${readiness.gaps.join('; ')}.` : '',
     `Public ${sourceLabel} metadata is limited, so infer only from available metadata, captions and visible image facts. Do not pretend full video frames were analyzed unless frame data exists.`,
   ].filter(Boolean).join(' ');
 
@@ -1519,7 +1763,9 @@ function buildGlobalInsightFromReelMetadata(metadata) {
     script,
     marketingMechanics: metadata.description
       ? 'Deconstruct the caption/title plus transcript/thumbnail intelligence into hook, proof, objection and CTA. Adapt the mechanic for a Ukrainian business without copying the original.'
-      : 'Create a pragmatic Ukrainian adaptation from the available source signal, transcript if present, and visible thumbnail facts. Avoid pretending unavailable frames were analyzed.',
+      : transcriptText
+        ? 'Use the transcript/captions as the primary source. Extract the spoken hook, payoff, objection and CTA. Keep the adaptation grounded in the transcript and visible thumbnail facts.'
+        : 'Create a pragmatic Ukrainian adaptation from the available source signal and visible thumbnail facts. Avoid pretending unavailable frames were analyzed.',
     videoIntelligence: intelligence,
   };
 }
@@ -3259,11 +3505,12 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       return;
     }
 
-    const metadataItems = await fetchYouTubePopularMetadata({
+    const baseMetadataItems = await fetchYouTubePopularMetadata({
       regionCode: req.body.regionCode,
       categoryId: req.body.categoryId,
       maxResults,
     });
+    const metadataItems = await Promise.all(baseMetadataItems.map((metadata) => enrichVideoIntelligenceSafe(metadata)));
     const existingByVideoId = new Map();
     for (const reel of db.reels.filter((item) => item.workspaceId === req.params.workspaceId)) {
       const videoId = reel.importedMetadata?.youtube?.videoId || parseYouTubeInput(reel.sourceUrl)?.videoId;
@@ -3285,6 +3532,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
           sourceHandle: existingReel.sourceHandle || metadata.handle,
           handle: existingReel.handle || metadata.handle || existingReel.sourceHandle || '@youtube',
           image: existingReel.image || metadata.image || '',
+          transcript: existingReel.transcript || metadata.transcriptText || metadata.videoIntelligence?.transcript?.text || '',
           views: existingReel.views || metadata.stats?.views || 0,
           likes: existingReel.likes || metadata.stats?.likes || 0,
           comments: existingReel.comments || metadata.stats?.comments || 0,
@@ -3296,6 +3544,8 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
             source: metadata.source || existingReel.importedMetadata?.source || { label: sourceLabel, tone: 'shorts' },
             url: metadata.url || existingReel.importedMetadata?.url || existingReel.sourceUrl,
             image: metadata.image || existingReel.importedMetadata?.image || existingReel.image || '',
+            videoIntelligence: metadata.videoIntelligence || existingReel.importedMetadata?.videoIntelligence || null,
+            transcriptText: metadata.transcriptText || existingReel.importedMetadata?.transcriptText || existingReel.transcript || '',
           },
         });
         returnedReels.push(existingReel);
@@ -3316,7 +3566,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
         market: req.body.market || (normalizeYouTubeRegionCode(req.body.regionCode) === 'UA' ? 'ua' : 'global'),
         title: metadata.title || 'YouTube signal',
         caption: metadata.description || '',
-        transcript: '',
+        transcript: metadata.transcriptText || metadata.videoIntelligence?.transcript?.text || '',
         image: metadata.image || '',
         views: metadata.stats?.views || 0,
         likes: metadata.stats?.likes || 0,
@@ -3405,7 +3655,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       market: req.body.market || 'global',
       title: metadata.title,
       caption: metadata.description,
-      transcript: '',
+      transcript: metadata.transcriptText || metadata.videoIntelligence?.transcript?.text || '',
       image: metadata.image || '',
       views: metadata.stats?.views || 0,
       likes: metadata.stats?.likes || 0,
@@ -3478,6 +3728,15 @@ app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze-ai', async (req, re
   if (!reel) {
     res.status(404).json({ error: 'reel_not_found' });
     return;
+  }
+  if (reel.importedMetadata?.youtube?.videoId) {
+    const refreshedMetadata = await enrichVideoIntelligenceSafe(reel.importedMetadata);
+    reel.importedMetadata = {
+      ...reel.importedMetadata,
+      ...refreshedMetadata,
+    };
+    reel.transcript = reel.transcript || refreshedMetadata.transcriptText || refreshedMetadata.videoIntelligence?.transcript?.text || '';
+    reel.image = reel.image || refreshedMetadata.image || refreshedMetadata.youtube?.thumbnailUrl || '';
   }
   const analysis = buildAgentReelAnalysis({ ...reel, ...req.body }, workspace);
   const job = {
