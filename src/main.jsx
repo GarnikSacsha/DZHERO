@@ -3648,6 +3648,12 @@ function buildRemixScenario(reel, observedContext = '') {
   const visual = intelligence.visual || {};
   const sourceText = [
     observedContext,
+    reel.importedMetadata?.videoIntelligence?.video?.videoSummary,
+    reel.importedMetadata?.videoIntelligence?.video?.spokenText,
+    reel.importedMetadata?.videoIntelligence?.video?.onScreenText,
+    reel.importedMetadata?.videoIntelligence?.video?.contentMechanic,
+    reel.importedMetadata?.videoIntelligence?.video?.ukrainianAdaptation,
+    Array.isArray(reel.importedMetadata?.videoIntelligence?.video?.sceneBeats) ? reel.importedMetadata.videoIntelligence.video.sceneBeats.join('. ') : '',
     reel.transcript,
     reel.caption,
     reel.importedMetadata?.description,
@@ -3796,8 +3802,14 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const phoneLabel = sourceMetadata.source?.label === 'YouTube Shorts' ? 'SHORTS' : 'GLOBAL';
   const videoIntelligence = sourceMetadata.videoIntelligence || {};
   const transcriptInfo = videoIntelligence.transcript || {};
+  const videoInfo = videoIntelligence.video || {};
   const readiness = videoIntelligence.readiness || null;
   const hasYouTubeIntelligence = ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus) || Boolean(sourceMetadata.youtube);
+  const youtubeContextSummary = transcriptInfo.text
+    ? `Р„ С‚СЂР°РЅСЃРєСЂРёРїС‚ ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${transcriptInfo.text.slice(0, 220)}${transcriptInfo.text.length > 220 ? '...' : ''}`
+    : videoInfo.videoSummary
+      ? `Gemini video: ${videoInfo.videoSummary.slice(0, 260)}${videoInfo.videoSummary.length > 260 ? '...' : ''}`
+      : 'YouTube РЅРµ РІС–РґРґР°РІ captions РґР»СЏ С†СЊРѕРіРѕ РІС–РґРµРѕ. Р”Р¶РµСЂРѕ СЃРїРёСЂР°С”С‚СЊСЃСЏ РЅР° РЅР°Р·РІСѓ, РѕРїРёСЃ, РјРµС‚СЂРёРєРё Р№ thumbnail.';
   const scenario = buildRemixScenario(reel, observedContext);
   const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
@@ -3886,20 +3898,16 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
             <div className="insight-card studio-mechanics-card">
               <small>YouTube intelligence</small>
               <h3>{readiness?.level === 'high' ? 'Достатньо контексту' : readiness?.level === 'medium' ? 'Контекст зібрано частково' : 'Потрібна перевірка'}</h3>
-              <p>
-                {transcriptInfo.text
-                  ? `Є транскрипт ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${transcriptInfo.text.slice(0, 220)}${transcriptInfo.text.length > 220 ? '...' : ''}`
-                  : 'YouTube не віддав captions для цього відео. Джеро спирається на назву, опис, метрики й thumbnail.'}
-              </p>
+              <p>{youtubeContextSummary}</p>
               <div className="remix-signal-map">
                 <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'API metadata' : 'Public preview'}</span>
-                <span>{transcriptInfo.text ? 'Transcript' : 'No captions'}</span>
+                <span>{videoInfo.videoSummary ? 'Gemini video' : transcriptInfo.text ? 'Transcript' : 'No captions'}</span>
                 <span>{videoIntelligence.visual?.visualSummary ? 'Thumbnail vision' : 'Thumbnail'}</span>
                 <span>{readiness?.adaptationReady ? 'Ready' : 'Review'}</span>
               </div>
             </div>
           )}
-          {hasYouTubeIntelligence && !transcriptInfo.text && (
+          {hasYouTubeIntelligence && !transcriptInfo.text && !videoInfo.videoSummary && (
             <div className="insight-card studio-observation-card">
               <small>Video notes</small>
               <h3>Add what happens in the video</h3>
