@@ -2171,6 +2171,11 @@ select {
   font-size: 13.5px;
 }
 
+select option {
+  background: #ffffff;
+  color: #111827;
+}
+
 .search-row select {
   max-width: 180px;
   min-height: 42px;
