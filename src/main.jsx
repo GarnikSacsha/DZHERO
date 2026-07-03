@@ -2719,11 +2719,11 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
   const sourceTabs = [
-    ['all', 'Усі'],
+    ['all', 'Всі'],
     ['youtube', 'YouTube'],
     ['instagram', 'Instagram'],
     ['tiktok', 'TikTok'],
-    ['website', 'Website'],
+    ['website', 'Сайти'],
   ];
   const sourceCounts = reels.reduce((acc, reel) => {
     const group = getSignalSourceGroup(reel);
@@ -2759,7 +2759,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: youtubeCategory });
       setSourceFilter('youtube');
     } catch (error) {
-      notify(`Популярні YouTube-ролики не підтягнулись: ${error?.message || 'невідома помилка'}`);
+      notify(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`);
     } finally {
       setIsPullingYoutube(false);
     }
@@ -2800,13 +2800,13 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
     <section className="page page-signals">
       <PageTitle
         title="Сигнали"
-        subtitle="Єдина стрічка short-form, сайтів і конкурентних механік для адаптації під український ринок."
+        subtitle="Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд."
         actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати сигнал</button></>}
       />
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або встав TikTok, Reels, Shorts, сайт чи будь-який сигнал..." /></label>
-        <select value={market} readOnly><option>{market === 'all' ? 'Усі ринки' : 'Обраний ринок'}</option></select>
-        <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За скором</option><option value="views">За переглядами</option></select>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або посилання на TikTok, Reels, Shorts чи сайт..." /></label>
+        <select value={market} readOnly><option>{market === 'all' ? 'Всі ринки' : 'Обраний ринок'}</option></select>
+        <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За оцінкою</option><option value="views">За переглядами</option></select>
       </div>
       <div className="signal-source-tabs" aria-label="Фільтр джерел сигналів">
         {sourceTabs.map(([value, label]) => (
@@ -2824,8 +2824,8 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
       {sourceFilter === 'youtube' && (
         <div className="youtube-popular-panel">
           <div>
-            <strong>Популярні YouTube</strong>
-            <span>Підтягує популярні ролики в Signals. Потім кожен можна окремо адаптувати під бренд.</span>
+            <strong>Популярне з YouTube</strong>
+            <span>Знайдемо ролики, які зараз набирають перегляди. Кожен сигнал можна відкрити в Студії й адаптувати під бренд.</span>
           </div>
           <label>
             <span>Регіон</span>
@@ -2841,16 +2841,16 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
             <span>Категорія</span>
             <select value={youtubeCategory} onChange={(event) => setYoutubeCategory(event.target.value)}>
               <option value="">Усі</option>
-              <option value="24">Entertainment</option>
-              <option value="23">Comedy</option>
-              <option value="26">Howto & Style</option>
-              <option value="27">Education</option>
-              <option value="28">Science & Tech</option>
-              <option value="22">People & Blogs</option>
+              <option value="24">Розваги</option>
+              <option value="23">Гумор</option>
+              <option value="26">Стиль і побут</option>
+              <option value="27">Освіта</option>
+              <option value="28">Технології</option>
+              <option value="22">Люди й блоги</option>
             </select>
           </label>
           <button className="dark" type="button" onClick={pullYoutubePopular} disabled={isPullingYoutube}>
-            <RefreshCw size={16} />{isPullingYoutube ? 'Підтягуємо...' : 'Підтягнути популярні'}
+            <RefreshCw size={16} />{isPullingYoutube ? 'Шукаємо...' : 'Знайти ролики'}
           </button>
         </div>
       )}
@@ -2885,22 +2885,22 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
                   }
                 : sourceFilter !== 'all'
                   ? {
-                      title: 'У цьому джерелі поки пусто',
-                      text: 'Встав посилання або додай сигнал вручну. Джеро покаже його тут після імпорту.',
+                      title: 'Тут ще немає сигналів',
+                      text: 'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.',
                     }
                 : null}
           />
         </div>
         <aside className="signals-source-panel">
-          <div className="panel-title"><strong>Джерела</strong><span>{competitors.length} акаунтів</span></div>
-          <p>Конкуренти не окремий модуль: вони просто джерела сигналів для стрічки.</p>
+          <div className="panel-title"><strong>Джерела</strong><span>{competitors.length} джерел</span></div>
+          <p>Акаунти й сайти, за якими Джеро відстежує робочі механіки для стрічки сигналів.</p>
           <div className="signals-source-list">
             {competitors.slice(0, 6).map((row) => (
               <article key={row.handle}>
                 <b>{row.handle[1]?.toUpperCase() || 'C'}</b>
                 <div>
                   <strong>{row.handle}</strong>
-                  <span>{marketLabel(row.market)} · {row.bestViews} best</span>
+                  <span>{marketLabel(row.market)} · до {row.bestViews} переглядів</span>
                 </div>
                 <Score value={row.score} compact />
               </article>
@@ -3446,12 +3446,12 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
   return (
     <div className="table-card trend-analytics-table">
       <div className="table-head trend-grid signals-grid">
-        <span>Rank</span>
-        <span>Сигнал / відео</span>
-        <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Score <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
-        <span>Views</span>
-        <span>Likes</span>
-        <span>Market</span>
+        <span>#</span>
+        <span>Сигнал</span>
+        <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Оцінка <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
+        <span>Перегляди</span>
+        <span>Лайки</span>
+        <span>Ринок</span>
         <span>Теги</span>
         <span></span>
       </div>
@@ -3479,7 +3479,7 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
           <span>{marketLabel(reel.market)}</span>
           <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s)} key={s}>{compactStatusLabel(s)}</em>)}</div>
           <button className="signal-adapt-button" type="button" onClick={() => onAdapt?.(reel)}>
-            <Wand2 size={14} />Адаптувати під мій бренд
+            <Wand2 size={14} />Адаптувати
           </button>
         </div>
         );
@@ -3598,7 +3598,7 @@ function buildRemixScenario(reel) {
     };
   }
 
-  const sourceText = [reel.caption, reel.transcript, reel.angle, reel.title].filter(Boolean).join(' ').trim();
+  const sourceText = [reel.transcript, reel.caption, reel.angle, reel.title].filter(Boolean).join(' ').trim();
   const hasSourceText = sourceText.length > 80;
   const cleanTitle = (reel.title || 'Рілс для адаптації').replace('...', '').trim();
   const sourceSentences = sourceText
@@ -3729,8 +3729,12 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const [brainStatus, setBrainStatus] = useState('idle');
   const sourceMetadata = reel.importedMetadata || {};
   const reelHandle = sourceMetadata.youtube?.channelTitle || reel.handle || reel.sourceHandle || '@instagram.reel';
-  const mediaImage = reel.image || sourceMetadata.image || '';
+  const mediaImage = getReelPreviewImage(reel);
   const phoneLabel = sourceMetadata.source?.label === 'YouTube Shorts' ? 'SHORTS' : 'GLOBAL';
+  const videoIntelligence = sourceMetadata.videoIntelligence || {};
+  const transcriptInfo = videoIntelligence.transcript || {};
+  const readiness = videoIntelligence.readiness || null;
+  const hasYouTubeIntelligence = ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus) || Boolean(sourceMetadata.youtube);
   const scenario = buildRemixScenario(reel);
   const scenarioVariants = scenario.variants;
   const adaptScenario = () => {
@@ -3815,6 +3819,23 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
             </div>
             <div className="phone-stats"><span title={formatExactStat(exactSourceStats.views, 'views')}>{reel.views}<br /><small>Перегл.</small></span><span title={formatExactStat(exactSourceStats.likes, 'likes')}>{reel.likes}<br /><small>Лайки</small></span><span title={formatExactStat(exactSourceStats.comments, 'comments')}>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
+          {hasYouTubeIntelligence && (
+            <div className="insight-card studio-mechanics-card">
+              <small>YouTube intelligence</small>
+              <h3>{readiness?.level === 'high' ? 'Достатньо контексту' : readiness?.level === 'medium' ? 'Контекст зібрано частково' : 'Потрібна перевірка'}</h3>
+              <p>
+                {transcriptInfo.text
+                  ? `Є транскрипт ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${transcriptInfo.text.slice(0, 220)}${transcriptInfo.text.length > 220 ? '...' : ''}`
+                  : 'YouTube не віддав captions для цього відео. Джеро спирається на назву, опис, метрики й thumbnail.'}
+              </p>
+              <div className="remix-signal-map">
+                <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'API metadata' : 'Public preview'}</span>
+                <span>{transcriptInfo.text ? 'Transcript' : 'No captions'}</span>
+                <span>{videoIntelligence.visual?.visualSummary ? 'Thumbnail vision' : 'Thumbnail'}</span>
+                <span>{readiness?.adaptationReady ? 'Ready' : 'Review'}</span>
+              </div>
+            </div>
+          )}
           <div className="insight-card studio-mechanics-card">
             <small>Механіка ролика</small>
             <h3>{marketLabel(reel.market)} → мій бренд</h3>
