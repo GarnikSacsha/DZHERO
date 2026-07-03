@@ -12644,6 +12644,20 @@ nav button.active::before {
   animation: spin 0.9s linear infinite;
 }
 
+.studio-ai-note,
+.studio-error-note {
+  margin: 8px 0 14px;
+  font-size: 13px;
+}
+
+.studio-ai-note {
+  color: var(--accent);
+}
+
+.studio-error-note {
+  color: #fca5a5;
+}
+
 .studio-plan-cta {
   width: 100%;
   margin-top: 16px;

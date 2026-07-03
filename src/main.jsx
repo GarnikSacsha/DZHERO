@@ -48,6 +48,9 @@ import {
 import './styles.css';
 import logoImg from './logo-mark.svg';
 import { fetchProducerSnapshot } from './data/uaMarket';
+import sourceContext from './sourceContext.cjs';
+
+const { sanitizeSourceContext } = sourceContext;
 import { applyInterfaceLanguage } from './i18n';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
@@ -776,7 +779,7 @@ function App() {
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
+        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && (
           <DataSources
@@ -3704,22 +3707,22 @@ function buildRemixScenario(reel, observedContext = '') {
   const visual = intelligence.visual || {};
   const video = intelligence.video || {};
   const sourceText = [
-    observedContext,
-    video.videoSummary,
-    video.spokenText,
-    video.onScreenText,
-    video.hook,
-    video.twist,
-    video.contentMechanic,
-    video.ukrainianAdaptation,
-    Array.isArray(video.sceneBeats) ? video.sceneBeats.join('. ') : '',
-    Array.isArray(video.shotList) ? video.shotList.join('. ') : '',
-    reel.transcript,
-    reel.caption,
-    reel.importedMetadata?.description,
-    reel.importedMetadata?.title,
-    visual.visualSummary,
-    visual.hookMechanic,
+    sanitizeSourceContext(observedContext),
+    sanitizeSourceContext(video.videoSummary),
+    sanitizeSourceContext(video.spokenText),
+    sanitizeSourceContext(video.onScreenText),
+    sanitizeSourceContext(video.hook),
+    sanitizeSourceContext(video.twist),
+    sanitizeSourceContext(video.contentMechanic),
+    sanitizeSourceContext(video.ukrainianAdaptation),
+    Array.isArray(video.sceneBeats) ? video.sceneBeats.map(sanitizeSourceContext).filter(Boolean).join('. ') : '',
+    Array.isArray(video.shotList) ? video.shotList.map(sanitizeSourceContext).filter(Boolean).join('. ') : '',
+    sanitizeSourceContext(reel.transcript),
+    sanitizeSourceContext(reel.caption),
+    sanitizeSourceContext(reel.importedMetadata?.description),
+    sanitizeSourceContext(reel.importedMetadata?.title),
+    sanitizeSourceContext(visual.visualSummary),
+    sanitizeSourceContext(visual.hookMechanic),
     Array.isArray(visual.shotSignals) ? visual.shotSignals.join('. ') : '',
     reel.angle,
     reel.title,
@@ -3731,11 +3734,11 @@ function buildRemixScenario(reel, observedContext = '') {
     .map((sentence) => sentence.trim())
     .filter((sentence) => sentence.length > 14)
     .slice(0, 4);
-  const videoShotList = Array.isArray(video.shotList) ? video.shotList.filter(Boolean) : [];
-  const videoBeats = Array.isArray(video.sceneBeats) ? video.sceneBeats.filter(Boolean) : [];
-  const coreSignal = video.hook || video.contentMechanic || videoBeats[0] || sourceSentences[0] || cleanTitle;
-  const proofSignal = video.twist || videoBeats[1] || sourceSentences[1] || 'покажи конкретний поворот, контраст або доказ, який тримає увагу';
-  const frictionSignal = video.ukrainianAdaptation || videoBeats[2] || sourceSentences[2] || 'перенеси механіку в локальну ситуацію без копіювання персонажів, звуку або сцени';
+  const videoShotList = Array.isArray(video.shotList) ? video.shotList.map(sanitizeSourceContext).filter(Boolean) : [];
+  const videoBeats = Array.isArray(video.sceneBeats) ? video.sceneBeats.map(sanitizeSourceContext).filter(Boolean) : [];
+  const coreSignal = sanitizeSourceContext(video.hook) || sanitizeSourceContext(video.contentMechanic) || videoBeats[0] || sourceSentences[0] || cleanTitle;
+  const proofSignal = sanitizeSourceContext(video.twist) || videoBeats[1] || sourceSentences[1] || 'покажи конкретний поворот, контраст або доказ, який тримає увагу';
+  const frictionSignal = sanitizeSourceContext(video.ukrainianAdaptation) || videoBeats[2] || sourceSentences[2] || 'перенеси механіку в локальну ситуацію без копіювання персонажів, звуку або сцени';
   const cta = 'Напиши "ХОЧУ" в Direct або залиш коментар, і я надішлю шаблон під твою нішу.';
 
   return {
@@ -3787,6 +3790,37 @@ function buildRemixScenario(reel, observedContext = '') {
         structure: ['Озвучити заперечення', 'Розбити його одним кейсом', 'Дати міні-скрипт', 'Закрити в Direct'],
       },
     ],
+  };
+}
+
+function buildGlobalInsightForRemix(reel, observedContext = '') {
+  const metadata = reel.importedMetadata || {};
+  const intelligence = metadata.videoIntelligence || {};
+  const transcriptText = sanitizeSourceContext(intelligence.transcript?.text || reel.transcript || '');
+  const video = intelligence.video || {};
+  const visual = intelligence.visual || {};
+  const notes = sanitizeSourceContext(observedContext);
+  const script = [
+    notes ? `Human video notes: ${notes}` : '',
+    sanitizeSourceContext(video.videoSummary) ? `Gemini video summary: ${sanitizeSourceContext(video.videoSummary)}` : '',
+    sanitizeSourceContext(video.spokenText) ? `Spoken/audio text: ${sanitizeSourceContext(video.spokenText)}` : '',
+    sanitizeSourceContext(video.onScreenText) ? `On-screen text: ${sanitizeSourceContext(video.onScreenText)}` : '',
+    sanitizeSourceContext(video.contentMechanic) ? `Video mechanic: ${sanitizeSourceContext(video.contentMechanic)}` : '',
+    Array.isArray(video.sceneBeats) ? video.sceneBeats.map(sanitizeSourceContext).filter(Boolean).map((item) => `Scene beat: ${item}`) : '',
+    Array.isArray(video.shotList) ? video.shotList.map(sanitizeSourceContext).filter(Boolean).map((item) => `Shot: ${item}`) : '',
+    transcriptText ? `Transcript/captions: ${transcriptText}` : '',
+    sanitizeSourceContext(metadata.description || reel.caption) ? `Public description: ${sanitizeSourceContext(metadata.description || reel.caption)}` : '',
+    sanitizeSourceContext(visual.visualSummary) ? `Visible thumbnail facts: ${sanitizeSourceContext(visual.visualSummary)}` : '',
+    sanitizeSourceContext(visual.hookMechanic) ? `Thumbnail hook mechanic: ${sanitizeSourceContext(visual.hookMechanic)}` : '',
+    intelligence.readiness?.gaps?.length ? `Known source gaps: ${intelligence.readiness.gaps.join('; ')}` : '',
+  ].flat().filter(Boolean).join('\n');
+
+  return {
+    title: metadata.title || reel.title || 'Short-form signal',
+    hook: video.hook || metadata.description || reel.title || '',
+    script,
+    marketingMechanics: video.contentMechanic || video.ukrainianAdaptation || visual.hookMechanic || 'Adapt the observed attention mechanic into an original Ukrainian short-form script.',
+    videoIntelligence: intelligence,
   };
 }
 
@@ -3851,12 +3885,18 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
   );
 }
 
-function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
+function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBrandBrain }) {
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
   const [observedContext, setObservedContext] = useState('');
+  const [generatedRemix, setGeneratedRemix] = useState(null);
+  const [adaptationError, setAdaptationError] = useState('');
+  const autoRemixKeyRef = useRef('');
   useEffect(() => {
     setObservedContext('');
+    setGeneratedRemix(null);
+    setAdaptationError('');
+    setAdaptationState('idle');
   }, [reel.id, reel.sourceUrl, reel.title]);
   const sourceMetadata = reel.importedMetadata || {};
   const reelHandle = sourceMetadata.youtube?.channelTitle || reel.handle || reel.sourceHandle || '@instagram.reel';
@@ -3867,21 +3907,46 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
   const videoInfo = videoIntelligence.video || {};
   const readiness = videoIntelligence.readiness || null;
   const hasYouTubeIntelligence = ['youtube_api', 'youtube_oembed'].includes(reel.sourceStatus) || Boolean(sourceMetadata.youtube);
-  const youtubeContextSummary = transcriptInfo.text
-    ? `Р„ С‚СЂР°РЅСЃРєСЂРёРїС‚ ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${transcriptInfo.text.slice(0, 220)}${transcriptInfo.text.length > 220 ? '...' : ''}`
-    : videoInfo.videoSummary
-      ? `Gemini video: ${videoInfo.videoSummary.slice(0, 260)}${videoInfo.videoSummary.length > 260 ? '...' : ''}`
-      : 'YouTube РЅРµ РІС–РґРґР°РІ captions РґР»СЏ С†СЊРѕРіРѕ РІС–РґРµРѕ. Р”Р¶РµСЂРѕ СЃРїРёСЂР°С”С‚СЊСЃСЏ РЅР° РЅР°Р·РІСѓ, РѕРїРёСЃ, РјРµС‚СЂРёРєРё Р№ thumbnail.';
-  const scenario = buildRemixScenario(reel, observedContext);
+  const cleanTranscriptPreview = sanitizeSourceContext(transcriptInfo.text);
+  const cleanVideoSummary = sanitizeSourceContext(videoInfo.videoSummary);
+  const youtubeContextSummary = cleanTranscriptPreview
+    ? `Є транскрипт ${transcriptInfo.language ? `(${transcriptInfo.language})` : ''}: ${cleanTranscriptPreview.slice(0, 220)}${cleanTranscriptPreview.length > 220 ? '...' : ''}`
+    : cleanVideoSummary
+      ? `Gemini video: ${cleanVideoSummary.slice(0, 260)}${cleanVideoSummary.length > 260 ? '...' : ''}`
+      : 'YouTube не віддав нормальний transcript або video summary. Додай 1-2 речення в Video notes, і Джеро перебудує сценарій з цього контексту.';
+  const effectiveReel = generatedRemix ? { ...reel, remixResult: generatedRemix } : reel;
+  const scenario = buildRemixScenario(effectiveReel, sanitizeSourceContext(observedContext));
   const scenarioVariants = scenario.variants;
-  const adaptScenario = () => {
+  const adaptScenario = async () => {
     setAdaptationState('loading');
-    notify('Адаптація сценарію запущена');
-    window.setTimeout(() => {
+    setAdaptationError('');
+    notify('Джеро думає над адаптацією, це вже реальний AI-запит');
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/remix/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          globalInsight: buildGlobalInsightForRemix(reel, observedContext),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.message || payload.error || 'remix_generation_failed');
+      setGeneratedRemix(payload);
       setAdaptationState('ready');
-      notify('Підготовлено 3 варіанти адаптації');
-    }, 1200);
+      notify('Підготовлено 3 AI-варіанти адаптації');
+    } catch (error) {
+      setAdaptationState('idle');
+      setAdaptationError(error?.message || 'Не вдалося згенерувати адаптацію');
+      notify('AI-адаптація не пройшла. Залишив чернетку, можна спробувати ще раз.');
+    }
   };
+  useEffect(() => {
+    const sourceKey = reel.id || reel.sourceUrl || reel.title;
+    const autoKey = `${workspaceId || 'workspace'}:${sourceKey}`;
+    if (!workspaceId || !hasYouTubeIntelligence || !sourceKey || autoRemixKeyRef.current === autoKey) return;
+    autoRemixKeyRef.current = autoKey;
+    adaptScenario();
+  }, [reel.id, reel.sourceUrl, reel.title, workspaceId, hasYouTubeIntelligence]);
   const copyScenario = async () => {
     const scenarioText = [
       `Джерело: ${reelHandle}`,
@@ -3942,7 +4007,7 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title="Студія" actions={<button onClick={adaptScenario}><RefreshCw size={16} />Перегенерувати</button>} />
+      <PageTitle title="Студія" actions={<button onClick={adaptScenario} disabled={adaptationState === 'loading'}><RefreshCw size={16} />{adaptationState === 'loading' ? 'Генеруємо...' : 'Перегенерувати AI'}</button>} />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -3963,13 +4028,13 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
               <p>{youtubeContextSummary}</p>
               <div className="remix-signal-map">
                 <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'API metadata' : 'Public preview'}</span>
-                <span>{videoInfo.videoSummary ? 'Gemini video' : transcriptInfo.text ? 'Transcript' : 'No captions'}</span>
+                <span>{cleanVideoSummary ? 'Gemini video' : cleanTranscriptPreview ? 'Transcript' : 'No captions'}</span>
                 <span>{videoIntelligence.visual?.visualSummary ? 'Thumbnail vision' : 'Thumbnail'}</span>
                 <span>{readiness?.adaptationReady ? 'Ready' : 'Review'}</span>
               </div>
             </div>
           )}
-          {hasYouTubeIntelligence && !transcriptInfo.text && !videoInfo.videoSummary && (
+          {hasYouTubeIntelligence && !cleanTranscriptPreview && !cleanVideoSummary && (
             <div className="insight-card studio-observation-card">
               <small>Video notes</small>
               <h3>Add what happens in the video</h3>
@@ -4005,10 +4070,12 @@ function RemixStudio({ reel, notify, setPage, onAddToPlan, onSaveBrandBrain }) {
           <div className="remix-bottom">
             <div className="insight-card">
               <small>Сценарій на 15 секунд</small>
+              {generatedRemix && adaptationState !== 'loading' && <p className="studio-ai-note">AI-адаптація згенерована заново з контексту сигналу.</p>}
+              {adaptationError && adaptationState !== 'loading' && <p className="studio-error-note">{adaptationError}</p>}
               {adaptationState === 'loading' && (
                 <div className="studio-loading">
                   <span />
-                  <strong>Джеро адаптирует сценарий...</strong>
+                  <strong>Джеро адаптує сценарій через AI...</strong>
                 </div>
               )}
               {adaptationState !== 'loading' && (
