@@ -5,6 +5,7 @@
     "dev:backend": "node backend/server.js",
     "build": "vite build",
     "test:brand-brain": "node scripts/test-brand-brain.mjs",
+    "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
     "check:calendar-overflow": "node scripts/check-calendar-overflow.js",
     "preview": "vite preview --host 127.0.0.1",
     "start": "node backend/server.js"

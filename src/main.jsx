@@ -50,6 +50,7 @@ import logoImg from './logo-mark.svg';
 import jerykLoaderImg from './assets/jeryk-loader.png';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
+import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
 import { sanitizeSourceContext } from './sourceContext.mjs';
 import { applyInterfaceLanguage } from './i18n';
 
@@ -2785,7 +2786,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
     if (!onPullYouTubePopular || isPullingYoutube) return;
     setIsPullingYoutube(true);
     try {
-      await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: youtubeCategory });
+      await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: getYouTubeCategoryId(youtubeCategory) });
       setSourceFilter('youtube');
     } catch (error) {
       notify(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`);
@@ -2876,13 +2877,11 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
           <label>
             <span>Категорія</span>
             <select value={youtubeCategory} onChange={(event) => setYoutubeCategory(event.target.value)}>
-              <option value="">Усі</option>
-              <option value="24">Розваги</option>
-              <option value="23">Гумор</option>
-              <option value="26">Стиль і побут</option>
-              <option value="27">Освіта</option>
-              <option value="28">Технології</option>
-              <option value="22">Люди й блоги</option>
+              {YOUTUBE_POPULAR_CATEGORIES.map((category) => (
+                <option value={category.id} key={category.id}>
+                  {category.label}
+                </option>
+              ))}
             </select>
           </label>
           <button className="dark" type="button" onClick={pullYoutubePopular} disabled={isPullingYoutube}>
@@ -4379,6 +4378,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         <JerykLoading
           title="Джерик аналізує Brand Brain"
           text="Витягую нішу, аудиторію, офер, CTA і тон голосу з джерела."
+          compact
         />
       )}
       <div className="brand-brain-grid">
