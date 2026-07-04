@@ -3437,28 +3437,23 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
   return (
     <>
       {!isOpen && (
-        <>
-          <div className="jeryk-idle-card" aria-hidden="true">
-            <div className="jeryk-producer static">
-              <div className="jeryk-producer-body">
-                <span className="jeryk-producer-eye" />
-                <span className="jeryk-producer-smile" />
-                <span className="jeryk-producer-arm left" />
-                <span className="jeryk-producer-arm right" />
-                <span className="jeryk-producer-foot left" />
-                <span className="jeryk-producer-foot right" />
-              </div>
-              <div className="jeryk-producer-cards">
-                <span>ЦА</span>
-                <span>Offer</span>
-                <span>CTA</span>
-              </div>
+        <button className="jeryk-idle-card" type="button" onClick={onOpen} aria-label="Відкрити Джерика">
+          <div className="jeryk-producer static" aria-hidden="true">
+            <div className="jeryk-producer-body">
+              <span className="jeryk-producer-eye" />
+              <span className="jeryk-producer-smile" />
+              <span className="jeryk-producer-arm left" />
+              <span className="jeryk-producer-arm right" />
+              <span className="jeryk-producer-foot left" />
+              <span className="jeryk-producer-foot right" />
+            </div>
+            <div className="jeryk-producer-cards">
+              <span>ЦА</span>
+              <span>Offer</span>
+              <span>CTA</span>
             </div>
           </div>
-          <button className="jeryk-launcher" type="button" onClick={onOpen} aria-label="Відкрити Джерика">
-            <Bot size={22} />
-          </button>
-        </>
+        </button>
       )}
       {isOpen && <button className="jeryk-backdrop" type="button" aria-label="Закрити Джерика" onClick={onClose} />}
       <aside className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'} aria-hidden={!isOpen}>
