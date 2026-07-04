@@ -869,6 +869,7 @@ function App() {
         notify={notify}
         workspaceId={workspaceId}
         activeWorkspace={activeWorkspace}
+        language={language}
       />
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -3483,19 +3484,69 @@ function TypewriterText({ text, active }) {
   return <>{renderChatMessageText(visibleText)}</>;
 }
 
-function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace }) {
-  const assistantName = 'Джерик';
-  const starterPrompts = [
-    'Поясни, що робити на цій сторінці',
-    'Збери 5 ідей на тиждень',
-    'Адаптуй тренд під мій бренд',
-    'Напиши короткий Reels-сценарій',
-  ];
+function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace, language = 'uk' }) {
+  const isEnglishUi = language === 'en';
+  const assistantName = isEnglishUi ? 'Jeryk' : 'Джерик';
+  const drawerCopy = isEnglishUi
+    ? {
+      assistantName,
+      subtitle: 'small AI producer for Dzhero',
+      you: 'You',
+      openLabel: 'Open Jeryk',
+      closeLabel: 'Close Jeryk',
+      loadingTitle: `${assistantName} is thinking`,
+      loadingText: 'Checking Brand Brain, signals, and the reply shape.',
+      placeholder: 'Give Jeryk a task.',
+      sendLabel: 'Send',
+      actionIdea: 'To idea',
+      actionScript: 'To script',
+      actionVideo: 'Video task',
+      savedIdea: `${assistantName} saved the idea`,
+      madeScript: `${assistantName} created a script`,
+      madeVideo: `${assistantName} created a video task`,
+      actionFailed: (message) => `Could not run the action: ${message}`,
+      offline: (message) => `Could not reach the AI provider: ${message}. I am still here: check the AI env or try again after redeploy.`,
+      prompts: [
+        'Explain what to do on this page',
+        'Collect 5 ideas for the week',
+        'Adapt a trend for my brand',
+        'Write a short Reels script',
+      ],
+      seed: `Yo, I am ${assistantName}. I can quickly collect an idea, script, shot list, or explain what to do next in Dzhero.`,
+    }
+    : {
+      assistantName,
+      subtitle: 'малий AI-продюсер Dzhero',
+      you: 'Ви',
+      openLabel: 'Відкрити Джерика',
+      closeLabel: 'Закрити Джерика',
+      loadingTitle: `${assistantName} думає`,
+      loadingText: 'Перевіряю Brand Brain, сигнали і формулюю відповідь.',
+      placeholder: 'Напиши Джерику задачу.',
+      sendLabel: 'Надіслати',
+      actionIdea: 'В ідею',
+      actionScript: 'В сценарій',
+      actionVideo: 'Video task',
+      savedIdea: `${assistantName} зберіг ідею`,
+      madeScript: `${assistantName} зробив сценарій`,
+      madeVideo: `${assistantName} створив video task`,
+      actionFailed: (message) => `Не вийшло виконати дію: ${message}`,
+      offline: (message) => `Не дістався до AI-провайдера: ${message}. Але я на місці: перевір env для AI або спробуй ще раз після redeploy.`,
+      prompts: [
+        'Поясни, що робити на цій сторінці',
+        'Збери 5 ідей на тиждень',
+        'Адаптуй тренд під мій бренд',
+        'Напиши короткий Reels-сценарій',
+      ],
+      seed: `Йо, я ${assistantName}. Можу швидко зібрати ідею, сценарій, shot-list або пояснити, що робити далі у Dzhero.`,
+    };
+  const starterPrompts = drawerCopy.prompts;
   const seedMessages = [
-    ['assistant', `Йо, я ${assistantName}. Можу швидко зібрати ідею, сценарій, shot-list або пояснити, що робити далі у Dzhero.`],
+    ['assistant', drawerCopy.seed],
   ];
+  const messagesKey = `${workspaceId || 'default'}:${language}`;
   const [messagesByWorkspace, setMessagesByWorkspace] = useState({});
-  const messages = messagesByWorkspace[workspaceId] || seedMessages;
+  const messages = messagesByWorkspace[messagesKey] || seedMessages;
   const [input, setInput] = useState('');
   const [isThinking, setIsThinking] = useState(false);
   const [actionStatus, setActionStatus] = useState('');
@@ -3504,9 +3555,9 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
 
   const setMessages = (updater) => {
     setMessagesByWorkspace((current) => {
-      const currentMessages = current[workspaceId] || seedMessages;
+      const currentMessages = current[messagesKey] || seedMessages;
       const nextMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
-      return { ...current, [workspaceId]: nextMessages };
+      return { ...current, [messagesKey]: nextMessages };
     });
   };
 
@@ -3552,7 +3603,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
       setAgentMeta({ provider: 'offline', model: 'fallback' });
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
-          ? ['assistant', `Не дістався до AI-провайдера: ${error.message}. Але я на місці: перевір env для AI або спробуй ще раз після redeploy.`]
+          ? ['assistant', drawerCopy.offline(error.message)]
           : item
       )));
     } finally {
@@ -3582,12 +3633,12 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'agent_action_failed');
       notify(action === 'generate_script'
-        ? `${assistantName} зробив сценарій`
+        ? drawerCopy.madeScript
         : action === 'create_video_job'
-          ? `${assistantName} створив video task`
-          : `${assistantName} зберіг ідею`);
+          ? drawerCopy.madeVideo
+          : drawerCopy.savedIdea);
     } catch (error) {
-      notify(`Не вийшло виконати дію: ${error.message}`);
+      notify(drawerCopy.actionFailed(error.message));
     } finally {
       setActionStatus('');
     }
@@ -3596,7 +3647,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
   return (
     <>
       {!isOpen && (
-        <button className="jeryk-idle-card" type="button" onClick={onOpen} aria-label="Відкрити Джерика">
+        <button className="jeryk-idle-card" type="button" onClick={onOpen} aria-label={drawerCopy.openLabel}>
           <div className="jeryk-producer static" aria-hidden="true">
             <div className="jeryk-producer-body">
               <span className="jeryk-producer-eye" />
@@ -3607,22 +3658,22 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
               <span className="jeryk-producer-foot right" />
             </div>
             <div className="jeryk-producer-cards">
-              <span>ЦА</span>
-              <span>Offer</span>
+              <span>{isEnglishUi ? 'AUD' : 'ЦА'}</span>
+              <span>{isEnglishUi ? 'Offer' : 'Офер'}</span>
               <span>CTA</span>
             </div>
           </div>
         </button>
       )}
-      {isOpen && <button className="jeryk-backdrop" type="button" aria-label="Закрити Джерика" onClick={onClose} />}
+      {isOpen && <button className="jeryk-backdrop" type="button" aria-label={drawerCopy.closeLabel} onClick={onClose} />}
       <aside className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'} aria-hidden={!isOpen}>
         <div className="jeryk-head">
           <div className="jeryk-avatar"><Bot size={24} /></div>
           <div>
-            <strong>Джерик</strong>
-            <span>малий AI-продюсер Dzhero</span>
+            <strong>{assistantName}</strong>
+            <span>{drawerCopy.subtitle}</span>
           </div>
-          <button className="icon" type="button" onClick={onClose} aria-label="Закрити"><X size={17} /></button>
+          <button className="icon" type="button" onClick={onClose} aria-label={drawerCopy.closeLabel}><X size={17} /></button>
         </div>
         <div className="jeryk-context">
           <span>{activeWorkspace?.name || 'Workspace'}</span>
@@ -3631,10 +3682,10 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
         <div className="jeryk-thread" ref={threadRef}>
           {messages.map(([role, text], index) => (
             <div className={`jeryk-message ${role}`} key={`${role}-${index}`}>
-              <span>{role === 'assistant' ? assistantName : 'Ви'}</span>
+              <span>{role === 'assistant' ? assistantName : drawerCopy.you}</span>
               <div>
                 {text === JERYK_LOADING_MESSAGE
-                  ? <JerykLoading title={`${assistantName} думає`} text="Перевіряю Brand Brain, сигнали і формулюю відповідь." compact />
+                  ? <JerykLoading title={drawerCopy.loadingTitle} text={drawerCopy.loadingText} compact />
                   : role === 'assistant'
                   ? <TypewriterText text={text} active={index === messages.length - 1 && !isThinking} />
                   : renderChatMessageText(text)}
@@ -3657,17 +3708,17 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
               event.preventDefault();
               sendMessage();
             }}
-            placeholder="Напиши Джерику задачу."
+            placeholder={drawerCopy.placeholder}
             maxLength={600}
           />
-          <button className="dark" type="button" onClick={() => sendMessage()} disabled={isThinking || !input.trim()} aria-label="Надіслати">
+          <button className="dark" type="button" onClick={() => sendMessage()} disabled={isThinking || !input.trim()} aria-label={drawerCopy.sendLabel}>
             <Send size={17} />
           </button>
         </div>
         <div className="jeryk-actions">
-          <button type="button" onClick={() => runAgentAction('save_idea')} disabled={isThinking || actionStatus || !latestAssistantText}>В ідею</button>
-          <button type="button" onClick={() => runAgentAction('generate_script')} disabled={isThinking || actionStatus || !latestAssistantText}>В сценарій</button>
-          <button type="button" onClick={() => runAgentAction('create_video_job')} disabled={isThinking || actionStatus || !latestAssistantText}>Video task</button>
+          <button type="button" onClick={() => runAgentAction('save_idea')} disabled={isThinking || actionStatus || !latestAssistantText}>{drawerCopy.actionIdea}</button>
+          <button type="button" onClick={() => runAgentAction('generate_script')} disabled={isThinking || actionStatus || !latestAssistantText}>{drawerCopy.actionScript}</button>
+          <button type="button" onClick={() => runAgentAction('create_video_job')} disabled={isThinking || actionStatus || !latestAssistantText}>{drawerCopy.actionVideo}</button>
         </div>
       </aside>
     </>
