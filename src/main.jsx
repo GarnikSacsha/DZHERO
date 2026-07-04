@@ -1332,7 +1332,7 @@ function buildBrandScanPreview(input, publicMetadata = null) {
   const value = `${input} ${metadataText}`.toLowerCase();
   const profiles = [
     {
-      matches: ['fitness', 'workout', 'training', 'тренув', 'фітнес', 'фитнес', 'спорт', 'здоров', 'схуд', 'йога', 'pilates', 'body'],
+      matches: ['fitness', 'workout', 'training', 'тренув', 'фітнес', 'фитнес', 'спорт', 'здоров', 'схуд', 'йога', 'pilates'],
       label: 'Фітнес / wellness',
       cards: [
         ['Портрет бренду', 'Wellness-акаунт, де аудиторія шукає просту систему, мотивацію, видимий прогрес і відчуття “я теж зможу”.'],
@@ -1609,12 +1609,16 @@ function buildBrandBrainFromScanReel(reel, language = 'uk') {
     language,
   });
   const productLine = draft.product;
+  const productLooksLikeClothing = /майк|футбол|бод[іи]|лонгслів|лонгслив|сукн|комбінез|топ|одяг|clothes|fashion/i.test(productLine);
+  const businessType = productLooksLikeClothing
+    ? (language === 'en' ? 'Clothing store' : 'Магазин одягу')
+    : draft.businessType || reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес';
   const proofParts = [
     draft.proof,
     cardText['Сигнали бренду'],
   ].filter(Boolean);
   return {
-    businessType: draft.businessType || reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес',
+    businessType,
     product: productLine,
     audience: draft.audience || cardText['Портрет бренду'] || cardText['Публічний профіль'] || cardText['Профіль'] || '',
     location: 'онлайн / Україна',
