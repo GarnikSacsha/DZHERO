@@ -3657,11 +3657,6 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
               <span className="jeryk-producer-foot left" />
               <span className="jeryk-producer-foot right" />
             </div>
-            <div className="jeryk-producer-cards">
-              <span>{isEnglishUi ? 'AUD' : 'ЦА'}</span>
-              <span>{isEnglishUi ? 'Offer' : 'Офер'}</span>
-              <span>CTA</span>
-            </div>
           </div>
         </button>
       )}
@@ -4284,19 +4279,6 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
             </div>
             <div className="phone-stats"><span title={formatExactStat(exactSourceStats.views, 'views')}>{reel.views}<br /><small>Перегл.</small></span><span title={formatExactStat(exactSourceStats.likes, 'likes')}>{reel.likes}<br /><small>Лайки</small></span><span title={formatExactStat(exactSourceStats.comments, 'comments')}>{reel.comments}<br /><small>Ком.</small></span><span>{reel.score}<br /><small>Скор</small></span></div>
           </div>
-          {hasYouTubeIntelligence && (
-            <div className="insight-card studio-mechanics-card">
-              <small>Дані з YouTube</small>
-              <h3>{readiness?.level === 'high' ? 'Достатньо контексту' : readiness?.level === 'medium' ? 'Контекст зібрано частково' : 'Потрібна перевірка'}</h3>
-              <p>{youtubeContextSummary}</p>
-              <div className="remix-signal-map">
-                <span>{sourceMetadata.sourceStatus === 'youtube_api' ? 'Метрики' : 'Превʼю'}</span>
-                <span>{cleanVideoSummary ? 'Відео-аналіз' : cleanTranscriptPreview ? 'Транскрипт' : 'Без субтитрів'}</span>
-                <span>{videoIntelligence.visual?.visualSummary ? 'Превʼю' : 'Кадр'}</span>
-                <span>{readiness?.adaptationReady ? 'Готово' : 'Чернетка'}</span>
-              </div>
-            </div>
-          )}
           {hasYouTubeIntelligence && !generatedRemix && !cleanTranscriptPreview && !cleanVideoSummary && (
             <div className="insight-card studio-observation-card">
               <small>Нотатка до відео</small>
@@ -4309,17 +4291,6 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
               />
             </div>
           )}
-          <div className="insight-card studio-mechanics-card">
-            <small>Механіка ролика</small>
-            <h3>Сигнал → мій бренд</h3>
-            <p>{generatedRemix ? 'Джеро вже врахував механіку оригіналу в сценарії нижче: несподіваний поворот, коротка напруга і фінальний виграш для глядача.' : 'Джеро бере не сюжет ролика, а його механіку: конфлікт, очікування, поворот і простий фінальний CTA.'}</p>
-            <div className="remix-signal-map">
-              <span>Перший кадр</span>
-              <span>Доказ</span>
-              <span>Локальний біль</span>
-              <span>CTA</span>
-            </div>
-          </div>
         </div>
         <div className="analysis-stack">
           <BrandScanStudioPanel reel={reel} onSaveBrandBrain={saveCurrentBrandBrain} brainStatus={brainStatus} />
