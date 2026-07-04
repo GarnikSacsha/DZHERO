@@ -32,14 +32,30 @@ function stripHandle(value, handle = '') {
 
 function stripBrandPrefix(value) {
   const text = compactText(value)
+    .replace(/^from\s+/i, '')
     .replace(/^[-–—|:]+/, '')
     .replace(/[-–—|:]+$/, '')
+    .replace(/\(\s*\)/g, '')
     .trim();
   const parts = text.split(/\s+[-–—]\s+/).map((part) => part.trim()).filter(Boolean);
   if (parts.length < 2) return text;
   const [first, ...rest] = parts;
   const firstLooksLikeBrand = /^[A-Z0-9_ .]{3,}$/.test(first) || /^[\w.]+$/i.test(first);
   return firstLooksLikeBrand ? rest.join(' - ') : text;
+}
+
+function normalizeProductPhrase(value) {
+  const text = compactText(value)
+    .replace(/^from\s+/i, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s*,\s*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  if (/майк|футбол|бод[іи]|лонгслів|сукн|комбінез|топ|одяг|clothes|fashion/i.test(text)) {
+    return text.toLowerCase();
+  }
+  return text;
 }
 
 function isGenericPlatformMeta(value) {
@@ -60,11 +76,11 @@ export function extractCleanBrandProduct({ title = '', description = '', handle 
     .filter((value) => !isGenericPlatformMeta(value))
     .filter((value) => !isProductionDraftTitle(value));
 
-  const useful = candidates.find((value) => /workout|training|трен|beauty|health|курс|послуг|shop|store|studio|salon|fitness|wellness|app/i.test(value));
-  if (useful) return compactText(useful);
+  const useful = candidates.find((value) => /workout|training|трен|beauty|health|курс|послуг|shop|store|studio|salon|fitness|wellness|app|майк|футбол|бод[іи]|лонгслів|сукн|комбінез|топ|одяг|clothes|fashion/i.test(value));
+  if (useful) return normalizeProductPhrase(useful);
   const fallback = candidates[0] || '';
   if (label && (!fallback || /\bstats?\b/i.test(fallback) || fallback.split(/\s+/).length <= 2)) return compactText(label);
-  return compactText(fallback || label || '');
+  return normalizeProductPhrase(fallback || label || '');
 }
 
 function buildAudience(product, label, language = 'uk') {
@@ -79,7 +95,12 @@ function buildAudience(product, label, language = 'uk') {
       ? 'people who want a simple beauty service booking with a clear result'
       : 'люди, які хочуть швидко записатися на beauty-послугу і бачити зрозумілий результат';
   }
-  if (/shop|store|одяг|clothes|fashion/.test(text)) {
+  if (/майк|футбол|бод[іи]|лонгслів|сукн|комбінез|топ|одяг|clothes|fashion/.test(text)) {
+    return isEnglish(language)
+      ? 'women choosing stylish everyday clothes online and wanting to see fit, fabric and outfit ideas before buying'
+      : 'жінки, які обирають стильний повсякденний одяг онлайн і хочуть бачити посадку, тканину та готові образи перед покупкою';
+  }
+  if (/shop|store|магаз|товар/.test(text)) {
     return isEnglish(language)
       ? 'people choosing a product now and needing clear styles, prices and proof'
       : 'люди, які обирають товар зараз і хочуть бачити стиль, ціну та докази';
@@ -96,9 +117,19 @@ function buildOffer(product, label, language = 'uk') {
       ? 'a 20-minute starter workout people can save and try today'
       : '20-хвилинне стартове тренування, яке можна зберегти і спробувати сьогодні';
   }
+  if (/майк|футбол|бод[іи]|лонгслів|сукн|комбінез|топ|одяг|clothes|fashion/.test(text)) {
+    return isEnglish(language)
+      ? 'everyday clothing pieces and ready outfit ideas people can order in Direct'
+      : 'актуальні речі для повсякденних образів, які можна замовити в Direct';
+  }
+  if (/shop|store|магаз|товар/.test(text)) {
+    return isEnglish(language)
+      ? 'a clear product selection with details, proof and an easy order step'
+      : 'зрозумілий вибір товарів з деталями, доказами і простим кроком до замовлення';
+  }
   return isEnglish(language)
-    ? `main offer for ${product || label || 'the product'}`
-    : `головна пропозиція для ${product || label || 'продукту'}`;
+    ? `clear next step for people interested in ${product || label || 'the product'}`
+    : `зрозуміла пропозиція для людей, яким потрібен ${product || label || 'цей продукт'}`;
 }
 
 function buildCta(product, exampleCaption = '', language = 'uk') {
@@ -107,6 +138,11 @@ function buildCta(product, exampleCaption = '', language = 'uk') {
     return isEnglish(language)
       ? 'write START to get the first mini workout'
       : 'написати START, щоб отримати перше міні-тренування';
+  }
+  if (/майк|футбол|бод[іи]|лонгслів|сукн|комбінез|топ|одяг|clothes|fashion/.test(text)) {
+    return isEnglish(language)
+      ? 'write in Direct to check availability, size or order'
+      : 'написати в Direct, щоб уточнити наявність, розмір або замовити';
   }
   if (/direct|dm|message|напис/.test(text)) {
     return isEnglish(language)
@@ -132,7 +168,7 @@ export function buildBrandBrainDraft({
   const proof = [
     stats.followers && `${stats.followers} followers`,
     stats.posts && `${stats.posts} posts`,
-    compactText(title) && !isProductionDraftTitle(title) && stripHandle(stripProfileStats(title), handle),
+    compactText(title) && !isProductionDraftTitle(title) && normalizeProductPhrase(stripBrandPrefix(stripHandle(stripProfileStats(title), handle))),
   ].filter(Boolean).join(' · ');
 
   return {
