@@ -47,7 +47,6 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import logoImg from './logo-mark.svg';
-import jerykLoaderImg from './assets/jeryk-loader.png';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
 import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
@@ -168,8 +167,22 @@ function JerykLoading({ title = 'Джерик думає', text = 'Збираю 
   ].filter(Boolean).join(' ');
   return (
     <div className={className} aria-live="polite">
-      <img src={jerykLoaderImg} alt="" aria-hidden="true" />
-      <div>
+      <div className="jeryk-producer" aria-hidden="true">
+        <div className="jeryk-producer-body">
+          <span className="jeryk-producer-eye" />
+          <span className="jeryk-producer-smile" />
+          <span className="jeryk-producer-arm left" />
+          <span className="jeryk-producer-arm right" />
+          <span className="jeryk-producer-foot left" />
+          <span className="jeryk-producer-foot right" />
+        </div>
+        <div className="jeryk-producer-cards">
+          <span>ЦА</span>
+          <span>Офер</span>
+          <span>CTA</span>
+        </div>
+      </div>
+      <div className="jeryk-loading-copy">
         <strong>{title}</strong>
         <p>{text}</p>
       </div>
