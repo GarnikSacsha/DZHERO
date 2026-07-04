@@ -47,3 +47,17 @@ const fallback = buildBrandBrainDraft({
 assert.equal(fallback.product, 'local business');
 assert.equal(fallback.offer, 'головна пропозиція для local business');
 assert.doesNotMatch(fallback.product, /Followers|Following|Posts|See Instagram/i);
+
+const instagramLoginDraft = buildBrandBrainDraft({
+  label: 'Фітнес / wellness',
+  title: "Create an account or log in to Instagram - Share what you're into with the people who get you.",
+  description: "Create an account or log in to Instagram - Share what you're into with the people who get you.",
+  handle: '@wowbody_app',
+  stats: {},
+  language: 'uk',
+});
+
+assert.equal(instagramLoginDraft.product, 'Фітнес / wellness');
+assert.equal(instagramLoginDraft.offer, 'головна пропозиція для Фітнес / wellness');
+assert.doesNotMatch(instagramLoginDraft.product, /Create an account|log in to Instagram|people who get you/i);
+assert.doesNotMatch(instagramLoginDraft.offer, /Create an account|log in to Instagram|people who get you/i);
