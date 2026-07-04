@@ -9,10 +9,6 @@ function isEnglish(language) {
   return language === 'en';
 }
 
-function isProductionPlan(value) {
-  return /^(short-form|stories|shorts|reels|carousel|карусель|пост|сторіс)\s*:/i.test(compactText(value));
-}
-
 function stripProfileStats(value) {
   return compactText(value)
     .replace(/\b[\d,.]+\s*[KMB]?\s+Followers\b,?\s*/gi, '')
@@ -39,52 +35,35 @@ function stripBrandPrefix(value) {
     .replace(/^[-–—|:]+/, '')
     .replace(/[-–—|:]+$/, '')
     .trim();
-  const withoutFrom = text.replace(/^from\s+[^-–—]+[-–—]\s*/i, '').trim();
-  const parts = withoutFrom.split(/\s+[-–—]\s+/).map((part) => part.trim()).filter(Boolean);
-  if (parts.length < 2) return withoutFrom;
+  const parts = text.split(/\s+[-–—]\s+/).map((part) => part.trim()).filter(Boolean);
+  if (parts.length < 2) return text;
   const [first, ...rest] = parts;
   const firstLooksLikeBrand = /^[A-Z0-9_ .]{3,}$/.test(first) || /^[\w.]+$/i.test(first);
-  return firstLooksLikeBrand ? rest.join(' - ') : withoutFrom;
+  return firstLooksLikeBrand ? rest.join(' - ') : text;
 }
 
-function isFitnessContext(product, label) {
-  return /workout|training|fitness|wellness|health|трен|фітнес|спорт|здоров/i.test(`${product} ${label}`);
-}
-
-function fallbackProductForLabel(label, language = 'uk') {
-  if (isFitnessContext('', label)) {
-    return isEnglish(language)
-      ? 'short home workouts and a wellness program'
-      : 'короткі домашні тренування та wellness-програма';
-  }
-  return compactText(label || (isEnglish(language) ? 'local business' : 'локальний бізнес'));
-}
-
-export function extractCleanBrandProduct({ title = '', description = '', handle = '', label = '', language = 'uk' } = {}) {
+export function extractCleanBrandProduct({ title = '', description = '', handle = '', label = '' } = {}) {
   const candidates = [description, title]
     .map((value) => stripBrandPrefix(stripHandle(stripProfileStats(value), handle)))
     .map((value) => value.replace(/^[-–—|:]+/, '').trim())
     .filter(Boolean)
     .filter((value) => !/^(followers|following|posts)$/i.test(value))
-    .filter((value) => !/See Instagram photos and videos/i.test(value))
-    .filter((value) => !isProductionPlan(value));
+    .filter((value) => !/See Instagram photos and videos/i.test(value));
 
   const useful = candidates.find((value) => /workout|training|трен|beauty|health|курс|послуг|shop|store|studio|salon|fitness|wellness|app/i.test(value));
   if (useful) return compactText(useful);
   const fallback = candidates[0] || '';
-  if (label && (!fallback || /\bstats?\b/i.test(fallback) || fallback.split(/\s+/).length <= 2)) {
-    return fallbackProductForLabel(label, language);
-  }
-  return compactText(fallback || fallbackProductForLabel(label, language));
+  if (label && (!fallback || /\bstats?\b/i.test(fallback) || fallback.split(/\s+/).length <= 2)) return compactText(label);
+  return compactText(fallback || label || '');
 }
 
 function buildAudience(product, label, language = 'uk') {
-  if (isFitnessContext(product, label)) {
-    return isEnglish(language)
-      ? 'people who want short workouts for health and beauty without a gym, a complex plan, or waiting until Monday'
-      : 'люди, які хочуть тренуватися для здоровʼя і краси без залу, складного плану і старту “з понеділка”';
-  }
   const text = `${product} ${label}`.toLowerCase();
+  if (/workout|training|fitness|wellness|health|трен/.test(text)) {
+    return isEnglish(language)
+      ? 'people who want short health and beauty workouts without a long gym routine'
+      : 'люди, які хочуть короткі тренування для здоровʼя і краси без довгої рутини в залі';
+  }
   if (/beauty|salon|манік|крас/.test(text)) {
     return isEnglish(language)
       ? 'people who want a simple beauty service booking with a clear result'
@@ -101,22 +80,23 @@ function buildAudience(product, label, language = 'uk') {
 }
 
 function buildOffer(product, label, language = 'uk') {
-  if (isFitnessContext(product, label)) {
+  const text = `${product} ${label}`.toLowerCase();
+  if (/20[-\s]?minute|workout|training|трен/.test(text)) {
     return isEnglish(language)
-      ? 'a first 20-minute routine or mini-start people can try today'
-      : 'перший 20-хвилинний комплекс або міні-старт, який можна спробувати сьогодні';
+      ? 'a 20-minute starter workout people can save and try today'
+      : '20-хвилинне стартове тренування, яке можна зберегти і спробувати сьогодні';
   }
   return isEnglish(language)
     ? `main offer for ${product || label || 'the product'}`
     : `головна пропозиція для ${product || label || 'продукту'}`;
 }
 
-function buildCta(product, exampleCaption = '', label = '', language = 'uk') {
-  const text = `${product} ${exampleCaption} ${label}`.toLowerCase();
-  if (/\bstart\b/.test(text) || isFitnessContext(product, label)) {
+function buildCta(product, exampleCaption = '', language = 'uk') {
+  const text = `${product} ${exampleCaption}`.toLowerCase();
+  if (/\bstart\b/.test(text) && /workout|training|20[-\s]?minute|трен/.test(text)) {
     return isEnglish(language)
-      ? 'write START or DM to get the first routine'
-      : 'написати START або Direct, щоб отримати перший комплекс';
+      ? 'write START to get the first mini workout'
+      : 'написати START, щоб отримати перше міні-тренування';
   }
   if (/direct|dm|message|напис/.test(text)) {
     return isEnglish(language)
@@ -138,11 +118,11 @@ export function buildBrandBrainDraft({
   language = 'uk',
 } = {}) {
   const businessType = compactText(label || (isEnglish(language) ? 'local business' : 'локальний бізнес'));
-  const product = extractCleanBrandProduct({ title, description, handle, label: businessType, language }) || businessType;
+  const product = extractCleanBrandProduct({ title, description, handle, label: businessType }) || businessType;
   const proof = [
     stats.followers && `${stats.followers} followers`,
     stats.posts && `${stats.posts} posts`,
-    compactText(title) && !isProductionPlan(title) && stripHandle(stripProfileStats(title), handle),
+    compactText(title) && stripHandle(stripProfileStats(title), handle),
   ].filter(Boolean).join(' · ');
 
   return {
@@ -150,7 +130,7 @@ export function buildBrandBrainDraft({
     product,
     audience: buildAudience(product, businessType, language),
     offer: buildOffer(product, businessType, language),
-    cta: buildCta(product, exampleCaption, businessType, language),
+    cta: buildCta(product, exampleCaption, language),
     proof,
   };
 }
