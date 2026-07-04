@@ -479,7 +479,7 @@ const EN_TEXT = {
   'Що не можна писати або обіцяти. Через кому: заборонені теми, ризикові фрази, табу бренду.': 'What must not be written or promised. Separate forbidden topics, risky phrases, and brand taboos with commas.',
   'Чим доводимо, що вам можна вірити: кейси, цифри, відгуки, фото, результати клієнтів.': 'What proves you can be trusted: cases, numbers, reviews, photos, and customer results.',
   'Задачі на відео після сценарію': 'Video tasks after the script',
-  'Тут видно, куди потрапляє результат агента. Реальна генерація буде ввімкнена після підключення video provider API, а поки задача зберігає prompt, сцени, CTA і статус approval.': 'This shows where the assistant result goes. Real generation will be enabled after connecting a video provider API; for now, the task stores the prompt, scenes, CTA, and approval status.',
+  'Результат агента зберігає prompt, сцени, CTA і статус approval. Реальна генерація буде ввімкнена після підключення video provider API.': 'The assistant result stores the prompt, scenes, CTA, and approval status. Real generation will be enabled after connecting a video provider API.',
   'Додати test task': 'Add test task',
   'Очікуємо першу задачу від агента': 'Waiting for the first task from the assistant',
   'Натисни в чаті агента: Створити video task.': 'Click in the assistant chat: Create video task.',

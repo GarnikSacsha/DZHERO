@@ -48,6 +48,7 @@ import {
 import './styles.css';
 import logoImg from './logo-mark.svg';
 import { fetchProducerSnapshot } from './data/uaMarket';
+import { buildBrandBrainDraft } from './brandBrain.mjs';
 import sourceContext from './sourceContext.cjs';
 
 const { sanitizeSourceContext } = sourceContext;
@@ -1498,21 +1499,27 @@ function buildBrandBrainFromScanReel(reel) {
   const stats = metadata.stats || {};
   const cards = Array.isArray(reel?.scanCards) ? reel.scanCards : [];
   const cardText = Object.fromEntries(cards.map(([title, text]) => [title, text]));
-  const productLine = metadata.description || metadata.title || reel?.title || reel?.scanExample?.title || '';
+  const draft = buildBrandBrainDraft({
+    label: reel?.scanLabel || reel?.status?.[0] || '',
+    title: metadata.title || reel?.title || '',
+    description: metadata.description || '',
+    handle: metadata.handle || reel?.sourceHandle || '',
+    stats,
+    exampleCaption: reel?.scanExample?.caption || '',
+  });
+  const productLine = draft.product;
   const proofParts = [
-    stats.followers && `${stats.followers} followers`,
-    stats.posts && `${stats.posts} posts`,
-    metadata.title,
+    draft.proof,
     cardText['Сигнали бренду'],
   ].filter(Boolean);
   return {
-    businessType: reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес',
+    businessType: draft.businessType || reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес',
     product: productLine,
-    audience: cardText['Портрет бренду'] || cardText['Публічний профіль'] || cardText['Профіль'] || '',
+    audience: draft.audience || cardText['Портрет бренду'] || cardText['Публічний профіль'] || cardText['Профіль'] || '',
     location: 'онлайн / Україна',
     toneOfVoice: 'коротко, конкретно, дружньо, без перебільшень',
-    offer: productLine || reel?.scanPlan?.[0]?.[1] || '',
-    cta: reel?.scanExample?.caption || 'вести в Direct через просте ключове слово',
+    offer: draft.offer || productLine || reel?.scanPlan?.[0]?.[1] || '',
+    cta: draft.cta || 'вести в Direct через просте ключове слово',
     proof: proofParts.join(' · '),
     stopTopics: ['не вигадувати цифри', 'не копіювати чужий контент дослівно', 'не обіцяти результат без доказу'],
     sourceUrl: reel?.sourceUrl || '',
@@ -4460,7 +4467,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
         <div>
           <small>Video generation queue</small>
           <h3>Задачі на відео після сценарію</h3>
-          <p>Тут видно, куди потрапляє результат агента. Поки задача зберігає prompt, сцени, CTA і статус approval.</p>
+          <p>Результат агента зберігає prompt, сцени, CTA і статус approval.</p>
         </div>
         <button className="dark" type="button" onClick={createDemoJob} disabled={status === 'saving'}>
           <Rocket size={16} />{status === 'saving' ? 'Створюю...' : 'Додати test task'}
@@ -4486,7 +4493,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
               <em>{job.provider}</em>
             </div>
             <h4>{job.prompt?.title || 'Untitled video task'}</h4>
-            <p>{job.prompt?.caption || 'Prompt буде збережено тут після створення задачі.'}</p>
+            <p>{job.prompt?.caption || 'Prompt буде збережено після створення задачі.'}</p>
             <div className="video-job-meta">
               <strong>{job.prompt?.format || 'Reels'}</strong>
               <span>{job.prompt?.scenes?.length || 0} scenes</span>
@@ -5195,7 +5202,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 <div>
                   <small>Поки порожньо</small>
                   <strong>Згенеруй перші ідеї на головній</strong>
-                  <p>Тут зʼявляться варіанти, які можна вручну переносити в календар.</p>
+                  <p>Варіанти можна буде вручну переносити в календар.</p>
                 </div>
               </article>
             )}
