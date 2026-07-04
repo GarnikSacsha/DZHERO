@@ -1175,15 +1175,41 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
       closeSidebarRef.current?.();
     };
 
+    const tourCopy = language === 'en'
+      ? {
+        back: 'Back',
+        skip: 'Skip tour',
+        finish: 'Finish tour',
+        next: 'Next ->',
+        steps: [
+          ['Step 1: Find global trends', 'Here Dzhero collects viral global Reels and adapts the meaning for Ukrainian context and audience behavior. Start here.'],
+          ['Step 2: Generate a script', 'Based on the selected trend, AI writes a strong hook, video structure, and ready CTA for your niche.'],
+          ['Step 3: Calendar and planning', 'A ready script can be planned for any date in one click. The system builds a clear publishing grid for the week ahead.'],
+          ['Step 4: Sales automation', 'While you shoot content, the built-in AI manager handles Direct: detects intent, answers questions, and moves people toward a purchase.'],
+        ],
+      }
+      : {
+        back: 'Назад',
+        skip: 'Пропустити тур',
+        finish: 'Завершити тур',
+        next: 'Далі ->',
+        steps: [
+          ['Крок 1: Пошук світових трендів', 'Тут Джеро збирає вірусні глобальні Reels і адаптує їхній сенс під український контекст та поведінку аудиторії. Почни звідси.'],
+          ['Крок 2: Генерація сценарію', 'На основі вибраного тренду AI прописує чіпкий хук, структуру відео і готовий заклик до дії для твоєї ніші.'],
+          ['Крок 3: Календар і планування', 'Готовий сценарій можна в один клік запланувати на будь-яку дату. Система сформує зрозумілу сітку публікацій на тиждень вперед.'],
+          ['Крок 4: Автоматизація продажів', 'Поки ти знімаєш контент, вбудований AI-менеджер обробляє Direct: розпізнає наміри, відповідає на питання і веде до покупки.'],
+        ],
+      };
+
     const commonButtons = (includeBack = true, last = false) => [
       ...(includeBack ? [{
-        text: 'Назад',
+        text: tourCopy.back,
         classes: 'tour-btn tour-btn-muted',
         action() {
           return this.back();
         },
       }] : [{
-        text: 'Пропустить тур',
+        text: tourCopy.skip,
         classes: 'tour-btn tour-btn-link',
         action() {
           completeTour();
@@ -1191,7 +1217,7 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
         },
       }]),
       {
-        text: last ? 'Завершить тур' : 'Далее ->',
+        text: last ? tourCopy.finish : tourCopy.next,
         classes: 'tour-btn tour-btn-primary',
         action() {
           if (last) {
@@ -1220,8 +1246,8 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
         selector: '[data-tour="sidebar-transcript"]',
         page: null,
         attachTo: 'right',
-        title: 'Шаг 1: Поиск мировых трендов',
-        text: 'Здесь ИИ собирает виральные зарубежные Reels и автоматически адаптирует их смыслы под украинский контекст и менталитет. Начни отсюда.',
+        title: tourCopy.steps[0][0],
+        text: tourCopy.steps[0][1],
         buttons: commonButtons(false),
       },
       {
@@ -1229,8 +1255,8 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
         selector: '[data-tour="generate-script-btn"]',
         page: 'assistant',
         attachTo: 'bottom',
-        title: 'Шаг 2: Генерация сценария',
-        text: 'На основе выбранного тренда ИИ за минуту пропишет цепляющий хук, структуру видео и готовый призыв к действию (CTA) под твою нишу.',
+        title: tourCopy.steps[1][0],
+        text: tourCopy.steps[1][1],
         buttons: commonButtons(true),
       },
       {
@@ -1238,8 +1264,8 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
         selector: '[data-tour="sidebar-calendar"]',
         page: null,
         attachTo: 'right',
-        title: 'Шаг 3: Календарь и планирование',
-        text: 'Готовый сценарий можно в один клик запланировать на любую дату. Система сама сформирует понятную сетку публикаций на неделю вперед.',
+        title: tourCopy.steps[2][0],
+        text: tourCopy.steps[2][1],
         buttons: commonButtons(true),
       },
       {
@@ -1247,8 +1273,8 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
         selector: '[data-tour="sidebar-direct"]',
         page: null,
         attachTo: 'right',
-        title: 'Шаг 4: Автоматизация продаж',
-        text: 'Пока ты снимаешь контент, встроенный ИИ-менеджер обрабатывает Директ: распознает намерения клиентов, отвечает на вопросы 24/7 и закрывает их на покупку.',
+        title: tourCopy.steps[3][0],
+        text: tourCopy.steps[3][1],
         buttons: commonButtons(true, true),
       },
     ];
@@ -1607,16 +1633,149 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
   const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-  const previewSignals = [
-    ['Сигнали', '5 ідей із short-form, сайтів і конкурентних механік'],
-    ['Сценарії', '3 структури: хук, контраст, кроки, CTA'],
-    ['План', '7 днів контенту з фокусом на продаж і довіру'],
-    ['Direct', 'Підказка під ключове слово для заявки'],
-  ];
+  const scanCopy = language === 'en'
+    ? {
+      brandSub: 'AI producer for Ukrainian business',
+      eyebrow: 'Brand Scan',
+      headline: 'Generate a content plan for your business',
+      lead: 'Paste Instagram, TikTok, YouTube Shorts, a website, or briefly describe the business. Dzhero will collect signals, ideas, scripts, and a weekly plan.',
+      inputPlaceholder: 'Example: @central.cafe, youtube.com/shorts/... or a coffee shop in Lviv with breakfasts...',
+      buildButton: 'Build content plan',
+      scanningButton: 'Scanning...',
+      googleButton: 'Sign in with Google',
+      divider: 'or email',
+      emailLabel: 'Email address',
+      emailButton: 'Continue with email',
+      privacy: 'No password. No account access.',
+      demoButton: 'View demo',
+      ready: 'Preview ready',
+      panelIntro: 'What you get in 30 seconds',
+      panelTitle: 'Results, not a technical dashboard',
+      loadingTitle: 'Jeryk scans the source',
+      loadingText: 'Checking the profile, niche, and first ideas for the content plan.',
+      before: 'Before',
+      beforeText: 'Thinking every day about what to post',
+      after: 'After',
+      afterText: 'Weekly plan, hooks, scripts, and Direct prompts',
+      source: 'Source',
+      profile: 'Profile',
+      firstGeneration: 'First generation',
+      firstWeek: 'First week',
+      whatToShoot: 'What to shoot',
+      studioPreview: 'Studio preview',
+      studioInsight: 'Dzhero turns Brand Scan into a script, shot list, and first CTA.',
+      hookTip: 'Show the problem in the first 2 seconds',
+      proofTip: 'Add an example, process, or result',
+      ctaTip: 'Ask people to send a keyword in Direct',
+      save: 'Save',
+      addPlan: 'Add to content plan',
+      continue: 'Continue',
+      loginEyebrow: 'Login after value',
+      loginPrefix: 'Sign in to',
+      loginText: 'You can enter the demo now. Sources and login method stay independent.',
+      opening: 'Opening...',
+      loginContinue: 'Sign in and continue',
+      terms: 'Terms',
+      privacyLink: 'Privacy',
+      emptyError: 'Paste a profile, website, or short business description.',
+      demoError: 'Demo login did not work. Check the server connection.',
+      serverError: 'The server is not responding. Check Railway deploy or local backend.',
+      googleError: 'Google sign-in will be available after login setup is finished.',
+      googleNotify: 'Google Login still needs Railway env setup.',
+      emailError: 'Enter an email to continue.',
+      emailSuccess: 'Trial workspace opened. You can continue from the preview.',
+      emailFail: 'Email login did not work. Check the backend or try Google.',
+      emailFailNotify: 'Email login is temporarily unavailable.',
+      sourceRead: 'Dzhero read the source and built a production preview.',
+      publicRead: 'Dzhero read the public account description.',
+      previewBuilt: 'Dzhero built a preview plan without connecting the account.',
+      loginRequired: 'To save the result, sign in. The preview is already ready.',
+      metaPreview: 'Preview works without connecting the account.',
+      actions: {
+        saveBrandScan: 'save Brand Scan',
+        addToCalendar: 'add the plan to the calendar',
+        continueStudio: 'continue in Studio',
+      },
+      previewSignals: [
+        ['Signals', '5 ideas from short-form, websites, and competitor mechanics'],
+        ['Scripts', '3 structures: hook, contrast, steps, CTA'],
+        ['Plan', '7 days of content focused on sales and trust'],
+        ['Direct', 'Keyword prompt for incoming leads'],
+      ],
+    }
+    : {
+      brandSub: 'AI-продюсер для українського бізнесу',
+      eyebrow: 'Brand Scan',
+      headline: 'Згенеруй контент-план для свого бізнесу',
+      lead: 'Встав Instagram, TikTok, YouTube Shorts, сайт або коротко опиши бізнес. Джеро збере сигнали, ідеї, сценарії та план на тиждень.',
+      inputPlaceholder: 'Наприклад: @central.cafe, youtube.com/shorts/... або кавʼярня у Львові, сніданки...',
+      buildButton: 'Побудувати контент-план',
+      scanningButton: 'Скануємо...',
+      googleButton: 'Увійти через Google',
+      divider: 'або email',
+      emailLabel: 'Ел. пошта',
+      emailButton: 'Продовжити з email',
+      privacy: 'Без пароля. Без доступу до акаунта.',
+      demoButton: 'Подивитись демо',
+      ready: 'Preview готовий',
+      panelIntro: 'Що отримаєш за 30 секунд',
+      panelTitle: 'Результат, а не технічний кабінет',
+      loadingTitle: 'Джерик сканує джерело',
+      loadingText: 'Дивлюся профіль, нішу і перші ідеї для контент-плану.',
+      before: 'Було',
+      beforeText: 'Кожного дня думати, що постити',
+      after: 'Стало',
+      afterText: 'Тижневий план, хуки, сценарії та Direct-підказки',
+      source: 'Джерело',
+      profile: 'Профіль',
+      firstGeneration: 'Перша генерація',
+      firstWeek: 'Перший тиждень',
+      whatToShoot: 'Що знімати',
+      studioPreview: 'Studio preview',
+      studioInsight: 'Джеро перетворює Brand Scan у сценарій, shot-list і перший CTA.',
+      hookTip: 'Покажи проблему в перші 2 секунди',
+      proofTip: 'Додай приклад, процес або результат',
+      ctaTip: 'Запроси написати ключове слово в Direct',
+      save: 'Зберегти',
+      addPlan: 'Додати в контент-план',
+      continue: 'Продовжити',
+      loginEyebrow: 'Логін після цінності',
+      loginPrefix: 'Увійди, щоб',
+      loginText: 'Можна зайти через demo зараз. Джерела і спосіб входу залишаються незалежними.',
+      opening: 'Відкриваємо...',
+      loginContinue: 'Увійти і продовжити',
+      terms: 'Умови',
+      privacyLink: 'Приватність',
+      emptyError: 'Встав профіль, сайт або коротко опиши бізнес.',
+      demoError: 'Демо-вхід не спрацював. Перевір підключення до сервера.',
+      serverError: 'Сервер не відповідає. Перевір Railway deploy або локальний backend.',
+      googleError: 'Google-вхід буде доступний після завершення налаштування входу.',
+      googleNotify: 'Google Login ще треба підключити в Railway env.',
+      emailError: 'Введи email, щоб продовжити.',
+      emailSuccess: 'Trial workspace відкрито. Можна продовжити з preview.',
+      emailFail: 'Email-вхід не спрацював. Перевір backend або спробуй Google.',
+      emailFailNotify: 'Email-вхід тимчасово не спрацював.',
+      sourceRead: 'Джеро прочитав джерело і зібрав production preview.',
+      publicRead: 'Джеро прочитав публічний опис акаунта.',
+      previewBuilt: 'Джеро зібрав preview-план без підключення акаунта.',
+      loginRequired: 'Щоб зберегти результат, треба увійти. Preview вже готовий.',
+      metaPreview: 'Preview працює без підключення акаунта.',
+      actions: {
+        saveBrandScan: 'зберегти Brand Scan',
+        addToCalendar: 'додати план у календар',
+        continueStudio: 'продовжити в Studio',
+      },
+      previewSignals: [
+        ['Сигнали', '5 ідей із short-form, сайтів і конкурентних механік'],
+        ['Сценарії', '3 структури: хук, контраст, кроки, CTA'],
+        ['План', '7 днів контенту з фокусом на продаж і довіру'],
+        ['Direct', 'Підказка під ключове слово для заявки'],
+      ],
+    };
   const buildPreviewPlan = async () => {
     const cleanInput = scanInput.trim();
     if (!cleanInput) {
-      setError('Встав профіль, сайт або коротко опиши бізнес.');
+      setError(scanCopy.emptyError);
       return;
     }
     setIsScanning(true);
@@ -1643,10 +1802,10 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     setScanResult(result);
     setLoginPrompt('');
     notify(['youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus)
-      ? 'Джеро прочитав джерело і зібрав production preview.'
+      ? scanCopy.sourceRead
       : hasSourceMetadata(metadata)
-        ? 'Джеро прочитав публічний опис акаунта.'
-        : 'Джеро зібрав preview-план без підключення акаунта.');
+        ? scanCopy.publicRead
+        : scanCopy.previewBuilt);
   };
 
   const requestLoginForAction = (actionLabel) => {
@@ -1654,7 +1813,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
     }
     setLoginPrompt(actionLabel);
-    notify('Щоб зберегти результат, треба увійти. Preview вже готовий.');
+    notify(scanCopy.loginRequired);
   };
 
   const enterDemo = async () => {
@@ -1669,8 +1828,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       if (!response.ok) throw new Error(payload.error || 'demo_error');
       onAuth(payload);
     } catch {
-      setError('Демо-вхід не спрацював. Перевір підключення до сервера.');
-      notify('Сервер не відповідає. Перевір Railway deploy або локальний backend.');
+      setError(scanCopy.demoError);
+      notify(scanCopy.serverError);
     } finally {
       setIsLoading(false);
     }
@@ -1688,8 +1847,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;
     } catch {
-      setError('Google-вхід буде доступний після завершення налаштування входу.');
-      notify('Google Login ще треба підключити в Railway env.');
+      setError(scanCopy.googleError);
+      notify(scanCopy.googleNotify);
     } finally {
       setIsLoading(false);
     }
@@ -1698,7 +1857,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
   const startEmailLogin = async () => {
     const email = emailInput.trim().toLowerCase();
     if (!email || !email.includes('@')) {
-      setError('Введи email, щоб продовжити.');
+      setError(scanCopy.emailError);
       return;
     }
     setError('');
@@ -1715,11 +1874,11 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'email_auth_failed');
-      notify('Trial workspace відкрито. Можна продовжити з preview.');
+      notify(scanCopy.emailSuccess);
       onAuth(payload);
     } catch {
-      setError('Email-вхід не спрацював. Перевір backend або спробуй Google.');
-      notify('Email-вхід тимчасово не спрацював.');
+      setError(scanCopy.emailFail);
+      notify(scanCopy.emailFailNotify);
     } finally {
       setIsLoading(false);
     }
@@ -1738,7 +1897,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       window.location.href = payload.authUrl;
     } catch {
       setInstagramConfig((current) => current || { error: 'meta_not_configured' });
-      notify('Preview працює без підключення акаунта.');
+      notify(scanCopy.metaPreview);
     } finally {
       setIsLoading(false);
     }
@@ -1754,12 +1913,12 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
             </div>
             <div>
               <strong>Dzhero</strong>
-              <span>AI-продюсер для українського бізнесу</span>
+              <span>{scanCopy.brandSub}</span>
             </div>
           </div>
-          <small>Brand Scan</small>
-          <h1>Згенеруй контент-план для свого бізнесу</h1>
-          <p className="auth-lead">Встав Instagram, TikTok, YouTube Shorts, сайт або коротко опиши бізнес. Джеро збере сигнали, ідеї, сценарії та план на тиждень.</p>
+          <small>{scanCopy.eyebrow}</small>
+          <h1>{scanCopy.headline}</h1>
+          <p className="auth-lead">{scanCopy.lead}</p>
           <div className="auth-scan-form">
             <textarea
               value={scanInput}
@@ -1767,22 +1926,22 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') buildPreviewPlan();
               }}
-              placeholder="Наприклад: @central.cafe, youtube.com/shorts/... або кавʼярня у Львові, сніданки..."
+              placeholder={scanCopy.inputPlaceholder}
               rows={3}
             />
             <div className="auth-scan-actions">
               <button className="auth-submit primary" type="button" onClick={buildPreviewPlan} disabled={isScanning}>
-                <Sparkles size={17} /> {isScanning ? 'Скануємо...' : 'Побудувати контент-план'}
+                <Sparkles size={17} /> {isScanning ? scanCopy.scanningButton : scanCopy.buildButton}
               </button>
             </div>
             <div className="auth-access-card">
               <button className="google-auth-button" type="button" onClick={startGoogleLogin} disabled={isLoading}>
                 <GoogleIcon />
-                Увійти через Google
+                {scanCopy.googleButton}
               </button>
-              <div className="auth-divider"><span>або email</span></div>
+              <div className="auth-divider"><span>{scanCopy.divider}</span></div>
               <label className="email-access-field">
-                <span>Email address</span>
+                <span>{scanCopy.emailLabel}</span>
                 <input
                   type="email"
                   value={emailInput}
@@ -1795,13 +1954,13 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
                 />
               </label>
               <button className="email-auth-button" type="button" onClick={startEmailLogin} disabled={isLoading}>
-                Продовжити з email
+                {scanCopy.emailButton}
               </button>
             </div>
             <p className="auth-privacy-note">
-              Без пароля. Без доступу до акаунта.
+              {scanCopy.privacy}
               <button className="demo-link-inline" type="button" onClick={enterDemo} disabled={isLoading}>
-                Подивитись демо
+                {scanCopy.demoButton}
               </button>
             </p>
           </div>
@@ -1809,8 +1968,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
         <form className="auth-panel brand-scan-panel" onSubmit={(event) => event.preventDefault()}>
           <div className="auth-panel-head">
             <div>
-              <small>{scanResult ? 'Preview готовий' : 'Що отримаєш за 30 секунд'}</small>
-              <h2>{scanResult ? scanResult.title : 'Результат, а не технічний кабінет'}</h2>
+              <small>{scanResult ? scanCopy.ready : scanCopy.panelIntro}</small>
+              <h2>{scanResult ? scanResult.title : scanCopy.panelTitle}</h2>
             </div>
             <div className="auth-top-controls">
               <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
@@ -1824,13 +1983,13 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
           </div>
           {isScanning && !scanResult ? (
             <JerykLoading
-              title="Джерик сканує джерело"
-              text="Дивлюся профіль, нішу і перші ідеї для контент-плану."
+              title={scanCopy.loadingTitle}
+              text={scanCopy.loadingText}
             />
           ) : !scanResult ? (
             <>
               <div className="auth-preview-stack">
-                {previewSignals.map(([title, text], index) => (
+                {scanCopy.previewSignals.map(([title, text], index) => (
                   <article key={title}>
                     <span>0{index + 1}</span>
                     <strong>{title}</strong>
@@ -1840,25 +1999,25 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               </div>
               <div className="auth-before-after">
                 <div>
-                  <small>Було</small>
-                  <strong>Кожного дня думати, що постити</strong>
+                  <small>{scanCopy.before}</small>
+                  <strong>{scanCopy.beforeText}</strong>
                 </div>
                 <div>
-                  <small>Стало</small>
-                  <strong>Тижневий план, хуки, сценарії та Direct-підказки</strong>
+                  <small>{scanCopy.after}</small>
+                  <strong>{scanCopy.afterText}</strong>
                 </div>
               </div>
             </>
           ) : (
             <div className="auth-scan-result">
               <div className="scan-source">
-                <span>Джерело</span>
+                <span>{scanCopy.source}</span>
                 <strong>{scanResult.source}</strong>
                 <em data-source={scanResult.sourceTone}>{scanResult.sourceType}</em>
               </div>
               {hasSourceMetadata(scanResult.metadata) && (
                 <div className="scan-public-meta">
-                  <span>Профіль</span>
+                  <span>{scanCopy.profile}</span>
                   <strong>{scanResult.metadata.handle}</strong>
                   <p>{scanResult.metadata.title || scanResult.metadata.description}</p>
                   <div>
@@ -1873,7 +2032,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               {scanResult.example && (
                 <div className="scan-example-block">
                   <div className="scan-example-head">
-                    <small>Перша генерація</small>
+                    <small>{scanCopy.firstGeneration}</small>
                     <strong>{scanResult.example.title}</strong>
                   </div>
                   <div className="scan-example-hook">
@@ -1893,8 +2052,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               )}
               <div className="scan-week-block">
                 <div className="scan-week-head">
-                  <small>Перший тиждень</small>
-                  <strong>Що знімати</strong>
+                  <small>{scanCopy.firstWeek}</small>
+                  <strong>{scanCopy.whatToShoot}</strong>
                 </div>
                 <div className="scan-week-plan">
                   {(scanResult.plan || [['Пн', 'Short-form: проблема + рішення'], ['Ср', 'Карусель: 5 помилок'], ['Пт', 'Proof-пост + CTA']]).map(([day, title]) => (
@@ -1904,53 +2063,53 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               </div>
               <div className="guest-studio-preview">
                 <div className="guest-studio-head">
-                  <small>Studio preview</small>
+                  <small>{scanCopy.studioPreview}</small>
                   <strong>{scanResult.plan?.[0]?.[1] || 'Short-form: проблема + рішення'}</strong>
-                  <p>{scanResult.studioInsight || 'Джеро перетворює Brand Scan у сценарій, shot-list і перший CTA.'}</p>
+                  <p>{scanResult.studioInsight || scanCopy.studioInsight}</p>
                 </div>
                 <div className="guest-studio-grid">
                   <article>
                     <span>Hook</span>
-                    <strong>Покажи проблему в перші 2 секунди</strong>
+                    <strong>{scanCopy.hookTip}</strong>
                   </article>
                   <article>
                     <span>Proof</span>
-                    <strong>Додай приклад, процес або результат</strong>
+                    <strong>{scanCopy.proofTip}</strong>
                   </article>
                   <article>
                     <span>CTA</span>
-                    <strong>Запроси написати ключове слово в Direct</strong>
+                    <strong>{scanCopy.ctaTip}</strong>
                   </article>
                 </div>
                 <div className="guest-studio-actions">
-                  <button type="button" onClick={() => requestLoginForAction('зберегти Brand Scan')}>
-                    Зберегти
+                  <button type="button" onClick={() => requestLoginForAction(scanCopy.actions.saveBrandScan)}>
+                    {scanCopy.save}
                   </button>
-                  <button type="button" onClick={() => requestLoginForAction('додати план у календар')}>
-                    Додати в контент-план
+                  <button type="button" onClick={() => requestLoginForAction(scanCopy.actions.addToCalendar)}>
+                    {scanCopy.addPlan}
                   </button>
-                  <button className="primary" type="button" onClick={() => requestLoginForAction('продовжити в Studio')}>
-                    Продовжити
+                  <button className="primary" type="button" onClick={() => requestLoginForAction(scanCopy.actions.continueStudio)}>
+                    {scanCopy.continue}
                   </button>
                 </div>
               </div>
               {loginPrompt && (
                 <div className="guest-login-prompt">
                   <div>
-                    <small>Логін після цінності</small>
-                    <strong>Увійди, щоб {loginPrompt}</strong>
-                    <p>Можна зайти через demo зараз. Джерела і спосіб входу залишаються незалежними.</p>
+                    <small>{scanCopy.loginEyebrow}</small>
+                    <strong>{scanCopy.loginPrefix} {loginPrompt}</strong>
+                    <p>{scanCopy.loginText}</p>
                   </div>
                   <button className="auth-submit primary" type="button" onClick={enterDemo} disabled={isLoading}>
-                    {isLoading ? 'Відкриваємо...' : 'Увійти і продовжити'}
+                    {isLoading ? scanCopy.opening : scanCopy.loginContinue}
                   </button>
                 </div>
               )}
             </div>
           )}
           <div className="auth-simple-links">
-            <a href="/terms" target="_blank" rel="noreferrer">Умови</a>
-            <a href="/privacy" target="_blank" rel="noreferrer">Приватність</a>
+            <a href="/terms" target="_blank" rel="noreferrer">{scanCopy.terms}</a>
+            <a href="/privacy" target="_blank" rel="noreferrer">{scanCopy.privacyLink}</a>
           </div>
           {instagramConfig && (
             <div className="instagram-pending">
@@ -4213,7 +4372,7 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
   );
 }
 
-function AgentPipeline({ workspaceId }) {
+function AgentPipeline({ workspaceId, language = 'uk' }) {
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -4232,26 +4391,61 @@ function AgentPipeline({ workspaceId }) {
   }, [workspaceId]);
 
   const providers = status?.providers || {};
+  const pipelineCopy = language === 'en'
+    ? {
+      eyebrow: 'AI Producer Pipeline',
+      title: 'Reels to analysis to script to video task',
+      text: 'The agent can already draft from saved signals. Connected accounts add real profile context and approved insights when they are available.',
+      ready: 'ready',
+      connect: 'connect',
+      preview: 'preview',
+      draft: 'draft',
+      approval: 'after approval',
+      steps: [
+        ['01', 'Instagram', providers.instagram?.configured ? 'ready' : 'connect', 'Reels, descriptions, and comments appear after connecting the source.'],
+        ['02', 'YouTube Shorts', providers.youtube?.configured ? 'ready' : 'preview', 'Dzhero can use Shorts or channel context for scripts.'],
+        ['03', 'Signal analysis', providers.textAgent?.status === 'ready' ? 'ready' : 'draft', 'The assistant evaluates the hook, topic, audience, text risks, and adaptation potential.'],
+        ['04', 'Scripts', providers.textAgent?.provider === 'fallback' ? 'draft' : 'ready', 'Ideas become scripts, shot lists, captions, and Direct CTAs.'],
+        ['05', 'Video task', providers.videoGeneration?.configured ? 'ready' : 'after approval', 'Approved scenes are saved as production tasks before video generation.'],
+      ],
+      statusCards: [
+        providers.instagram?.configured ? 'Instagram ready' : 'Connect account later',
+        providers.youtube?.configured ? 'YouTube ready' : 'YouTube preview',
+        providers.textAgent?.provider === 'fallback' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`,
+        providers.videoGeneration?.configured ? 'Video ready' : 'Manual approval first',
+      ],
+    }
+    : {
+      eyebrow: 'AI-продюсер pipeline',
+      title: 'Від сигналу до аналізу, сценарію і video task',
+      text: 'Агент уже може робити чернетки зі збережених сигналів. Підключені акаунти додадуть реальний контекст профілю й підтверджені інсайти.',
+      steps: [
+        ['01', 'Instagram', providers.instagram?.configured ? 'готово' : 'підключити', 'Рілси, описи й коментарі зʼявляться після підключення джерела.'],
+        ['02', 'YouTube Shorts', providers.youtube?.configured ? 'готово' : 'preview', 'Джеро може брати контекст із Shorts або каналу для сценаріїв.'],
+        ['03', 'Розбір сигналу', providers.textAgent?.status === 'ready' ? 'готово' : 'чернетка', 'Асистент оцінює хук, тему, аудиторію, ризики тексту й потенціал UA-адаптації.'],
+        ['04', 'Сценарії', providers.textAgent?.provider === 'fallback' ? 'чернетка' : 'готово', 'Ідеї перетворюються на сценарії, shot-list, caption і CTA в Direct.'],
+        ['05', 'Video task', providers.videoGeneration?.configured ? 'готово' : 'після апруву', 'Затверджені сцени зберігаються як production-задачі перед генерацією відео.'],
+      ],
+      statusCards: [
+        providers.instagram?.configured ? 'Instagram готовий' : 'Акаунт можна підключити пізніше',
+        providers.youtube?.configured ? 'YouTube готовий' : 'YouTube preview',
+        providers.textAgent?.provider === 'fallback' ? 'Режим чернетки' : `${providers.textAgent?.provider || 'агент'} готовий`,
+        providers.videoGeneration?.configured ? 'Відео готове' : 'Спочатку ручний апрув',
+      ],
+    };
   const steps = [
-    ['01', 'Instagram', providers.instagram?.configured ? 'готово' : 'підключити', 'Рілси, описи й коментарі зʼявляться після підключення джерела.'],
-    ['02', 'YouTube Shorts', providers.youtube?.configured ? 'готово' : 'preview', 'Джеро може брати контекст з Shorts або каналу для сценаріїв.'],
-    ['03', 'Розбір сигналу', providers.textAgent?.status === 'ready' ? 'готово' : 'чернетка', 'Асистент оцінює хук, тему, аудиторію, ризики тексту й потенціал UA-адаптації.'],
-    ['04', 'Сценарії', providers.textAgent?.provider === 'fallback' ? 'чернетка' : 'готово', 'Ідеї перетворюються на сценарії, shot-list, caption і CTA в Direct.'],
-    ['05', 'Video task', providers.videoGeneration?.configured ? 'готово' : 'після апруву', 'Затверджені сцени зберігаються як production-задачі перед генерацією відео.'],
+    ...pipelineCopy.steps,
   ];
   return (
     <div className="agent-pipeline">
       <div className="agent-pipeline-head">
         <div>
-          <small>AI Producer Pipeline</small>
-          <h3>Reels to analysis to script to video task</h3>
-          <p>The agent can already draft from saved signals. Connected accounts add real profile context and approved insights when they are available.</p>
+          <small>{pipelineCopy.eyebrow}</small>
+          <h3>{pipelineCopy.title}</h3>
+          <p>{pipelineCopy.text}</p>
         </div>
         <div className="agent-status-cards">
-          <span>{providers.instagram?.configured ? 'Instagram ready' : 'Connect account later'}</span>
-          <span>{providers.youtube?.configured ? 'YouTube ready' : 'YouTube preview'}</span>
-          <span>{providers.textAgent?.provider === 'fallback' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`}</span>
-          <span>{providers.videoGeneration?.configured ? 'Video ready' : 'Manual approval first'}</span>
+          {pipelineCopy.statusCards.map((item) => <span key={item}>{item}</span>)}
         </div>
       </div>
       <div className="agent-step-grid">
@@ -4788,7 +4982,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
           </details>
           <div className="assistant-support-grid">
             <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
-            <AgentPipeline workspaceId={workspaceId} />
+            <AgentPipeline workspaceId={workspaceId} language={language} />
           </div>
         </div>
       </div>
@@ -5482,7 +5676,7 @@ function AnalysisSetup({ notify, workspaceId }) {
   );
 }
 
-function BillingSettings({ workspaceId, notify }) {
+function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   const [plans, setPlans] = useState([]);
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
@@ -5554,58 +5748,144 @@ function BillingSettings({ workspaceId, notify }) {
   };
 
   const currentPlanId = billing?.plan?.id;
+  const billingCopy = language === 'en'
+    ? {
+      currentPlan: 'Current plan',
+      loading: 'Loading...',
+      unknown: 'Not defined',
+      demoAccess: 'Free demo access',
+      trialEnded: 'Trial ended',
+      trialDays: (days) => `Free Trial · ${days ?? 0} days left`,
+      active: 'Active access',
+      pending: 'Payment confirmation pending',
+      trialing: 'Trial period',
+      setup: 'Access is being configured',
+      unlimited: 'Unlimited',
+      usedUnlimited: (used) => `${used} used · unlimited`,
+      usedLimit: (used, limit) => `${used} / ${limit} used`,
+      dayShort: 'days',
+      trialEyebrow: 'Trial without card',
+      trialTitle: 'Try the product without risking the budget',
+      trialText: 'Free Trial gives short access to Studio, Brand Brain, and Assistant. When the limit ends, more generations and extended analysis open through Starter or Pro.',
+      currentButton: 'Your current plan',
+      demoButton: 'Demo access',
+      trialButton: 'Trial after login',
+      payButton: 'Pay for plan',
+      usageRows: [
+        ['AI messages', 'agentChat'],
+        ['Reels imports', 'reelImports'],
+        ['Brand Brain saves', 'brandBrainSaves'],
+        ['Competitors', 'competitors'],
+        ['Instagram accounts', 'instagramAccounts'],
+      ],
+      limitRows: [
+        ['agentChat', MessageSquareText, 'AI messages'],
+        ['reelImports', Video, 'Reels imports'],
+        ['brandBrainSaves', Database, 'Brand Brain saves'],
+        ['competitors', Target, 'competitors'],
+        ['instagramAccounts', UsersRound, 'Instagram accounts'],
+      ],
+      features: {
+        guest_preview: '1 guest preview before login',
+        brand_scan_trial: '3 source scans / drafts',
+        brand_brain_once: '1 Brand Brain save',
+        studio_drafts_limited: 'Limited Studio access',
+        brand_brain: 'Brand Brain and content plan',
+        assistant: 'AI script assistant',
+        remix_studio: 'Remix Studio',
+        instagram_login: 'Instagram login ready',
+        everything_starter: 'Everything in Starter',
+        weekly_batches: 'Weekly production batch plans',
+        deep_brand_memory: 'Extended brand memory',
+        content_notes: 'Unlimited Notes, calendar, and scripts',
+        ai_direct: 'AI Direct for CRM',
+        exports: 'Client exports',
+        sync_queue: 'Sync queue',
+        everything_pro: 'Everything in Pro',
+        ai_direct_unlimited: 'Unlimited AI Direct',
+        multi_client_workspaces: 'Multiple brands / clients',
+        approval_flow: 'Approval flow for production',
+        priority_support: 'Priority support',
+      },
+    }
+    : {
+      currentPlan: 'Поточний тариф',
+      loading: 'Завантаження...',
+      unknown: 'Не визначено',
+      demoAccess: 'Безкоштовний тестовий доступ',
+      trialEnded: 'Тестовий період завершився',
+      trialDays: (days) => `Тестовий період · ${days ?? 0} дн. залишилось`,
+      active: 'Активний доступ',
+      pending: 'Очікує підтвердження оплати',
+      trialing: 'Тестовий період',
+      setup: 'Доступ налаштовується',
+      unlimited: 'Безліміт',
+      usedUnlimited: (used) => `${used} використано · без ліміту`,
+      usedLimit: (used, limit) => `${used} / ${limit} використано`,
+      dayShort: 'дн.',
+      trialEyebrow: 'Тест без карти',
+      trialTitle: 'Можна спробувати продукт без ризику для бюджету',
+      trialText: 'Тестовий період дає короткий доступ до Studio, Brand Brain і Асистента. Коли ліміт закінчиться, більше генерацій і розширений аналіз відкриваються через Starter або Pro.',
+      currentButton: 'Ваш поточний тариф',
+      demoButton: 'Демо доступ',
+      trialButton: 'Trial після логіну',
+      payButton: 'Оплатити тариф',
+      usageRows: [
+        ['AI повідомлення', 'agentChat'],
+        ['Імпорти Reels', 'reelImports'],
+        ['Збереження Brand Brain', 'brandBrainSaves'],
+        ['Конкуренти', 'competitors'],
+        ['Instagram акаунти', 'instagramAccounts'],
+      ],
+      limitRows: [
+        ['agentChat', MessageSquareText, 'AI повідомлень'],
+        ['reelImports', Video, 'імпортів Reels'],
+        ['brandBrainSaves', Database, 'збережень Brand Brain'],
+        ['competitors', Target, 'конкурентів'],
+        ['instagramAccounts', UsersRound, 'Instagram акаунтів'],
+      ],
+      features: {
+        guest_preview: '1 guest preview до логіну',
+        brand_scan_trial: '3 скани джерел / чернетки',
+        brand_brain_once: '1 збереження Brand Brain',
+        studio_drafts_limited: 'Лімітований доступ до Studio',
+        brand_brain: 'Brand Brain і контент-план',
+        assistant: 'AI асистент для сценаріїв',
+        remix_studio: 'Remix Studio',
+        instagram_login: 'Instagram login готовий',
+        everything_starter: 'Усе зі Starter',
+        weekly_batches: 'Тижневі production-batch плани',
+        deep_brand_memory: 'Розширена памʼять бренда',
+        content_notes: 'Notes, календар і сценарії без ліміту',
+        ai_direct: 'AI Direct для CRM',
+        exports: 'Експорти для клієнтів',
+        sync_queue: 'Sync queue',
+        everything_pro: 'Усе з Pro',
+        ai_direct_unlimited: 'Безлімітний AI Direct',
+        multi_client_workspaces: 'Кілька брендів / клієнтів',
+        approval_flow: 'Approval flow для продакшену',
+        priority_support: 'Пріоритетна підтримка',
+      },
+    };
   const subscriptionStatusLabel = (() => {
-    if (billing?.plan?.id === 'demo') return 'Безкоштовний тестовий доступ';
-    if (billing?.plan?.id === 'trial' && billing?.trial?.expired) return 'Trial завершився';
-    if (billing?.plan?.id === 'trial') return `Free Trial · ${billing?.trial?.daysRemaining ?? 0} дн. залишилось`;
-    if (billing?.subscription?.status === 'active') return 'Активний доступ';
-    if (billing?.subscription?.status === 'pending_payment') return 'Очікує підтвердження оплати';
-    if (billing?.subscription?.status === 'trialing') return 'Тестовий період';
-    return 'Доступ налаштовується';
+    if (billing?.plan?.id === 'demo') return billingCopy.demoAccess;
+    if (billing?.plan?.id === 'trial' && billing?.trial?.expired) return billingCopy.trialEnded;
+    if (billing?.plan?.id === 'trial') return billingCopy.trialDays(billing?.trial?.daysRemaining);
+    if (billing?.subscription?.status === 'active') return billingCopy.active;
+    if (billing?.subscription?.status === 'pending_payment') return billingCopy.pending;
+    if (billing?.subscription?.status === 'trialing') return billingCopy.trialing;
+    return billingCopy.setup;
   })();
-  const usageRows = [
-    ['AI повідомлення', 'agentChat'],
-    ['Reels imports', 'reelImports'],
-    ['Brand Brain saves', 'brandBrainSaves'],
-    ['Конкуренти', 'competitors'],
-    ['Instagram акаунти', 'instagramAccounts'],
-  ];
-  const planLimitRows = [
-    ['agentChat', MessageSquareText, 'AI повідомлень'],
-    ['reelImports', Video, 'Reels imports'],
-    ['brandBrainSaves', Database, 'Brand Brain saves'],
-    ['competitors', Target, 'конкурентів'],
-    ['instagramAccounts', UsersRound, 'Instagram акаунтів'],
-  ];
-  const planFeatureLabels = {
-    guest_preview: '1 guest preview до логіну',
-    brand_scan_trial: '3 source scans / drafts',
-    brand_brain_once: '1 збереження Brand Brain',
-    studio_drafts_limited: 'Лімітований доступ до Studio',
-    brand_brain: 'Brand brain і контент-план',
-    assistant: 'AI асистент для сценаріїв',
-    remix_studio: 'Remix Studio',
-    instagram_login: 'Instagram login ready',
-    everything_starter: 'Усе зі Starter',
-    weekly_batches: 'Тижневі production-batch плани',
-    deep_brand_memory: 'Розширена памʼять бренда',
-    content_notes: 'Notes, календар і сценарії без ліміту',
-    ai_direct: 'AI Direct для CRM',
-    exports: 'Експорти для клієнтів',
-    sync_queue: 'Sync queue',
-    everything_pro: 'Усе з Pro',
-    ai_direct_unlimited: 'Безлімітний AI Direct',
-    multi_client_workspaces: 'Кілька брендів / клієнтів',
-    approval_flow: 'Approval flow для продакшену',
-    priority_support: 'Пріоритетна підтримка',
-  };
+  const usageRows = billingCopy.usageRows;
+  const planLimitRows = billingCopy.limitRows;
+  const planFeatureLabels = billingCopy.features;
 
   return (
     <div className="billing-settings">
       <section className="billing-current">
         <div>
-          <small>Поточний тариф</small>
-          <h3>{billing?.plan?.name || (status === 'loading' ? 'Завантаження...' : 'Не визначено')}</h3>
+          <small>{billingCopy.currentPlan}</small>
+          <h3>{billing?.plan?.name || (status === 'loading' ? billingCopy.loading : billingCopy.unknown)}</h3>
           <p>{subscriptionStatusLabel}</p>
         </div>
       </section>
@@ -5613,11 +5893,11 @@ function BillingSettings({ workspaceId, notify }) {
       {billing?.plan?.id === 'trial' && (
         <section className="trial-note">
           <div>
-            <small>Trial без карти</small>
-            <h3>Можна потикати продукт, але без ризику спалити бюджет</h3>
-            <p>Free Trial дає короткий доступ до Studio, Brand Brain і Асистента. Коли ліміт закінчиться, більше генерацій і розширений аналіз відкриваються через Starter або Pro.</p>
+            <small>{billingCopy.trialEyebrow}</small>
+            <h3>{billingCopy.trialTitle}</h3>
+            <p>{billingCopy.trialText}</p>
           </div>
-          <strong>{billing?.trial?.daysRemaining ?? 0} дн.</strong>
+          <strong>{billing?.trial?.daysRemaining ?? 0} {billingCopy.dayShort}</strong>
         </section>
       )}
 
@@ -5626,7 +5906,7 @@ function BillingSettings({ workspaceId, notify }) {
           const limit = billing?.plan?.limits?.[key];
           const used = billing?.usage?.[key] ?? 0;
           const isUnlimited = billing?.unlimited || limit == null;
-          const remaining = isUnlimited ? 'Безліміт' : (billing?.remaining?.[key] ?? 0);
+          const remaining = isUnlimited ? billingCopy.unlimited : (billing?.remaining?.[key] ?? 0);
           const width = !isUnlimited && limit ? Math.min(100, Math.round((used / limit) * 100)) : 0;
           return (
             <article className="billing-usage-card" key={key}>
@@ -5634,7 +5914,7 @@ function BillingSettings({ workspaceId, notify }) {
                 <small>{label}</small>
                 <strong>{remaining}</strong>
               </div>
-              <p>{isUnlimited ? `${used} використано · без ліміту` : `${used} / ${limit} використано`}</p>
+              <p>{isUnlimited ? billingCopy.usedUnlimited(used) : billingCopy.usedLimit(used, limit)}</p>
               <span><i style={{ width: `${width}%` }} /></span>
             </article>
           );
@@ -5650,7 +5930,7 @@ function BillingSettings({ workspaceId, notify }) {
             <article className={isCurrent ? 'billing-plan active' : 'billing-plan'} key={plan.id}>
               <small>{plan.billingPeriod}</small>
               <h3>{plan.name}</h3>
-              <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : 'Безкоштовно'}</div>
+              <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : (language === 'en' ? 'Free' : 'Безкоштовно')}</div>
               <ul>
                 {planLimitRows.map(([key, Icon, label]) => (
                   <li key={key}>
@@ -5674,7 +5954,7 @@ function BillingSettings({ workspaceId, notify }) {
                 disabled={isCurrent || isDemo || isTrial}
                 onClick={() => selectPlan(plan.id)}
               >
-                {isCurrent ? 'Ваш поточний тариф' : isDemo ? 'Демо доступ' : isTrial ? 'Trial після логіну' : 'Оплатити тариф'}
+                {isCurrent ? billingCopy.currentButton : isDemo ? billingCopy.demoButton : isTrial ? billingCopy.trialButton : billingCopy.payButton}
               </button>
             </article>
           );
@@ -5918,7 +6198,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
         </div>
       )}
       {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
-      {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
+      {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
     </section>
   );
 }
