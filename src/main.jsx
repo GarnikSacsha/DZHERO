@@ -160,9 +160,14 @@ async function readApiError(response, fallback = 'Request failed') {
   return normalizeErrorValue(payload.message) || normalizeErrorValue(payload.error) || normalizeErrorValue(payload) || fallback;
 }
 
-function JerykLoading({ title = 'Джерик думає', text = 'Збираю контекст і готую відповідь.', compact = false }) {
+function JerykLoading({ title = 'Джерик думає', text = 'Збираю контекст і готую відповідь.', compact = false, feature = false }) {
+  const className = [
+    'jeryk-loading',
+    compact ? 'compact' : '',
+    feature ? 'feature' : '',
+  ].filter(Boolean).join(' ');
   return (
-    <div className={compact ? 'jeryk-loading compact' : 'jeryk-loading'} aria-live="polite">
+    <div className={className} aria-live="polite">
       <img src={jerykLoaderImg} alt="" aria-hidden="true" />
       <div>
         <strong>{title}</strong>
@@ -4378,7 +4383,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         <JerykLoading
           title="Джерик аналізує Brand Brain"
           text="Витягую нішу, аудиторію, офер, CTA і тон голосу з джерела."
-          compact
+          feature
         />
       )}
       <div className="brand-brain-grid">

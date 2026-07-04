@@ -12742,6 +12742,48 @@ nav button.active::before {
   height: 4px;
 }
 
+.jeryk-loading.feature {
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  align-items: center;
+  min-height: 126px;
+  margin: 14px 0 18px;
+  padding: 18px 22px;
+  text-align: left;
+  background:
+    radial-gradient(circle at 72px 50%, rgba(125, 211, 252, 0.22), transparent 42%),
+    color-mix(in srgb, var(--surface-soft) 88%, transparent);
+}
+
+.jeryk-loading.feature img {
+  width: 92px;
+  border-radius: 20px;
+}
+
+.jeryk-loading.feature div {
+  max-width: none;
+}
+
+.jeryk-loading.feature > span {
+  grid-column: 1 / -1;
+  width: 100%;
+  max-width: 420px;
+  height: 5px;
+  margin-left: 114px;
+}
+
+@media (max-width: 720px) {
+  .jeryk-loading.feature {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+
+  .jeryk-loading.feature > span {
+    margin-left: 0;
+  }
+}
+
 @keyframes jerykFloat {
   0%,
   100% {

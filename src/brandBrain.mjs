@@ -42,13 +42,18 @@ function stripBrandPrefix(value) {
   return firstLooksLikeBrand ? rest.join(' - ') : text;
 }
 
+function isGenericPlatformMeta(value) {
+  return /create an account|log in to instagram|share what you're into|people who get you|instagram\.com/i.test(compactText(value));
+}
+
 export function extractCleanBrandProduct({ title = '', description = '', handle = '', label = '' } = {}) {
   const candidates = [description, title]
     .map((value) => stripBrandPrefix(stripHandle(stripProfileStats(value), handle)))
     .map((value) => value.replace(/^[-–—|:]+/, '').trim())
     .filter(Boolean)
     .filter((value) => !/^(followers|following|posts)$/i.test(value))
-    .filter((value) => !/See Instagram photos and videos/i.test(value));
+    .filter((value) => !/See Instagram photos and videos/i.test(value))
+    .filter((value) => !isGenericPlatformMeta(value));
 
   const useful = candidates.find((value) => /workout|training|трен|beauty|health|курс|послуг|shop|store|studio|salon|fitness|wellness|app/i.test(value));
   if (useful) return compactText(useful);
