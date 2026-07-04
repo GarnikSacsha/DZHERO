@@ -12794,6 +12794,14 @@ nav button.active::before {
   animation-delay: 0.36s;
 }
 
+.jeryk-producer.static .jeryk-producer-body,
+.jeryk-producer.static .jeryk-producer-eye,
+.jeryk-producer.static .jeryk-producer-arm,
+.jeryk-producer.static .jeryk-producer-foot,
+.jeryk-producer.static .jeryk-producer-cards span {
+  animation: none;
+}
+
 .jeryk-loading strong {
   color: var(--text);
   font-size: 16px;
@@ -13611,6 +13619,37 @@ nav button.active::before {
   }
 }
 
+.jeryk-idle-card {
+  position: fixed;
+  right: 18px;
+  bottom: 92px;
+  z-index: 1295;
+  display: grid;
+  width: 190px;
+  min-height: 150px;
+  place-items: center;
+  pointer-events: none;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(14, 165, 233, 0.2), transparent 56%),
+    rgba(3, 7, 18, 0.72);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(14px);
+}
+
+.jeryk-idle-card .jeryk-producer {
+  width: 128px;
+  height: 128px;
+  filter: drop-shadow(0 18px 26px rgba(14, 165, 233, 0.24));
+}
+
+@media (min-width: 1180px) {
+  .app:not(.auth-app):has(.page-content-plan) .jeryk-idle-card {
+    right: 354px;
+  }
+}
+
 .jeryk-backdrop {
   position: fixed;
   inset: 0;
@@ -13869,6 +13908,18 @@ nav button.active::before {
     bottom: calc(var(--mobile-bottom-nav) + 14px) !important;
     width: 54px !important;
     height: 54px !important;
+  }
+
+  .jeryk-idle-card {
+    right: 10px !important;
+    bottom: calc(var(--mobile-bottom-nav) + 78px) !important;
+    width: min(184px, calc(100vw - 22px)) !important;
+    min-height: 142px !important;
+  }
+
+  .jeryk-idle-card .jeryk-producer {
+    width: 118px !important;
+    height: 118px !important;
   }
 
   .jeryk-drawer {
