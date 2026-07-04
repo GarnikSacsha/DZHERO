@@ -12660,20 +12660,138 @@ nav button.active::before {
   text-align: center;
 }
 
-.jeryk-loading img {
-  display: block;
-  width: clamp(104px, 18vw, 164px);
-  aspect-ratio: 1;
-  object-fit: contain;
-  border-radius: 24px;
-  filter: drop-shadow(0 18px 30px rgba(14, 165, 233, 0.2));
-  animation: jerykFloat 2.2s ease-in-out infinite;
-}
-
-.jeryk-loading div {
+.jeryk-loading-copy {
   display: grid;
   max-width: 420px;
   gap: 6px;
+}
+
+.jeryk-producer {
+  position: relative;
+  display: block;
+  width: clamp(104px, 18vw, 164px);
+  height: clamp(104px, 18vw, 164px);
+  filter: drop-shadow(0 18px 30px rgba(14, 165, 233, 0.2));
+}
+
+.jeryk-producer-body {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  width: 58%;
+  height: 66%;
+  border: 1px solid rgba(3, 7, 18, 0.18);
+  border-radius: 46% 46% 42% 42%;
+  background:
+    radial-gradient(circle at 42% 28%, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.16) 22%, transparent 23%),
+    linear-gradient(145deg, #f8fafc 0%, #dbeafe 46%, #475569 100%);
+  transform: translateX(-50%);
+  animation: jerykProducerBob 1.9s ease-in-out infinite;
+}
+
+.jeryk-producer-eye {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  width: 56%;
+  height: 32%;
+  border: 2px solid rgba(103, 232, 249, 0.45);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 50%, #a5f3fc 0 8%, transparent 9%),
+    radial-gradient(circle at 65% 50%, #a5f3fc 0 8%, transparent 9%),
+    linear-gradient(180deg, #0f172a, #020617);
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.42);
+  transform: translateX(-50%);
+  animation: jerykEyeBlink 3.4s ease-in-out infinite;
+}
+
+.jeryk-producer-smile {
+  position: absolute;
+  left: 50%;
+  top: 63%;
+  width: 20%;
+  height: 4%;
+  border-radius: 999px;
+  background: #67e8f9;
+  box-shadow: 0 0 10px rgba(103, 232, 249, 0.68);
+  transform: translateX(-50%);
+}
+
+.jeryk-producer-arm,
+.jeryk-producer-foot {
+  position: absolute;
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(145deg, #e0f2fe, #64748b);
+}
+
+.jeryk-producer-arm {
+  top: 48%;
+  width: 16%;
+  height: 30%;
+  transform-origin: top center;
+}
+
+.jeryk-producer-arm.left {
+  left: -6%;
+  transform: rotate(16deg);
+  animation: jerykLeftArm 1.3s ease-in-out infinite;
+}
+
+.jeryk-producer-arm.right {
+  right: -6%;
+  transform: rotate(-18deg);
+  animation: jerykRightArm 1.3s ease-in-out infinite;
+}
+
+.jeryk-producer-foot {
+  bottom: -8%;
+  width: 22%;
+  height: 14%;
+}
+
+.jeryk-producer-foot.left {
+  left: 20%;
+  animation: jerykFootLeft 0.72s ease-in-out infinite;
+}
+
+.jeryk-producer-foot.right {
+  right: 20%;
+  animation: jerykFootRight 0.72s ease-in-out infinite;
+}
+
+.jeryk-producer-cards {
+  position: absolute;
+  right: -2%;
+  top: 8%;
+  display: grid;
+  gap: 5px;
+  width: 42%;
+  max-width: none;
+}
+
+.jeryk-producer-cards span {
+  display: block;
+  min-width: 0;
+  border: 1px solid rgba(14, 165, 233, 0.28);
+  border-radius: 7px;
+  padding: 4px 6px;
+  background: rgba(240, 249, 255, 0.92);
+  color: #0369a1;
+  font-size: 10px;
+  font-weight: 850;
+  line-height: 1;
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.14);
+  animation: jerykCardMove 1.8s ease-in-out infinite;
+}
+
+.jeryk-producer-cards span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.jeryk-producer-cards span:nth-child(3) {
+  animation-delay: 0.36s;
 }
 
 .jeryk-loading strong {
@@ -12721,10 +12839,14 @@ nav button.active::before {
   text-align: left;
 }
 
-.jeryk-loading.compact img {
+.jeryk-loading.compact .jeryk-producer {
   width: 54px;
-  border-radius: 14px;
+  height: 54px;
   filter: drop-shadow(0 8px 16px rgba(14, 165, 233, 0.18));
+}
+
+.jeryk-loading.compact .jeryk-producer-cards {
+  display: none;
 }
 
 .jeryk-loading.compact strong {
@@ -12755,12 +12877,12 @@ nav button.active::before {
     color-mix(in srgb, var(--surface-soft) 88%, transparent);
 }
 
-.jeryk-loading.feature img {
-  width: 92px;
-  border-radius: 20px;
+.jeryk-loading.feature .jeryk-producer {
+  width: 112px;
+  height: 112px;
 }
 
-.jeryk-loading.feature div {
+.jeryk-loading.feature .jeryk-loading-copy {
   max-width: none;
 }
 
@@ -12791,6 +12913,79 @@ nav button.active::before {
   }
   50% {
     transform: translateY(-5px) scale(1.015);
+  }
+}
+
+@keyframes jerykProducerBob {
+  0%,
+  100% {
+    transform: translateX(-50%) translateY(0) rotate(-1deg);
+  }
+  50% {
+    transform: translateX(-50%) translateY(-7px) rotate(1.5deg);
+  }
+}
+
+@keyframes jerykEyeBlink {
+  0%,
+  88%,
+  100% {
+    transform: translateX(-50%) scaleY(1);
+  }
+  93% {
+    transform: translateX(-50%) scaleY(0.18);
+  }
+}
+
+@keyframes jerykLeftArm {
+  0%,
+  100% {
+    transform: rotate(16deg);
+  }
+  50% {
+    transform: rotate(-4deg);
+  }
+}
+
+@keyframes jerykRightArm {
+  0%,
+  100% {
+    transform: rotate(-18deg);
+  }
+  50% {
+    transform: rotate(-36deg);
+  }
+}
+
+@keyframes jerykFootLeft {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(3px) rotate(4deg);
+  }
+}
+
+@keyframes jerykFootRight {
+  0%,
+  100% {
+    transform: translateY(3px) rotate(4deg);
+  }
+  50% {
+    transform: translateY(0) rotate(-4deg);
+  }
+}
+
+@keyframes jerykCardMove {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0);
+    opacity: 0.78;
+  }
+  50% {
+    transform: translateX(9px) translateY(-4px);
+    opacity: 1;
   }
 }
 
