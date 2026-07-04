@@ -12644,6 +12644,123 @@ nav button.active::before {
   animation: spin 0.9s linear infinite;
 }
 
+.jeryk-loading {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  min-height: 220px;
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 22%, rgba(125, 211, 252, 0.14), transparent 34%),
+    color-mix(in srgb, var(--surface-soft) 84%, transparent);
+  text-align: center;
+}
+
+.jeryk-loading img {
+  display: block;
+  width: clamp(104px, 18vw, 164px);
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 24px;
+  filter: drop-shadow(0 18px 30px rgba(14, 165, 233, 0.2));
+  animation: jerykFloat 2.2s ease-in-out infinite;
+}
+
+.jeryk-loading div {
+  display: grid;
+  max-width: 420px;
+  gap: 6px;
+}
+
+.jeryk-loading strong {
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.jeryk-loading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.jeryk-loading > span {
+  display: block;
+  width: min(190px, 56vw);
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.jeryk-loading > span::before {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #67E8F9, #0EA5E9);
+  content: '';
+  animation: jerykProgress 1.15s ease-in-out infinite;
+}
+
+.jeryk-loading.compact {
+  min-height: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-items: start;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.jeryk-loading.compact img {
+  width: 54px;
+  border-radius: 14px;
+  filter: drop-shadow(0 8px 16px rgba(14, 165, 233, 0.18));
+}
+
+.jeryk-loading.compact strong {
+  font-size: 12.5px;
+}
+
+.jeryk-loading.compact p {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.jeryk-loading.compact > span {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 4px;
+}
+
+@keyframes jerykFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.015);
+  }
+}
+
+@keyframes jerykProgress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
 .studio-ai-note,
 .studio-error-note {
   margin: 8px 0 14px;
@@ -13404,6 +13521,15 @@ nav button.active::before {
 
 .jeryk-message p:last-child {
   margin-bottom: 0;
+}
+
+.jeryk-message .jeryk-loading p,
+.assistant-thread .chat-message .jeryk-loading p,
+.assistant-widget .assistant-thread .chat-message .jeryk-loading p {
+  margin: 0;
+  white-space: normal;
+  overflow-wrap: normal;
+  line-height: 1.45;
 }
 
 .jeryk-prompts {
