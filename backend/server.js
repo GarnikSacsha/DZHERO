@@ -861,6 +861,74 @@ function getPublicHandleFromMeta(source, url, title = '', description = '') {
   }
 }
 
+function getInstagramUsernameFromUrl(url = '') {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.toLowerCase().includes('instagram.com')) return '';
+    const firstPath = parsed.pathname.split('/').filter(Boolean)[0] || '';
+    if (!firstPath || /^(p|reel|reels|stories|explore|accounts|about|developer)$/i.test(firstPath)) return '';
+    return firstPath.replace(/^@/, '');
+  } catch {
+    return '';
+  }
+}
+
+function isGenericInstagramMeta(value = '') {
+  return /create an account|log in to instagram|share what you're into|people who get you/i.test(String(value || ''));
+}
+
+async function fetchInstagramWebProfileMetadata(url, fallback) {
+  const username = getInstagramUsernameFromUrl(url);
+  if (!username) return null;
+  const apiUrl = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+  const response = await fetch(apiUrl, {
+    headers: {
+      accept: 'application/json,text/plain,*/*',
+      'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36',
+      'x-asbd-id': '129477',
+      'x-ig-app-id': '936619743392459',
+      'x-requested-with': 'XMLHttpRequest',
+      referer: url,
+    },
+    redirect: 'follow',
+  });
+  if (!response.ok) {
+    const error = new Error(`instagram_web_profile_${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  const raw = await response.text();
+  const payload = JSON.parse(raw.replace(/^for\s*\(;;\);\s*/, ''));
+  const user = payload?.data?.user;
+  if (!user) return null;
+  const stats = {
+    followers: formatCompactNumber(user.edge_followed_by?.count),
+    following: formatCompactNumber(user.edge_follow?.count),
+    posts: formatCompactNumber(user.edge_owner_to_timeline_media?.count),
+  };
+  const title = [user.full_name, user.username ? `@${user.username}` : ''].filter(Boolean).join(' ');
+  const description = compactText(user.biography || '', 900);
+  const handle = user.username ? `@${user.username}` : fallback.handle;
+  const analysisText = [
+    title,
+    description,
+    stats.followers && `${stats.followers} followers`,
+    stats.posts && `${stats.posts} posts`,
+    handle,
+  ].filter(Boolean).join(' ');
+  return {
+    ...fallback,
+    url,
+    title,
+    description,
+    handle,
+    image: user.profile_pic_url_hd || user.profile_pic_url || '',
+    stats,
+    sourceStatus: title || description ? 'instagram_web_profile' : 'url_only',
+    analysisText,
+  };
+}
+
 function extractNumberFromDescription(description, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = String(description || '').match(new RegExp(`([\\d,.]+\\s*[KMB]?)\\s+${escaped}`, 'i'));
@@ -1691,6 +1759,15 @@ async function fetchPublicSourceMetadata(rawInput) {
   const url = normalizePublicSourceUrl(rawInput, source.tone);
   if (!url) return { ...fallback, sourceStatus: 'invalid_public_url' };
 
+  if (source.tone === 'instagram') {
+    try {
+      const instagramMetadata = await fetchInstagramWebProfileMetadata(url, fallback);
+      if (instagramMetadata) return await enrichVideoIntelligence(instagramMetadata);
+    } catch (error) {
+      fallback.instagramWebProfileError = error.message;
+    }
+  }
+
   if (source.tone === 'shorts') {
     try {
       const youtubeMetadata = await fetchYouTubeMetadata(rawInput);
@@ -1724,12 +1801,16 @@ async function fetchPublicSourceMetadata(rawInput) {
     const html = await response.text();
     const rawTitle = extractMetaContent(html, 'og:title') || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
     const rawDescription = extractMetaContent(html, 'og:description') || extractMetaContent(html, 'description') || '';
-    const title = decodeHtml(rawTitle)
+    let title = decodeHtml(rawTitle)
       .replace(/\s*•\s*Instagram.*$/i, '')
       .replace(/\s*on Instagram.*$/i, '')
       .replace(/\s*-\s*TikTok.*$/i, '')
       .trim();
-    const description = decodeHtml(rawDescription);
+    let description = decodeHtml(rawDescription).trim();
+    if (source.tone === 'instagram') {
+      if (isGenericInstagramMeta(title)) title = '';
+      if (isGenericInstagramMeta(description)) description = '';
+    }
     const stats = extractPublicStats(description);
     const handle = getPublicHandleFromMeta(source, url, rawTitle, rawDescription);
     const image = extractMetaContent(html, 'og:image');
