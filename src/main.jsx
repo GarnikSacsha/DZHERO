@@ -47,11 +47,10 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import logoImg from './logo-mark.svg';
+import jerykLoaderImg from './assets/jeryk-loader.png';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
-import sourceContext from './sourceContext.cjs';
-
-const { sanitizeSourceContext } = sourceContext;
+import { sanitizeSourceContext } from './sourceContext.mjs';
 import { applyInterfaceLanguage } from './i18n';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
@@ -63,6 +62,7 @@ const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
 const BRAND_SCAN_PENDING_KEY = 'dzhero-brand-scan-pending';
+const JERYK_LOADING_MESSAGE = '__JERYK_LOADING__';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
@@ -157,6 +157,19 @@ async function readApiError(response, fallback = 'Request failed') {
       : `Ліміт тарифу для "${label}" вичерпано.`;
   }
   return normalizeErrorValue(payload.message) || normalizeErrorValue(payload.error) || normalizeErrorValue(payload) || fallback;
+}
+
+function JerykLoading({ title = 'Джерик думає', text = 'Збираю контекст і готую відповідь.', compact = false }) {
+  return (
+    <div className={compact ? 'jeryk-loading compact' : 'jeryk-loading'} aria-live="polite">
+      <img src={jerykLoaderImg} alt="" aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
+      <span aria-hidden="true" />
+    </div>
+  );
 }
 
 function normalizeContentFormat(format, fallback = 'Post') {
@@ -1791,32 +1804,10 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
             </div>
           </div>
           {isScanning && !scanResult ? (
-            <div className="brand-scan-skeleton" aria-live="polite" aria-label="Джеро аналізує джерело">
-              <div className="scan-skeleton-card profile">
-                <small>Сводка профілю</small>
-                <span />
-                <span />
-                <span />
-                <div>
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              </div>
-              <div className="scan-skeleton-card topics">
-                <small>Топ-теми</small>
-                <span />
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="scan-skeleton-card plan">
-                <small>Перший план</small>
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
+            <JerykLoading
+              title="Джерик сканує джерело"
+              text="Дивлюся профіль, нішу і перші ідеї для контент-плану."
+            />
           ) : !scanResult ? (
             <>
               <div className="auth-preview-stack">
@@ -3366,7 +3357,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
       role: role === 'assistant' ? 'assistant' : 'user',
       text: messageText,
     }));
-    setMessages((current) => [...current, ['user', clean], ['assistant', `${assistantName} думає...`]]);
+    setMessages((current) => [...current, ['user', clean], ['assistant', JERYK_LOADING_MESSAGE]]);
     setInput('');
     setIsThinking(true);
     try {
@@ -3452,7 +3443,9 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
             <div className={`jeryk-message ${role}`} key={`${role}-${index}`}>
               <span>{role === 'assistant' ? assistantName : 'Ви'}</span>
               <div>
-                {role === 'assistant'
+                {text === JERYK_LOADING_MESSAGE
+                  ? <JerykLoading title={`${assistantName} думає`} text="Перевіряю Brand Brain, сигнали і формулюю відповідь." compact />
+                  : role === 'assistant'
                   ? <TypewriterText text={text} active={index === messages.length - 1 && !isThinking} />
                   : renderChatMessageText(text)}
               </div>
@@ -4102,10 +4095,10 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
               {generatedRemix && adaptationState !== 'loading' && <p className="studio-ai-note">AI-адаптація згенерована заново з контексту сигналу.</p>}
               {adaptationError && adaptationState !== 'loading' && <p className="studio-error-note">{adaptationError}</p>}
               {adaptationState === 'loading' && (
-                <div className="studio-loading">
-                  <span />
-                  <strong>Джеро адаптує сценарій через AI...</strong>
-                </div>
+                <JerykLoading
+                  title="Джерик адаптує сценарій"
+                  text="Розбираю механіку сигналу і збираю версію під твій бренд."
+                />
               )}
               {adaptationState !== 'loading' && (
                 <>
@@ -4382,6 +4375,12 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
           <Sparkles size={16} />{status === 'analyzing' ? 'Аналізую...' : 'Проаналізувати і заповнити'}
         </button>
       </div>
+      {status === 'analyzing' && (
+        <JerykLoading
+          title="Джерик аналізує Brand Brain"
+          text="Витягую нішу, аудиторію, офер, CTA і тон голосу з джерела."
+        />
+      )}
       <div className="brand-brain-grid">
         {mainFields.map(([field, label, placeholder, help]) => (
           <label className="brand-field" key={field}>
@@ -4558,7 +4557,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       role: role === 'assistant' ? 'assistant' : 'user',
       text: messageText,
     }));
-    setMessages((current) => [...current, ['user', clean], ['assistant', 'Асистент готує відповідь, це може зайняти 10-25 секунд']]);
+    setMessages((current) => [...current, ['user', clean], ['assistant', JERYK_LOADING_MESSAGE]]);
     setInput('');
     setIsThinking(true);
     try {
@@ -4709,7 +4708,11 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
             {messages.map(([role, text], index) => (
               <div className={`chat-message ${role}`} key={`${role}-${index}`}>
                 <span>{role === 'assistant' ? 'AI' : 'Ви'}</span>
-                <div className="message-body">{renderMessageText(text)}</div>
+                <div className="message-body">
+                  {text === JERYK_LOADING_MESSAGE
+                    ? <JerykLoading title="Асистент готує відповідь" text="Збираю Brand Brain, сигнали і наступний практичний крок." compact />
+                    : renderMessageText(text)}
+                </div>
               </div>
             ))}
           </div>
@@ -5789,6 +5792,13 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
               </div>
             </div>
           </div>
+
+          {isScanning && !sourcePreview && (
+            <JerykLoading
+              title="Джерик збирає Brand Scan preview"
+              text="Перевіряю відкрите джерело і готую перший production preview."
+            />
+          )}
 
           <div className="source-type-grid">
             {sourceTypes.map(([title, status, text, tone]) => (
