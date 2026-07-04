@@ -61,3 +61,17 @@ assert.equal(instagramLoginDraft.product, 'Фітнес / wellness');
 assert.equal(instagramLoginDraft.offer, 'головна пропозиція для Фітнес / wellness');
 assert.doesNotMatch(instagramLoginDraft.product, /Create an account|log in to Instagram|people who get you/i);
 assert.doesNotMatch(instagramLoginDraft.offer, /Create an account|log in to Instagram|people who get you/i);
+
+const productionFallbackDraft = buildBrandBrainDraft({
+  label: 'Локальний бізнес',
+  title: 'Short-form: проблема + рішення',
+  description: '',
+  handle: '@voronych_',
+  stats: {},
+  language: 'uk',
+});
+
+assert.equal(productionFallbackDraft.product, 'Локальний бізнес');
+assert.equal(productionFallbackDraft.offer, 'головна пропозиція для Локальний бізнес');
+assert.doesNotMatch(productionFallbackDraft.product, /Short-form|проблема \+ рішення/i);
+assert.doesNotMatch(productionFallbackDraft.offer, /Short-form|проблема \+ рішення/i);

@@ -46,6 +46,10 @@ function isGenericPlatformMeta(value) {
   return /create an account|log in to instagram|share what you're into|people who get you|instagram\.com/i.test(compactText(value));
 }
 
+function isProductionDraftTitle(value) {
+  return /^(short-form|reels|shorts|stories|story|carousel|пост|сторіс|карусель)\s*:/i.test(compactText(value));
+}
+
 export function extractCleanBrandProduct({ title = '', description = '', handle = '', label = '' } = {}) {
   const candidates = [description, title]
     .map((value) => stripBrandPrefix(stripHandle(stripProfileStats(value), handle)))
@@ -53,7 +57,8 @@ export function extractCleanBrandProduct({ title = '', description = '', handle 
     .filter(Boolean)
     .filter((value) => !/^(followers|following|posts)$/i.test(value))
     .filter((value) => !/See Instagram photos and videos/i.test(value))
-    .filter((value) => !isGenericPlatformMeta(value));
+    .filter((value) => !isGenericPlatformMeta(value))
+    .filter((value) => !isProductionDraftTitle(value));
 
   const useful = candidates.find((value) => /workout|training|трен|beauty|health|курс|послуг|shop|store|studio|salon|fitness|wellness|app/i.test(value));
   if (useful) return compactText(useful);
@@ -127,7 +132,7 @@ export function buildBrandBrainDraft({
   const proof = [
     stats.followers && `${stats.followers} followers`,
     stats.posts && `${stats.posts} posts`,
-    compactText(title) && stripHandle(stripProfileStats(title), handle),
+    compactText(title) && !isProductionDraftTitle(title) && stripHandle(stripProfileStats(title), handle),
   ].filter(Boolean).join(' · ');
 
   return {

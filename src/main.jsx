@@ -1534,7 +1534,7 @@ function buildBrandBrainFromScanReel(reel, language = 'uk') {
   const cardText = Object.fromEntries(cards.map(([title, text]) => [title, text]));
   const draft = buildBrandBrainDraft({
     label: reel?.scanLabel || reel?.status?.[0] || '',
-    title: metadata.title || reel?.title || '',
+    title: metadata.title || '',
     description: metadata.description || '',
     handle: metadata.handle || reel?.sourceHandle || '',
     stats,
