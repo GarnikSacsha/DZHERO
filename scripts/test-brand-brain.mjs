@@ -45,7 +45,7 @@ const fallback = buildBrandBrainDraft({
 });
 
 assert.equal(fallback.product, 'local business');
-assert.equal(fallback.offer, 'головна пропозиція для local business');
+assert.equal(fallback.offer, 'зрозуміла пропозиція для людей, яким потрібен local business');
 assert.doesNotMatch(fallback.product, /Followers|Following|Posts|See Instagram/i);
 
 const instagramLoginDraft = buildBrandBrainDraft({
@@ -58,7 +58,7 @@ const instagramLoginDraft = buildBrandBrainDraft({
 });
 
 assert.equal(instagramLoginDraft.product, 'Фітнес / wellness');
-assert.equal(instagramLoginDraft.offer, 'головна пропозиція для Фітнес / wellness');
+assert.equal(instagramLoginDraft.offer, 'зрозуміла пропозиція для людей, яким потрібен Фітнес \/ wellness');
 assert.doesNotMatch(instagramLoginDraft.product, /Create an account|log in to Instagram|people who get you/i);
 assert.doesNotMatch(instagramLoginDraft.offer, /Create an account|log in to Instagram|people who get you/i);
 
@@ -72,6 +72,25 @@ const productionFallbackDraft = buildBrandBrainDraft({
 });
 
 assert.equal(productionFallbackDraft.product, 'Локальний бізнес');
-assert.equal(productionFallbackDraft.offer, 'головна пропозиція для Локальний бізнес');
+assert.equal(productionFallbackDraft.offer, 'зрозуміла пропозиція для людей, яким потрібен Локальний бізнес');
 assert.doesNotMatch(productionFallbackDraft.product, /Short-form|проблема \+ рішення/i);
 assert.doesNotMatch(productionFallbackDraft.offer, /Short-form|проблема \+ рішення/i);
+
+const clothingDraft = buildBrandBrainDraft({
+  label: 'Магазин одягу',
+  title: '1,234 Followers, 12 Following, 88 Posts - See Instagram photos and videos from МАЙКА, ФУТБОЛКА, БОДІ, ЛОНГСЛІВ, СУКНЯ, КОМБІНЕЗОН, ТОП ()',
+  description: '',
+  handle: '@anshelbrand',
+  stats: { followers: '1,234', posts: '88' },
+  language: 'uk',
+});
+
+assert.equal(clothingDraft.businessType, 'Магазин одягу');
+assert.equal(clothingDraft.product, 'майка, футболка, боді, лонгслів, сукня, комбінезон, топ');
+assert.equal(clothingDraft.audience, 'жінки, які обирають стильний повсякденний одяг онлайн і хочуть бачити посадку, тканину та готові образи перед покупкою');
+assert.equal(clothingDraft.offer, 'актуальні речі для повсякденних образів, які можна замовити в Direct');
+assert.equal(clothingDraft.cta, 'написати в Direct, щоб уточнити наявність, розмір або замовити');
+assert.doesNotMatch(clothingDraft.product, /^from\b|\(\)|Followers|Following|Posts|See Instagram/i);
+assert.doesNotMatch(clothingDraft.audience, /^люди, яким потрібен from/i);
+assert.doesNotMatch(clothingDraft.offer, /головна пропозиція|from МАЙКА/i);
+assert.doesNotMatch(clothingDraft.proof, /^from\b|\(\)|Following|See Instagram/i);
