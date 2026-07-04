@@ -641,7 +641,7 @@ function App() {
       notify('Спочатку відкрий Brand Scan draft.');
       return false;
     }
-    const payload = buildBrandBrainFromScanReel(reel);
+    const payload = buildBrandBrainFromScanReel(reel, language);
     try {
       const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
         method: 'PUT',
@@ -813,6 +813,7 @@ function App() {
             sources={data.sources}
             notify={notify}
             workspaceId={workspaceId}
+            language={language}
             activeTab={sourcesTab}
             onTabChange={(nextTab) => {
               setSourcesTab(nextTab);
@@ -1494,7 +1495,7 @@ function buildReelFromBrandScan(scan) {
   };
 }
 
-function buildBrandBrainFromScanReel(reel) {
+function buildBrandBrainFromScanReel(reel, language = 'uk') {
   const metadata = reel?.importedMetadata || {};
   const stats = metadata.stats || {};
   const cards = Array.isArray(reel?.scanCards) ? reel.scanCards : [];
@@ -1506,6 +1507,7 @@ function buildBrandBrainFromScanReel(reel) {
     handle: metadata.handle || reel?.sourceHandle || '',
     stats,
     exampleCaption: reel?.scanExample?.caption || '',
+    language,
   });
   const productLine = draft.product;
   const proofParts = [
@@ -4244,7 +4246,7 @@ function AgentPipeline({ workspaceId }) {
   );
 }
 
-function BrandBrain({ notify, workspaceId }) {
+function BrandBrain({ notify, workspaceId, language = 'uk' }) {
   const [seed, setSeed] = useState('');
   const [brief, setBrief] = useState({
     businessType: '',
@@ -4298,7 +4300,7 @@ function BrandBrain({ notify, workspaceId }) {
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'brand_scan_failed');
       const scan = composeBrandScanResult(cleanSeed, payload.metadata || null, payload.capabilities || null);
-      const nextBrief = buildBrandBrainFromScanReel(buildReelFromBrandScan(scan));
+      const nextBrief = buildBrandBrainFromScanReel(buildReelFromBrandScan(scan), language);
       setBrief((current) => ({
         ...current,
         ...nextBrief,
@@ -4506,7 +4508,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
   );
 }
 
-function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, onAutoPromptUsed }) {
+function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, onAutoPromptUsed, language = 'uk' }) {
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
     'Перетвори цей global-рілс у сценарій українською',
@@ -4747,7 +4749,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
               </span>
               <ChevronDown size={16} />
             </summary>
-            <BrandBrain notify={notify} workspaceId={workspaceId} />
+            <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />
           </details>
           <div className="assistant-support-grid">
             <VideoTaskQueue notify={notify} workspaceId={workspaceId} />
@@ -5681,7 +5683,7 @@ function BillingSettings({ workspaceId, notify }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange }) {
+function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
   const [sourceInput, setSourceInput] = useState('');
@@ -5873,7 +5875,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
           </div>
         </div>
       )}
-      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} />}
+      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} />}
     </section>
   );

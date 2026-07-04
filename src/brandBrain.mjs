@@ -5,6 +5,10 @@ function compactText(value) {
     .trim();
 }
 
+function isEnglish(language) {
+  return language === 'en';
+}
+
 function stripProfileStats(value) {
   return compactText(value)
     .replace(/\b[\d,.]+\s*[KMB]?\s+Followers\b,?\s*/gi, '')
@@ -53,37 +57,55 @@ export function extractCleanBrandProduct({ title = '', description = '', handle 
   return compactText(fallback || label || '');
 }
 
-function buildAudience(product, label) {
+function buildAudience(product, label, language = 'uk') {
   const text = `${product} ${label}`.toLowerCase();
   if (/workout|training|fitness|wellness|health|трен/.test(text)) {
-    return 'people who want short health and beauty workouts without a long gym routine';
+    return isEnglish(language)
+      ? 'people who want short health and beauty workouts without a long gym routine'
+      : 'люди, які хочуть короткі тренування для здоровʼя і краси без довгої рутини в залі';
   }
   if (/beauty|salon|манік|крас/.test(text)) {
-    return 'people who want a simple beauty service booking with a clear result';
+    return isEnglish(language)
+      ? 'people who want a simple beauty service booking with a clear result'
+      : 'люди, які хочуть швидко записатися на beauty-послугу і бачити зрозумілий результат';
   }
   if (/shop|store|одяг|clothes|fashion/.test(text)) {
-    return 'people choosing a product now and needing clear styles, prices and proof';
+    return isEnglish(language)
+      ? 'people choosing a product now and needing clear styles, prices and proof'
+      : 'люди, які обирають товар зараз і хочуть бачити стиль, ціну та докази';
   }
-  return `people who need ${product || label || 'this product'} and are likely to buy now`;
+  return isEnglish(language)
+    ? `people who need ${product || label || 'this product'} and are likely to buy now`
+    : `люди, яким потрібен ${product || label || 'цей продукт'} і які можуть купити зараз`;
 }
 
-function buildOffer(product, label) {
+function buildOffer(product, label, language = 'uk') {
   const text = `${product} ${label}`.toLowerCase();
   if (/20[-\s]?minute|workout|training|трен/.test(text)) {
-    return 'a 20-minute starter workout people can save and try today';
+    return isEnglish(language)
+      ? 'a 20-minute starter workout people can save and try today'
+      : '20-хвилинне стартове тренування, яке можна зберегти і спробувати сьогодні';
   }
-  return `main offer for ${product || label || 'the product'}`;
+  return isEnglish(language)
+    ? `main offer for ${product || label || 'the product'}`
+    : `головна пропозиція для ${product || label || 'продукту'}`;
 }
 
-function buildCta(product, exampleCaption = '') {
+function buildCta(product, exampleCaption = '', language = 'uk') {
   const text = `${product} ${exampleCaption}`.toLowerCase();
   if (/\bstart\b/.test(text) && /workout|training|20[-\s]?minute|трен/.test(text)) {
-    return 'write START to get the first mini workout';
+    return isEnglish(language)
+      ? 'write START to get the first mini workout'
+      : 'написати START, щоб отримати перше міні-тренування';
   }
   if (/direct|dm|message|напис/.test(text)) {
-    return 'write in Direct to get details or book';
+    return isEnglish(language)
+      ? 'write in Direct to get details or book'
+      : 'написати в Direct, щоб отримати деталі або записатися';
   }
-  return 'write in Direct to book or ask for details';
+  return isEnglish(language)
+    ? 'write in Direct to book or ask for details'
+    : 'написати в Direct, щоб записатися або уточнити деталі';
 }
 
 export function buildBrandBrainDraft({
@@ -93,8 +115,9 @@ export function buildBrandBrainDraft({
   handle = '',
   stats = {},
   exampleCaption = '',
+  language = 'uk',
 } = {}) {
-  const businessType = compactText(label || 'local business');
+  const businessType = compactText(label || (isEnglish(language) ? 'local business' : 'локальний бізнес'));
   const product = extractCleanBrandProduct({ title, description, handle, label: businessType }) || businessType;
   const proof = [
     stats.followers && `${stats.followers} followers`,
@@ -105,9 +128,9 @@ export function buildBrandBrainDraft({
   return {
     businessType,
     product,
-    audience: buildAudience(product, businessType),
-    offer: buildOffer(product, businessType),
-    cta: buildCta(product, exampleCaption),
+    audience: buildAudience(product, businessType, language),
+    offer: buildOffer(product, businessType, language),
+    cta: buildCta(product, exampleCaption, language),
     proof,
   };
 }
