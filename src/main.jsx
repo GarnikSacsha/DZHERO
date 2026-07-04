@@ -1468,8 +1468,33 @@ function cleanPublicProfileTitle(value, handle = '') {
   return withoutInstagramSuffix.replace(new RegExp(`\\s*\\(@?${escapedHandle}\\)\\s*$`, 'i'), '').trim();
 }
 
+const USEFUL_SOURCE_METADATA_STATUSES = ['public_metadata', 'instagram_web_profile', 'youtube_api', 'youtube_oembed'];
+
 function hasSourceMetadata(metadata) {
-  return ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus);
+  return USEFUL_SOURCE_METADATA_STATUSES.includes(metadata?.sourceStatus);
+}
+
+function hasReadableSourceMetadata(metadata) {
+  if (!hasSourceMetadata(metadata)) return false;
+  const title = String(metadata?.title || '').trim();
+  const description = String(metadata?.description || '').trim();
+  const analysisText = String(metadata?.analysisText || '').trim();
+  if (metadata?.source?.tone === 'instagram' && /^instagram$/i.test(title) && !description) return false;
+  const usefulText = [title, description, analysisText]
+    .join(' ')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/@\w[\w.]+/g, ' ')
+    .replace(/\binstagram\b/gi, ' ')
+    .replace(/\bfollowers?|following|posts?\b/gi, ' ')
+    .replace(/[0-9.,]+[KMB]?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return /[a-zа-яіїєґ]{3,}/i.test(usefulText);
+}
+
+function canBuildFromSourceOnly(input, metadata) {
+  const source = detectBrandScanSource(input);
+  return source.tone === 'text' || hasReadableSourceMetadata(metadata);
 }
 
 function metadataStatChips(metadata) {
@@ -1623,7 +1648,7 @@ function composeBrandScanResult(cleanInput, metadata = null, capabilities = null
       ? 'Preview по опису бізнесу готовий'
       : ['youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus)
         ? 'YouTube джерело проаналізовано'
-      : metadata?.sourceStatus === 'public_metadata'
+      : ['public_metadata', 'instagram_web_profile'].includes(metadata?.sourceStatus)
         ? 'Публічний профіль проаналізовано'
         : 'Preview по джерелу готовий',
   };
@@ -1812,6 +1837,12 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       metadata = null;
     } finally {
       setIsScanning(false);
+    }
+    if (!canBuildFromSourceOnly(cleanInput, metadata)) {
+      setSourcePreview(null);
+      setSourceError('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання: що продаєте, для кого і який CTA.');
+      notify('Публічних даних недостатньо. Додай короткий опис, і Джеро збере preview без вигадок.');
+      return;
     }
     const result = composeBrandScanResult(cleanInput, metadata, capabilities);
     setError('');
@@ -4554,7 +4585,13 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'brand_scan_failed');
-      const scan = composeBrandScanResult(cleanSeed, payload.metadata || null, payload.capabilities || null);
+      const metadata = payload.metadata || null;
+      if (!canBuildFromSourceOnly(cleanSeed, metadata)) {
+        setStatus('ready');
+        notify?.('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.');
+        return;
+      }
+      const scan = composeBrandScanResult(cleanSeed, metadata, payload.capabilities || null);
       const nextBrief = buildBrandBrainFromScanReel(buildReelFromBrandScan(scan), language);
       setBrief((current) => ({
         ...current,

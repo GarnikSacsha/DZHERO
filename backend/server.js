@@ -874,7 +874,8 @@ function getInstagramUsernameFromUrl(url = '') {
 }
 
 function isGenericInstagramMeta(value = '') {
-  return /create an account|log in to instagram|share what you're into|people who get you/i.test(String(value || ''));
+  const text = String(value || '').trim();
+  return /^instagram$/i.test(text) || /create an account|log in to instagram|share what you're into|people who get you/i.test(text);
 }
 
 async function fetchInstagramWebProfileMetadata(url, fallback) {
@@ -2636,13 +2637,13 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
       capabilities: {
         mode: metadata.sourceStatus === 'youtube_api'
           ? 'youtube_data_api'
-          : ['public_metadata', 'youtube_oembed'].includes(metadata.sourceStatus)
+          : ['public_metadata', 'instagram_web_profile', 'youtube_oembed'].includes(metadata.sourceStatus)
             ? 'public_profile_preview'
             : 'manual_preview',
         officialApi: metadata.sourceStatus === 'youtube_api',
         statsAreOfficial: metadata.sourceStatus === 'youtube_api',
         intelligence: metadata.videoIntelligence?.confidence || null,
-        note: metadata.sourceStatus === 'public_metadata'
+        note: ['public_metadata', 'instagram_web_profile'].includes(metadata.sourceStatus)
           ? 'Dzhero використав відкритий опис сторінки. Приватні дані акаунта не читались.'
           : ['youtube_oembed', 'youtube_api'].includes(metadata.sourceStatus)
             ? 'Dzhero використав відкриті дані YouTube: назву, автора, превʼю та доступні лічильники.'
