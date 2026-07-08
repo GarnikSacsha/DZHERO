@@ -9,6 +9,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const ACCOUNT_INTERVAL_MS = 6 * HOUR_MS;
 const DISCOVERY_INTERVAL_MS = 12 * HOUR_MS;
 const MAX_INPUTS_PER_LANE = 10;
+const MAX_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
 const AUTOMATIC_RUN_LANE = 'automatic';
@@ -50,6 +51,10 @@ function clampNumber(value, min, max, fallback = min) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(Math.max(number, min), max);
+}
+
+function clampBudgetUsd(value, { min = 0, fallback = DEFAULT_DAILY_BUDGET_USD } = {}) {
+  return clampNumber(value, min, MAX_DAILY_BUDGET_USD, fallback);
 }
 
 function normalizeText(value) {
@@ -319,6 +324,14 @@ function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
     if (runDayKey !== dayKey) continue;
     const actualCostUsd = Number(run.actualCostUsd);
     const estimatedCostUsd = Number(run.estimatedCostUsd);
+    const attemptedCallCount = Number(run.attemptedCallCount);
+    if (
+      !(Number.isFinite(actualCostUsd) && actualCostUsd > 0)
+      && Number.isFinite(attemptedCallCount)
+      && attemptedCallCount <= 0
+    ) {
+      continue;
+    }
     const amount = Number.isFinite(actualCostUsd) && actualCostUsd > 0
       ? actualCostUsd
       : Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
@@ -333,7 +346,7 @@ function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
 
 function canStartDiscoveryRun(args = {}) {
   const spentUsd = Number(args.spentUsd || 0);
-  const budgetUsd = Number(args.budgetUsd || 0);
+  const budgetUsd = clampBudgetUsd(args.budgetUsd, { min: 0, fallback: 0 });
   const estimatedUsd = estimateDiscoveryRunCostUsd(args);
   return spentUsd + estimatedUsd <= budgetUsd;
 }
@@ -354,7 +367,7 @@ function getWorkspaceDiscoverySettings(state = {}, workspaceId, now = new Date()
     ...defaults,
     ...savedSettings,
     enabled: savedSettings.enabled !== false,
-    dailyBudgetUsd: clampNumber(savedSettings.dailyBudgetUsd, 0.1, 1000, defaults.dailyBudgetUsd),
+    dailyBudgetUsd: clampBudgetUsd(savedSettings.dailyBudgetUsd, { min: 0.1, fallback: defaults.dailyBudgetUsd }),
     viralScoreThreshold: clampNumber(savedSettings.viralScoreThreshold, 55, 96, defaults.viralScoreThreshold),
     platforms: configuredPlatforms.length ? uniqueValues(configuredPlatforms, PLATFORM_NAMES.length) : [...defaults.platforms],
     laneIntervalsMs: {
@@ -584,6 +597,47 @@ function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = []) {
   return calls;
 }
 
+function getPlannedAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], lanes = DEFAULT_LANES) {
+  const allowedLanes = new Set(Array.isArray(lanes) ? lanes : DEFAULT_LANES);
+  return planAutomaticDiscoveryCalls(discoveryInputs, platforms).filter((call) => allowedLanes.has(call.lane));
+}
+
+function createLaneScheduleMap(settings = {}) {
+  return {
+    lastRunAt: {
+      ...(settings.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...(settings.nextRunAt || {}),
+    },
+  };
+}
+
+function applySuccessfulLaneSchedules(workspace = {}, settings = {}, lanes = [], now = new Date()) {
+  if (!Array.isArray(lanes) || !lanes.length) return;
+  const scheduleState = createLaneScheduleMap(settings);
+  const timestamp = toDate(now).toISOString();
+  for (const lane of lanes) {
+    const intervalMs = settings.laneIntervalsMs?.[lane] || LANE_INTERVALS[lane];
+    if (!intervalMs) continue;
+    scheduleState.lastRunAt[lane] = timestamp;
+    scheduleState.nextRunAt[lane] = new Date(toDate(now).getTime() + intervalMs).toISOString();
+  }
+  workspace.discoverySettings = {
+    ...(workspace.discoverySettings || {}),
+    enabled: settings.enabled !== false,
+    dailyBudgetUsd: settings.dailyBudgetUsd,
+    viralScoreThreshold: settings.viralScoreThreshold,
+    platforms: [...(settings.platforms || [])],
+    laneIntervalsMs: {
+      ...(settings.laneIntervalsMs || {}),
+    },
+    lastRunAt: scheduleState.lastRunAt,
+    nextRunAt: scheduleState.nextRunAt,
+    updatedAt: timestamp,
+  };
+}
+
 function estimateDiscoveryCallCostUsd(call = {}) {
   const inputLabel = call.inputType || call.lane || 'search';
   return estimateDiscoveryRunCostUsd({
@@ -620,6 +674,7 @@ function createAutomaticRun(state = {}, args = {}) {
     spentUsdBefore: roundUsd(args.spentUsdBefore),
     estimatedCostUsd: roundUsd(args.estimatedCostUsd),
     actualCostUsd: 0,
+    attemptedCallCount: Number(args.attemptedCallCount || 0),
     requestedCount: Number(args.requestedCount || 0),
     returnedCount: 0,
     acceptedCount: 0,
@@ -650,10 +705,84 @@ async function executeAutomaticDiscovery(args = {}) {
   const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
   const spentUsd = getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now);
   const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
-  const plannedCalls = planAutomaticDiscoveryCalls(discoveryInputs, settings.platforms);
+  const dueLanes = args.force
+    ? [...DEFAULT_LANES]
+    : DEFAULT_LANES.filter((lane) => isDiscoveryDue(settings, lane, now));
+  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes);
   const estimatedMetadataCostUsd = roundUsd(
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
+
+  if (settings.enabled === false) {
+    const run = createAutomaticRun(state, {
+      workspaceId,
+      now,
+      budgetUsd: settings.dailyBudgetUsd,
+      spentUsdBefore: spentUsd,
+      estimatedCostUsd: 0,
+      requestedCount: 0,
+    });
+    if (!run) {
+      return {
+        run: null,
+        acceptedSignals: [],
+        updatedSignals: [],
+      };
+    }
+    run.status = 'paused';
+    run.completedAt = now.toISOString();
+    run.updatedAt = now.toISOString();
+    return { run, acceptedSignals: [], updatedSignals: [] };
+  }
+
+  if (!plannedCalls.length) {
+    const run = createAutomaticRun(state, {
+      workspaceId,
+      now,
+      budgetUsd: settings.dailyBudgetUsd,
+      spentUsdBefore: spentUsd,
+      estimatedCostUsd: 0,
+      requestedCount: 0,
+    });
+    if (!run) {
+      return {
+        run: null,
+        acceptedSignals: [],
+        updatedSignals: [],
+      };
+    }
+    run.status = 'completed';
+    run.completedAt = now.toISOString();
+    run.updatedAt = now.toISOString();
+    return { run, acceptedSignals: [], updatedSignals: [] };
+  }
+
+  if (spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd) {
+    const run = createAutomaticRun(state, {
+      workspaceId,
+      now,
+      budgetUsd: settings.dailyBudgetUsd,
+      spentUsdBefore: spentUsd,
+      estimatedCostUsd: 0,
+      requestedCount: plannedCalls.length,
+    });
+    if (!run) {
+      return {
+        run: null,
+        acceptedSignals: [],
+        updatedSignals: [],
+      };
+    }
+    run.status = 'blocked_budget';
+    run.errorCount = 1;
+    run.errors.push({
+      code: 'automatic_budget_reached',
+      message: 'Automatic discovery metadata budget is exhausted for this UTC day.',
+    });
+    run.completedAt = now.toISOString();
+    run.updatedAt = now.toISOString();
+    return { run, acceptedSignals: [], updatedSignals: [] };
+  }
 
   const run = createAutomaticRun(state, {
     workspaceId,
@@ -671,32 +800,6 @@ async function executeAutomaticDiscovery(args = {}) {
     };
   }
 
-  if (settings.enabled === false) {
-    run.status = 'paused';
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
-  }
-
-  if (!plannedCalls.length) {
-    run.status = 'completed';
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
-  }
-
-  if (spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd) {
-    run.status = 'blocked_budget';
-    run.errorCount = 1;
-    run.errors.push({
-      code: 'automatic_budget_reached',
-      message: 'Automatic discovery metadata budget is exhausted for this UTC day.',
-    });
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
-  }
-
   const fetchSignals = typeof args.fetchSignals === 'function' ? args.fetchSignals : fetchApifySignals;
   const market = getWorkspaceMarket(workspace);
   const reels = Array.isArray(state.reels) ? state.reels : (state.reels = []);
@@ -705,9 +808,20 @@ async function executeAutomaticDiscovery(args = {}) {
   const candidatesById = new Map();
   const updatedSignalsById = new Map();
   let successfulCalls = 0;
+  const laneStats = new Map();
+
+  function getLaneStat(lane) {
+    if (!laneStats.has(lane)) {
+      laneStats.set(lane, { attempted: 0, successful: 0, failed: 0 });
+    }
+    return laneStats.get(lane);
+  }
 
   for (const call of plannedCalls) {
     const callEstimateUsd = estimateDiscoveryCallCostUsd(call);
+    const laneStat = getLaneStat(call.lane);
+    laneStat.attempted += 1;
+    run.attemptedCallCount += 1;
     try {
       const fetchedSignals = await fetchSignals({
         token: args.token,
@@ -726,6 +840,7 @@ async function executeAutomaticDiscovery(args = {}) {
       run.actualCostUsd = roundUsd(run.actualCostUsd + callEstimateUsd);
       run.returnedCount += Array.isArray(fetchedSignals) ? fetchedSignals.length : 0;
       successfulCalls += 1;
+      laneStat.successful += 1;
 
       for (const fetchedSignal of Array.isArray(fetchedSignals) ? fetchedSignals : []) {
         const normalizedSignal = normalizeAutomaticSignal(fetchedSignal, {
@@ -760,6 +875,7 @@ async function executeAutomaticDiscovery(args = {}) {
     } catch (error) {
       run.actualCostUsd = roundUsd(run.actualCostUsd + callEstimateUsd);
       run.errorCount += 1;
+      laneStat.failed += 1;
       run.errors.push({
         platform: call.platform,
         lane: call.lane,
@@ -769,6 +885,11 @@ async function executeAutomaticDiscovery(args = {}) {
       });
     }
   }
+
+  const successfulLanes = Array.from(laneStats.entries())
+    .filter(([, stats]) => stats.attempted > 0 && stats.successful > 0 && stats.failed === 0)
+    .map(([lane]) => lane);
+  applySuccessfulLaneSchedules(workspace, settings, successfulLanes, now);
 
   const shortlistedSignals = Array.from(candidatesById.values())
     .filter((signal) => signal.score >= settings.viralScoreThreshold)
@@ -892,7 +1013,7 @@ function claimDiscoveryRun(state = {}, args = {}) {
 
   const estimatedCostUsd = estimateDiscoveryRunCostUsd(args);
   const spentUsd = Number(args.spentUsd || 0);
-  const budgetUsd = Number(args.budgetUsd || 0);
+  const budgetUsd = clampBudgetUsd(args.budgetUsd, { min: 0, fallback: 0 });
   if (Number.isFinite(budgetUsd) && budgetUsd > 0 && spentUsd + estimatedCostUsd > budgetUsd) {
     return null;
   }

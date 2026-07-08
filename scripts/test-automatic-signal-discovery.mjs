@@ -80,6 +80,19 @@ assert.equal(
   }),
   false
 );
+assert.equal(
+  canStartDiscoveryRun({
+    spentUsd: 0.78,
+    budgetUsd: 4,
+    estimatedCostUsd: 0.03,
+    platform: 'instagram',
+    limit: 1,
+    discoveryInputs: {
+      keywords: ['pilates'],
+    },
+  }),
+  false
+);
 
 const state = {
   workspaces: [
@@ -171,8 +184,7 @@ const firstClaim = claimDiscoveryRun(claimState, {
   limit: 5,
   downloadVideo: true,
   discoveryInputs: {
-    accounts: ['@fitlab', '@coach_mila', '@stretchflow'],
-    keywords: ['pilates', 'workout tips'],
+    accounts: ['@fitlab', '@coach_mila'],
   },
   estimatedCostUsd: 0.01,
 });
@@ -201,6 +213,23 @@ const blockedClaim = claimDiscoveryRun(claimState, {
 });
 
 assert.equal(blockedClaim, null);
+assert.equal(claimState.discoveryRuns.length, 1);
+
+const hardCapBlockedClaim = claimDiscoveryRun(claimState, {
+  workspaceId: 'ws-1',
+  lane: 'keywords',
+  now: new Date('2026-07-08T00:45:00.000Z'),
+  spentUsd: 0.78,
+  budgetUsd: 4,
+  platform: 'instagram',
+  limit: 1,
+  discoveryInputs: {
+    keywords: ['pilates'],
+  },
+  estimatedCostUsd: 0.03,
+});
+
+assert.equal(hardCapBlockedClaim, null);
 assert.equal(claimState.discoveryRuns.length, 1);
 
 const trendClaim = claimDiscoveryRun(claimState, {
@@ -311,6 +340,18 @@ const automaticState = {
         dailyBudgetUsd: 4,
         viralScoreThreshold: 70,
         platforms: ['instagram', 'tiktok'],
+        lastRunAt: {
+          accounts: '2026-07-08T00:00:00.000Z',
+          keywords: '2026-07-07T12:00:00.000Z',
+          hashtags: '2026-07-08T00:00:00.000Z',
+          trends: '2026-07-08T00:00:00.000Z',
+        },
+        nextRunAt: {
+          accounts: '2026-07-08T06:00:00.000Z',
+          keywords: '2026-07-08T00:00:00.000Z',
+          hashtags: '2026-07-08T12:00:00.000Z',
+          trends: '2026-07-08T12:00:00.000Z',
+        },
       },
     },
   ],
@@ -396,6 +437,7 @@ assert.equal(automaticResult.updatedSignals.length, 1);
 assert.equal(automaticResult.run.status, 'completed');
 assert.equal(automaticResult.run.acceptedCount, 1);
 assert.equal(automaticResult.run.duplicateCount, 1);
+assert.equal(automaticResult.run.budgetUsd, 0.8);
 assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
 
 const [acceptedSignal] = automaticResult.acceptedSignals;
@@ -412,5 +454,238 @@ assert.equal(downloadCalls.length, 1);
 assert.equal(downloadCalls[0].input, qualifyingMetadataCandidate.sourceUrl);
 assert.equal(downloadCalls[0].mode, 'url');
 assert.equal(fetchSignals.calls.some((call) => call.downloadVideos === true), true);
+
+const laneScheduleState = {
+  workspaces: [
+    {
+      id: 'ws_schedule',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        product: 'reformer workouts',
+        location: 'Ukraine',
+        contentFocus: 'pilates form',
+        goals: ['lead generation'],
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 0.8,
+        viralScoreThreshold: 70,
+        platforms: ['instagram', 'tiktok'],
+        lastRunAt: {
+          accounts: '2026-07-07T18:00:00.000Z',
+          keywords: '2026-07-08T00:00:00.000Z',
+          hashtags: '2026-07-08T00:00:00.000Z',
+          trends: '2026-07-08T00:00:00.000Z',
+        },
+        nextRunAt: {
+          accounts: '2026-07-08T00:00:00.000Z',
+          keywords: '2026-07-08T12:00:00.000Z',
+          hashtags: '2026-07-08T12:00:00.000Z',
+          trends: '2026-07-08T12:00:00.000Z',
+        },
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_schedule_1', workspaceId: 'ws_schedule', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+
+const scheduledFetchCalls = [];
+const scheduledResult = await executeAutomaticDiscovery({
+  state: laneScheduleState,
+  workspaceId: 'ws_schedule',
+  token: 'test-token',
+  now,
+  fetchSignals: async (call) => {
+    scheduledFetchCalls.push({
+      platform: call.platform,
+      mode: call.mode ?? call.inputType,
+      input: call.input ?? call.inputValue,
+    });
+    return [];
+  },
+});
+
+assert.equal(scheduledFetchCalls.length, 2);
+assert.equal(scheduledFetchCalls.every((call) => call.mode === 'profile'), true);
+assert.equal(laneScheduleState.workspaces[0].discoverySettings.lastRunAt.accounts, now.toISOString());
+assert.equal(laneScheduleState.workspaces[0].discoverySettings.nextRunAt.accounts, sixHoursLater.toISOString());
+assert.equal(laneScheduleState.workspaces[0].discoverySettings.nextRunAt.keywords, '2026-07-08T12:00:00.000Z');
+assert.equal(scheduledResult.run.actualCostUsd > 0, true);
+
+const forcedFetchCalls = [];
+await executeAutomaticDiscovery({
+  state: laneScheduleState,
+  workspaceId: 'ws_schedule',
+  token: 'test-token',
+  now,
+  force: true,
+  fetchSignals: async (call) => {
+    forcedFetchCalls.push({
+      platform: call.platform,
+      mode: call.mode ?? call.inputType,
+      input: call.input ?? call.inputValue,
+    });
+    return [];
+  },
+});
+
+assert.equal(forcedFetchCalls.some((call) => call.mode === 'search'), true);
+assert.equal(forcedFetchCalls.some((call) => call.mode === 'hashtag'), true);
+
+const pausedState = {
+  workspaces: [
+    {
+      id: 'ws_paused',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        location: 'Ukraine',
+      },
+      discoverySettings: {
+        enabled: false,
+        dailyBudgetUsd: 4,
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_paused_1', workspaceId: 'ws_paused', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+
+const pausedResult = await executeAutomaticDiscovery({
+  state: pausedState,
+  workspaceId: 'ws_paused',
+  token: 'test-token',
+  now,
+  fetchSignals: async () => {
+    throw new Error('paused discovery should not fetch');
+  },
+});
+
+assert.equal(pausedResult.run.status, 'paused');
+assert.equal(pausedResult.run.estimatedCostUsd, 0);
+assert.equal(pausedResult.run.actualCostUsd, 0);
+assert.equal(getDailyAutomaticSpend(pausedState.discoveryRuns, 'ws_paused', now), 0);
+
+const notDueState = {
+  workspaces: [
+    {
+      id: 'ws_not_due',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        location: 'Ukraine',
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 0.8,
+        platforms: ['instagram', 'tiktok'],
+        lastRunAt: {
+          accounts: '2026-07-08T00:00:00.000Z',
+          keywords: '2026-07-08T00:00:00.000Z',
+          hashtags: '2026-07-08T00:00:00.000Z',
+          trends: '2026-07-08T00:00:00.000Z',
+        },
+        nextRunAt: {
+          accounts: '2026-07-08T06:00:00.000Z',
+          keywords: '2026-07-08T12:00:00.000Z',
+          hashtags: '2026-07-08T12:00:00.000Z',
+          trends: '2026-07-08T12:00:00.000Z',
+        },
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_not_due_1', workspaceId: 'ws_not_due', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+
+const notDueResult = await executeAutomaticDiscovery({
+  state: notDueState,
+  workspaceId: 'ws_not_due',
+  token: 'test-token',
+  now,
+  fetchSignals: async () => {
+    throw new Error('not-due discovery should not fetch');
+  },
+});
+
+assert.equal(notDueResult.run.estimatedCostUsd, 0);
+assert.equal(notDueResult.run.actualCostUsd, 0);
+assert.equal(notDueResult.run.requestedCount, 0);
+assert.equal(getDailyAutomaticSpend(notDueState.discoveryRuns, 'ws_not_due', now), 0);
+
+const budgetBlockedState = {
+  workspaces: [
+    {
+      id: 'ws_budget',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        location: 'Ukraine',
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 4,
+        platforms: ['instagram'],
+        lastRunAt: {
+          accounts: '2026-07-07T18:00:00.000Z',
+          keywords: '2026-07-07T12:00:00.000Z',
+          hashtags: '2026-07-07T12:00:00.000Z',
+          trends: '2026-07-07T12:00:00.000Z',
+        },
+        nextRunAt: {
+          accounts: '2026-07-08T00:00:00.000Z',
+          keywords: '2026-07-08T00:00:00.000Z',
+          hashtags: '2026-07-08T00:00:00.000Z',
+          trends: '2026-07-08T00:00:00.000Z',
+        },
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_budget_1', workspaceId: 'ws_budget', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [
+    {
+      id: 'budget_spend_existing',
+      workspaceId: 'ws_budget',
+      lane: 'accounts',
+      status: 'completed',
+      actualCostUsd: 0.79,
+      completedAt: '2026-07-08T00:10:00.000Z',
+    },
+  ],
+};
+
+const budgetBlockedResult = await executeAutomaticDiscovery({
+  state: budgetBlockedState,
+  workspaceId: 'ws_budget',
+  token: 'test-token',
+  now,
+  fetchSignals: async () => {
+    throw new Error('budget-blocked discovery should not fetch');
+  },
+});
+
+assert.equal(budgetBlockedResult.run.status, 'blocked_budget');
+assert.equal(budgetBlockedResult.run.budgetUsd, 0.8);
+assert.equal(budgetBlockedResult.run.estimatedCostUsd, 0);
+assert.equal(budgetBlockedResult.run.actualCostUsd, 0);
+assert.equal(getDailyAutomaticSpend(budgetBlockedState.discoveryRuns, 'ws_budget', now), 0.79);
 
 console.log('automatic signal discovery policy tests passed');
