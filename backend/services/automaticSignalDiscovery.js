@@ -887,7 +887,7 @@ async function executeAutomaticDiscovery(args = {}) {
   }
 
   const successfulLanes = Array.from(laneStats.entries())
-    .filter(([, stats]) => stats.attempted > 0 && stats.successful > 0 && stats.failed === 0)
+    .filter(([, stats]) => stats.attempted > 0 && stats.successful > 0)
     .map(([lane]) => lane);
   applySuccessfulLaneSchedules(workspace, settings, successfulLanes, now);
 
