@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import discovery from '../backend/services/automaticSignalDiscovery.js';
+import provider from '../backend/services/apifySignalProvider.js';
 
 const {
   defaultDiscoverySettings,
@@ -8,7 +9,9 @@ const {
   getDailyAutomaticSpend,
   canStartDiscoveryRun,
   claimDiscoveryRun,
+  executeAutomaticDiscovery,
 } = discovery;
+const { mapTikTokApifyItem } = provider;
 
 const now = new Date('2026-07-08T00:00:00.000Z');
 const sixHoursLater = new Date('2026-07-08T06:00:00.000Z');
@@ -217,5 +220,197 @@ const trendClaim = claimDiscoveryRun(claimState, {
 
 assert.equal(trendClaim.status, 'running');
 assert.equal(claimState.discoveryRuns.length, 2);
+
+const createMappedTikTokReel = (item, suffix) => mapTikTokApifyItem(item, {
+  workspaceId: 'ws-1',
+  market: 'ua',
+  createId: (prefix) => `${prefix}_${suffix}`,
+});
+
+const lowScoreCandidate = createMappedTikTokReel({
+  'authorMeta.avatar': 'https://example.com/low.jpg',
+  'authorMeta.name': 'slowcoach',
+  text: 'Old and quiet.',
+  diggCount: 12,
+  shareCount: 1,
+  playCount: 400,
+  commentCount: 2,
+  collectCount: 0,
+  createTimeISO: '2025-01-05T12:00:00.000Z',
+  webVideoUrl: 'https://www.tiktok.com/@slowcoach/video/1111111111111111111',
+  mediaUrls: [],
+}, 'low');
+
+const qualifyingMetadataCandidate = createMappedTikTokReel({
+  'authorMeta.avatar': 'https://example.com/winner.jpg',
+  'authorMeta.name': 'winnercoach',
+  text: 'Three beginner reformer mistakes.',
+  diggCount: 48000,
+  shareCount: 12000,
+  playCount: 520000,
+  commentCount: 4100,
+  collectCount: 8600,
+  createTimeISO: '2026-07-08T10:00:00.000Z',
+  webVideoUrl: 'https://www.tiktok.com/@winnercoach/video/7659094629786193183',
+  mediaUrls: [],
+}, 'winner_meta');
+
+const qualifyingDownloadedCandidateBase = createMappedTikTokReel({
+  'authorMeta.avatar': 'https://example.com/winner.jpg',
+  'authorMeta.name': 'winnercoach',
+  text: 'Three beginner reformer mistakes.',
+  diggCount: 48000,
+  shareCount: 12000,
+  playCount: 520000,
+  commentCount: 4100,
+  collectCount: 8600,
+  createTimeISO: '2026-07-08T10:00:00.000Z',
+  webVideoUrl: 'https://www.tiktok.com/@winnercoach/video/7659094629786193183',
+  mediaUrls: ['https://cdn.example.com/winner.mp4'],
+}, 'winner_download');
+
+const qualifyingDownloadedCandidate = {
+  ...qualifyingDownloadedCandidateBase,
+  sourceUrl: '',
+  importedMetadata: {
+    ...qualifyingDownloadedCandidateBase.importedMetadata,
+    url: '',
+    videoUrl: 'https://cdn.example.com/winner.mp4',
+    mediaUrls: ['https://cdn.example.com/winner.mp4'],
+  },
+};
+
+const duplicateCandidate = createMappedTikTokReel({
+  'authorMeta.avatar': 'https://example.com/dup.jpg',
+  'authorMeta.name': 'dupcoach',
+  text: 'Already imported, but fresher metrics.',
+  diggCount: 2500,
+  shareCount: 430,
+  playCount: 98000,
+  commentCount: 220,
+  collectCount: 510,
+  createTimeISO: '2026-07-08T11:00:00.000Z',
+  webVideoUrl: 'https://www.tiktok.com/@dupcoach/video/1234567890123456789',
+  mediaUrls: [],
+}, 'dup');
+
+const automaticState = {
+  workspaces: [
+    {
+      id: 'ws-1',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        product: 'reformer workouts',
+        location: 'Ukraine',
+        contentFocus: 'pilates form',
+        goals: ['lead generation'],
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 4,
+        viralScoreThreshold: 70,
+        platforms: ['instagram', 'tiktok'],
+      },
+    },
+  ],
+  sources: [
+    { id: 'src-1', workspaceId: 'ws-1', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [
+    { id: 'cmp-1', workspaceId: 'ws-1', handle: '@winnercoach', niche: 'pilates', market: 'ua' },
+  ],
+  reels: [
+    {
+      id: 'reel_duplicate_existing',
+      workspaceId: 'ws-1',
+      sourceHandle: '@dupcoach',
+      handle: '@dupcoach',
+      sourceUrl: 'https://www.tiktok.com/@dupcoach/video/1234567890123456789',
+      videoUrl: '',
+      image: 'https://example.com/dup-old.jpg',
+      views: 1200,
+      likes: 110,
+      comments: 12,
+      shares: 2,
+      saves: 1,
+      importedMetadata: {
+        provider: 'apify',
+        platform: 'tiktok',
+        externalId: '1234567890123456789',
+        tiktokVideoId: '1234567890123456789',
+        url: 'https://www.tiktok.com/@dupcoach/video/1234567890123456789',
+        handle: '@dupcoach',
+        source: { label: 'TikTok', tone: 'tiktok' },
+      },
+    },
+  ],
+  discoveryRuns: [],
+};
+
+const createFetchSignalsStub = () => {
+  const calls = [];
+  const stub = async (call) => {
+    calls.push({
+      platform: call.platform,
+      mode: call.mode ?? call.inputType,
+      input: call.input ?? call.inputValue,
+      downloadVideos: Boolean(call.downloadVideos ?? call.downloadVideo),
+      limit: call.limit,
+    });
+    if (call.platform === 'instagram') {
+      throw Object.assign(new Error('instagram_actor_failed'), { status: 502 });
+    }
+    const mode = call.mode ?? call.inputType;
+    const input = call.input ?? call.inputValue;
+    const wantsDownload = Boolean(call.downloadVideos ?? call.downloadVideo);
+
+    if (wantsDownload) {
+      if (input === qualifyingMetadataCandidate.sourceUrl) {
+        return [qualifyingDownloadedCandidate];
+      }
+      return [];
+    }
+
+    if (mode === 'search' && input === 'pilates') {
+      return [lowScoreCandidate, qualifyingMetadataCandidate, duplicateCandidate];
+    }
+
+    return [];
+  };
+  stub.calls = calls;
+  return stub;
+};
+
+const fetchSignals = createFetchSignalsStub();
+const automaticResult = await executeAutomaticDiscovery({
+  state: automaticState,
+  workspaceId: 'ws-1',
+  token: 'test-token',
+  now,
+  fetchSignals,
+});
+
+assert.equal(automaticResult.acceptedSignals.length, 1);
+assert.equal(automaticResult.updatedSignals.length, 1);
+assert.equal(automaticResult.run.status, 'completed');
+assert.equal(automaticResult.run.acceptedCount, 1);
+assert.equal(automaticResult.run.duplicateCount, 1);
+assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
+
+const [acceptedSignal] = automaticResult.acceptedSignals;
+assert.equal(acceptedSignal.videoUrl, 'https://cdn.example.com/winner.mp4');
+assert.equal(acceptedSignal.sourceUrl, qualifyingMetadataCandidate.sourceUrl);
+
+const [updatedSignal] = automaticResult.updatedSignals;
+assert.equal(updatedSignal.id, 'reel_duplicate_existing');
+assert.equal(updatedSignal.views, duplicateCandidate.views);
+assert.equal(updatedSignal.likes, duplicateCandidate.likes);
+
+const downloadCalls = fetchSignals.calls.filter((call) => call.downloadVideos === true);
+assert.equal(downloadCalls.length, 1);
+assert.equal(downloadCalls[0].input, qualifyingMetadataCandidate.sourceUrl);
+assert.equal(downloadCalls[0].mode, 'url');
+assert.equal(fetchSignals.calls.some((call) => call.downloadVideos === true), true);
 
 console.log('automatic signal discovery policy tests passed');
