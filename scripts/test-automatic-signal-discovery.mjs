@@ -40,6 +40,7 @@ const runs = [
     lane: 'trends',
     status: 'running',
     estimatedCostUsd: 0.30,
+    actualCostUsd: 0,
     startedAt: '2026-07-08T10:00:00.000Z',
   },
   {
@@ -61,7 +62,21 @@ const runs = [
 ];
 
 assert.equal(getDailyAutomaticSpend(runs, 'ws-1', now), 0.72);
-assert.equal(canStartDiscoveryRun({ spentUsd: 0.72, estimatedUsd: 0.1, budgetUsd: 0.8 }), false);
+assert.equal(
+  canStartDiscoveryRun({
+    spentUsd: 0.72,
+    budgetUsd: 0.8,
+    estimatedCostUsd: 0.01,
+    platform: 'tiktok',
+    limit: 5,
+    downloadVideo: true,
+    discoveryInputs: {
+      accounts: ['@fitlab', '@coach_mila', '@stretchflow'],
+      keywords: ['pilates', 'workout tips'],
+    },
+  }),
+  false
+);
 
 const state = {
   workspaces: [
@@ -147,20 +162,39 @@ const firstClaim = claimDiscoveryRun(claimState, {
   workspaceId: 'ws-1',
   lane: 'accounts',
   now,
-  estimatedCostUsd: 0.14,
+  spentUsd: 0,
+  budgetUsd: 2,
+  platform: 'tiktok',
+  limit: 5,
+  downloadVideo: true,
+  discoveryInputs: {
+    accounts: ['@fitlab', '@coach_mila', '@stretchflow'],
+    keywords: ['pilates', 'workout tips'],
+  },
+  estimatedCostUsd: 0.01,
 });
 
 assert.equal(firstClaim.status, 'running');
 assert.equal(firstClaim.workspaceId, 'ws-1');
 assert.equal(firstClaim.lane, 'accounts');
 assert.equal(firstClaim.dayKey, '2026-07-08');
+assert.ok(firstClaim.estimatedCostUsd > 0.01);
 assert.equal(claimState.discoveryRuns.length, 1);
 
 const blockedClaim = claimDiscoveryRun(claimState, {
   workspaceId: 'ws-1',
   lane: 'accounts',
   now: new Date('2026-07-08T00:30:00.000Z'),
-  estimatedCostUsd: 0.14,
+  spentUsd: 0.72,
+  budgetUsd: 0.8,
+  platform: 'tiktok',
+  limit: 5,
+  downloadVideo: true,
+  discoveryInputs: {
+    accounts: ['@fitlab', '@coach_mila', '@stretchflow'],
+    keywords: ['pilates', 'workout tips'],
+  },
+  estimatedCostUsd: 0.01,
 });
 
 assert.equal(blockedClaim, null);
@@ -170,7 +204,15 @@ const trendClaim = claimDiscoveryRun(claimState, {
   workspaceId: 'ws-1',
   lane: 'trends',
   now: new Date('2026-07-08T00:30:00.000Z'),
-  estimatedCostUsd: 0.22,
+  spentUsd: 0,
+  budgetUsd: 2,
+  platform: 'instagram',
+  limit: 2,
+  downloadVideo: false,
+  discoveryInputs: {
+    trends: ['instagram pilates trends', 'instagram workout ideas'],
+  },
+  estimatedCostUsd: 0.01,
 });
 
 assert.equal(trendClaim.status, 'running');
