@@ -31,6 +31,21 @@ assert.equal(instagram.videoUrl, 'https://example.com/ig.mp4');
 assert.equal(instagram.views, 908912);
 assert.equal(getApifySignalKey(instagram.importedMetadata), 'instagram:dz-th_xmany');
 
+const instagramProfileActorRequest = buildApifyActorRequest({
+  platform: 'instagram',
+  mode: 'profile',
+  input: '@maverickgpt',
+  limit: 2,
+});
+
+assert.equal(instagramProfileActorRequest.actorId, 'apify/instagram-scraper');
+assert.deepEqual(instagramProfileActorRequest.input, {
+  directUrls: ['https://www.instagram.com/maverickgpt/'],
+  search: '',
+  resultsType: 'posts',
+  resultsLimit: 2,
+});
+
 const tiktok = mapTikTokApifyItem({
   'authorMeta.avatar': 'https://example.com/avatar.jpg',
   'authorMeta.name': 'maverickgpt',

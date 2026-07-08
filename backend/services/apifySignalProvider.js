@@ -222,8 +222,17 @@ async function runApifyActor({ token, actorId, input }) {
 
 function buildInstagramInput({ inputValue, inputType, limit }) {
   const directUrlTypes = new Set(['url', 'profile']);
+  const normalizedProfileUrl = (() => {
+    if (inputType !== 'profile') return inputValue;
+    const rawValue = String(inputValue || '').trim();
+    if (!rawValue) return '';
+    const urlMatch = rawValue.match(/instagram\.com\/([^/?#]+)/i);
+    const handle = (urlMatch?.[1] || rawValue).replace(/^@/, '').replace(/\/+$/, '');
+    if (!handle) return '';
+    return `https://www.instagram.com/${handle}/`;
+  })();
   return {
-    directUrls: directUrlTypes.has(inputType) ? [inputValue] : [],
+    directUrls: directUrlTypes.has(inputType) ? [normalizedProfileUrl] : [],
     search: directUrlTypes.has(inputType) ? '' : inputValue,
     resultsType: 'posts',
     resultsLimit: limit,

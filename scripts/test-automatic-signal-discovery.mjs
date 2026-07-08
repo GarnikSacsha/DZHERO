@@ -439,6 +439,8 @@ assert.equal(automaticResult.run.acceptedCount, 1);
 assert.equal(automaticResult.run.duplicateCount, 1);
 assert.equal(automaticResult.run.budgetUsd, 0.8);
 assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
+assert.equal(automaticState.workspaces[0].discoverySettings.lastRunAt.keywords, now.toISOString());
+assert.equal(automaticState.workspaces[0].discoverySettings.nextRunAt.keywords, twelveHoursLater.toISOString());
 
 const [acceptedSignal] = automaticResult.acceptedSignals;
 assert.equal(acceptedSignal.videoUrl, 'https://cdn.example.com/winner.mp4');
@@ -454,6 +456,25 @@ assert.equal(downloadCalls.length, 1);
 assert.equal(downloadCalls[0].input, qualifyingMetadataCandidate.sourceUrl);
 assert.equal(downloadCalls[0].mode, 'url');
 assert.equal(fetchSignals.calls.some((call) => call.downloadVideos === true), true);
+
+const rerunCalls = [];
+const rerunResult = await executeAutomaticDiscovery({
+  state: automaticState,
+  workspaceId: 'ws-1',
+  token: 'test-token',
+  now,
+  fetchSignals: async (call) => {
+    rerunCalls.push({
+      platform: call.platform,
+      mode: call.mode ?? call.inputType,
+      input: call.input ?? call.inputValue,
+    });
+    return [];
+  },
+});
+
+assert.equal(rerunCalls.length, 0);
+assert.equal(rerunResult.run.requestedCount, 0);
 
 const laneScheduleState = {
   workspaces: [
