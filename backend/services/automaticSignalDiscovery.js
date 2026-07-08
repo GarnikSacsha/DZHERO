@@ -29,6 +29,12 @@ function roundUsd(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
+function clampNumber(value, min, max, fallback = min) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(Math.max(number, min), max);
+}
+
 function normalizeText(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
@@ -201,6 +207,28 @@ function buildTrendCandidates(platform, workspace = {}) {
   ]);
 }
 
+function countStructuredInputs(input) {
+  if (Array.isArray(input)) {
+    return input.reduce((total, value) => total + (normalizeText(value) ? 1 : 0), 0);
+  }
+  if (!input || typeof input !== 'object') return 0;
+  return Object.values(input).reduce((total, value) => total + countStructuredInputs(value), 0);
+}
+
+function estimateDiscoveryRunCostUsd(args = {}) {
+  const platform = normalizeLower(args.platform);
+  const structuredInputs = args.discoveryInputs ?? args.platformInputs ?? args.inputs ?? null;
+  const boundedInputCount = Math.min(Math.max(countStructuredInputs(structuredInputs), 1), MAX_INPUTS_PER_LANE);
+  const boundedLimit = clampNumber(args.limit, 1, 30, 5);
+  const resultCount = boundedInputCount * boundedLimit;
+  const resultPriceUsd = platform === 'tiktok'
+    ? (args.downloadVideo ? 0.06 : 0.04)
+    : 0.03;
+  const conservativeEstimate = resultCount * resultPriceUsd;
+  const callerEstimate = Math.max(Number(args.estimatedCostUsd || args.estimatedUsd || 0), 0);
+  return roundUsd(Math.max(conservativeEstimate, callerEstimate));
+}
+
 function defaultDiscoverySettings(now = new Date()) {
   const base = toDate(now);
   return {
@@ -272,7 +300,13 @@ function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
     const runDayKey = toUtcDayKey(run.claimedAt || run.startedAt || run.createdAt || run.completedAt);
     if (!runDayKey) continue;
     if (runDayKey !== dayKey) continue;
-    const amount = Number(run.actualCostUsd ?? run.estimatedCostUsd ?? 0);
+    const actualCostUsd = Number(run.actualCostUsd);
+    const estimatedCostUsd = Number(run.estimatedCostUsd);
+    const amount = Number.isFinite(actualCostUsd) && actualCostUsd > 0
+      ? actualCostUsd
+      : Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
+        ? estimatedCostUsd
+        : 0;
     if (Number.isFinite(amount) && amount > 0) {
       total += amount;
     }
@@ -282,8 +316,8 @@ function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
 
 function canStartDiscoveryRun(args = {}) {
   const spentUsd = Number(args.spentUsd || 0);
-  const estimatedUsd = Number(args.estimatedUsd || 0);
   const budgetUsd = Number(args.budgetUsd || 0);
+  const estimatedUsd = estimateDiscoveryRunCostUsd(args);
   return spentUsd + estimatedUsd <= budgetUsd;
 }
 
@@ -304,6 +338,13 @@ function claimDiscoveryRun(state = {}, args = {}) {
   ));
   if (activeConflict) return null;
 
+  const estimatedCostUsd = estimateDiscoveryRunCostUsd(args);
+  const spentUsd = Number(args.spentUsd || 0);
+  const budgetUsd = Number(args.budgetUsd || 0);
+  if (Number.isFinite(budgetUsd) && budgetUsd > 0 && spentUsd + estimatedCostUsd > budgetUsd) {
+    return null;
+  }
+
   const now = toDate(args.now || new Date());
   const run = {
     id: createRunId(),
@@ -311,7 +352,7 @@ function claimDiscoveryRun(state = {}, args = {}) {
     lane,
     dayKey: toUtcDayKey(now),
     status: 'running',
-    estimatedCostUsd: roundUsd(args.estimatedCostUsd || 0),
+    estimatedCostUsd,
     actualCostUsd: 0,
     claimedAt: now.toISOString(),
     startedAt: now.toISOString(),
