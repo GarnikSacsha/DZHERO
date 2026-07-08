@@ -247,6 +247,33 @@ function buildTikTokInput({ inputValue, inputType, limit, downloadVideo }) {
   return input;
 }
 
+function buildApifyActorRequest(options = {}) {
+  const platform = String(options.platform || '').trim().toLowerCase();
+  const inputType = options.inputType || options.mode || 'search';
+  const inputValue = options.inputValue ?? options.input ?? '';
+  const downloadVideo = options.downloadVideo ?? options.downloadVideos ?? false;
+  const limit = options.limit ?? 5;
+  const boundedLimit = Math.min(Math.max(Number(limit || 5), 1), 30);
+
+  if (platform === 'instagram') {
+    return {
+      actorId: 'apify/instagram-scraper',
+      input: buildInstagramInput({ inputValue, inputType, limit: boundedLimit }),
+    };
+  }
+
+  if (platform === 'tiktok') {
+    return {
+      actorId: 'clockworks/tiktok-scraper',
+      input: buildTikTokInput({ inputValue, inputType, limit: boundedLimit, downloadVideo }),
+    };
+  }
+
+  const error = new Error('unsupported_apify_platform');
+  error.status = 400;
+  throw error;
+}
+
 async function fetchApifySignals(options = {}) {
   const {
     token,
@@ -255,24 +282,20 @@ async function fetchApifySignals(options = {}) {
     market,
     createId,
   } = options;
-  const inputType = options.inputType || options.mode || 'search';
-  const inputValue = options.inputValue ?? options.input ?? '';
-  const downloadVideo = options.downloadVideo ?? options.downloadVideos ?? false;
-  const limit = options.limit ?? 5;
-  const boundedLimit = Math.min(Math.max(Number(limit || 5), 1), 30);
+  const actorRequest = buildApifyActorRequest(options);
   if (platform === 'instagram') {
     const items = await runApifyActor({
       token,
-      actorId: 'apify/instagram-scraper',
-      input: buildInstagramInput({ inputValue, inputType, limit: boundedLimit }),
+      actorId: actorRequest.actorId,
+      input: actorRequest.input,
     });
     return items.map((item) => mapInstagramApifyItem(item, { workspaceId, market, createId }));
   }
   if (platform === 'tiktok') {
     const items = await runApifyActor({
       token,
-      actorId: 'clockworks/tiktok-scraper',
-      input: buildTikTokInput({ inputValue, inputType, limit: boundedLimit, downloadVideo }),
+      actorId: actorRequest.actorId,
+      input: actorRequest.input,
     });
     return items.map((item) => mapTikTokApifyItem(item, { workspaceId, market, createId }));
   }
@@ -282,6 +305,7 @@ async function fetchApifySignals(options = {}) {
 }
 
 module.exports = {
+  buildApifyActorRequest,
   buildScore,
   fetchApifySignals,
   getApifySignalKey,
