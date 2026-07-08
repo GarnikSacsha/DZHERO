@@ -247,7 +247,18 @@ function buildTikTokInput({ inputValue, inputType, limit, downloadVideo }) {
   return input;
 }
 
-async function fetchApifySignals({ token, platform, inputType, inputValue, limit = 5, downloadVideo = false, workspaceId, market, createId }) {
+async function fetchApifySignals(options = {}) {
+  const {
+    token,
+    platform,
+    workspaceId,
+    market,
+    createId,
+  } = options;
+  const inputType = options.inputType || options.mode || 'search';
+  const inputValue = options.inputValue ?? options.input ?? '';
+  const downloadVideo = options.downloadVideo ?? options.downloadVideos ?? false;
+  const limit = options.limit ?? 5;
   const boundedLimit = Math.min(Math.max(Number(limit || 5), 1), 30);
   if (platform === 'instagram') {
     const items = await runApifyActor({
