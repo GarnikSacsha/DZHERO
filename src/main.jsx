@@ -777,6 +777,34 @@ function App() {
         : 'YouTube Signals вже були в стрічці, дублі не додавались.');
     return payload;
   };
+  const importApifySignals = async ({ platform, inputType, inputValue, limit, downloadVideo }) => {
+    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/signals/apify/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform,
+        inputType,
+        inputValue,
+        limit,
+        downloadVideo,
+        market: market === 'all' ? 'global' : market,
+      }),
+    });
+    if (!response.ok) throw new Error(await readApiError(response, 'apify_import_failed'));
+    const payload = await response.json();
+    const incomingReels = (payload.reels || []).map((reel) => ({
+      ...reel,
+      handle: reel.handle || reel.sourceHandle || `@${platform}`,
+    }));
+    setData((current) => {
+      const incomingIds = new Set(incomingReels.map((reel) => reel.id));
+      return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
+    });
+    notify(payload.importedCount
+      ? `${platform === 'instagram' ? 'Instagram' : 'TikTok'} Signals: +${payload.importedCount}.`
+      : `Сигнали вже були в банку: ${payload.reusedCount || incomingReels.length}.`);
+    return payload;
+  };
   const pushIdeaToPlan = (idea) => {
     setData((current) => ({ ...current, plans: [[idea.title, idea.source, 'Відібрано'], ...current.plans] }));
     notify('Ідею перенесено в контент-план');
@@ -837,7 +865,7 @@ function App() {
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
+        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && (
@@ -2964,7 +2992,7 @@ function getSignalSourceGroup(reel = {}) {
   return 'bank';
 }
 
-function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onPullYouTubePopular, onAdapt, setPage }) {
+function ViralBank({ reels, competitors = [], market, notify, openModal, onImportUrl, onImportApifySignals, onPullYouTubePopular, onAdapt, setPage }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
@@ -2974,6 +3002,7 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
   const [youtubeCategory, setYoutubeCategory] = useState('');
   const [isPullingYoutube, setIsPullingYoutube] = useState(false);
+  const [apifyModalOpen, setApifyModalOpen] = useState(false);
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
   const sourceTabs = [
@@ -2991,9 +3020,12 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   }, { all: 0, youtube: 0, instagram: 0, tiktok: 0, website: 0 });
   const filteredReels = reels
     .filter((reel) => sourceFilter === 'all' || getSignalSourceGroup(reel) === sourceFilter)
-    .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${reel.status.join(' ')}`.toLowerCase().includes(query.toLowerCase()))
+    .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${(reel.status || []).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
+      if (sort === 'likes') return parseMetric(b.likes) - parseMetric(a.likes);
+      if (sort === 'comments') return parseMetric(b.comments) - parseMetric(a.comments);
+      if (sort === 'newest') return new Date(b.createdAt || b.publishedAt || b.importedMetadata?.publishedAt || 0) - new Date(a.createdAt || a.publishedAt || a.importedMetadata?.publishedAt || 0);
       return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
     });
   const openManualImport = () => openModal({ type: 'reel', url: pastedReelUrl });
@@ -3055,23 +3087,30 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
   };
   const openPreview = (reel) => {
     setPreviewReel(reel);
-    setIsPreviewPlayerOpen(false);
   };
   const closePreview = () => {
     setPreviewReel(null);
   };
+  const previewImage = getReelPreviewImage(previewReel);
+  const previewVideoSource = getReelVideoSource(previewReel);
 
   return (
     <section className="page page-signals">
       <PageTitle
         title="Сигнали"
         subtitle="Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд."
-        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button className="dark" onClick={() => openModal('reel')}><Plus size={16} />Додати сигнал</button></>}
+        actions={<><button onClick={exportCsv}><Download size={16} />Експорт</button><button className="dark" onClick={() => setApifyModalOpen(true)}><Plus size={16} />Додати сигнал</button></>}
       />
       <div className="search-row">
         <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або посилання на TikTok, Reels, Shorts чи сайт..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Всі ринки' : 'Обраний ринок'}</option></select>
-        <select value={sort} onChange={(event) => setSort(event.target.value)}><option value="score">За оцінкою</option><option value="views">За переглядами</option></select>
+        <select value={sort} onChange={(event) => setSort(event.target.value)}>
+          <option value="score">За оцінкою</option>
+          <option value="views">За переглядами</option>
+          <option value="likes">За лайками</option>
+          <option value="comments">За коментарями</option>
+          <option value="newest">Нові</option>
+        </select>
       </div>
       <div className="signal-source-tabs" aria-label="Фільтр джерел сигналів">
         {sourceTabs.map(([value, label]) => (
@@ -3171,24 +3210,35 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
           </div>
         </aside>
       </div>
+      {apifyModalOpen && (
+        <ApifySignalImportModal
+          onClose={() => setApifyModalOpen(false)}
+          onImport={onImportApifySignals}
+          notify={notify}
+        />
+      )}
       {previewReel && (
         <div className="video-preview-backdrop" onClick={closePreview}>
           <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
             <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
               <X size={16} />
             </button>
-            <div
-              className={`video-preview-frame market-${previewReel.market} ${getReelPreviewImage(previewReel) ? 'has-media' : ''}`}
-              style={getReelPreviewImage(previewReel) ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${getReelPreviewImage(previewReel)}")` } : undefined}
-            >
-              <span className="video-preview-play" aria-hidden="true" />
-              <strong>{previewReel.handle}</strong>
-              {getSignalSourceUrl(previewReel) && (
-                <a className="video-preview-play-here" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">
-                  Відкрити відео
-                </a>
-              )}
-            </div>
+            {previewVideoSource ? (
+              <video className="signal-preview-video" src={previewVideoSource} poster={previewImage} controls playsInline />
+            ) : (
+              <div
+                className={`video-preview-frame market-${previewReel.market} ${previewImage ? 'has-media' : ''}`}
+                style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${previewImage}")` } : undefined}
+              >
+                <span className="video-preview-play" aria-hidden="true" />
+                <strong>{previewReel.handle}</strong>
+                {getSignalSourceUrl(previewReel) && (
+                  <a className="video-preview-play-here" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">
+                    Відкрити відео
+                  </a>
+                )}
+              </div>
+            )}
             <div>
               <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
               <h3>{previewReel.title}</h3>
@@ -3202,6 +3252,91 @@ function ViralBank({ reels, competitors = [], market, notify, openModal, onImpor
         </div>
       )}
     </section>
+  );
+}
+
+function ApifySignalImportModal({ onClose, onImport, notify }) {
+  const [platform, setPlatform] = useState('instagram');
+  const [inputType, setInputType] = useState('profile');
+  const [inputValue, setInputValue] = useState('');
+  const [limit, setLimit] = useState(5);
+  const [downloadVideo, setDownloadVideo] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submit = async () => {
+    if (!inputValue.trim() || isSubmitting) return;
+    if (!onImport) {
+      notify('Apify import is not connected yet.');
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      await onImport({ platform, inputType, inputValue: inputValue.trim(), limit, downloadVideo });
+      onClose();
+    } catch (error) {
+      notify(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  return (
+    <div className="quick-modal-overlay" onClick={onClose}>
+      <div className="quick-modal apify-signal-modal" onClick={(event) => event.stopPropagation()}>
+        <button className="modal-close" type="button" onClick={onClose}>×</button>
+        <h3>Підтягнути сигнали з Apify</h3>
+        <p>Джеро збере нові Reels або TikTok, збереже їх у банк і не спише імпорт за дублікати.</p>
+        <div className="manual-reel-grid">
+          <label>
+            <span>Платформа</span>
+            <select value={platform} onChange={(event) => {
+              const nextPlatform = event.target.value;
+              setPlatform(nextPlatform);
+              setInputType(nextPlatform === 'instagram' ? 'profile' : 'hashtag');
+            }}>
+              <option value="instagram">Instagram</option>
+              <option value="tiktok">TikTok</option>
+            </select>
+          </label>
+          <label>
+            <span>Тип</span>
+            <select value={inputType} onChange={(event) => setInputType(event.target.value)}>
+              <option value="profile">Профіль</option>
+              <option value="url">URL відео</option>
+              <option value="hashtag">Hashtag</option>
+              <option value="search">Пошук</option>
+            </select>
+          </label>
+          <label className="wide">
+            <span>Значення</span>
+            <input
+              value={inputValue}
+              onChange={(event) => setInputValue(event.target.value)}
+              onKeyDown={(event) => event.key === 'Enter' && submit()}
+              placeholder={platform === 'instagram' ? 'https://www.instagram.com/humansofny/' : 'claude або @maverickgpt'}
+            />
+          </label>
+          <label>
+            <span>Ліміт</span>
+            <select value={limit} onChange={(event) => setLimit(Number(event.target.value))}>
+              <option value={5}>5</option>
+              <option value={10}>10</option>
+              <option value={30}>30</option>
+            </select>
+          </label>
+          {platform === 'tiktok' && (
+            <label className="wide checkbox-row">
+              <input type="checkbox" checked={downloadVideo} onChange={(event) => setDownloadVideo(event.target.checked)} />
+              <span>Завантажити відео для внутрішнього плеєра</span>
+            </label>
+          )}
+        </div>
+        <div className="quick-modal-actions">
+          <button type="button" onClick={onClose}>Скасувати</button>
+          <button className="dark" type="button" onClick={submit} disabled={isSubmitting || !inputValue.trim()}>
+            <Download size={16} />{isSubmitting ? 'Імпортуємо...' : 'Імпортувати'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -3774,6 +3909,14 @@ function getReelPreviewImage(reel) {
   return reel?.image
     || reel?.importedMetadata?.image
     || reel?.importedMetadata?.youtube?.thumbnailUrl
+    || '';
+}
+
+function getReelVideoSource(reel) {
+  return reel?.videoUrl
+    || reel?.importedMetadata?.videoUrl
+    || reel?.importedMetadata?.mediaUrls?.[0]
+    || reel?.importedMetadata?.apify?.mediaUrls?.[0]
     || '';
 }
 

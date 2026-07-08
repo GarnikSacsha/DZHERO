@@ -12,6 +12,10 @@ const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const { shouldRetryPopularWithoutCategory } = require('./services/youtubePopularFallback.cjs');
+const {
+  fetchApifySignals,
+  getApifySignalKey,
+} = require('./services/apifySignalProvider');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -67,6 +71,7 @@ const GOOGLE_TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googlea
 const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidconnect.googleapis.com/v1/userinfo';
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
+const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || '';
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || '';
 const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/tiktok/callback`;
@@ -325,6 +330,7 @@ app.use('/api/data-deletion/request', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/youtube/popular', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/signals/apify/import', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/remix/generate', expensiveLimiter);
@@ -438,6 +444,15 @@ async function ensureDbFile() {
 
 function createId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getExistingReelByApifyKey(db, workspaceId) {
+  const map = new Map();
+  for (const reel of db.reels.filter((item) => item.workspaceId === workspaceId)) {
+    const key = getApifySignalKey(reel.importedMetadata || {});
+    if (key && !map.has(key)) map.set(key, reel);
+  }
+  return map;
 }
 
 function normalizeContentPlanPosts(posts) {
@@ -3800,6 +3815,114 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       importedCount: importedReels.length,
       reusedCount: returnedReels.length - importedReels.length,
       skipped: metadataItems.length - returnedReels.length,
+      billing,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    if (!APIFY_TOKEN) {
+      res.status(501).json({
+        error: 'apify_not_configured',
+        message: 'Set APIFY_TOKEN in .env before importing Instagram or TikTok signals.',
+      });
+      return;
+    }
+
+    const platform = String(req.body.platform || '').toLowerCase();
+    const inputType = String(req.body.inputType || 'search').toLowerCase();
+    const inputValue = String(req.body.inputValue || '').trim();
+    const requestedLimit = Math.min(Math.max(Number(req.body.limit || 5), 1), 30);
+    if (!['instagram', 'tiktok'].includes(platform) || !inputValue) {
+      res.status(400).json({
+        error: 'unsupported_apify_import',
+        message: 'Choose Instagram or TikTok and provide an input value.',
+      });
+      return;
+    }
+
+    const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
+    const maxResults = getAllowedBatchSize({
+      requested: requestedLimit,
+      limit: entitlements.plan.limits.reelImports,
+      used: entitlements.usage.reelImports,
+      unlimited: entitlements.unlimited,
+    });
+    if (maxResults <= 0) {
+      res.status(402).json({
+        error: 'usage_limit_reached',
+        metric: 'reelImports',
+        limit: entitlements.plan.limits.reelImports,
+        used: entitlements.usage.reelImports,
+      });
+      return;
+    }
+
+    const mappedReels = await fetchApifySignals({
+      token: APIFY_TOKEN,
+      platform,
+      inputType,
+      inputValue,
+      limit: maxResults,
+      downloadVideo: Boolean(req.body.downloadVideo),
+      workspaceId: req.params.workspaceId,
+      market: req.body.market || 'global',
+      createId,
+    });
+
+    const existingByKey = getExistingReelByApifyKey(db, req.params.workspaceId);
+    const importedReels = [];
+    const returnedReels = [];
+    for (const reel of mappedReels) {
+      const key = getApifySignalKey(reel.importedMetadata || {});
+      if (key && existingByKey.has(key)) {
+        const existing = existingByKey.get(key);
+        existing.importedMetadata = {
+          ...(existing.importedMetadata || {}),
+          ...(reel.importedMetadata || {}),
+          apify: reel.importedMetadata?.apify || existing.importedMetadata?.apify,
+        };
+        existing.videoUrl = existing.videoUrl || reel.videoUrl || '';
+        existing.image = existing.image || reel.image || '';
+        existing.views = reel.views || existing.views;
+        existing.likes = reel.likes || existing.likes;
+        existing.comments = reel.comments || existing.comments;
+        existing.shares = reel.shares || existing.shares || 0;
+        existing.saves = reel.saves || existing.saves || 0;
+        existing.updatedAt = new Date().toISOString();
+        returnedReels.push(existing);
+        continue;
+      }
+      const analysis = analyzeReel(reel, workspace);
+      reel.score = Math.max(reel.score || 0, analysis.score);
+      reel.analysis = analysis;
+      importedReels.push(reel);
+      returnedReels.push(reel);
+      if (key) existingByKey.set(key, reel);
+    }
+
+    db.reels.unshift(...importedReels);
+    if (importedReels.length) {
+      createSyncJob(db, req.params.workspaceId, 'apify_signals_imported', {
+        platform,
+        inputType,
+        inputValue,
+        importedCount: importedReels.length,
+      });
+      incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports, importedReels.length);
+    }
+    const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
+    await writeDb(db);
+    res.status(201).json({
+      reels: returnedReels,
+      importedCount: importedReels.length,
+      reusedCount: returnedReels.length - importedReels.length,
       billing,
     });
   } catch (error) {
