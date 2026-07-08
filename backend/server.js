@@ -16,6 +16,13 @@ const {
   fetchApifySignals,
   getApifySignalKey,
 } = require('./services/apifySignalProvider');
+const {
+  defaultDiscoverySettings,
+  buildDiscoveryInputs,
+  isDiscoveryDue,
+  getDailyAutomaticSpend,
+  executeAutomaticDiscovery,
+} = require('./services/automaticSignalDiscovery');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -72,6 +79,10 @@ const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidco
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
+const AUTOMATIC_DISCOVERY_ENABLED = process.env.AUTOMATIC_DISCOVERY_ENABLED !== 'false';
+const AUTOMATIC_DISCOVERY_TICK_MS = Number.isFinite(Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
+  ? Math.max(1000, Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
+  : 60000;
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || '';
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || '';
 const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/tiktok/callback`;
@@ -202,6 +213,13 @@ const PLAN_CATALOG = [
   },
 ];
 
+const DISCOVERY_PLATFORM_NAMES = ['instagram', 'tiktok'];
+const DISCOVERY_SETTINGS_BUDGET_MIN_USD = 0.1;
+const DISCOVERY_SETTINGS_BUDGET_MAX_USD = 0.8;
+const DISCOVERY_VIRAL_SCORE_MIN = 55;
+const DISCOVERY_VIRAL_SCORE_MAX = 96;
+const DISCOVERY_STATUS_RUN_LIMIT = 10;
+
 const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'Tik - Tok', 'Video', 'Stories'];
 const CONTENT_FORMAT_ALIASES = {
   'short-form': 'Video',
@@ -328,6 +346,7 @@ app.use('/api/auth/email', authLimiter);
 app.use('/api/auth/demo', authLimiter);
 app.use('/api/data-deletion/request', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/signals/discovery/run', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/import-url', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/reels/youtube/popular', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/signals/apify/import', expensiveLimiter);
@@ -357,6 +376,7 @@ function normalizeDbShape(db = {}) {
   db.ideas ||= [];
   db.leads ||= [];
   db.syncJobs ||= [];
+  db.discoveryRuns ||= [];
   db.sources ||= [];
   db.metaStates ||= [];
   db.instagramAccounts ||= [];
@@ -373,6 +393,9 @@ function normalizeDbShape(db = {}) {
   db.demoSessions ||= [];
   return db;
 }
+
+let automaticDiscoveryTickInFlight = false;
+const automaticDiscoveryWorkspacesInFlight = new Set();
 
 async function readSeedDb() {
   const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
@@ -453,6 +476,349 @@ function getExistingReelByApifyKey(db, workspaceId) {
     if (key && !map.has(key)) map.set(key, reel);
   }
   return map;
+}
+
+function clampAutomaticDiscoveryBudgetUsd(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(
+    DISCOVERY_SETTINGS_BUDGET_MAX_USD,
+    Math.max(DISCOVERY_SETTINGS_BUDGET_MIN_USD, Math.round(numeric * 100) / 100)
+  );
+}
+
+function clampAutomaticDiscoveryViralScore(value, fallback) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(DISCOVERY_VIRAL_SCORE_MAX, Math.max(DISCOVERY_VIRAL_SCORE_MIN, Math.round(numeric)));
+}
+
+function normalizeDiscoveryPlatforms(platforms, fallback = DISCOVERY_PLATFORM_NAMES) {
+  const values = Array.isArray(platforms) ? platforms : fallback;
+  const normalized = Array.from(new Set(values.map((value) => String(value || '').trim().toLowerCase())))
+    .filter((value) => DISCOVERY_PLATFORM_NAMES.includes(value));
+  return normalized.length ? normalized : [...fallback];
+}
+
+function getWorkspaceDiscoverySettingsSnapshot(workspace = {}, now = new Date()) {
+  const defaults = defaultDiscoverySettings(now);
+  const savedSettings = workspace.discoverySettings || workspace.automaticDiscovery || workspace.signalDiscovery || {};
+  return {
+    ...defaults,
+    ...savedSettings,
+    enabled: savedSettings.enabled !== false,
+    dailyBudgetUsd: clampAutomaticDiscoveryBudgetUsd(savedSettings.dailyBudgetUsd, defaults.dailyBudgetUsd),
+    viralScoreThreshold: clampAutomaticDiscoveryViralScore(savedSettings.viralScoreThreshold, defaults.viralScoreThreshold),
+    platforms: normalizeDiscoveryPlatforms(savedSettings.platforms, defaults.platforms),
+    laneIntervalsMs: {
+      ...(defaults.laneIntervalsMs || {}),
+      ...(savedSettings.laneIntervalsMs || {}),
+    },
+    lastRunAt: {
+      ...(defaults.lastRunAt || {}),
+      ...(savedSettings.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...(defaults.nextRunAt || {}),
+      ...(savedSettings.nextRunAt || {}),
+    },
+    updatedAt: savedSettings.updatedAt || defaults.updatedAt,
+  };
+}
+
+function listAutomaticDiscoveryRuns(db = {}, workspaceId) {
+  return (Array.isArray(db.discoveryRuns) ? db.discoveryRuns : [])
+    .filter((run) => run && run.workspaceId === workspaceId && run.lane === 'automatic');
+}
+
+function sanitizeDiscoveryRun(run = {}) {
+  return {
+    id: run.id,
+    lane: run.lane,
+    platform: run.platform,
+    dayKey: run.dayKey,
+    status: run.status,
+    budgetUsd: Number.isFinite(Number(run.budgetUsd)) ? Number(run.budgetUsd) : null,
+    spentUsdBefore: Number.isFinite(Number(run.spentUsdBefore)) ? Number(run.spentUsdBefore) : 0,
+    estimatedCostUsd: Number.isFinite(Number(run.estimatedCostUsd)) ? Number(run.estimatedCostUsd) : 0,
+    actualCostUsd: Number.isFinite(Number(run.actualCostUsd)) ? Number(run.actualCostUsd) : 0,
+    attemptedCallCount: Number.isFinite(Number(run.attemptedCallCount)) ? Number(run.attemptedCallCount) : 0,
+    requestedCount: Number.isFinite(Number(run.requestedCount)) ? Number(run.requestedCount) : 0,
+    returnedCount: Number.isFinite(Number(run.returnedCount)) ? Number(run.returnedCount) : 0,
+    acceptedCount: Number.isFinite(Number(run.acceptedCount)) ? Number(run.acceptedCount) : 0,
+    duplicateCount: Number.isFinite(Number(run.duplicateCount)) ? Number(run.duplicateCount) : 0,
+    rejectedCount: Number.isFinite(Number(run.rejectedCount)) ? Number(run.rejectedCount) : 0,
+    errorCount: Number.isFinite(Number(run.errorCount)) ? Number(run.errorCount) : 0,
+    errors: Array.isArray(run.errors) ? run.errors : [],
+    claimedAt: run.claimedAt || null,
+    startedAt: run.startedAt || null,
+    completedAt: run.completedAt || null,
+    updatedAt: run.updatedAt || null,
+  };
+}
+
+function getLatestTimestamp(values = []) {
+  const timestamps = values
+    .map((value) => Date.parse(value || ''))
+    .filter((value) => Number.isFinite(value));
+  if (!timestamps.length) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function getEarliestTimestamp(values = []) {
+  const timestamps = values
+    .map((value) => Date.parse(value || ''))
+    .filter((value) => Number.isFinite(value));
+  if (!timestamps.length) return null;
+  return new Date(Math.min(...timestamps)).toISOString();
+}
+
+function getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd }) {
+  if (activeRun) return 'running';
+  if (settings.enabled === false) return 'paused';
+  if (dailySpendUsd >= settings.dailyBudgetUsd) return 'budget_reached';
+  if (latestRun?.status === 'blocked_budget') return 'budget_reached';
+  if (latestRun?.status === 'failed') return 'failed';
+  if (latestRun?.status === 'completed') return 'completed';
+  return 'idle';
+}
+
+function getDiscoveryStatusLabel(code) {
+  const labels = {
+    idle: 'Idle',
+    running: 'Running',
+    paused: 'Paused',
+    completed: 'Completed',
+    failed: 'Needs attention',
+    budget_reached: 'Budget reached',
+  };
+  return labels[code] || 'Idle';
+}
+
+function buildDiscoveryStatusResponse(db = {}, workspaceId, now = new Date()) {
+  const workspace = db.workspaces.find((item) => item.id === workspaceId) || {};
+  const settings = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
+  const runs = listAutomaticDiscoveryRuns(db, workspaceId);
+  const activeRun = runs.find((run) => run.status === 'running') || null;
+  const latestRun = runs[0] || null;
+  const dailySpendUsd = getDailyAutomaticSpend(db.discoveryRuns, workspaceId, now);
+  const inputs = buildDiscoveryInputs(db, workspaceId);
+  const nextRunAt = getEarliestTimestamp(Object.values(settings.nextRunAt || {}));
+  const lastScheduledRunAt = getLatestTimestamp(Object.values(settings.lastRunAt || {}));
+  const statusCode = getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd });
+
+  return {
+    settings: {
+      enabled: settings.enabled,
+      dailyBudgetUsd: settings.dailyBudgetUsd,
+      viralScoreThreshold: settings.viralScoreThreshold,
+      platforms: [...settings.platforms],
+      lastRunAt: { ...(settings.lastRunAt || {}) },
+      nextRunAt: { ...(settings.nextRunAt || {}) },
+      updatedAt: settings.updatedAt,
+    },
+    status: {
+      code: statusCode,
+      label: getDiscoveryStatusLabel(statusCode),
+      running: Boolean(activeRun),
+      tokenConfigured: Boolean(APIFY_TOKEN),
+      workerEnabled: AUTOMATIC_DISCOVERY_ENABLED,
+      workerTickMs: AUTOMATIC_DISCOVERY_TICK_MS,
+      dailySpendUsd,
+      dailyBudgetUsd: settings.dailyBudgetUsd,
+      remainingBudgetUsd: Math.max(0, Math.round((settings.dailyBudgetUsd - dailySpendUsd) * 100) / 100),
+      lastRunAt: latestRun?.completedAt || latestRun?.updatedAt || lastScheduledRunAt,
+      nextRunAt,
+      activeRun: activeRun ? sanitizeDiscoveryRun(activeRun) : null,
+      latestRun: latestRun ? sanitizeDiscoveryRun(latestRun) : null,
+      canRunNow: Boolean(APIFY_TOKEN) && !activeRun && dailySpendUsd < settings.dailyBudgetUsd,
+    },
+    inputs: Object.fromEntries(
+      Object.entries(inputs).map(([platform, platformInputs]) => [
+        platform,
+        Object.fromEntries(
+          Object.entries(platformInputs || {}).map(([lane, values]) => [lane, Array.isArray(values) ? values.length : 0])
+        ),
+      ])
+    ),
+    runs: runs.slice(0, DISCOVERY_STATUS_RUN_LIMIT).map(sanitizeDiscoveryRun),
+  };
+}
+
+function createPersistedDiscoverySettings(workspace = {}, changes = {}, now = new Date()) {
+  const current = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
+  return {
+    ...(workspace.discoverySettings || {}),
+    enabled: Object.prototype.hasOwnProperty.call(changes, 'enabled') ? changes.enabled : current.enabled,
+    dailyBudgetUsd: Object.prototype.hasOwnProperty.call(changes, 'dailyBudgetUsd')
+      ? changes.dailyBudgetUsd
+      : current.dailyBudgetUsd,
+    viralScoreThreshold: Object.prototype.hasOwnProperty.call(changes, 'viralScoreThreshold')
+      ? changes.viralScoreThreshold
+      : current.viralScoreThreshold,
+    platforms: Object.prototype.hasOwnProperty.call(changes, 'platforms')
+      ? [...changes.platforms]
+      : [...current.platforms],
+    laneIntervalsMs: {
+      ...(current.laneIntervalsMs || {}),
+    },
+    lastRunAt: {
+      ...(current.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...(current.nextRunAt || {}),
+    },
+    updatedAt: new Date(now).toISOString(),
+  };
+}
+
+function parseDiscoverySettingsPatch(body = {}) {
+  const changes = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, 'enabled')) {
+    if (typeof body.enabled !== 'boolean') {
+      const error = new Error('enabled_must_be_boolean');
+      error.status = 400;
+      throw error;
+    }
+    changes.enabled = body.enabled;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'dailyBudgetUsd')) {
+    const numeric = Number(body.dailyBudgetUsd);
+    if (!Number.isFinite(numeric) || numeric < DISCOVERY_SETTINGS_BUDGET_MIN_USD || numeric > DISCOVERY_SETTINGS_BUDGET_MAX_USD) {
+      const error = new Error('daily_budget_out_of_range');
+      error.status = 400;
+      throw error;
+    }
+    changes.dailyBudgetUsd = Math.round(numeric * 100) / 100;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'viralScoreThreshold')) {
+    const numeric = Number(body.viralScoreThreshold);
+    if (!Number.isFinite(numeric) || numeric < DISCOVERY_VIRAL_SCORE_MIN || numeric > DISCOVERY_VIRAL_SCORE_MAX) {
+      const error = new Error('viral_score_threshold_out_of_range');
+      error.status = 400;
+      throw error;
+    }
+    changes.viralScoreThreshold = Math.round(numeric);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, 'platforms')) {
+    if (!Array.isArray(body.platforms)) {
+      const error = new Error('platforms_must_be_array');
+      error.status = 400;
+      throw error;
+    }
+    const platforms = normalizeDiscoveryPlatforms(body.platforms, []);
+    if (!platforms.length) {
+      const error = new Error('platform_required');
+      error.status = 400;
+      throw error;
+    }
+    changes.platforms = platforms;
+  }
+
+  return changes;
+}
+
+function shouldRunAutomaticDiscoveryTick(db = {}, workspaceId, now = new Date()) {
+  if (!APIFY_TOKEN) return false;
+  if (automaticDiscoveryWorkspacesInFlight.has(workspaceId)) return false;
+  const workspace = db.workspaces.find((item) => item.id === workspaceId);
+  if (!workspace) return false;
+  const settings = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
+  if (settings.enabled === false) return false;
+  const runs = listAutomaticDiscoveryRuns(db, workspaceId);
+  if (runs.some((run) => run.status === 'running')) return false;
+  const dailySpendUsd = getDailyAutomaticSpend(db.discoveryRuns, workspaceId, now);
+  if (dailySpendUsd >= settings.dailyBudgetUsd) return false;
+  return ['accounts', 'keywords', 'hashtags', 'trends'].some((lane) => isDiscoveryDue(settings, lane, now));
+}
+
+async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
+  if (!APIFY_TOKEN) {
+    const error = new Error('apify_not_configured');
+    error.status = 501;
+    error.payload = {
+      error: 'apify_not_configured',
+      message: 'Set APIFY_TOKEN in .env before running automatic discovery.',
+    };
+    throw error;
+  }
+
+  if (automaticDiscoveryWorkspacesInFlight.has(workspaceId)) {
+    return { run: null, acceptedSignals: [], updatedSignals: [] };
+  }
+
+  automaticDiscoveryWorkspacesInFlight.add(workspaceId);
+  try {
+    const db = await readDb();
+    const workspace = db.workspaces.find((item) => item.id === workspaceId);
+    if (!workspace) {
+      const error = new Error('workspace_not_found');
+      error.status = 404;
+      error.payload = { error: 'workspace_not_found' };
+      throw error;
+    }
+
+    let persistedClaim = false;
+    const result = await executeAutomaticDiscovery({
+      state: db,
+      workspaceId,
+      now: options.now || new Date(),
+      force: Boolean(options.force),
+      token: APIFY_TOKEN,
+      fetchSignals: async (call) => {
+        if (!persistedClaim) {
+          persistedClaim = true;
+          await writeDb(db);
+        }
+        return fetchApifySignals(call);
+      },
+    });
+
+    if (!persistedClaim && result.run) {
+      persistedClaim = true;
+    }
+    if (result.run) {
+      await writeDb(db);
+    }
+
+    return result;
+  } finally {
+    automaticDiscoveryWorkspacesInFlight.delete(workspaceId);
+  }
+}
+
+async function runAutomaticDiscoveryWorkerTick() {
+  if (!AUTOMATIC_DISCOVERY_ENABLED || automaticDiscoveryTickInFlight) return;
+  automaticDiscoveryTickInFlight = true;
+  try {
+    const db = await readDb();
+    const now = new Date();
+    const workspaceIds = db.workspaces
+      .map((workspace) => workspace.id)
+      .filter((workspaceId) => shouldRunAutomaticDiscoveryTick(db, workspaceId, now));
+
+    for (const workspaceId of workspaceIds) {
+      try {
+        await runAutomaticDiscoveryForWorkspace(workspaceId, { now, force: false });
+      } catch (error) {
+        console.error('[AutomaticDiscoveryWorker]', workspaceId, error);
+      }
+    }
+  } finally {
+    automaticDiscoveryTickInFlight = false;
+  }
+}
+
+function startAutomaticDiscoveryWorker() {
+  if (!AUTOMATIC_DISCOVERY_ENABLED) return;
+  const timer = setInterval(() => {
+    void runAutomaticDiscoveryWorkerTick();
+  }, AUTOMATIC_DISCOVERY_TICK_MS);
+  timer.unref();
 }
 
 function normalizeContentPlanPosts(posts) {
@@ -3697,6 +4063,70 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   res.json({ reels });
 });
 
+app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {
+  const db = await readDb();
+  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  res.json(buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date()));
+});
+
+app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    const changes = parseDiscoverySettingsPatch(req.body || {});
+    workspace.discoverySettings = createPersistedDiscoverySettings(workspace, changes, new Date());
+    await writeDb(db);
+    res.json(buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date()));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+    const currentStatus = buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date());
+    if (currentStatus.status.activeRun) {
+      res.status(409).json({
+        error: 'automatic_discovery_running',
+        message: 'Automatic discovery is already running for this workspace.',
+        run: currentStatus.status.activeRun,
+      });
+      return;
+    }
+
+    const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, { force: true });
+    if (!result.run) {
+      const refreshed = buildDiscoveryStatusResponse(await readDb(), req.params.workspaceId, new Date());
+      res.status(409).json({
+        error: 'automatic_discovery_running',
+        message: 'Automatic discovery is already running for this workspace.',
+        run: refreshed.status.activeRun,
+      });
+      return;
+    }
+
+    if (result.run.status === 'blocked_budget') {
+      res.status(429).json({
+        error: 'automatic_budget_reached',
+        message: 'Automatic discovery metadata budget is exhausted for this UTC day.',
+        run: sanitizeDiscoveryRun(result.run),
+      });
+      return;
+    }
+
+    res.status(201).json({
+      run: sanitizeDiscoveryRun(result.run),
+      acceptedSignals: result.acceptedSignals.length,
+      updatedSignals: result.updatedSignals.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, next) => {
   try {
     const db = await readDb();
@@ -4500,4 +4930,5 @@ app.get(/^(?!\/api).*/, (req, res) => {
 
 app.listen(PORT, HOST, () => {
   console.log(`Dzhero listening on http://${HOST}:${PORT}`);
+  startAutomaticDiscoveryWorker();
 });
