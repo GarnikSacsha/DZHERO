@@ -133,20 +133,20 @@ function collectExistingReelKeys(state = {}, workspaceId) {
   return keys;
 }
 
-function collectAccountCandidates(state = {}, workspaceId, existingKeys) {
+function collectAccountCandidates(state = {}, workspaceId) {
   const candidates = [];
   for (const source of Array.isArray(state.sources) ? state.sources : []) {
     if (source?.workspaceId !== workspaceId) continue;
     const handle = source.handle || source.username || source.sourceHandle || source.url || '';
     const normalized = normalizeHandle(handle);
-    if (normalized && !existingKeys.has(normalized)) {
+    if (normalized) {
       candidates.push(normalized);
     }
   }
   for (const competitor of Array.isArray(state.competitors) ? state.competitors : []) {
     if (competitor?.workspaceId !== workspaceId) continue;
     const normalized = normalizeHandle(competitor.handle || competitor.username || competitor.url || '');
-    if (normalized && !existingKeys.has(normalized)) {
+    if (normalized) {
       candidates.push(normalized);
     }
   }
@@ -279,8 +279,7 @@ function defaultDiscoverySettings(now = new Date()) {
 
 function buildDiscoveryInputs(state = {}, workspaceId) {
   const workspace = getWorkspace(state, workspaceId) || {};
-  const existingKeys = collectExistingReelKeys(state, workspaceId);
-  const accounts = collectAccountCandidates(state, workspaceId, existingKeys);
+  const accounts = collectAccountCandidates(state, workspaceId);
   const keywords = collectKeywordCandidates(workspace, state, workspaceId);
   const hashtags = collectHashtagCandidates(workspace, state, workspaceId);
 

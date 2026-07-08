@@ -161,7 +161,7 @@ for (const platform of ['instagram', 'tiktok']) {
 assert.ok(inputs.instagram.accounts.includes('@fitlab'));
 assert.ok(inputs.instagram.accounts.includes('@pulseclub'));
 assert.ok(inputs.instagram.accounts.includes('@stretchflow'));
-assert.ok(!inputs.instagram.accounts.includes('@coach_mila'));
+assert.ok(inputs.instagram.accounts.includes('@coach_mila'));
 
 assert.ok(inputs.instagram.keywords.some((value) => value.includes('fitness')));
 assert.ok(inputs.instagram.hashtags.every((value) => value.startsWith('#')));
@@ -169,6 +169,7 @@ assert.ok(inputs.instagram.trends.some((value) => value.includes('pilates')));
 
 assert.ok(inputs.tiktok.accounts.includes('@fitlab'));
 assert.ok(inputs.tiktok.accounts.includes('@reformer_daily'));
+assert.ok(inputs.tiktok.accounts.includes('@coach_mila'));
 assert.ok(inputs.tiktok.keywords.some((value) => value.includes('workout')));
 assert.ok(inputs.tiktok.hashtags.every((value) => value.startsWith('#')));
 assert.ok(inputs.tiktok.trends.some((value) => value.includes('ukraine')));
@@ -323,6 +324,11 @@ const duplicateCandidate = createMappedTikTokReel({
   mediaUrls: [],
 }, 'dup');
 
+const duplicateCandidateCopy = {
+  ...duplicateCandidate,
+  id: 'reel_duplicate_existing_copy',
+};
+
 const automaticState = {
   workspaces: [
     {
@@ -414,7 +420,7 @@ const createFetchSignalsStub = () => {
     }
 
     if (mode === 'search' && input === 'pilates') {
-      return [lowScoreCandidate, qualifyingMetadataCandidate, duplicateCandidate];
+      return [lowScoreCandidate, qualifyingMetadataCandidate, duplicateCandidate, duplicateCandidateCopy];
     }
 
     return [];
@@ -436,11 +442,12 @@ assert.equal(automaticResult.acceptedSignals.length, 1);
 assert.equal(automaticResult.updatedSignals.length, 1);
 assert.equal(automaticResult.run.status, 'completed');
 assert.equal(automaticResult.run.acceptedCount, 1);
-assert.equal(automaticResult.run.duplicateCount, 1);
+assert.equal(automaticResult.run.duplicateCount, 2);
 assert.equal(automaticResult.run.budgetUsd, 0.8);
 assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
 assert.equal(automaticState.workspaces[0].discoverySettings.lastRunAt.keywords, now.toISOString());
 assert.equal(automaticState.workspaces[0].discoverySettings.nextRunAt.keywords, twelveHoursLater.toISOString());
+assert.equal(automaticState.reels.length, 2);
 
 const [acceptedSignal] = automaticResult.acceptedSignals;
 assert.equal(acceptedSignal.videoUrl, 'https://cdn.example.com/winner.mp4');
