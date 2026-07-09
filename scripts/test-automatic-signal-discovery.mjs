@@ -483,6 +483,7 @@ const automaticResult = await executeAutomaticDiscovery({
   workspaceId: 'ws-1',
   token: 'test-token',
   now,
+  force: true,
   fetchSignals,
 });
 

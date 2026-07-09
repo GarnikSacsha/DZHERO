@@ -4520,6 +4520,8 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
       </div>
       {reels.map((reel, index) => {
         const previewImage = getReelPreviewImage(reel);
+        const viewsLabel = formatMetricDisplay(reel.views);
+        const likesLabel = formatMetricDisplay(reel.likes);
         const metaLine = [marketLabel(reel.market), getReelDurationLabel(reel), getReelPublishedLabel(reel)].filter(Boolean).join(' · ');
         return (
         <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
@@ -4532,14 +4534,14 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
               aria-label={`Відкрити прев'ю ${reel.title}`}
               style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${previewImage}")` } : undefined}
             >
-              <span>{reel.views}</span>
+              <span>{viewsLabel}</span>
               <i className="thumb-play" aria-hidden="true" />
             </button>
             <div><strong>{reel.title}</strong><small>{metaLine}</small></div>
           </div>
           <Score value={reel.score} />
-          <strong>{reel.views}</strong>
-          <span>{reel.likes}</span>
+          <strong>{viewsLabel}</strong>
+          <span>{likesLabel}</span>
           <span>{marketLabel(reel.market)}</span>
           <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s)} key={s}>{compactStatusLabel(s)}</em>)}</div>
           <button className="signal-adapt-button" type="button" onClick={() => onAdapt?.(reel)}>
@@ -7302,6 +7304,15 @@ function parseMetric(value) {
   if (normalized.includes('M')) return number * 1000000;
   if (normalized.includes('K')) return number * 1000;
   return number;
+}
+
+function formatMetricDisplay(value) {
+  const number = parseMetric(value);
+  if (!number) return '0';
+  if (number >= 1_000_000_000) return `${(number / 1_000_000_000).toFixed(number >= 10_000_000_000 ? 0 : 1).replace(/\.0$/, '')}B`;
+  if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(number >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
+  if (number >= 1_000) return `${(number / 1_000).toFixed(number >= 10_000 ? 0 : 1).replace(/\.0$/, '')}K`;
+  return String(Math.round(number));
 }
 
 function QuickModal({ type, onClose, onSubmit }) {
