@@ -3588,7 +3588,7 @@ function ViralBank({
             canRunAutomation={canRunAutomation}
             isLoading={automation?.isLoading}
             loadIssue={automation?.error}
-            onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}
+            onRefreshAutomation={onRefreshAutomation}
             onRunAutomation={onRunAutomation}
             onToggleAutomation={onToggleAutomation}
             onOpenAdvancedImport={() => setApifyModalOpen(true)}

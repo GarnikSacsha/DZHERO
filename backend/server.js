@@ -463,9 +463,9 @@ async function readDb() {
   return normalizeDbShape(JSON.parse(raw));
 }
 
-async function writeDb(db) {
+async function writeDbSnapshot(db) {
+  const normalized = normalizeDbShape(db);
   if (DATABASE_URL) {
-    await ensurePostgresState();
     await getPgPool().query(
       `
         UPDATE app_state
@@ -473,13 +473,65 @@ async function writeDb(db) {
             updated_at = now()
         WHERE key = $1
       `,
-      [APP_STATE_KEY, JSON.stringify(normalizeDbShape(db))]
+      [APP_STATE_KEY, JSON.stringify(normalized)]
     );
     return;
   }
 
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, `${JSON.stringify(normalizeDbShape(db), null, 2)}\n`, 'utf8');
+  await fs.writeFile(DB_PATH, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+}
+
+async function writeDb(db, { preserveAutomaticDiscovery = true } = {}) {
+  let nextDb = normalizeDbShape(db);
+  if (!preserveAutomaticDiscovery) {
+    await writeDbSnapshot(nextDb);
+    return;
+  }
+
+  if (DATABASE_URL) {
+    await ensurePostgresState();
+    const client = await getPgPool().connect();
+    try {
+      await client.query('BEGIN');
+      const result = await client.query(
+        'SELECT data FROM app_state WHERE key = $1 FOR UPDATE',
+        [APP_STATE_KEY]
+      );
+      const latestDb = normalizeDbShape(result.rows[0]?.data || {});
+      nextDb = mergeAutomaticDiscoveryWriteSnapshot(nextDb, latestDb);
+      await client.query(
+        `
+          UPDATE app_state
+          SET data = $2::jsonb,
+              updated_at = now()
+          WHERE key = $1
+        `,
+        [APP_STATE_KEY, JSON.stringify(nextDb)]
+      );
+      await client.query('COMMIT');
+      return;
+    } catch (error) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Keep the original persistence error.
+      }
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  await automaticDiscoveryFileMutex.run('app-state', async () => {
+    try {
+      const latestDb = await readDb();
+      nextDb = mergeAutomaticDiscoveryWriteSnapshot(nextDb, latestDb);
+    } catch {
+      // If the file does not exist yet, write the normalized snapshot below.
+    }
+    await writeDbSnapshot(nextDb);
+  });
 }
 
 async function ensureDbFile() {
@@ -519,7 +571,7 @@ async function withAutomaticDiscoveryStateLock(workspaceId, task) {
   return automaticDiscoveryFileMutex.run('app-state', async () => {
     const db = await readDb();
     const result = await task(db);
-    await writeDb(db);
+    await writeDbSnapshot(db);
     return result;
   });
 }
@@ -703,6 +755,42 @@ function mergeAutomaticDiscoveryResult(db = {}, snapshotDb = {}, workspaceId, re
   }
 
   return db;
+}
+
+function isAutomaticDiscoveryReel(reel = {}) {
+  const sourceStatus = String(reel.sourceStatus || reel.importedMetadata?.sourceStatus || '').toLowerCase();
+  const sourceTone = String(reel.importedMetadata?.source?.tone || reel.importedMetadata?.platform || '').toLowerCase();
+  if (sourceStatus.includes('apify')) return true;
+  if (reel.importedMetadata?.apify) return true;
+  return sourceTone === 'instagram' || sourceTone === 'tiktok';
+}
+
+function mergeAutomaticDiscoveryWriteSnapshot(outgoingDb = {}, latestDb = {}) {
+  const nextDb = normalizeDbShape(outgoingDb);
+  const latest = normalizeDbShape(latestDb);
+
+  const latestRuns = Array.isArray(latest.discoveryRuns) ? latest.discoveryRuns : [];
+  for (const run of latestRuns) {
+    if (run?.id) upsertAutomaticDiscoveryRun(nextDb, run);
+  }
+
+  const nextWorkspaces = Array.isArray(nextDb.workspaces) ? nextDb.workspaces : (nextDb.workspaces = []);
+  const latestWorkspaces = Array.isArray(latest.workspaces) ? latest.workspaces : [];
+  for (const latestWorkspace of latestWorkspaces) {
+    if (!latestWorkspace?.id || !latestWorkspace.discoverySettings) continue;
+    const workspace = nextWorkspaces.find((item) => item?.id === latestWorkspace.id);
+    if (workspace) {
+      workspace.discoverySettings = copyDiscoverySettings(latestWorkspace.discoverySettings);
+    }
+  }
+
+  const latestReels = Array.isArray(latest.reels) ? latest.reels : [];
+  for (const reel of latestReels) {
+    if (!reel?.workspaceId || !isAutomaticDiscoveryReel(reel)) continue;
+    mergeAutomaticDiscoveryReel(nextDb, reel.workspaceId, reel);
+  }
+
+  return nextDb;
 }
 
 function runAutomaticDiscoveryFetch(call = {}) {
