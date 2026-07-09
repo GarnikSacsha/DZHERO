@@ -3349,6 +3349,13 @@ function ViralBank({
   const isAutomationBusy = Boolean(automation?.isLoading || automation?.isRefreshing || automation?.isToggling || automation?.isRunning);
   const automationEnabled = discovery?.settings?.enabled !== false;
   const automationStatusText = automation?.error || discoveryState.detail;
+  const canRunAutomation = Boolean(
+    isAutomationReady
+    && !isAutomationBusy
+    && !discoveryStatus.running
+    && discoveryStatus.tokenConfigured !== false
+    && discoveryStatus.code !== 'budget_reached'
+  );
   const hasActiveFilters = Boolean(trimmedQuery || pastedReelUrl || sourceFilter !== 'all');
   const emptyState = deriveSignalsEmptyState({
     reelsCount: reels.length,
@@ -3366,15 +3373,8 @@ function ViralBank({
   const runNowLabel = discoveryStatus.code === 'budget_reached'
     ? 'Ліміт вичерпано'
     : automation?.isRunning || discoveryStatus.running
-      ? 'Виконується'
-      : 'Запустити зараз';
-  const canRunAutomation = Boolean(
-    isAutomationReady
-    && !isAutomationBusy
-    && !discoveryStatus.running
-    && discoveryStatus.tokenConfigured !== false
-    && discoveryStatus.code !== 'budget_reached'
-  );
+    ? 'Виконується'
+    : 'Запустити зараз';
 
   return (
     <section className="page page-signals">
