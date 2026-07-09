@@ -25,7 +25,84 @@ function formatDiscoveryTimestamp(value) {
   }).format(date).replace(',', '');
 }
 
+function getDiscoveryRunErrors(run) {
+  return Array.isArray(run?.errors) ? run.errors.filter(Boolean) : [];
+}
+
+function getDiscoveryRunErrorCount(run) {
+  const errorCount = Number(run?.errorCount);
+  if (Number.isFinite(errorCount) && errorCount > 0) return errorCount;
+  return getDiscoveryRunErrors(run).length;
+}
+
+function getDiscoveryRunAcceptedCount(run, fallbackCount = 0) {
+  const runAccepted = Number(run?.acceptedCount);
+  if (Number.isFinite(runAccepted) && runAccepted >= 0) return runAccepted;
+  return Math.max(toInt(fallbackCount), 0);
+}
+
+function getDiscoveryRunPlatformLabel(platform) {
+  if (platform === 'instagram') return 'Instagram';
+  if (platform === 'tiktok') return 'TikTok';
+  return String(platform || '').trim();
+}
+
+function getDiscoveryRunLaneLabel(lane) {
+  return {
+    accounts: 'акаунти',
+    keywords: 'ключові слова',
+    hashtags: 'хештеги',
+    trends: 'тренди',
+    winner: 'фінальне завантаження',
+  }[lane] || String(lane || '').trim();
+}
+
+function getDiscoveryRunErrorContext(run) {
+  const [firstError] = getDiscoveryRunErrors(run);
+  if (!firstError) return '';
+
+  const locationParts = [];
+  const platformLabel = getDiscoveryRunPlatformLabel(firstError.platform);
+  const laneLabel = getDiscoveryRunLaneLabel(firstError.lane);
+  if (platformLabel) locationParts.push(platformLabel);
+  if (laneLabel) locationParts.push(laneLabel);
+
+  const prefix = locationParts.length ? `${locationParts.join(' / ')}: ` : '';
+  const message = String(firstError.message || '').trim();
+  const remainingErrors = Math.max(getDiscoveryRunErrorCount(run) - 1, 0);
+  const extraText = remainingErrors > 0
+    ? ` Ще ${remainingErrors} ${pluralize(remainingErrors, 'помилка', 'помилки', 'помилок')}.`
+    : '';
+
+  if (!message) {
+    return `${prefix.trim()}${extraText}`.trim();
+  }
+  return `${prefix}${message}${extraText}`.trim();
+}
+
+function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount) {
+  const accepted = Math.max(toInt(acceptedCount), 0);
+  const updated = Math.max(toInt(updatedCount), 0);
+
+  if (accepted > 0 || updated > 0) {
+    const acceptedText = accepted > 0
+      ? `${accepted} ${pluralize(accepted, 'сигнал', 'сигнали', 'сигналів')}`
+      : '';
+    const updatedText = updated > 0
+      ? `${updated} ${pluralize(updated, 'сигнал', 'сигнали', 'сигналів')}`
+      : '';
+    return `Автопошук ${accepted > 0 ? `додав ${acceptedText}` : ''}${accepted > 0 && updated > 0 ? ' і ' : ''}${updated > 0 ? `оновив ${updatedText}` : ''}.`;
+  }
+
+  return 'Автопошук завершився без нових сигналів.';
+}
+
+function isPartialDiscoveryRun(run) {
+  return run?.status === 'completed' && getDiscoveryRunErrorCount(run) > 0;
+}
+
 export function deriveDiscoveryRunStatusCode(run, settings = {}, fallbackCode = '') {
+  if (isPartialDiscoveryRun(run)) return 'partial';
   if (fallbackCode) return fallbackCode;
   if (run?.status === 'running') return 'running';
   if (run?.status === 'blocked_budget') return 'budget_reached';
@@ -39,8 +116,9 @@ export function deriveDiscoveryRunNotice({
   acceptedSignalsCount = 0,
   updatedSignalsCount = 0,
 } = {}) {
-  const accepted = Math.max(toInt(acceptedSignalsCount), 0);
+  const accepted = getDiscoveryRunAcceptedCount(run, acceptedSignalsCount);
   const updated = Math.max(toInt(updatedSignalsCount), 0);
+  const errorContext = getDiscoveryRunErrorContext(run);
 
   if (run?.status === 'failed') {
     const parts = [];
@@ -58,28 +136,25 @@ export function deriveDiscoveryRunNotice({
     }
     return {
       tone: 'error',
-      message: run?.errors?.[0]?.message
-        ? `Автопошук завершився з помилкою: ${run.errors[0].message}`
+      message: errorContext
+        ? `Автопошук завершився з помилкою: ${errorContext}`
         : 'Автопошук завершився з помилкою.',
     };
   }
 
-  if (accepted > 0 || updated > 0) {
-    const acceptedText = accepted > 0
-      ? `${accepted} ${pluralize(accepted, 'сигнал', 'сигнали', 'сигналів')}`
-      : '';
-    const updatedText = updated > 0
-      ? `${updated} ${pluralize(updated, 'сигнал', 'сигнали', 'сигналів')}`
-      : '';
+  if (isPartialDiscoveryRun(run)) {
+    const successSummary = buildDiscoveryRunSuccessSummary(accepted, updated).replace(/\.$/, '');
     return {
-      tone: 'success',
-      message: `Автопошук ${accepted > 0 ? `додав ${acceptedText}` : ''}${accepted > 0 && updated > 0 ? ' і ' : ''}${updated > 0 ? `оновив ${updatedText}` : ''}.`,
+      tone: 'warning',
+      message: errorContext
+        ? `${successSummary}, але частина джерел завершилась з помилками: ${errorContext}`
+        : `${successSummary}, але частина джерел завершилась з помилками.`,
     };
   }
 
   return {
     tone: 'success',
-    message: 'Автопошук завершився без нових сигналів.',
+    message: buildDiscoveryRunSuccessSummary(accepted, updated),
   };
 }
 
@@ -142,7 +217,19 @@ export function deriveDiscoveryToolbarStatus(discovery) {
     return {
       label: 'Помилка',
       tone: 'error',
-      detail: latestRun?.errors?.[0]?.message || 'Останній автоматичний запуск завершився з помилкою.',
+      detail: getDiscoveryRunErrorContext(latestRun) || 'Останній автоматичний запуск завершився з помилкою.',
+    };
+  }
+
+  if (status.code === 'partial' || isPartialDiscoveryRun(latestRun)) {
+    return {
+      label: 'Частково',
+      tone: 'warning',
+      detail: deriveDiscoveryRunNotice({
+        run: latestRun,
+        acceptedSignalsCount: latestRun?.acceptedCount,
+        updatedSignalsCount: latestRun?.updatedCount,
+      }).message,
     };
   }
 
