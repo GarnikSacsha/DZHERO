@@ -20,6 +20,34 @@ async function waitFor(check, timeoutMs = 10000, intervalMs = 50) {
   throw new Error('timed out waiting for condition');
 }
 
+function makeApifyImportPayload(workspaceId) {
+  return {
+    importedCount: 1,
+    reusedCount: 0,
+    reels: [
+      {
+        id: `reel_apify_${workspaceId}`,
+        workspaceId,
+        title: `Imported reel for ${workspaceId}`,
+        handle: '@alpha_apify',
+        sourceHandle: '@alpha_apify',
+        sourceUrl: `https://example.com/apify/${workspaceId}`,
+        score: 99,
+        views: '1K',
+        likes: '120',
+        comments: '15',
+        status: ['Imported'],
+        importedMetadata: { provider: 'apify', platform: 'instagram' },
+      },
+    ],
+  };
+}
+
+async function openApifyModal(page) {
+  await page.locator('.signals-automation-actions button:last-child').click();
+  await page.locator('.apify-signal-modal').waitFor({ state: 'visible' });
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
@@ -107,29 +135,26 @@ async function main() {
 
     const apifyImportMatch = pathname.match(/^\/api\/workspaces\/([^/]+)\/signals\/apify\/import$/);
     if (apifyImportMatch && method === 'POST') {
+      const workspaceId = apifyImportMatch[1];
       counts.import += 1;
+
+      if (counts.import === 1) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'apify-import-failed' }),
+        });
+        return;
+      }
+
+      if (counts.import === 2) {
+        await route.fulfill(makeJsonResponse(makeApifyImportPayload(workspaceId)));
+        return;
+      }
+
       importGate.resolveStarted?.();
       await importGate.released;
-      await route.fulfill(makeJsonResponse({
-        importedCount: 1,
-        reusedCount: 0,
-        reels: [
-          {
-            id: 'reel_apify_alpha',
-            workspaceId: workspaceA,
-            title: 'Imported alpha reel',
-            handle: '@alpha_apify',
-            sourceHandle: '@alpha_apify',
-            sourceUrl: 'https://example.com/apify/alpha',
-            score: 99,
-            views: '1K',
-            likes: '120',
-            comments: '15',
-            status: ['Imported'],
-            importedMetadata: { provider: 'apify', platform: 'instagram' },
-          },
-        ],
-      }));
+      await route.fulfill(makeJsonResponse(makeApifyImportPayload(workspaceId)));
       return;
     }
 
@@ -143,10 +168,23 @@ async function main() {
     await page.locator('[data-tour="sidebar-transcript"]').click();
     await waitFor(() => (counts.discovery[workspaceA] || 0) >= 1 && (counts.reels[workspaceA] || 0) >= 1);
 
-    await page.locator('.signals-automation-actions button:last-child').click();
-    await page.getByLabel('Значення').fill('https://example.com/apify-source');
-    await page.getByRole('button', { name: /Імпортувати/i }).click();
+    await openApifyModal(page);
+    await page.locator('.apify-signal-modal input').fill('https://example.com/apify-source');
+    await page.locator('.apify-signal-modal .quick-modal-actions button.dark').click();
+    await waitFor(async () => (await page.locator('.toast').textContent() || '').includes('apify-import-failed'));
+    assert.equal(await page.locator('.apify-signal-modal').count(), 1, 'failed import should keep the modal open');
+    assert.equal(
+      await page.locator('.apify-signal-modal input').inputValue(),
+      'https://example.com/apify-source',
+      'failed import should preserve the entered URL',
+    );
 
+    await page.locator('.apify-signal-modal .quick-modal-actions button.dark').click();
+    await waitFor(async () => (await page.locator('.apify-signal-modal').count()) === 0);
+
+    await openApifyModal(page);
+    await page.locator('.apify-signal-modal input').fill('https://example.com/apify-source-stale');
+    await page.locator('.apify-signal-modal .quick-modal-actions button.dark').click();
     await importGate.started;
 
     await page.locator('.user-account-trigger').click();
@@ -158,16 +196,19 @@ async function main() {
       reelsA: counts.reels[workspaceA] || 0,
       discoveryB: counts.discovery[workspaceB] || 0,
       reelsB: counts.reels[workspaceB] || 0,
+      toast: await page.locator('.toast').textContent(),
     };
 
     importGate.resolveReleased();
     await importGate.released;
-    await page.waitForTimeout(500);
+    await waitFor(async () => (await page.locator('.apify-signal-modal').count()) === 1);
 
     assert.equal(counts.discovery[workspaceA] || 0, beforeRelease.discoveryA, 'stale Apify import should not refresh old workspace discovery');
     assert.equal(counts.reels[workspaceA] || 0, beforeRelease.reelsA, 'stale Apify import should not refresh old workspace reels');
     assert.equal(counts.discovery[workspaceB] || 0, beforeRelease.discoveryB, 'switching workspaces should not be disturbed by stale import');
     assert.equal(counts.reels[workspaceB] || 0, beforeRelease.reelsB, 'switching workspaces should not be disturbed by stale import');
+    assert.equal(await page.locator('.apify-signal-modal input').inputValue(), 'https://example.com/apify-source-stale', 'stale import should preserve the current workspace modal input');
+    assert.equal(await page.locator('.toast').textContent(), beforeRelease.toast, 'stale import should stay silent');
 
     console.log('apify import workspace switch regression passed');
   } finally {
