@@ -18,6 +18,8 @@ const AUTOMATIC_METADATA_LIMIT = 1;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 3;
 const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
+const FAILURE_RETRY_BASE_MS = 30 * 60 * 1000;
+const FAILURE_RETRY_CAP_MS = 6 * HOUR_MS;
 
 const DEFAULT_LANES = ['accounts', 'keywords', 'hashtags', 'trends'];
 const PLATFORM_NAMES = ['instagram', 'tiktok'];
@@ -68,14 +70,35 @@ function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
 }
 
-function normalizeHandle(value) {
+function canonicalizeSignalUrl(value) {
+  const raw = normalizeText(value);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    url.search = '';
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`;
+  } catch {
+    return raw.replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+function normalizeHandle(value, platform = '') {
   const raw = normalizeText(value);
   if (!raw) return '';
   if (/^https?:\/\//i.test(raw)) {
     const instagramMatch = raw.match(/instagram\.com\/([^/?#]+)/i);
-    if (instagramMatch?.[1]) return `@${instagramMatch[1].replace(/^@/, '')}`.toLowerCase();
+    if (instagramMatch?.[1] && (!platform || platform === 'instagram')) {
+      return `@${instagramMatch[1].replace(/^@/, '')}`.toLowerCase();
+    }
     const tiktokMatch = raw.match(/tiktok\.com\/@([^/?#]+)/i);
-    if (tiktokMatch?.[1]) return `@${tiktokMatch[1].replace(/^@/, '')}`.toLowerCase();
+    if (tiktokMatch?.[1] && (!platform || platform === 'tiktok')) {
+      return `@${tiktokMatch[1].replace(/^@/, '')}`.toLowerCase();
+    }
+    return '';
   }
   return raw.startsWith('@') ? raw.toLowerCase() : `@${raw.replace(/^@/, '').toLowerCase()}`;
 }
@@ -99,6 +122,14 @@ function uniqueValues(values, limit = MAX_INPUTS_PER_LANE) {
     if (result.length >= limit) break;
   }
   return result;
+}
+
+function rotateValues(values, offset = 0, limit = MAX_INPUTS_PER_LANE) {
+  const unique = uniqueValues(values, Number.MAX_SAFE_INTEGER);
+  if (!unique.length) return [];
+  const start = Math.max(0, Math.trunc(Number(offset) || 0)) % unique.length;
+  const rotated = [...unique.slice(start), ...unique.slice(0, start)];
+  return rotated.slice(0, Math.max(0, limit));
 }
 
 function getWorkspace(state = {}, workspaceId) {
@@ -134,24 +165,67 @@ function collectExistingReelKeys(state = {}, workspaceId) {
   return keys;
 }
 
+function inferSocialPlatform(item = {}) {
+  const labels = [item.platform, item.type, item.provider, item.sourceType]
+    .map((value) => normalizeLower(value))
+    .filter(Boolean);
+  if (labels.some((value) => value.includes('instagram'))) return 'instagram';
+  if (labels.some((value) => value.includes('tiktok'))) return 'tiktok';
+  const url = normalizeLower(item.url || item.profileUrl || item.profileDeepLink || item.handle);
+  if (url.includes('instagram.com/')) return 'instagram';
+  if (url.includes('tiktok.com/')) return 'tiktok';
+  return '';
+}
+
+function getAccountHandle(item = {}, platform = '') {
+  const value = platform === 'instagram'
+    ? item.username || item.handle || item.profileUrl || item.url
+    : item.username || item.handle || item.profileDeepLink || item.profileUrl || item.url;
+  return normalizeHandle(value, platform);
+}
+
 function collectAccountCandidates(state = {}, workspaceId) {
-  const candidates = [];
+  const candidates = {
+    instagram: [],
+    tiktok: [],
+  };
   for (const source of Array.isArray(state.sources) ? state.sources : []) {
     if (source?.workspaceId !== workspaceId) continue;
+    const platform = inferSocialPlatform(source);
+    if (!platform) continue;
     const handle = source.handle || source.username || source.sourceHandle || source.url || '';
-    const normalized = normalizeHandle(handle);
+    const normalized = normalizeHandle(handle, platform);
     if (normalized) {
-      candidates.push(normalized);
+      candidates[platform].push(normalized);
     }
   }
   for (const competitor of Array.isArray(state.competitors) ? state.competitors : []) {
     if (competitor?.workspaceId !== workspaceId) continue;
-    const normalized = normalizeHandle(competitor.handle || competitor.username || competitor.url || '');
+    const platform = inferSocialPlatform(competitor);
+    const normalized = normalizeHandle(competitor.handle || competitor.username || competitor.url || '', platform);
     if (normalized) {
-      candidates.push(normalized);
+      if (platform) {
+        candidates[platform].push(normalized);
+      } else {
+        candidates.instagram.push(normalized);
+        candidates.tiktok.push(normalized);
+      }
     }
   }
-  return uniqueValues(candidates);
+  for (const account of Array.isArray(state.instagramAccounts) ? state.instagramAccounts : []) {
+    if (account?.workspaceId !== workspaceId || account.status === 'disconnected') continue;
+    const normalized = getAccountHandle(account, 'instagram');
+    if (normalized) candidates.instagram.push(normalized);
+  }
+  for (const account of Array.isArray(state.tiktokAccounts) ? state.tiktokAccounts : []) {
+    if (account?.workspaceId !== workspaceId || account.status === 'disconnected') continue;
+    const normalized = getAccountHandle(account, 'tiktok');
+    if (normalized) candidates.tiktok.push(normalized);
+  }
+  return {
+    instagram: uniqueValues(candidates.instagram, Number.MAX_SAFE_INTEGER),
+    tiktok: uniqueValues(candidates.tiktok, Number.MAX_SAFE_INTEGER),
+  };
 }
 
 function collectKeywordCandidates(workspace = {}, state = {}, workspaceId) {
@@ -274,8 +348,52 @@ function defaultDiscoverySettings(now = new Date()) {
       hashtags: new Date(base.getTime() + DISCOVERY_INTERVAL_MS).toISOString(),
       trends: new Date(base.getTime() + DISCOVERY_INTERVAL_MS).toISOString(),
     },
+    retryCounts: {},
+    sourceCheckpoints: {},
+    initializedAt: base.toISOString(),
     updatedAt: base.toISOString(),
   };
+}
+
+function ensureWorkspaceDiscoverySettings(workspace = {}, now = new Date()) {
+  if (!workspace || typeof workspace !== 'object') return defaultDiscoverySettings(now);
+  const savedSettings = workspace.discoverySettings || workspace.automaticDiscovery || workspace.signalDiscovery || null;
+  if (savedSettings?.initializedAt && workspace.discoverySettings === savedSettings) {
+    return savedSettings;
+  }
+  const createdAt = Date.parse(workspace.createdAt || '');
+  const base = Number.isFinite(createdAt) ? new Date(createdAt) : toDate(now);
+  const defaults = defaultDiscoverySettings(base);
+  const saved = savedSettings || {};
+  workspace.discoverySettings = {
+    ...defaults,
+    ...saved,
+    platforms: Array.isArray(saved.platforms) ? [...saved.platforms] : [...defaults.platforms],
+    laneIntervalsMs: {
+      ...defaults.laneIntervalsMs,
+      ...(saved.laneIntervalsMs || {}),
+    },
+    lastRunAt: {
+      ...defaults.lastRunAt,
+      ...(saved.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...defaults.nextRunAt,
+      ...(saved.nextRunAt || {}),
+    },
+    retryCounts: {
+      ...(saved.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      PLATFORM_NAMES.map((platform) => [
+        platform,
+        { ...(saved.sourceCheckpoints?.[platform] || {}) },
+      ])
+    ),
+    initializedAt: saved.initializedAt || toDate(now).toISOString(),
+    updatedAt: saved.updatedAt || toDate(now).toISOString(),
+  };
+  return workspace.discoverySettings;
 }
 
 function buildDiscoveryInputs(state = {}, workspaceId) {
@@ -283,19 +401,20 @@ function buildDiscoveryInputs(state = {}, workspaceId) {
   const accounts = collectAccountCandidates(state, workspaceId);
   const keywords = collectKeywordCandidates(workspace, state, workspaceId);
   const hashtags = collectHashtagCandidates(workspace, state, workspaceId);
+  const checkpoints = workspace.discoverySettings?.sourceCheckpoints || {};
 
   return {
     instagram: {
-      accounts: [...accounts],
-      keywords: [...keywords],
-      hashtags: [...hashtags],
-      trends: buildTrendCandidates('instagram', workspace),
+      accounts: rotateValues(accounts.instagram, checkpoints.instagram?.accounts),
+      keywords: rotateValues(keywords, checkpoints.instagram?.keywords),
+      hashtags: rotateValues(hashtags, checkpoints.instagram?.hashtags),
+      trends: rotateValues(buildTrendCandidates('instagram', workspace), checkpoints.instagram?.trends),
     },
     tiktok: {
-      accounts: [...accounts],
-      keywords: [...keywords],
-      hashtags: [...hashtags],
-      trends: buildTrendCandidates('tiktok', workspace),
+      accounts: rotateValues(accounts.tiktok, checkpoints.tiktok?.accounts),
+      keywords: rotateValues(keywords, checkpoints.tiktok?.keywords),
+      hashtags: rotateValues(hashtags, checkpoints.tiktok?.hashtags),
+      trends: rotateValues(buildTrendCandidates('tiktok', workspace), checkpoints.tiktok?.trends),
     },
   };
 }
@@ -314,34 +433,53 @@ function isDiscoveryDue(settings = {}, lane, now = new Date()) {
   return currentTime - toDate(lastRunAt).getTime() >= intervalMs;
 }
 
-function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
+function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date()) {
   const dayKey = toUtcDayKey(now);
   let total = 0;
+  let isEstimated = false;
   for (const run of Array.isArray(runs) ? runs : []) {
     if (!run || run.workspaceId !== workspaceId) continue;
     const runDayKey = toUtcDayKey(run.claimedAt || run.startedAt || run.createdAt || run.completedAt);
     if (!runDayKey) continue;
     if (runDayKey !== dayKey) continue;
-    const actualCostUsd = Number(run.actualCostUsd);
+    const hasActualCost = run.actualCostUsd !== null
+      && run.actualCostUsd !== undefined
+      && Number.isFinite(Number(run.actualCostUsd))
+      && Number(run.actualCostUsd) >= 0;
+    const actualCostUsd = hasActualCost ? Number(run.actualCostUsd) : null;
+    const reservedCostUsd = Number(run.reservedCostUsd);
     const estimatedCostUsd = Number(run.estimatedCostUsd);
     const attemptedCallCount = Number(run.attemptedCallCount);
     if (
-      !(Number.isFinite(actualCostUsd) && actualCostUsd > 0)
+      !hasActualCost
       && Number.isFinite(attemptedCallCount)
       && attemptedCallCount <= 0
+      && run.status !== 'running'
     ) {
       continue;
     }
-    const amount = Number.isFinite(actualCostUsd) && actualCostUsd > 0
+    const amount = hasActualCost
       ? actualCostUsd
+      : Number.isFinite(reservedCostUsd) && reservedCostUsd > 0
+        ? reservedCostUsd
       : Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
         ? estimatedCostUsd
         : 0;
     if (Number.isFinite(amount) && amount > 0) {
       total += amount;
+      if (!hasActualCost) {
+        isEstimated = true;
+      }
     }
   }
-  return roundUsd(total);
+  return {
+    amountUsd: roundUsd(total),
+    isEstimated,
+  };
+}
+
+function getDailyAutomaticSpend(runs = [], workspaceId, now = new Date()) {
+  return getDailyAutomaticSpendSummary(runs, workspaceId, now).amountUsd;
 }
 
 function canStartDiscoveryRun(args = {}) {
@@ -399,6 +537,7 @@ function recoverStaleRunningRuns(state = {}, args = {}) {
 
 function getWorkspaceDiscoverySettings(state = {}, workspaceId, now = new Date()) {
   const workspace = getWorkspace(state, workspaceId) || {};
+  ensureWorkspaceDiscoverySettings(workspace, now);
   const defaults = defaultDiscoverySettings(now);
   const savedSettings = workspace.discoverySettings || workspace.automaticDiscovery || workspace.signalDiscovery || {};
   const configuredPlatforms = Array.isArray(savedSettings.platforms)
@@ -424,6 +563,16 @@ function getWorkspaceDiscoverySettings(state = {}, workspaceId, now = new Date()
       ...defaults.nextRunAt,
       ...(savedSettings.nextRunAt || {}),
     },
+    retryCounts: {
+      ...(savedSettings.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      PLATFORM_NAMES.map((platform) => [
+        platform,
+        { ...(savedSettings.sourceCheckpoints?.[platform] || {}) },
+      ])
+    ),
+    initializedAt: savedSettings.initializedAt || defaults.initializedAt,
     updatedAt: savedSettings.updatedAt || defaults.updatedAt,
   };
 }
@@ -454,9 +603,9 @@ function getSignalVideoUrl(reel = {}) {
 function getSignalIdentityKeys(reel = {}) {
   const keys = [];
   const providerKey = normalizeLower(getApifySignalKey(reel.importedMetadata || {}));
-  const sourceUrlKey = normalizeLower(getSignalSourceUrl(reel));
+  const sourceUrlKey = canonicalizeSignalUrl(getSignalSourceUrl(reel));
   if (providerKey) keys.push(providerKey);
-  if (sourceUrlKey) keys.push(`url:${sourceUrlKey}`);
+  if (sourceUrlKey) keys.push(`url:${normalizeLower(sourceUrlKey)}`);
   return [...new Set(keys)];
 }
 
@@ -548,7 +697,24 @@ function normalizeAutomaticSignal(reel = {}, context = {}) {
   return normalized;
 }
 
+function getSignalSnapshotTime(signal = {}) {
+  for (const value of [
+    signal.importedMetadata?.snapshotAt,
+    signal.importedMetadata?.collectedAt,
+    signal.importedMetadata?.fetchedAt,
+    signal.snapshotAt,
+    signal.updatedAt,
+    signal.createdAt,
+  ]) {
+    const timestamp = Date.parse(value || '');
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
 function mergeSignalSnapshot(baseSignal = {}, incomingSignal = {}, now = new Date()) {
+  const baseSnapshotTime = getSignalSnapshotTime(baseSignal);
+  const incomingSnapshotTime = getSignalSnapshotTime(incomingSignal);
   const normalizedBase = normalizeAutomaticSignal(baseSignal, {
     workspaceId: baseSignal.workspaceId || incomingSignal.workspaceId,
     market: baseSignal.market || incomingSignal.market,
@@ -566,6 +732,16 @@ function mergeSignalSnapshot(baseSignal = {}, incomingSignal = {}, now = new Dat
     ...(normalizedIncoming.importedMetadata || {}),
     apify: normalizedIncoming.importedMetadata?.apify || normalizedBase.importedMetadata?.apify,
   };
+  const useIncomingMetrics = Number.isFinite(baseSnapshotTime) && Number.isFinite(incomingSnapshotTime)
+    ? incomingSnapshotTime >= baseSnapshotTime
+    : null;
+  const mergeMetric = (baseValue, incomingValue) => {
+    const base = Math.max(Number(baseValue) || 0, 0);
+    const incoming = Math.max(Number(incomingValue) || 0, 0);
+    if (useIncomingMetrics === true) return incoming;
+    if (useIncomingMetrics === false) return base;
+    return Math.max(base, incoming);
+  };
 
   const merged = {
     ...normalizedBase,
@@ -581,11 +757,11 @@ function mergeSignalSnapshot(baseSignal = {}, incomingSignal = {}, now = new Dat
     title: normalizedBase.title || normalizedIncoming.title || '',
     caption: normalizedIncoming.caption || normalizedBase.caption || '',
     transcript: normalizedBase.transcript || normalizedIncoming.transcript || '',
-    views: normalizedIncoming.views || normalizedBase.views || 0,
-    likes: normalizedIncoming.likes || normalizedBase.likes || 0,
-    comments: normalizedIncoming.comments || normalizedBase.comments || 0,
-    shares: normalizedIncoming.shares || normalizedBase.shares || 0,
-    saves: normalizedIncoming.saves || normalizedBase.saves || 0,
+    views: mergeMetric(normalizedBase.views, normalizedIncoming.views),
+    likes: mergeMetric(normalizedBase.likes, normalizedIncoming.likes),
+    comments: mergeMetric(normalizedBase.comments, normalizedIncoming.comments),
+    shares: mergeMetric(normalizedBase.shares, normalizedIncoming.shares),
+    saves: mergeMetric(normalizedBase.saves, normalizedIncoming.saves),
     hook: normalizedBase.hook || normalizedIncoming.hook || normalizedBase.title || normalizedIncoming.title || '',
     importedMetadata: mergedImportedMetadata,
     sourceStatus: (normalizedBase.videoUrl || normalizedIncoming.videoUrl)
@@ -655,7 +831,38 @@ function createLaneScheduleMap(settings = {}) {
   };
 }
 
-function applySuccessfulLaneSchedules(workspace = {}, settings = {}, lanes = [], now = new Date()) {
+function persistDiscoverySchedule(workspace = {}, settings = {}, now = new Date()) {
+  const current = workspace.discoverySettings || {};
+  workspace.discoverySettings = {
+    ...current,
+    enabled: settings.enabled !== false,
+    dailyBudgetUsd: settings.dailyBudgetUsd,
+    viralScoreThreshold: settings.viralScoreThreshold,
+    platforms: [...(settings.platforms || [])],
+    laneIntervalsMs: {
+      ...(settings.laneIntervalsMs || {}),
+    },
+    lastRunAt: {
+      ...(settings.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...(settings.nextRunAt || {}),
+    },
+    retryCounts: {
+      ...(settings.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      PLATFORM_NAMES.map((platform) => [
+        platform,
+        { ...(settings.sourceCheckpoints?.[platform] || {}) },
+      ])
+    ),
+    initializedAt: current.initializedAt || settings.initializedAt || toDate(now).toISOString(),
+    updatedAt: toDate(now).toISOString(),
+  };
+}
+
+function applyNormalLaneSchedules(workspace = {}, settings = {}, lanes = [], now = new Date()) {
   if (!Array.isArray(lanes) || !lanes.length) return;
   const scheduleState = createLaneScheduleMap(settings);
   const timestamp = toDate(now).toISOString();
@@ -664,20 +871,54 @@ function applySuccessfulLaneSchedules(workspace = {}, settings = {}, lanes = [],
     if (!intervalMs) continue;
     scheduleState.lastRunAt[lane] = timestamp;
     scheduleState.nextRunAt[lane] = new Date(toDate(now).getTime() + intervalMs).toISOString();
+    settings.retryCounts[lane] = 0;
   }
-  workspace.discoverySettings = {
-    ...(workspace.discoverySettings || {}),
-    enabled: settings.enabled !== false,
-    dailyBudgetUsd: settings.dailyBudgetUsd,
-    viralScoreThreshold: settings.viralScoreThreshold,
-    platforms: [...(settings.platforms || [])],
-    laneIntervalsMs: {
-      ...(settings.laneIntervalsMs || {}),
-    },
-    lastRunAt: scheduleState.lastRunAt,
-    nextRunAt: scheduleState.nextRunAt,
-    updatedAt: timestamp,
-  };
+  settings.lastRunAt = scheduleState.lastRunAt;
+  settings.nextRunAt = scheduleState.nextRunAt;
+  persistDiscoverySchedule(workspace, settings, now);
+}
+
+function applyFailedLaneSchedules(workspace = {}, settings = {}, lanes = [], now = new Date()) {
+  if (!Array.isArray(lanes) || !lanes.length) return;
+  const timestamp = toDate(now).getTime();
+  for (const lane of lanes) {
+    const retryCount = Math.max(0, Math.trunc(Number(settings.retryCounts?.[lane]) || 0)) + 1;
+    const backoffMs = Math.min(FAILURE_RETRY_BASE_MS * (2 ** Math.max(0, retryCount - 1)), FAILURE_RETRY_CAP_MS);
+    settings.retryCounts[lane] = retryCount;
+    settings.nextRunAt[lane] = new Date(timestamp + backoffMs).toISOString();
+  }
+  persistDiscoverySchedule(workspace, settings, now);
+}
+
+function getNextUtcDayStart(now = new Date()) {
+  const date = toDate(now);
+  return new Date(Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    date.getUTCDate() + 1,
+  ));
+}
+
+function applyBudgetLaneSchedules(workspace = {}, settings = {}, lanes = [], now = new Date()) {
+  if (!Array.isArray(lanes) || !lanes.length) return;
+  const nextBudgetWindow = getNextUtcDayStart(now).toISOString();
+  for (const lane of lanes) {
+    settings.nextRunAt[lane] = nextBudgetWindow;
+  }
+  persistDiscoverySchedule(workspace, settings, now);
+}
+
+function advanceSourceCheckpoints(workspace = {}, settings = {}, calls = []) {
+  for (const call of calls) {
+    if (!PLATFORM_NAMES.includes(call.platform) || !DEFAULT_LANES.includes(call.lane)) continue;
+    const platformCheckpoints = settings.sourceCheckpoints[call.platform]
+      || (settings.sourceCheckpoints[call.platform] = {});
+    platformCheckpoints[call.lane] = Math.max(
+      0,
+      Math.trunc(Number(platformCheckpoints[call.lane]) || 0) + 1,
+    );
+  }
+  persistDiscoverySchedule(workspace, settings, settings.updatedAt || new Date());
 }
 
 function estimateDiscoveryCallCostUsd(call = {}) {
@@ -720,7 +961,8 @@ function createAutomaticRun(state = {}, args = {}) {
     budgetUsd: roundUsd(args.budgetUsd),
     spentUsdBefore: roundUsd(args.spentUsdBefore),
     estimatedCostUsd: roundUsd(args.estimatedCostUsd),
-    actualCostUsd: 0,
+    reservedCostUsd: roundUsd(args.reservedCostUsd ?? args.estimatedCostUsd),
+    actualCostUsd: null,
     attemptedCallCount: Number(args.attemptedCallCount || 0),
     requestedCount: Number(args.requestedCount || 0),
     returnedCount: 0,
@@ -738,6 +980,142 @@ function createAutomaticRun(state = {}, args = {}) {
   return run;
 }
 
+function createEmptyDiscoveryResult(run = null, extra = {}) {
+  return {
+    run,
+    acceptedSignals: [],
+    updatedSignals: [],
+    execution: null,
+    ...extra,
+  };
+}
+
+function prepareAutomaticDiscovery(args = {}) {
+  const now = toDate(args.now || new Date());
+  const state = args.state || {};
+  const workspaceId = String(args.workspaceId || '').trim();
+  const workspace = getWorkspace(state, workspaceId);
+  if (!workspace) {
+    const error = new Error('workspace_not_found');
+    error.status = 404;
+    throw error;
+  }
+
+  ensureWorkspaceDiscoverySettings(workspace, now);
+  const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
+  recoverStaleRunningRuns(state, {
+    workspaceId,
+    lane: AUTOMATIC_RUN_LANE,
+    now,
+  });
+  const activeRun = (Array.isArray(state.discoveryRuns) ? state.discoveryRuns : [])
+    .find((run) => run?.workspaceId === workspaceId && run.lane === AUTOMATIC_RUN_LANE && run.status === 'running');
+  if (activeRun) {
+    return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+  }
+
+  if (settings.enabled === false) {
+    if (args.recordPaused === false) {
+      return createEmptyDiscoveryResult(null, { reason: 'paused' });
+    }
+    const run = createAutomaticRun(state, {
+      workspaceId,
+      now,
+      budgetUsd: settings.dailyBudgetUsd,
+      spentUsdBefore: getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now),
+      estimatedCostUsd: 0,
+      reservedCostUsd: 0,
+      requestedCount: 0,
+    });
+    if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+    run.status = 'paused';
+    run.completedAt = now.toISOString();
+    run.updatedAt = now.toISOString();
+    return createEmptyDiscoveryResult(run, { reason: 'paused' });
+  }
+
+  const dueLanes = args.force
+    ? [...DEFAULT_LANES]
+    : DEFAULT_LANES.filter((lane) => isDiscoveryDue(settings, lane, now));
+  if (!dueLanes.length) {
+    return createEmptyDiscoveryResult(null, { reason: 'not_due' });
+  }
+
+  const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
+  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes);
+  const lanesWithCalls = new Set(plannedCalls.map((call) => call.lane));
+  const emptyLanes = dueLanes.filter((lane) => !lanesWithCalls.has(lane));
+  applyNormalLaneSchedules(workspace, settings, emptyLanes, now);
+  if (!plannedCalls.length) {
+    if (args.force) {
+      const run = createAutomaticRun(state, {
+        workspaceId,
+        now,
+        budgetUsd: settings.dailyBudgetUsd,
+        spentUsdBefore: getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now),
+        estimatedCostUsd: 0,
+        reservedCostUsd: 0,
+        requestedCount: 0,
+      });
+      if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+      run.status = 'completed';
+      run.completedAt = now.toISOString();
+      run.updatedAt = now.toISOString();
+      return createEmptyDiscoveryResult(run, { reason: 'empty' });
+    }
+    return createEmptyDiscoveryResult(null, { reason: 'empty' });
+  }
+
+  const spentUsd = getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now);
+  const estimatedMetadataCostUsd = roundUsd(
+    plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
+  );
+  if (spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd) {
+    applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
+    const run = createAutomaticRun(state, {
+      workspaceId,
+      now,
+      budgetUsd: settings.dailyBudgetUsd,
+      spentUsdBefore: spentUsd,
+      estimatedCostUsd: 0,
+      reservedCostUsd: 0,
+      requestedCount: plannedCalls.length,
+    });
+    if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+    run.status = 'blocked_budget';
+    run.errorCount = 1;
+    run.errors.push({
+      code: 'automatic_budget_reached',
+      message: 'Automatic discovery metadata budget is exhausted for this UTC day.',
+    });
+    run.completedAt = now.toISOString();
+    run.updatedAt = now.toISOString();
+    return createEmptyDiscoveryResult(run, { reason: 'blocked_budget' });
+  }
+
+  const run = createAutomaticRun(state, {
+    workspaceId,
+    now,
+    budgetUsd: settings.dailyBudgetUsd,
+    spentUsdBefore: spentUsd,
+    estimatedCostUsd: estimatedMetadataCostUsd,
+    reservedCostUsd: estimatedMetadataCostUsd,
+    requestedCount: plannedCalls.length,
+  });
+  if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+  return {
+    run,
+    acceptedSignals: [],
+    updatedSignals: [],
+    execution: {
+      discoveryInputs,
+      dueLanes,
+      plannedCalls,
+      settings,
+    },
+  };
+}
+
 async function executeAutomaticDiscovery(args = {}) {
   const now = toDate(args.now || new Date());
   const state = args.state || {};
@@ -749,103 +1127,17 @@ async function executeAutomaticDiscovery(args = {}) {
     throw error;
   }
 
-  const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
-  const spentUsd = getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now);
-  const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
-  const dueLanes = args.force
-    ? [...DEFAULT_LANES]
-    : DEFAULT_LANES.filter((lane) => isDiscoveryDue(settings, lane, now));
-  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes);
-  const estimatedMetadataCostUsd = roundUsd(
-    plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
-  );
-
-  if (settings.enabled === false) {
-    const run = createAutomaticRun(state, {
-      workspaceId,
-      now,
-      budgetUsd: settings.dailyBudgetUsd,
-      spentUsdBefore: spentUsd,
-      estimatedCostUsd: 0,
-      requestedCount: 0,
-    });
-    if (!run) {
-      return {
-        run: null,
-        acceptedSignals: [],
-        updatedSignals: [],
-      };
-    }
-    run.status = 'paused';
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
+  const prepared = args.prepared || prepareAutomaticDiscovery(args);
+  if (!prepared.execution) {
+    return createEmptyDiscoveryResult(prepared.run, { reason: prepared.reason });
   }
-
-  if (!plannedCalls.length) {
-    const run = createAutomaticRun(state, {
-      workspaceId,
-      now,
-      budgetUsd: settings.dailyBudgetUsd,
-      spentUsdBefore: spentUsd,
-      estimatedCostUsd: 0,
-      requestedCount: 0,
-    });
-    if (!run) {
-      return {
-        run: null,
-        acceptedSignals: [],
-        updatedSignals: [],
-      };
-    }
-    run.status = 'completed';
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
-  }
-
-  if (spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd) {
-    const run = createAutomaticRun(state, {
-      workspaceId,
-      now,
-      budgetUsd: settings.dailyBudgetUsd,
-      spentUsdBefore: spentUsd,
-      estimatedCostUsd: 0,
-      requestedCount: plannedCalls.length,
-    });
-    if (!run) {
-      return {
-        run: null,
-        acceptedSignals: [],
-        updatedSignals: [],
-      };
-    }
-    run.status = 'blocked_budget';
-    run.errorCount = 1;
-    run.errors.push({
-      code: 'automatic_budget_reached',
-      message: 'Automatic discovery metadata budget is exhausted for this UTC day.',
-    });
-    run.completedAt = now.toISOString();
-    run.updatedAt = now.toISOString();
-    return { run, acceptedSignals: [], updatedSignals: [] };
-  }
-
-  const run = createAutomaticRun(state, {
-    workspaceId,
-    now,
-    budgetUsd: settings.dailyBudgetUsd,
-    spentUsdBefore: spentUsd,
-    estimatedCostUsd: estimatedMetadataCostUsd,
-    requestedCount: plannedCalls.length,
-  });
-  if (!run) {
-    return {
-      run: null,
-      acceptedSignals: [],
-      updatedSignals: [],
-    };
-  }
+  const run = prepared.run;
+  const {
+    dueLanes,
+    plannedCalls,
+    settings,
+  } = prepared.execution;
+  const spentUsd = run.spentUsdBefore;
 
   const fetchSignals = typeof args.fetchSignals === 'function' ? args.fetchSignals : fetchApifySignals;
   const market = getWorkspaceMarket(workspace);
@@ -855,7 +1147,55 @@ async function executeAutomaticDiscovery(args = {}) {
   const candidatesById = new Map();
   const updatedSignalsById = new Map();
   let successfulCalls = 0;
+  let billedCostUsd = 0;
+  let hasCompleteBilledCost = true;
   const laneStats = new Map();
+  const getCurrentTime = typeof args.getCurrentTime === 'function'
+    ? args.getCurrentTime
+    : () => new Date();
+
+  async function reportProgress() {
+    const progressTime = toDate(getCurrentTime());
+    const previousTime = Date.parse(run.updatedAt || '');
+    run.updatedAt = Number.isFinite(previousTime) && previousTime > progressTime.getTime()
+      ? new Date(previousTime).toISOString()
+      : progressTime.toISOString();
+    if (typeof args.onProgress === 'function') {
+      await args.onProgress(run);
+    }
+  }
+
+  function unpackProviderResult(result) {
+    if (Array.isArray(result)) {
+      const actualCostUsd = result.actualCostUsd;
+      return {
+        signals: result,
+        actualCostUsd: actualCostUsd === null || actualCostUsd === undefined
+          ? null
+          : Number(actualCostUsd),
+      };
+    }
+    const signals = Array.isArray(result?.signals)
+      ? result.signals
+      : Array.isArray(result?.items)
+        ? result.items
+        : [];
+    const actualCostUsd = result?.actualCostUsd;
+    return {
+      signals,
+      actualCostUsd: actualCostUsd === null || actualCostUsd === undefined
+        ? null
+        : Number(actualCostUsd),
+    };
+  }
+
+  function recordBilledCost(value) {
+    if (Number.isFinite(value) && value >= 0) {
+      billedCostUsd = roundUsd(billedCostUsd + value);
+      return;
+    }
+    hasCompleteBilledCost = false;
+  }
 
   function getLaneStat(lane) {
     if (!laneStats.has(lane)) {
@@ -869,8 +1209,9 @@ async function executeAutomaticDiscovery(args = {}) {
     const laneStat = getLaneStat(call.lane);
     laneStat.attempted += 1;
     run.attemptedCallCount += 1;
+    await reportProgress();
     try {
-      const fetchedSignals = await fetchSignals({
+      const providerResult = await fetchSignals({
         token: args.token,
         platform: call.platform,
         mode: call.inputType,
@@ -884,7 +1225,8 @@ async function executeAutomaticDiscovery(args = {}) {
         market,
         createId: createAutomaticSignalId,
       });
-      run.actualCostUsd = roundUsd(run.actualCostUsd + callEstimateUsd);
+      const { signals: fetchedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+      recordBilledCost(actualCostUsd);
       run.returnedCount += Array.isArray(fetchedSignals) ? fetchedSignals.length : 0;
       successfulCalls += 1;
       laneStat.successful += 1;
@@ -920,7 +1262,7 @@ async function executeAutomaticDiscovery(args = {}) {
         registerIdentityValue(candidateIdsByIdentity, normalizedSignal, newCandidateId);
       }
     } catch (error) {
-      run.actualCostUsd = roundUsd(run.actualCostUsd + callEstimateUsd);
+      recordBilledCost(error?.actualCostUsd);
       run.errorCount += 1;
       laneStat.failed += 1;
       run.errors.push({
@@ -930,13 +1272,22 @@ async function executeAutomaticDiscovery(args = {}) {
         message: error?.message || 'automatic_discovery_failed',
         status: error?.status || 500,
       });
+    } finally {
+      await reportProgress();
     }
   }
 
   const successfulLanes = Array.from(laneStats.entries())
     .filter(([, stats]) => stats.attempted > 0 && stats.successful > 0)
     .map(([lane]) => lane);
-  applySuccessfulLaneSchedules(workspace, settings, successfulLanes, now);
+  const failedLanes = Array.from(laneStats.entries())
+    .filter(([, stats]) => stats.attempted > 0 && stats.successful === 0 && stats.failed > 0)
+    .map(([lane]) => lane);
+  const attemptedLanes = new Set(Array.from(laneStats.keys()));
+  const emptyLanes = dueLanes.filter((lane) => !attemptedLanes.has(lane));
+  applyNormalLaneSchedules(workspace, settings, [...successfulLanes, ...emptyLanes], now);
+  applyFailedLaneSchedules(workspace, settings, failedLanes, now);
+  advanceSourceCheckpoints(workspace, settings, plannedCalls);
 
   const shortlistedSignals = Array.from(candidatesById.values())
     .filter((signal) => signal.score >= settings.viralScoreThreshold)
@@ -960,10 +1311,13 @@ async function executeAutomaticDiscovery(args = {}) {
         downloadVideo: true,
       };
       const downloadEstimateUsd = estimateDiscoveryCallCostUsd(downloadCall);
-      if (downloadInput && spentUsd + run.actualCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd) {
+      if (downloadInput && spentUsd + run.reservedCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd) {
         run.estimatedCostUsd = roundUsd(run.estimatedCostUsd + downloadEstimateUsd);
+        run.reservedCostUsd = roundUsd(run.reservedCostUsd + downloadEstimateUsd);
+        run.attemptedCallCount += 1;
+        await reportProgress();
         try {
-          const downloadedSignals = await fetchSignals({
+          const providerResult = await fetchSignals({
             token: args.token,
             platform: 'tiktok',
             mode: 'url',
@@ -977,7 +1331,8 @@ async function executeAutomaticDiscovery(args = {}) {
             market,
             createId: createAutomaticSignalId,
           });
-          run.actualCostUsd = roundUsd(run.actualCostUsd + downloadEstimateUsd);
+          const { signals: downloadedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+          recordBilledCost(actualCostUsd);
           run.returnedCount += Array.isArray(downloadedSignals) ? downloadedSignals.length : 0;
           successfulCalls += 1;
 
@@ -1006,7 +1361,7 @@ async function executeAutomaticDiscovery(args = {}) {
             }
           }
         } catch (error) {
-          run.actualCostUsd = roundUsd(run.actualCostUsd + downloadEstimateUsd);
+          recordBilledCost(error?.actualCostUsd);
           run.errorCount += 1;
           run.errors.push({
             platform: 'tiktok',
@@ -1015,6 +1370,8 @@ async function executeAutomaticDiscovery(args = {}) {
             message: error?.message || 'automatic_discovery_download_failed',
             status: error?.status || 500,
           });
+        } finally {
+          await reportProgress();
         }
       }
     }
@@ -1035,8 +1392,14 @@ async function executeAutomaticDiscovery(args = {}) {
 
   run.acceptedCount = acceptedSignals.length;
   run.status = successfulCalls > 0 ? 'completed' : 'failed';
+  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost
+    ? roundUsd(billedCostUsd)
+    : null;
   run.completedAt = now.toISOString();
-  run.updatedAt = now.toISOString();
+  const latestHeartbeat = Date.parse(run.updatedAt || '');
+  run.updatedAt = Number.isFinite(latestHeartbeat) && latestHeartbeat > now.getTime()
+    ? new Date(latestHeartbeat).toISOString()
+    : now.toISOString();
 
   return {
     run,
@@ -1078,7 +1441,8 @@ function claimDiscoveryRun(state = {}, args = {}) {
     dayKey: toUtcDayKey(now),
     status: 'running',
     estimatedCostUsd,
-    actualCostUsd: 0,
+    reservedCostUsd: estimatedCostUsd,
+    actualCostUsd: null,
     claimedAt: now.toISOString(),
     startedAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -1090,11 +1454,16 @@ function claimDiscoveryRun(state = {}, args = {}) {
 
 module.exports = {
   defaultDiscoverySettings,
+  ensureWorkspaceDiscoverySettings,
   buildDiscoveryInputs,
+  canonicalizeSignalUrl,
   isDiscoveryDue,
   getDailyAutomaticSpend,
+  getDailyAutomaticSpendSummary,
   canStartDiscoveryRun,
   claimDiscoveryRun,
   recoverStaleRunningRuns,
+  prepareAutomaticDiscovery,
   executeAutomaticDiscovery,
+  mergeSignalSnapshot,
 };

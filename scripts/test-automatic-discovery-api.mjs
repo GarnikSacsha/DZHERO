@@ -227,6 +227,16 @@ try {
   assert.equal(initialStatus.body?.settings?.dailyBudgetUsd, 0.8);
   assert.equal(initialStatus.body?.settings?.viralScoreThreshold, 70);
   assert.equal(initialStatus.body?.status?.dailySpendUsd, 0);
+  assert.equal(initialStatus.body?.status?.dailySpendIsEstimated, false);
+
+  const repeatedInitialStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
+    headers,
+  });
+  assert.deepEqual(
+    repeatedInitialStatus.body?.settings?.nextRunAt,
+    initialStatus.body?.settings?.nextRunAt,
+    'untouched discovery defaults must remain stable across reads',
+  );
 
   const patchedStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
     method: 'PATCH',
@@ -340,6 +350,8 @@ try {
   assert.equal(manualRun.response.status, 201);
   assert.equal(manualRun.body?.run?.status, 'completed');
   assert.equal(manualRun.body?.run?.budgetUsd, 0.8);
+  assert.equal(manualRun.body?.run?.actualCostUsd, null);
+  assert.ok(manualRun.body?.run?.estimatedCostUsd > 0);
 
   const persistedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const persistedRun = persistedState.discoveryRuns?.find((run) => run.id === activeRun.id);
@@ -348,6 +360,11 @@ try {
   assert.equal(persistedRun?.status, 'completed');
   assert.equal(persistedWorkspace?.reviewNote, 'survives concurrent merge');
   assert.equal(persistedConcurrentReel?.sourceUrl, 'https://example.com/concurrent-reel');
+
+  const estimatedSpendStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
+    headers,
+  });
+  assert.equal(estimatedSpendStatus.body?.status?.dailySpendIsEstimated, true);
 
   const budgetBlockedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const budgetWorkspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);
