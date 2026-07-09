@@ -97,6 +97,22 @@ function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount) {
   return 'Автопошук завершився без нових сигналів.';
 }
 
+function buildDiscoveryRunFunnelSummary(run = {}) {
+  if (!run || run.status !== 'completed') return '';
+  const returned = Math.max(toInt(run.returnedCount), 0);
+  const duplicate = Math.max(toInt(run.duplicateCount), 0);
+  const rejected = Math.max(toInt(run.rejectedCount), 0);
+  const accepted = Math.max(toInt(run.acceptedCount), 0);
+  if (returned <= 0 && duplicate <= 0 && rejected <= 0 && accepted <= 0) return '';
+  const parts = [
+    returned ? `${returned} сирих` : '',
+    duplicate ? `${duplicate} дублів` : '',
+    rejected ? `${rejected} відсіяно` : '',
+    `${accepted} прийнято`,
+  ].filter(Boolean);
+  return `Останній запуск: ${parts.join(' · ')}.`;
+}
+
 function isPartialDiscoveryRun(run) {
   return run?.status === 'completed' && getDiscoveryRunErrorCount(run) > 0;
 }
@@ -237,6 +253,15 @@ export function deriveDiscoveryToolbarStatus(discovery) {
         acceptedSignalsCount: latestRun?.acceptedCount,
         updatedSignalsCount: latestRun?.updatedCount,
       }).message,
+    };
+  }
+
+  const latestRunFunnel = buildDiscoveryRunFunnelSummary(latestRun);
+  if (latestRunFunnel) {
+    return {
+      label: 'За розкладом',
+      tone: 'scheduled',
+      detail: latestRunFunnel,
     };
   }
 

@@ -487,16 +487,16 @@ const automaticResult = await executeAutomaticDiscovery({
   fetchSignals,
 });
 
-assert.equal(automaticResult.acceptedSignals.length, 1);
+assert.equal(automaticResult.acceptedSignals.length, 2);
 assert.equal(automaticResult.updatedSignals.length, 1);
 assert.equal(automaticResult.run.status, 'completed');
-assert.equal(automaticResult.run.acceptedCount, 1);
+assert.equal(automaticResult.run.acceptedCount, 2);
 assert.equal(automaticResult.run.duplicateCount, 2);
 assert.equal(automaticResult.run.budgetUsd, 0.8);
 assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
 assert.equal(automaticState.workspaces[0].discoverySettings.lastRunAt.keywords, now.toISOString());
 assert.equal(automaticState.workspaces[0].discoverySettings.nextRunAt.keywords, twelveHoursLater.toISOString());
-assert.equal(automaticState.reels.length, 2);
+assert.equal(automaticState.reels.length, 3);
 
 const [acceptedSignal] = automaticResult.acceptedSignals;
 assert.equal(acceptedSignal.videoUrl, 'https://cdn.example.com/winner.mp4');
@@ -508,9 +508,8 @@ assert.equal(updatedSignal.views, duplicateCandidate.views);
 assert.equal(updatedSignal.likes, duplicateCandidate.likes);
 
 const downloadCalls = fetchSignals.calls.filter((call) => call.downloadVideos === true);
-assert.equal(downloadCalls.length, 1);
-assert.equal(downloadCalls[0].input, qualifyingMetadataCandidate.sourceUrl);
-assert.equal(downloadCalls[0].mode, 'url');
+assert.equal(downloadCalls.length, 2);
+assert.ok(downloadCalls.some((call) => call.input === qualifyingMetadataCandidate.sourceUrl && call.mode === 'url'));
 assert.equal(fetchSignals.calls.some((call) => call.downloadVideos === true), true);
 
 const rerunCalls = [];
@@ -615,6 +614,93 @@ await executeAutomaticDiscovery({
 
 assert.equal(forcedFetchCalls.some((call) => call.mode === 'search'), true);
 assert.equal(forcedFetchCalls.some((call) => call.mode === 'hashtag'), true);
+
+const fallbackFillState = {
+  workspaces: [
+    {
+      id: 'ws_fallback_fill',
+      brief: {
+        businessType: 'ai tools',
+        niche: 'automation',
+        product: 'content workflows',
+        location: 'Ukraine',
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 0.8,
+        viralScoreThreshold: 70,
+        platforms: ['tiktok'],
+        lastRunAt: {
+          accounts: '2026-07-07T18:00:00.000Z',
+          keywords: '2026-07-07T12:00:00.000Z',
+          hashtags: '2026-07-07T12:00:00.000Z',
+          trends: '2026-07-07T12:00:00.000Z',
+        },
+        nextRunAt: {
+          accounts: '2026-07-08T00:00:00.000Z',
+          keywords: '2026-07-08T00:00:00.000Z',
+          hashtags: '2026-07-08T00:00:00.000Z',
+          trends: '2026-07-08T00:00:00.000Z',
+        },
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_fallback_fill_1', workspaceId: 'ws_fallback_fill', handle: '@aitoolsdaily', label: 'AI Tools Daily', type: 'tiktok' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+
+const fallbackCandidates = Array.from({ length: 8 }, (_, index) => ({
+  id: `fallback_candidate_${index}`,
+  workspaceId: 'ws_fallback_fill',
+  sourceHandle: `@creator${index}`,
+  handle: `@creator${index}`,
+  sourceUrl: `https://www.tiktok.com/@creator${index}/video/76590946297861931${index}`,
+  sourceStatus: 'apify_metadata',
+  scanLabel: 'TikTok',
+  sourceType: 'TikTok',
+  market: 'ua',
+  title: `Useful fallback TikTok ${index}`,
+  caption: `Useful fallback TikTok ${index}`,
+  image: `https://example.com/fallback-${index}.jpg`,
+  videoUrl: '',
+  views: 1000 + index * 1000,
+  likes: 1,
+  comments: 0,
+  shares: 0,
+  saves: 0,
+  importedMetadata: {
+    provider: 'apify',
+    platform: 'tiktok',
+    externalId: `76590946297861931${index}`,
+    tiktokVideoId: `76590946297861931${index}`,
+    url: `https://www.tiktok.com/@creator${index}/video/76590946297861931${index}`,
+    handle: `@creator${index}`,
+    publishedAt: '2025-01-01T00:00:00.000Z',
+    sourceStatus: 'apify_metadata',
+  },
+}));
+
+const fallbackFillResult = await executeAutomaticDiscovery({
+  state: fallbackFillState,
+  workspaceId: 'ws_fallback_fill',
+  token: 'test-token',
+  now,
+  force: true,
+  fetchSignals: async (call) => {
+    if (call.platform === 'tiktok' && !Boolean(call.downloadVideos ?? call.downloadVideo)) {
+      return fallbackCandidates;
+    }
+    return [];
+  },
+});
+
+assert.equal(fallbackFillResult.acceptedSignals.length, fallbackCandidates.length);
+assert.equal(fallbackFillResult.run.acceptedCount, fallbackCandidates.length);
+assert.equal(fallbackFillResult.run.rejectedCount, 0);
 
 const pausedState = {
   workspaces: [
