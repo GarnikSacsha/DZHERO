@@ -859,7 +859,7 @@ function App() {
       });
       if (!response.ok) throw new Error(await readApiError(response, 'apify_import_failed'));
       const payload = await response.json();
-      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return null;
       const incomingReels = (payload.reels || []).map((reel) => ({
         ...reel,
         handle: reel.handle || reel.sourceHandle || `@${platform}`,
@@ -868,9 +868,9 @@ function App() {
         const incomingIds = new Set(incomingReels.map((reel) => reel.id));
         return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
       });
-      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return null;
       await refreshSignalsWorkspaceState({ silent: true });
-      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return null;
       notify(payload.importedCount
         ? `${platform === 'instagram' ? 'Instagram' : 'TikTok'} Signals: +${payload.importedCount}.`
         : `Сигнали вже були в банку: ${payload.reusedCount || incomingReels.length}.`);
@@ -3693,8 +3693,8 @@ function ApifySignalImportModal({ onClose, onImport, notify }) {
     }
     setIsSubmitting(true);
     try {
-      await onImport({ platform, inputType, inputValue: inputValue.trim(), limit, downloadVideo });
-      onClose();
+      const result = await onImport({ platform, inputType, inputValue: inputValue.trim(), limit, downloadVideo });
+      if (result) onClose();
     } catch (error) {
       notify(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`);
     } finally {
