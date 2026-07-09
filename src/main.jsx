@@ -58,6 +58,10 @@ import {
   deriveSignalsEmptyState,
 } from './signalsUiState.mjs';
 import { applyInterfaceLanguage } from './i18n';
+import {
+  createWorkspaceRequestContext,
+  isWorkspaceRequestCurrent,
+} from './workspaceRequestGuard.mjs';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const isBrowser = typeof window !== 'undefined';
@@ -386,20 +390,14 @@ function App() {
   const signalDiscoveryToggleRequestRef = useRef(0);
   const signalDiscoveryRunRequestRef = useRef(0);
   const signalsWorkspaceRequestRef = useRef({ workspaceId, generation: 0 });
+  const apifyImportRequestRef = useRef(0);
   const visibleSignalsRefreshPromiseRef = useRef(null);
   const reelsWorkspaceRef = useRef('');
   const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
-    workspaceId: requestWorkspaceId,
-    generation: signalsWorkspaceRequestRef.current.workspaceId === requestWorkspaceId
-      ? signalsWorkspaceRequestRef.current.generation
-      : signalsWorkspaceRequestRef.current.generation + 1,
-    requestId,
+    ...createWorkspaceRequestContext(requestWorkspaceId, requestId, signalsWorkspaceRequestRef.current),
   });
   const isSignalsWorkspaceRequestCurrent = (requestContext, requestRef = null) => {
-    if (!requestContext) return false;
-    if (requestContext.workspaceId !== signalsWorkspaceRequestRef.current.workspaceId) return false;
-    if (requestContext.generation !== signalsWorkspaceRequestRef.current.generation) return false;
-    return requestRef ? requestContext.requestId === requestRef.current : true;
+    return isWorkspaceRequestCurrent(requestContext, signalsWorkspaceRequestRef.current, requestRef);
   };
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
@@ -548,6 +546,23 @@ function App() {
     if (!filtered) return [];
     return reelsWorkspaceRef.current === workspaceId ? filtered.reels : [];
   }, [filtered, workspaceId]);
+
+  useEffect(() => {
+    if (!currentUser || page !== 'viral') return undefined;
+    let isMounted = true;
+    setSignalDiscovery(null);
+    setSignalDiscoveryError('');
+    setIsSignalDiscoveryLoading(true);
+    if (reelsWorkspaceRef.current !== workspaceId) {
+      applyWorkspaceReels([], workspaceId);
+    }
+    void refreshSignalsWorkspaceState({ silent: true }).finally(() => {
+      if (isMounted) setIsSignalDiscoveryLoading(false);
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, page, workspaceId]);
 
   const notify = (message) => {
     setToast(message);
@@ -828,32 +843,44 @@ function App() {
     return payload;
   };
   const importApifySignals = async ({ platform, inputType, inputValue, limit, downloadVideo }) => {
-    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/signals/apify/import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        platform,
-        inputType,
-        inputValue,
-        limit,
-        downloadVideo,
-        market: market === 'all' ? 'global' : market,
-      }),
-    });
-    if (!response.ok) throw new Error(await readApiError(response, 'apify_import_failed'));
-    const payload = await response.json();
-    const incomingReels = (payload.reels || []).map((reel) => ({
-      ...reel,
-      handle: reel.handle || reel.sourceHandle || `@${platform}`,
-    }));
-    setData((current) => {
-      const incomingIds = new Set(incomingReels.map((reel) => reel.id));
-      return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
-    });
-    notify(payload.importedCount
-      ? `${platform === 'instagram' ? 'Instagram' : 'TikTok'} Signals: +${payload.importedCount}.`
-      : `Сигнали вже були в банку: ${payload.reusedCount || incomingReels.length}.`);
-    return payload;
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++apifyImportRequestRef.current);
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/signals/apify/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform,
+          inputType,
+          inputValue,
+          limit,
+          downloadVideo,
+          market: market === 'all' ? 'global' : market,
+        }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response, 'apify_import_failed'));
+      const payload = await response.json();
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      const incomingReels = (payload.reels || []).map((reel) => ({
+        ...reel,
+        handle: reel.handle || reel.sourceHandle || `@${platform}`,
+      }));
+      setData((current) => {
+        const incomingIds = new Set(incomingReels.map((reel) => reel.id));
+        return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
+      });
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      await refreshSignalsWorkspaceState({ silent: true });
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return payload;
+      notify(payload.importedCount
+        ? `${platform === 'instagram' ? 'Instagram' : 'TikTok'} Signals: +${payload.importedCount}.`
+        : `Сигнали вже були в банку: ${payload.reusedCount || incomingReels.length}.`);
+      return payload;
+    } catch (error) {
+      if (isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) {
+        notify(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`);
+      }
+      return null;
+    }
   };
   const loadSignalDiscoveryStatus = async ({ silent = false } = {}) => {
     const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++discoveryRequestRef.current);
@@ -1092,22 +1119,6 @@ function App() {
       }
     }
   };
-  useEffect(() => {
-    if (!currentUser || page !== 'viral') return undefined;
-    let isMounted = true;
-    setSignalDiscovery(null);
-    setSignalDiscoveryError('');
-    setIsSignalDiscoveryLoading(true);
-    if (reelsWorkspaceRef.current !== workspaceId) {
-      applyWorkspaceReels([], workspaceId);
-    }
-    void refreshSignalsWorkspaceState({ silent: true }).finally(() => {
-      if (isMounted) setIsSignalDiscoveryLoading(false);
-    });
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser, page, workspaceId]);
   const pushIdeaToPlan = (idea) => {
     setData((current) => ({ ...current, plans: [[idea.title, idea.source, 'Відібрано'], ...current.plans] }));
     notify('Ідею перенесено в контент-план');
@@ -3581,8 +3592,8 @@ function ViralBank({
             hasActiveFilters={hasActiveFilters}
             automationEnabled={automationEnabled}
             canRunAutomation={canRunAutomation}
-            isLoading={isSignalDiscoveryLoading}
-            loadIssue={signalDiscoveryError}
+            isLoading={automation?.isLoading}
+            loadIssue={automation?.error}
             onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}
             onRunAutomation={onRunAutomation}
             onToggleAutomation={onToggleAutomation}
