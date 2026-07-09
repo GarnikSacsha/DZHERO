@@ -51,6 +51,11 @@ import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
 import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
 import { sanitizeSourceContext } from './sourceContext.mjs';
+import {
+  deriveDiscoveryRunNotice,
+  deriveDiscoveryRunStatusCode,
+  deriveSignalsEmptyState,
+} from './signalsUiState.mjs';
 import { applyInterfaceLanguage } from './i18n';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
@@ -857,13 +862,7 @@ function App() {
     if (!run) return;
     setSignalDiscovery((current) => {
       if (!current) return current;
-      const nextCode = code || (run.status === 'running'
-        ? 'running'
-        : run.status === 'blocked_budget'
-          ? 'budget_reached'
-          : current.settings?.enabled === false
-            ? 'paused'
-            : 'scheduled');
+      const nextCode = deriveDiscoveryRunStatusCode(run, current.settings, code);
       const isRunning = nextCode === 'running';
       return {
         ...current,
@@ -985,21 +984,33 @@ function App() {
       if (!response.ok) {
         throw new Error(payload.message || payload.error || 'automatic_discovery_run_failed');
       }
-      applyDiscoveryRunStatus(payload.run);
       const acceptedSignals = Number(payload.acceptedSignals || 0);
       const updatedSignals = Number(payload.updatedSignals || 0);
-      const successMessage = acceptedSignals
-        ? `Автопошук додав ${acceptedSignals} нових сигналів${updatedSignals ? ` і оновив ${updatedSignals}` : ''}.`
-        : updatedSignals
-          ? `Автопошук оновив ${updatedSignals} наявних сигналів.`
-          : 'Автопошук завершився без нових сигналів.';
+      const runNotice = deriveDiscoveryRunNotice({
+        run: payload.run,
+        acceptedSignalsCount: acceptedSignals,
+        updatedSignalsCount: updatedSignals,
+      });
+      applyDiscoveryRunStatus(payload.run, deriveDiscoveryRunStatusCode(payload.run, signalDiscovery?.settings));
+      if (payload.run?.status === 'failed') {
+        setSignalDiscoveryError(runNotice.message);
+        try {
+          await refreshSignalsWorkspaceState({ silent: true });
+          notify(runNotice.message);
+        } catch (refreshError) {
+          const refreshMessage = describeSignalsRefreshIssue(refreshError);
+          setSignalDiscoveryError(refreshMessage);
+          notify(`${runNotice.message} Але не вдалося оновити Signals: ${refreshMessage}`);
+        }
+        return payload;
+      }
       try {
         await refreshSignalsWorkspaceState({ silent: true });
-        notify(successMessage);
+        notify(runNotice.message);
       } catch (refreshError) {
         const refreshMessage = describeSignalsRefreshIssue(refreshError);
         setSignalDiscoveryError(refreshMessage);
-        notify(`${successMessage} Але не вдалося оновити Signals: ${refreshMessage}`);
+        notify(`${runNotice.message} Але не вдалося оновити Signals: ${refreshMessage}`);
       }
       return payload;
     } catch (error) {
@@ -3338,6 +3349,17 @@ function ViralBank({
   const isAutomationBusy = Boolean(automation?.isLoading || automation?.isRefreshing || automation?.isToggling || automation?.isRunning);
   const automationEnabled = discovery?.settings?.enabled !== false;
   const automationStatusText = automation?.error || discoveryState.detail;
+  const hasActiveFilters = Boolean(trimmedQuery || pastedReelUrl || sourceFilter !== 'all');
+  const emptyState = deriveSignalsEmptyState({
+    reelsCount: reels.length,
+    filteredReelsCount: filteredReels.length,
+    hasActiveFilters,
+    automationEnabled,
+    canRunAutomation,
+    query: trimmedQuery,
+    sourceFilter,
+    pastedReelUrl,
+  });
   const spendText = discovery
     ? `${formatUsdAmount(discoveryStatus.dailySpendUsd)} / ${formatUsdAmount(discoveryStatus.dailyBudgetUsd)}`
     : '—';
@@ -3481,12 +3503,18 @@ function ViralBank({
       )}
       <div className="signals-layout">
         <div className="trends-table-wrap">
-          <ReelsTable
+          <SignalsReelsTable
             reels={filteredReels}
             scoreSortDirection={scoreSortDirection}
             onToggleScoreSort={toggleScoreSort}
             onOpenPreview={openPreview}
             onAdapt={onAdapt}
+            hasActiveFilters={hasActiveFilters}
+            automationEnabled={automationEnabled}
+            canRunAutomation={canRunAutomation}
+            onRunAutomation={onRunAutomation}
+            onToggleAutomation={onToggleAutomation}
+            onOpenAdvancedImport={() => setApifyModalOpen(true)}
             emptyState={pastedReelUrl
               ? {
                   title: 'Посилання готове до імпорту',
@@ -4439,6 +4467,79 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
         </div>
       )}
     </div>
+  );
+}
+
+function SignalsReelsTable({
+  reels,
+  scoreSortDirection,
+  onToggleScoreSort,
+  onOpenPreview,
+  onAdapt,
+  emptyState = null,
+  hasActiveFilters = false,
+  automationEnabled = true,
+  canRunAutomation = true,
+  onRunAutomation,
+  onToggleAutomation,
+  onOpenAdvancedImport,
+}) {
+  if (reels.length === 0 && !hasActiveFilters) {
+    const authoritativeEmptyState = deriveSignalsEmptyState({
+      reelsCount: 0,
+      filteredReelsCount: 0,
+      hasActiveFilters: false,
+      automationEnabled,
+      canRunAutomation,
+    });
+    const primaryAction = authoritativeEmptyState?.primaryAction || null;
+    const isRunAction = primaryAction?.kind === 'run';
+    const isEnableAction = primaryAction?.kind === 'enable';
+    return (
+      <div className="table-card trend-analytics-table signals-empty-shell">
+        <div className="signals-empty-state signals-empty-state--authoritative">
+          <span className="signals-empty-state-kicker">Signals</span>
+          <strong>{authoritativeEmptyState.title}</strong>
+          <p>{authoritativeEmptyState.text}</p>
+          <div className="signals-empty-actions">
+            {primaryAction && (
+              <button
+                className="dark"
+                type="button"
+                disabled={primaryAction.disabled}
+                onClick={() => {
+                  if (isRunAction) {
+                    onRunAutomation?.();
+                  } else if (isEnableAction) {
+                    onToggleAutomation?.(true);
+                  }
+                }}
+              >
+                {isRunAction ? <Bot size={16} /> : <Sparkles size={16} />}
+                {primaryAction.label}
+                </button>
+              )}
+            {authoritativeEmptyState.secondaryAction && (
+              <button type="button" onClick={onOpenAdvancedImport}>
+                <ChevronDown size={16} />
+                {authoritativeEmptyState.secondaryAction.label}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ReelsTable
+      reels={reels}
+      scoreSortDirection={scoreSortDirection}
+      onToggleScoreSort={onToggleScoreSort}
+      onOpenPreview={onOpenPreview}
+      onAdapt={onAdapt}
+      emptyState={emptyState}
+    />
   );
 }
 
