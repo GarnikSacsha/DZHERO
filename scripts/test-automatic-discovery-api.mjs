@@ -276,6 +276,59 @@ try {
   });
   assert.equal(otherOwnerStatus.response.status, 200);
 
+  const duplicateReelState = JSON.parse(await readFile(dbPath, 'utf8'));
+  duplicateReelState.reels.unshift(
+    {
+      id: 'youtube_duplicate_weak',
+      workspaceId,
+      title: 'Same YouTube Short',
+      sourceUrl: 'https://www.youtube.com/shorts/abc123',
+      views: 0,
+      likes: 0,
+      score: 78,
+      importedMetadata: {
+        source: { label: 'YouTube Shorts', tone: 'shorts' },
+        youtube: { videoId: 'abc123' },
+        url: 'https://www.youtube.com/shorts/abc123?feature=share',
+      },
+    },
+    {
+      id: 'youtube_duplicate_strong',
+      workspaceId,
+      title: 'Same YouTube Short',
+      sourceUrl: 'https://www.youtube.com/watch?v=abc123',
+      views: '60M',
+      likes: '472K',
+      score: 78,
+      importedMetadata: {
+        source: { label: 'YouTube Shorts', tone: 'shorts' },
+        youtube: { videoId: 'abc123' },
+        url: 'https://www.youtube.com/watch?v=abc123',
+      },
+    },
+    {
+      id: 'instagram_unique',
+      workspaceId,
+      title: 'Unique Instagram Reel',
+      sourceUrl: 'https://www.instagram.com/reel/xyz/',
+      importedMetadata: {
+        provider: 'apify',
+        platform: 'instagram',
+        shortCode: 'xyz',
+        url: 'https://www.instagram.com/reel/xyz/',
+      },
+    },
+  );
+  await writeFile(dbPath, `${JSON.stringify(duplicateReelState, null, 2)}\n`, 'utf8');
+
+  const dedupedReels = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/reels`, {
+    headers,
+  });
+  assert.equal(dedupedReels.response.status, 200);
+  assert.equal(dedupedReels.body?.reels?.length, 2);
+  assert.equal(dedupedReels.body?.reels?.filter((reel) => reel.title === 'Same YouTube Short').length, 1);
+  assert.equal(dedupedReels.body?.reels?.find((reel) => reel.title === 'Same YouTube Short')?.views, '60M');
+
   const runState = JSON.parse(await readFile(dbPath, 'utf8'));
   const workspace = runState.workspaces.find((item) => item.id === workspaceId);
   workspace.discoverySettings = {

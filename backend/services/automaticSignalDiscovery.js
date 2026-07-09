@@ -12,6 +12,7 @@ const MAX_INPUTS_PER_LANE = 10;
 const MAX_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
+const AUTOMATIC_FALLBACK_SCORE_THRESHOLD = 55;
 const AUTOMATIC_RUN_LANE = 'automatic';
 const AUTOMATIC_INPUTS_PER_LANE = 2;
 const AUTOMATIC_METADATA_LIMIT = 1;
@@ -1289,9 +1290,30 @@ async function executeAutomaticDiscovery(args = {}) {
   applyFailedLaneSchedules(workspace, settings, failedLanes, now);
   advanceSourceCheckpoints(workspace, settings, plannedCalls);
 
-  const shortlistedSignals = Array.from(candidatesById.values())
-    .filter((signal) => signal.score >= settings.viralScoreThreshold)
-    .sort((left, right) => right.score - left.score)
+  const rankedSignals = Array.from(candidatesById.values())
+    .sort((left, right) => right.score - left.score);
+  const selectedCandidateIds = new Set();
+  const selectCandidate = (signal) => {
+    if (!signal || selectedCandidateIds.has(signal.id)) return;
+    selectedCandidateIds.add(signal.id);
+  };
+  for (const signal of rankedSignals) {
+    if (signal.score >= settings.viralScoreThreshold) selectCandidate(signal);
+  }
+  for (const platform of settings.platforms || []) {
+    const platformHasWinner = rankedSignals.some((signal) => (
+      selectedCandidateIds.has(signal.id)
+      && normalizeLower(signal.importedMetadata?.platform) === platform
+    ));
+    if (platformHasWinner) continue;
+    const fallbackSignal = rankedSignals.find((signal) => (
+      normalizeLower(signal.importedMetadata?.platform) === platform
+      && signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD
+    ));
+    selectCandidate(fallbackSignal);
+  }
+  const shortlistedSignals = rankedSignals
+    .filter((signal) => selectedCandidateIds.has(signal.id))
     .slice(0, AUTOMATIC_MAX_WINNERS);
 
   run.rejectedCount = Math.max(candidatesById.size - shortlistedSignals.length, 0);

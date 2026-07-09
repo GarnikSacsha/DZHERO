@@ -800,7 +800,7 @@ function App() {
         ...payload.reel,
         handle: payload.reel?.handle || payload.reel?.sourceHandle || '@instagram.reel',
       };
-      setData((current) => ({ ...current, reels: [importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)] }));
+      setData((current) => ({ ...current, reels: dedupeSignalReels([importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)]) }));
       setRemixDraft(importedReel);
       setPage('remix');
       notify(['public_metadata', 'youtube_api', 'youtube_oembed'].includes(importedReel.sourceStatus)
@@ -833,7 +833,7 @@ function App() {
     }));
     setData((current) => {
       const incomingIds = new Set(incomingReels.map((reel) => reel.id));
-      return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
+      return { ...current, reels: dedupeSignalReels([...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))]) };
     });
     const importedCount = Number(payload.importedCount ?? incomingReels.length);
     const reusedCount = Number(payload.reusedCount ?? 0);
@@ -868,7 +868,7 @@ function App() {
       }));
       setData((current) => {
         const incomingIds = new Set(incomingReels.map((reel) => reel.id));
-        return { ...current, reels: [...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))] };
+        return { ...current, reels: dedupeSignalReels([...incomingReels, ...current.reels.filter((reel) => !incomingIds.has(reel.id))]) };
       });
       if (!isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) return null;
       await refreshSignalsWorkspaceState({ silent: true });
@@ -917,7 +917,7 @@ function App() {
   );
   const applyWorkspaceReels = (incomingReels, nextWorkspaceId = workspaceId) => {
     reelsWorkspaceRef.current = nextWorkspaceId;
-    setData((current) => (current ? { ...current, reels: incomingReels } : current));
+    setData((current) => (current ? { ...current, reels: dedupeSignalReels(incomingReels) } : current));
   };
   const applyDiscoveryRunStatus = (run, code, requestContext = null) => {
     if (!run) return;
@@ -3306,6 +3306,81 @@ function getSignalSourceGroup(reel = {}) {
   if (sourceLabel.includes('instagram') || sourceLabel.includes('reels') || sourceUrl.includes('instagram') || statusText.includes('instagram')) return 'instagram';
   if (sourceLabel.includes('website') || /^https?:\/\//i.test(sourceUrl)) return 'website';
   return 'bank';
+}
+
+function getSignalYouTubeVideoId(reel = {}) {
+  const directId = reel.importedMetadata?.youtube?.videoId || reel.youtube?.videoId || '';
+  if (directId) return String(directId).trim();
+  const rawUrl = String(reel.sourceUrl || reel.importedMetadata?.url || '').trim();
+  try {
+    const url = new URL(rawUrl.startsWith('www.') ? `https://${rawUrl}` : rawUrl);
+    const host = url.hostname.toLowerCase().replace(/^www\./, '');
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (host === 'youtu.be' && parts[0]) return parts[0];
+    if (host.endsWith('youtube.com')) {
+      if (url.searchParams.get('v')) return url.searchParams.get('v');
+      if (['shorts', 'embed', 'live'].includes(parts[0]) && parts[1]) return parts[1];
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+function canonicalSignalUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw.startsWith('www.') ? `https://${raw}` : raw);
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    url.search = '';
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`.toLowerCase();
+  } catch {
+    return raw.replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
+  }
+}
+
+function getSignalStableKeys(reel = {}) {
+  const keys = [];
+  const platform = reel.importedMetadata?.platform || reel.importedMetadata?.source?.tone || '';
+  const providerId = reel.importedMetadata?.shortCode
+    || reel.importedMetadata?.externalId
+    || reel.importedMetadata?.tiktokVideoId
+    || reel.importedMetadata?.id
+    || '';
+  if (platform && providerId) keys.push(`provider:${String(platform).toLowerCase()}:${String(providerId).toLowerCase()}`);
+  const youtubeVideoId = getSignalYouTubeVideoId(reel);
+  if (youtubeVideoId) keys.push(`youtube:${youtubeVideoId.toLowerCase()}`);
+  for (const value of [reel.sourceUrl, reel.importedMetadata?.url, reel.importedMetadata?.webVideoUrl, reel.videoUrl, reel.importedMetadata?.videoUrl]) {
+    const url = canonicalSignalUrl(value);
+    if (url) keys.push(`url:${url}`);
+  }
+  return [...new Set(keys)];
+}
+
+function dedupeSignalReels(reels = []) {
+  const result = [];
+  const indexByKey = new Map();
+  for (const reel of reels) {
+    const keys = getSignalStableKeys(reel);
+    const existingIndex = keys.map((key) => indexByKey.get(key)).find((index) => index !== undefined);
+    if (existingIndex === undefined) {
+      result.push(reel);
+      keys.forEach((key) => indexByKey.set(key, result.length - 1));
+      continue;
+    }
+    const current = result[existingIndex];
+    const incomingStrength = (Number(reel.score) || 0) * 1_000_000 + parseMetric(reel.views);
+    const currentStrength = (Number(current.score) || 0) * 1_000_000 + parseMetric(current.views);
+    result[existingIndex] = incomingStrength > currentStrength
+      ? { ...current, ...reel }
+      : { ...reel, ...current };
+    getSignalStableKeys(result[existingIndex]).forEach((key) => indexByKey.set(key, existingIndex));
+  }
+  return result;
 }
 
 function ViralBank({

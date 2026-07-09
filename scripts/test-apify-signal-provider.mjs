@@ -31,6 +31,20 @@ assert.equal(instagram.videoUrl, 'https://example.com/ig.mp4');
 assert.equal(instagram.views, 908912);
 assert.equal(getApifySignalKey(instagram.importedMetadata), 'instagram:dz-th_xmany');
 
+const instagramWithViewCount = mapInstagramApifyItem({
+  id: '3926661823774853593',
+  shortCode: 'DYpScTiNI3_',
+  caption: 'If you have rizz, you have had practice.',
+  commentsCount: 2034,
+  displayUrl: 'https://example.com/ig-2.jpg',
+  likesCount: 39598,
+  videoViewCount: 358320,
+  timestamp: '2026-05-22T15:00:20.000Z',
+  ownerUsername: 'humansofny',
+}, { workspaceId: 'ws_test', market: 'global', createId: (prefix) => `${prefix}_ig_views` });
+
+assert.equal(instagramWithViewCount.views, 358320);
+
 const instagramProfileActorRequest = buildApifyActorRequest({
   platform: 'instagram',
   mode: 'profile',
