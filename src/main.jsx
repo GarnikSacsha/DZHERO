@@ -382,7 +382,25 @@ function App() {
   const [isSignalsRefreshing, setIsSignalsRefreshing] = useState(false);
   const discoveryRequestRef = useRef(0);
   const reelsRequestRef = useRef(0);
+  const signalsRefreshRequestRef = useRef(0);
+  const signalDiscoveryToggleRequestRef = useRef(0);
+  const signalDiscoveryRunRequestRef = useRef(0);
+  const signalsWorkspaceRequestRef = useRef({ workspaceId, generation: 0 });
+  const visibleSignalsRefreshPromiseRef = useRef(null);
   const reelsWorkspaceRef = useRef('');
+  const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
+    workspaceId: requestWorkspaceId,
+    generation: signalsWorkspaceRequestRef.current.workspaceId === requestWorkspaceId
+      ? signalsWorkspaceRequestRef.current.generation
+      : signalsWorkspaceRequestRef.current.generation + 1,
+    requestId,
+  });
+  const isSignalsWorkspaceRequestCurrent = (requestContext, requestRef = null) => {
+    if (!requestContext) return false;
+    if (requestContext.workspaceId !== signalsWorkspaceRequestRef.current.workspaceId) return false;
+    if (requestContext.generation !== signalsWorkspaceRequestRef.current.generation) return false;
+    return requestRef ? requestContext.requestId === requestRef.current : true;
+  };
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
   const availableWorkspaces = currentUser
@@ -440,6 +458,19 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem(WORKSPACE_KEY, workspaceId);
+  }, [workspaceId]);
+
+  useEffect(() => {
+    signalsWorkspaceRequestRef.current = {
+      workspaceId,
+      generation: signalsWorkspaceRequestRef.current.workspaceId === workspaceId
+        ? signalsWorkspaceRequestRef.current.generation
+        : signalsWorkspaceRequestRef.current.generation + 1,
+    };
+    visibleSignalsRefreshPromiseRef.current = null;
+    setIsSignalDiscoveryToggling(false);
+    setIsSignalDiscoveryRunning(false);
+    setIsSignalsRefreshing(false);
   }, [workspaceId]);
 
   useEffect(() => {
@@ -825,24 +856,24 @@ function App() {
     return payload;
   };
   const loadSignalDiscoveryStatus = async ({ silent = false } = {}) => {
-    const requestId = ++discoveryRequestRef.current;
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++discoveryRequestRef.current);
     if (!silent) setIsSignalDiscoveryLoading(true);
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/signals/discovery`);
+      const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/signals/discovery`);
       if (!response.ok) throw new Error(await readApiError(response, 'signal_discovery_status_failed'));
       const payload = await response.json();
-      if (requestId === discoveryRequestRef.current) {
+      if (isSignalsWorkspaceRequestCurrent(requestContext, discoveryRequestRef)) {
         setSignalDiscovery(payload);
         setSignalDiscoveryError('');
       }
       return payload;
     } catch (error) {
-      if (requestId === discoveryRequestRef.current) {
+      if (isSignalsWorkspaceRequestCurrent(requestContext, discoveryRequestRef)) {
         setSignalDiscoveryError(error?.message || 'Не вдалося завантажити статус автоматизації.');
       }
       throw error;
     } finally {
-      if (!silent && requestId === discoveryRequestRef.current) {
+      if (!silent && isSignalsWorkspaceRequestCurrent(requestContext, discoveryRequestRef)) {
         setIsSignalDiscoveryLoading(false);
       }
     }
@@ -859,8 +890,9 @@ function App() {
     reelsWorkspaceRef.current = nextWorkspaceId;
     setData((current) => (current ? { ...current, reels: incomingReels } : current));
   };
-  const applyDiscoveryRunStatus = (run, code) => {
+  const applyDiscoveryRunStatus = (run, code, requestContext = null) => {
     if (!run) return;
+    if (requestContext && !isSignalsWorkspaceRequestCurrent(requestContext)) return;
     setSignalDiscovery((current) => {
       if (!current) return current;
       const nextCode = deriveDiscoveryRunStatusCode(run, current.settings, code);
@@ -881,59 +913,79 @@ function App() {
   };
   const describeSignalsRefreshIssue = (error) => error?.message || 'Не вдалося оновити стрічку Signals.';
   const refreshWorkspaceReels = async () => {
-    const requestId = ++reelsRequestRef.current;
-    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels`);
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++reelsRequestRef.current);
+    const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/reels`);
     if (!response.ok) throw new Error(await readApiError(response, 'signals_reels_refresh_failed'));
     const payload = await response.json();
     const incomingReels = normalizeWorkspaceReels(payload);
-    if (requestId === reelsRequestRef.current) {
-      applyWorkspaceReels(incomingReels);
+    if (isSignalsWorkspaceRequestCurrent(requestContext, reelsRequestRef)) {
+      applyWorkspaceReels(incomingReels, requestContext.workspaceId);
     }
     return payload;
   };
   const refreshSignalsWorkspaceState = async ({ silent = false } = {}) => {
+    if (!silent && visibleSignalsRefreshPromiseRef.current) return visibleSignalsRefreshPromiseRef.current;
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++signalsRefreshRequestRef.current);
     if (!silent) setIsSignalsRefreshing(true);
-    try {
-      const [discoveryResult, reelsResult] = await Promise.allSettled([
-        loadSignalDiscoveryStatus({ silent: true }),
-        refreshWorkspaceReels(),
-      ]);
-      const discoveryError = discoveryResult.status === 'rejected' ? discoveryResult.reason : null;
-      const reelsError = reelsResult.status === 'rejected' ? reelsResult.reason : null;
-      const firstError = discoveryError || reelsError;
-      if (firstError) {
-        const errorMessage = firstError?.message || 'Не вдалося оновити Signals.';
-        setSignalDiscoveryError(errorMessage);
-        if (!silent) {
-          notify(`Не вдалося оновити Signals: ${errorMessage}`);
+    const refreshPromise = (async () => {
+      try {
+        const [discoveryResult, reelsResult] = await Promise.allSettled([
+          loadSignalDiscoveryStatus({ silent: true }),
+          refreshWorkspaceReels(),
+        ]);
+        const discoveryError = discoveryResult.status === 'rejected' ? discoveryResult.reason : null;
+        const reelsError = reelsResult.status === 'rejected' ? reelsResult.reason : null;
+        const firstError = discoveryError || reelsError;
+        if (isSignalsWorkspaceRequestCurrent(requestContext, signalsRefreshRequestRef)) {
+          if (firstError) {
+            const errorMessage = firstError?.message || 'Не вдалося оновити Signals.';
+            setSignalDiscoveryError(errorMessage);
+            if (!silent) {
+              notify(`Не вдалося оновити Signals: ${errorMessage}`);
+            }
+          } else {
+            setSignalDiscoveryError('');
+          }
         }
-      } else {
-        setSignalDiscoveryError('');
+        return {
+          discovery: discoveryResult.value,
+          reels: reelsResult.value,
+          error: firstError,
+        };
+      } finally {
+        if (!silent && isSignalsWorkspaceRequestCurrent(requestContext, signalsRefreshRequestRef)) {
+          setIsSignalsRefreshing(false);
+        }
       }
-      return {
-        discovery: discoveryResult.value,
-        reels: reelsResult.value,
-        error: firstError,
-      };
-    } finally {
-      if (!silent) setIsSignalsRefreshing(false);
+    })();
+    if (!silent) {
+      visibleSignalsRefreshPromiseRef.current = refreshPromise;
+      void refreshPromise.finally(() => {
+        if (visibleSignalsRefreshPromiseRef.current === refreshPromise) {
+          visibleSignalsRefreshPromiseRef.current = null;
+        }
+      });
     }
+    return refreshPromise;
   };
   const toggleSignalDiscoveryEnabled = async (enabled) => {
     if (isSignalDiscoveryToggling || !signalDiscovery) return;
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++signalDiscoveryToggleRequestRef.current);
     setIsSignalDiscoveryToggling(true);
     setSignalDiscoveryError('');
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/signals/discovery`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/signals/discovery`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
       if (!response.ok) throw new Error(await readApiError(response, 'signal_discovery_toggle_failed'));
       const payload = await response.json();
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) return payload;
       setSignalDiscovery(payload);
       const successMessage = enabled ? 'Автопошук Signals увімкнено.' : 'Автопошук Signals поставлено на паузу.';
       const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) return payload;
       if (refreshResult.error) {
         const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
         setSignalDiscoveryError(refreshMessage);
@@ -941,26 +993,35 @@ function App() {
       } else {
         notify(successMessage);
       }
+      return payload;
     } catch (error) {
-      setSignalDiscoveryError(error?.message || 'Не вдалося змінити стан автоматизації.');
-      notify(`Не вдалося змінити автоматизацію: ${error?.message || 'невідома помилка'}`);
+      if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) {
+        setSignalDiscoveryError(error?.message || 'Не вдалося змінити стан автоматизації.');
+        notify(`Не вдалося змінити автоматизацію: ${error?.message || 'невідома помилка'}`);
+      }
+      return null;
     } finally {
-      setIsSignalDiscoveryToggling(false);
+      if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) {
+        setIsSignalDiscoveryToggling(false);
+      }
     }
   };
   const runSignalDiscoveryNow = async () => {
     if (isSignalDiscoveryRunning) return null;
+    const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++signalDiscoveryRunRequestRef.current);
     setIsSignalDiscoveryRunning(true);
     setSignalDiscoveryError('');
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/signals/discovery/run`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/signals/discovery/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 409 && payload.error === 'automatic_discovery_running') {
-        applyDiscoveryRunStatus(payload.run, 'running');
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
+        applyDiscoveryRunStatus(payload.run, 'running', requestContext);
         const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
         if (refreshResult.error) {
           const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
           setSignalDiscoveryError(refreshMessage);
@@ -971,8 +1032,10 @@ function App() {
         return payload;
       }
       if (response.status === 429 && payload.error === 'automatic_budget_reached') {
-        applyDiscoveryRunStatus(payload.run, 'budget_reached');
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
+        applyDiscoveryRunStatus(payload.run, 'budget_reached', requestContext);
         const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
         if (refreshResult.error) {
           const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
           setSignalDiscoveryError(refreshMessage);
@@ -992,10 +1055,12 @@ function App() {
         acceptedSignalsCount: acceptedSignals,
         updatedSignalsCount: updatedSignals,
       });
-      applyDiscoveryRunStatus(payload.run, deriveDiscoveryRunStatusCode(payload.run, signalDiscovery?.settings));
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
+      applyDiscoveryRunStatus(payload.run, deriveDiscoveryRunStatusCode(payload.run, signalDiscovery?.settings), requestContext);
       if (payload.run?.status === 'failed') {
         setSignalDiscoveryError(runNotice.message);
         const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
         if (refreshResult.error) {
           const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
           setSignalDiscoveryError(refreshMessage);
@@ -1006,6 +1071,7 @@ function App() {
         return payload;
       }
       const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+      if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
       if (refreshResult.error) {
         const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
         setSignalDiscoveryError(refreshMessage);
@@ -1015,11 +1081,15 @@ function App() {
       }
       return payload;
     } catch (error) {
-      setSignalDiscoveryError(error?.message || 'Не вдалося запустити автоматичний збір.');
-      notify(`Не вдалося запустити автопошук: ${error?.message || 'невідома помилка'}`);
+      if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) {
+        setSignalDiscoveryError(error?.message || 'Не вдалося запустити автоматичний збір.');
+        notify(`Не вдалося запустити автопошук: ${error?.message || 'невідома помилка'}`);
+      }
       return null;
     } finally {
-      setIsSignalDiscoveryRunning(false);
+      if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) {
+        setIsSignalDiscoveryRunning(false);
+      }
     }
   };
   useEffect(() => {
@@ -1098,7 +1168,7 @@ function App() {
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
-        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: true })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
+        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && (
@@ -3513,7 +3583,7 @@ function ViralBank({
             canRunAutomation={canRunAutomation}
             isLoading={isSignalDiscoveryLoading}
             loadIssue={signalDiscoveryError}
-            onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: true })}
+            onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}
             onRunAutomation={onRunAutomation}
             onToggleAutomation={onToggleAutomation}
             onOpenAdvancedImport={() => setApifyModalOpen(true)}

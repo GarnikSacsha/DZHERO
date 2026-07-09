@@ -91,6 +91,24 @@ assert.ok(failedNotice.message.length > 0);
 assert.match(failedNotice.message, /1/);
 assert.match(failedNotice.message, /2/);
 
+const partialRun = {
+  status: 'completed',
+  acceptedCount: 2,
+  errorCount: 1,
+  errors: [{ platform: 'instagram', lane: 'accounts', message: '429 rate limit' }],
+};
+const partialNotice = deriveDiscoveryRunNotice({
+  run: partialRun,
+  acceptedSignalsCount: 2,
+  updatedSignalsCount: 0,
+});
+
+assert.equal(deriveDiscoveryRunStatusCode(partialRun, { enabled: true }), 'partial');
+assert.equal(partialNotice.tone, 'warning');
+assert.match(partialNotice.message, /2/);
+assert.match(partialNotice.message, /Instagram/);
+assert.match(partialNotice.message, /помил/i);
+
 const runningToolbar = deriveDiscoveryToolbarStatus({
   status: {
     running: true,
@@ -103,18 +121,31 @@ const budgetToolbar = deriveDiscoveryToolbarStatus({
   status: { code: 'budget_reached', tokenConfigured: true },
 });
 
+const partialToolbar = deriveDiscoveryToolbarStatus({
+  settings: { enabled: true },
+  status: { code: 'completed', tokenConfigured: true, latestRun: partialRun },
+});
+
 assert.equal(runningToolbar.label, 'Виконується');
 assert.equal(budgetToolbar.label, 'Ліміт вичерпано');
+assert.equal(partialToolbar.label, 'Частково');
+assert.equal(partialToolbar.tone, 'warning');
+assert.match(partialToolbar.detail, /Instagram/);
 
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const emptyStateIndex = mainSource.indexOf('const emptyState = deriveSignalsEmptyState({');
 const canRunAutomationIndex = mainSource.indexOf('const canRunAutomation = Boolean(');
 const signalsTableIndex = mainSource.indexOf('isLoading={isSignalDiscoveryLoading}');
 const signalsLoadIssueIndex = mainSource.indexOf('loadIssue={signalDiscoveryError}');
-const refreshWrapperIndex = mainSource.indexOf('onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: true })}');
+const refreshWrapperIndex = mainSource.indexOf('onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}');
 const toolbarHelperIndex = mainSource.indexOf('deriveDiscoveryToolbarStatus(discovery)');
 const runHandlerStart = mainSource.indexOf('const runSignalDiscoveryNow = async () => {');
 const runHandlerEnd = mainSource.indexOf('const pushIdeaToPlan = (idea) => {');
+const requestContextHelperIndex = mainSource.indexOf('const createSignalsWorkspaceRequestContext =');
+const requestGuardHelperIndex = mainSource.indexOf('const isSignalsWorkspaceRequestCurrent =');
+const visibleRefreshGuardIndex = mainSource.indexOf('if (!silent && visibleSignalsRefreshPromiseRef.current) return visibleSignalsRefreshPromiseRef.current;');
+const toggleGuardIndex = mainSource.indexOf('if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) return payload;');
+const runGuardIndex = mainSource.indexOf('if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;');
 
 assert.notEqual(emptyStateIndex, -1, 'expected emptyState derivation in src/main.jsx');
 assert.notEqual(canRunAutomationIndex, -1, 'expected canRunAutomation declaration in src/main.jsx');
@@ -122,6 +153,11 @@ assert.notEqual(signalsTableIndex, -1, 'expected loading state prop in Signals t
 assert.notEqual(signalsLoadIssueIndex, -1, 'expected load error prop in Signals table call');
 assert.notEqual(refreshWrapperIndex, -1, 'expected refresh wrapper in Signals UI');
 assert.notEqual(toolbarHelperIndex, -1, 'expected shared toolbar status helper in src/main.jsx');
+assert.notEqual(requestContextHelperIndex, -1, 'expected request context helper in src/main.jsx');
+assert.notEqual(requestGuardHelperIndex, -1, 'expected request guard helper in src/main.jsx');
+assert.notEqual(visibleRefreshGuardIndex, -1, 'expected visible refresh overlap guard in src/main.jsx');
+assert.notEqual(toggleGuardIndex, -1, 'expected toggle workspace/request guard in src/main.jsx');
+assert.notEqual(runGuardIndex, -1, 'expected run workspace/request guard in src/main.jsx');
 assert.ok(
   canRunAutomationIndex < emptyStateIndex,
   'canRunAutomation must be declared before emptyState derives it',
