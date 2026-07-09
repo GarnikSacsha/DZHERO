@@ -37,7 +37,14 @@ function mapInstagramApifyItem(item = {}, context = {}) {
   const snapshotAt = context.now instanceof Date
     ? context.now.toISOString()
     : new Date(context.now || Date.now()).toISOString();
-  const views = toNumber(item.videoPlayCount);
+  const views = toNumber(
+    item.videoPlayCount
+    || item.videoViewCount
+    || item.viewCount
+    || item.viewsCount
+    || item.playsCount
+    || item.playCount
+  );
   const likes = toNumber(item.likesCount);
   const comments = toNumber(item.commentsCount);
   const thumbnailUrl = item.displayUrl || item.images?.[0] || '';

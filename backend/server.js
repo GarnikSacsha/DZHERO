@@ -557,6 +557,100 @@ function getExistingReelByApifyKey(db, workspaceId) {
   return map;
 }
 
+function getReelYouTubeVideoId(reel = {}) {
+  return String(
+    reel.importedMetadata?.youtube?.videoId
+    || reel.youtube?.videoId
+    || parseYouTubeInput(reel.sourceUrl || reel.importedMetadata?.url || '')?.videoId
+    || ''
+  ).trim();
+}
+
+function getReelStableKeys(reel = {}) {
+  const keys = [];
+  const apifyKey = getApifySignalKey(reel.importedMetadata || {});
+  if (apifyKey) keys.push(`apify:${apifyKey}`);
+
+  const youtubeVideoId = getReelYouTubeVideoId(reel);
+  if (youtubeVideoId) keys.push(`youtube:${youtubeVideoId.toLowerCase()}`);
+
+  for (const value of [
+    reel.sourceUrl,
+    reel.importedMetadata?.url,
+    reel.importedMetadata?.webVideoUrl,
+    reel.videoUrl,
+    reel.importedMetadata?.videoUrl,
+  ]) {
+    const normalizedUrl = canonicalizeSignalUrl(value || '');
+    if (normalizedUrl) keys.push(`url:${normalizedUrl.toLowerCase()}`);
+  }
+
+  return [...new Set(keys)];
+}
+
+function getReelDisplayStrength(reel = {}) {
+  const views = parseMetric(reel.views || reel.importedMetadata?.rawStats?.views || reel.importedMetadata?.stats?.views);
+  const likes = parseMetric(reel.likes || reel.importedMetadata?.rawStats?.likes || reel.importedMetadata?.stats?.likes);
+  const score = Number(reel.score) || 0;
+  const hasMedia = reel.videoUrl || reel.image || reel.importedMetadata?.videoUrl || reel.importedMetadata?.image ? 1 : 0;
+  const updatedAt = Date.parse(reel.updatedAt || reel.createdAt || reel.importedMetadata?.snapshotAt || '') || 0;
+  return (score * 1_000_000_000) + (views * 100) + likes + (hasMedia * 10_000_000_000) + Math.floor(updatedAt / 1000);
+}
+
+function mergeDuplicateReelForDisplay(current = {}, incoming = {}) {
+  const currentWins = getReelDisplayStrength(current) >= getReelDisplayStrength(incoming);
+  const primary = currentWins ? current : incoming;
+  const secondary = currentWins ? incoming : current;
+  return {
+    ...secondary,
+    ...primary,
+    sourceUrl: primary.sourceUrl || secondary.sourceUrl || '',
+    videoUrl: primary.videoUrl || secondary.videoUrl || '',
+    image: primary.image || secondary.image || '',
+    views: parseMetric(primary.views) > 0 ? primary.views : secondary.views || primary.views || 0,
+    likes: parseMetric(primary.likes) > 0 ? primary.likes : secondary.likes || primary.likes || 0,
+    comments: parseMetric(primary.comments) > 0 ? primary.comments : secondary.comments || primary.comments || 0,
+    importedMetadata: {
+      ...(secondary.importedMetadata || {}),
+      ...(primary.importedMetadata || {}),
+      youtube: primary.importedMetadata?.youtube || secondary.importedMetadata?.youtube,
+      apify: primary.importedMetadata?.apify || secondary.importedMetadata?.apify,
+    },
+    status: Array.from(new Set([
+      ...(Array.isArray(secondary.status) ? secondary.status : []),
+      ...(Array.isArray(primary.status) ? primary.status : []),
+    ])),
+  };
+}
+
+function dedupeWorkspaceReelsForResponse(reels = []) {
+  const result = [];
+  const indexByKey = new Map();
+  for (const reel of reels) {
+    const keys = getReelStableKeys(reel);
+    const existingIndex = keys.map((key) => indexByKey.get(key)).find((index) => index !== undefined);
+    if (existingIndex === undefined) {
+      result.push(reel);
+      const newIndex = result.length - 1;
+      for (const key of keys) indexByKey.set(key, newIndex);
+      continue;
+    }
+    result[existingIndex] = mergeDuplicateReelForDisplay(result[existingIndex], reel);
+    for (const key of getReelStableKeys(result[existingIndex])) indexByKey.set(key, existingIndex);
+  }
+  return result;
+}
+
+function getExistingReelByStableKey(db, workspaceId) {
+  const map = new Map();
+  for (const reel of (Array.isArray(db.reels) ? db.reels : []).filter((item) => item.workspaceId === workspaceId)) {
+    for (const key of getReelStableKeys(reel)) {
+      if (!map.has(key)) map.set(key, reel);
+    }
+  }
+  return map;
+}
+
 async function withAutomaticDiscoveryStateLock(workspaceId, task) {
   if (DATABASE_URL) {
     await ensurePostgresState();
@@ -1715,6 +1809,20 @@ function formatCompactNumber(value) {
   if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(number >= 10_000_000 ? 0 : 1).replace(/\.0$/, '')}M`;
   if (number >= 1_000) return `${(number / 1_000).toFixed(number >= 10_000 ? 0 : 1).replace(/\.0$/, '')}K`;
   return String(number);
+}
+
+function parseMetric(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const text = String(value || '').trim().replace(/,/g, '.');
+  const match = text.match(/^([\d.]+)\s*([kmb])?$/i);
+  if (!match) return Number(text) || 0;
+  const number = Number(match[1]);
+  if (!Number.isFinite(number)) return 0;
+  const suffix = (match[2] || '').toLowerCase();
+  if (suffix === 'b') return number * 1_000_000_000;
+  if (suffix === 'm') return number * 1_000_000;
+  if (suffix === 'k') return number * 1_000;
+  return number;
 }
 
 function compactText(value, maxLength = 1600) {
@@ -4442,7 +4550,9 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
 app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-  const reels = db.reels.filter((item) => item.workspaceId === req.params.workspaceId);
+  const reels = dedupeWorkspaceReelsForResponse(
+    db.reels.filter((item) => item.workspaceId === req.params.workspaceId)
+  );
   res.json({ reels });
 });
 
@@ -4537,6 +4647,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       maxResults,
     });
     const metadataItems = await Promise.all(baseMetadataItems.map((metadata) => enrichVideoIntelligenceSafe(metadata)));
+    const existingByStableKey = getExistingReelByStableKey(db, req.params.workspaceId);
     const existingByVideoId = new Map();
     for (const reel of db.reels.filter((item) => item.workspaceId === req.params.workspaceId)) {
       const videoId = reel.importedMetadata?.youtube?.videoId || parseYouTubeInput(reel.sourceUrl)?.videoId;
@@ -4546,8 +4657,13 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
     const returnedReels = [];
     for (const metadata of metadataItems) {
       const videoId = metadata.youtube?.videoId;
-      if (videoId && existingByVideoId.has(videoId)) {
-        const existingReel = existingByVideoId.get(videoId);
+      const metadataStableKeys = getReelStableKeys({
+        sourceUrl: metadata.url,
+        importedMetadata: metadata,
+      });
+      const existingReel = (videoId && existingByVideoId.get(videoId))
+        || metadataStableKeys.map((key) => existingByStableKey.get(key)).find(Boolean);
+      if (existingReel) {
         const sourceLabel = metadata.source?.label || existingReel.scanLabel || existingReel.sourceType || 'YouTube';
         const status = Array.isArray(existingReel.status) ? existingReel.status : [];
         Object.assign(existingReel, {
@@ -4575,6 +4691,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
           },
         });
         returnedReels.push(existingReel);
+        for (const key of getReelStableKeys(existingReel)) existingByStableKey.set(key, existingReel);
         continue;
       }
       const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
@@ -4611,6 +4728,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       importedReels.push(importedReel);
       returnedReels.push(importedReel);
       if (videoId) existingByVideoId.set(videoId, importedReel);
+      for (const key of getReelStableKeys(importedReel)) existingByStableKey.set(key, importedReel);
     }
 
     db.reels.unshift(...importedReels);
@@ -4691,12 +4809,15 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
     });
 
     const existingByKey = getExistingReelByApifyKey(db, req.params.workspaceId);
+    const existingByStableKey = getExistingReelByStableKey(db, req.params.workspaceId);
     const importedReels = [];
     const returnedReels = [];
     for (const reel of mappedReels) {
       const key = getApifySignalKey(reel.importedMetadata || {});
-      if (key && existingByKey.has(key)) {
-        const existing = existingByKey.get(key);
+      const stableKeys = getReelStableKeys(reel);
+      const existing = (key && existingByKey.get(key))
+        || stableKeys.map((stableKey) => existingByStableKey.get(stableKey)).find(Boolean);
+      if (existing) {
         existing.importedMetadata = {
           ...(existing.importedMetadata || {}),
           ...(reel.importedMetadata || {}),
@@ -4711,6 +4832,8 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
         existing.saves = reel.saves || existing.saves || 0;
         existing.updatedAt = new Date().toISOString();
         returnedReels.push(existing);
+        if (key) existingByKey.set(key, existing);
+        for (const stableKey of getReelStableKeys(existing)) existingByStableKey.set(stableKey, existing);
         continue;
       }
       const analysis = analyzeReel(reel, workspace);
@@ -4719,6 +4842,7 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
       importedReels.push(reel);
       returnedReels.push(reel);
       if (key) existingByKey.set(key, reel);
+      for (const stableKey of getReelStableKeys(reel)) existingByStableKey.set(stableKey, reel);
     }
 
     db.reels.unshift(...importedReels);
@@ -4806,28 +4930,44 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const analysis = analyzeReel(importedReel, workspace);
     importedReel.score = Math.max(analysis.score, ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(metadata.sourceStatus) ? 78 : 70);
     importedReel.analysis = analysis;
-    db.reels.unshift(importedReel);
+    const existingByStableKey = getExistingReelByStableKey(db, req.params.workspaceId);
+    const existingReel = getReelStableKeys(importedReel)
+      .map((key) => existingByStableKey.get(key))
+      .find(Boolean);
+    const returnedReel = existingReel
+      ? Object.assign(existingReel, mergeDuplicateReelForDisplay(existingReel, importedReel), {
+        updatedAt: new Date().toISOString(),
+      })
+      : importedReel;
+    if (!existingReel) {
+      db.reels.unshift(importedReel);
+    }
     db.remixes.unshift({
       id: createId('remix'),
       workspaceId: req.params.workspaceId,
-      reelId: importedReel.id,
+      reelId: returnedReel.id,
       sourceUrl: metadata.url || url,
       provider: getAiProviderStatus().textAgent.provider,
       result: remixResult,
       createdAt: new Date().toISOString(),
     });
     createSyncJob(db, req.params.workspaceId, 'url_reel_imported', {
-      reelId: importedReel.id,
+      reelId: returnedReel.id,
       sourceStatus: metadata.sourceStatus,
+      reused: Boolean(existingReel),
     });
-    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports);
+    if (!existingReel) {
+      incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports);
+    }
     const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
     await writeDb(db);
     res.status(201).json({
-      reel: importedReel,
+      reel: returnedReel,
       analysis,
       remix: remixResult,
       metadata,
+      importedCount: existingReel ? 0 : 1,
+      reusedCount: existingReel ? 1 : 0,
       billing,
     });
   } catch (err) {
