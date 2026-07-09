@@ -143,6 +143,9 @@ assert.match(storageSource, /BEGIN/);
 assert.match(storageSource, /pg_advisory_xact_lock/);
 assert.match(storageSource, /FOR UPDATE/);
 assert.match(serverSource, /withAutomaticDiscoveryStateLock/);
+assert.match(serverSource, /function mergeAutomaticDiscoveryWriteSnapshot/);
+assert.match(serverSource, /SELECT data FROM app_state WHERE key = \$1 FOR UPDATE/);
+assert.match(serverSource, /preserveAutomaticDiscovery = true/);
 assert.match(serverSource, /runAutomaticDiscoveryWorkerTick\(\)\.catch\(logAutomaticDiscoveryWorkerError\)/);
 
 console.log('automatic discovery storage tests passed');

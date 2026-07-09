@@ -48,6 +48,16 @@ const runs = [
     startedAt: '2026-07-08T10:00:00.000Z',
   },
   {
+    id: 'run-2b',
+    workspaceId: 'ws-1',
+    lane: 'accounts',
+    status: 'completed',
+    reservedCostUsd: 0.11,
+    actualCostUsd: 0,
+    attemptedCallCount: 1,
+    completedAt: '2026-07-08T11:00:00.000Z',
+  },
+  {
     id: 'run-3',
     workspaceId: 'ws-1',
     lane: 'hashtags',
@@ -65,7 +75,7 @@ const runs = [
   },
 ];
 
-assert.equal(getDailyAutomaticSpend(runs, 'ws-1', now), 0.72);
+assert.equal(getDailyAutomaticSpend(runs, 'ws-1', now), 0.83);
 assert.equal(
   canStartDiscoveryRun({
     spentUsd: 0.72,

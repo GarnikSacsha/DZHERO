@@ -445,7 +445,7 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
     const hasActualCost = run.actualCostUsd !== null
       && run.actualCostUsd !== undefined
       && Number.isFinite(Number(run.actualCostUsd))
-      && Number(run.actualCostUsd) >= 0;
+      && Number(run.actualCostUsd) > 0;
     const actualCostUsd = hasActualCost ? Number(run.actualCostUsd) : null;
     const reservedCostUsd = Number(run.reservedCostUsd);
     const estimatedCostUsd = Number(run.estimatedCostUsd);
@@ -1190,8 +1190,8 @@ async function executeAutomaticDiscovery(args = {}) {
   }
 
   function recordBilledCost(value) {
-    if (Number.isFinite(value) && value >= 0) {
-      billedCostUsd = roundUsd(billedCostUsd + value);
+    if (Number.isFinite(value) && value > 0) {
+      billedCostUsd += value;
       return;
     }
     hasCompleteBilledCost = false;
@@ -1392,8 +1392,9 @@ async function executeAutomaticDiscovery(args = {}) {
 
   run.acceptedCount = acceptedSignals.length;
   run.status = successfulCalls > 0 ? 'completed' : 'failed';
-  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost
-    ? roundUsd(billedCostUsd)
+  const roundedBilledCostUsd = roundUsd(billedCostUsd);
+  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd > 0
+    ? roundedBilledCostUsd
     : null;
   run.completedAt = now.toISOString();
   const latestHeartbeat = Date.parse(run.updatedAt || '');
