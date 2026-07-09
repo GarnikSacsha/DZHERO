@@ -461,9 +461,9 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
     }
     const amount = hasActualCost
       ? actualCostUsd
-      : Number.isFinite(reservedCostUsd) && reservedCostUsd > 0
+      : run.status === 'running' && Number.isFinite(reservedCostUsd) && reservedCostUsd > 0
         ? reservedCostUsd
-      : Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
+      : run.status === 'running' && Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
         ? estimatedCostUsd
         : 0;
     if (Number.isFinite(amount) && amount > 0) {

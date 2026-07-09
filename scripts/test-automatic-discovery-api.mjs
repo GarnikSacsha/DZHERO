@@ -417,7 +417,8 @@ try {
   const estimatedSpendStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
     headers,
   });
-  assert.equal(estimatedSpendStatus.body?.status?.dailySpendIsEstimated, true);
+  assert.equal(estimatedSpendStatus.body?.status?.dailySpendUsd, 0);
+  assert.equal(estimatedSpendStatus.body?.status?.dailySpendIsEstimated, false);
 
   const budgetBlockedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const budgetWorkspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);

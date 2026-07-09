@@ -1014,10 +1014,6 @@ function getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd,
   if (activeRun) return 'running';
   if (settings.enabled === false) return 'paused';
   if (dailySpendUsd >= settings.dailyBudgetUsd) return 'budget_reached';
-  const currentDayKey = new Date(now).toISOString().slice(0, 10);
-  const latestRunDayKey = latestRun?.dayKey
-    || String(latestRun?.claimedAt || latestRun?.startedAt || '').slice(0, 10);
-  if (latestRun?.status === 'blocked_budget' && latestRunDayKey === currentDayKey) return 'budget_reached';
   if (latestRun?.status === 'failed') return 'failed';
   if (latestRun?.status === 'completed') return 'completed';
   return 'idle';
