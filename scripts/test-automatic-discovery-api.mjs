@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -71,6 +71,20 @@ async function waitForServer(baseUrl, child) {
   throw new Error('timed out waiting for backend health check');
 }
 
+async function waitForFile(filePath) {
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    try {
+      await access(filePath);
+      return;
+    } catch {
+      // Keep polling until the file appears.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timed out waiting for file ${filePath}`);
+}
+
 async function requestJson(baseUrl, pathname, options = {}) {
   const response = await fetch(`${baseUrl}${pathname}`, {
     ...options,
@@ -105,10 +119,41 @@ async function stopServer(child) {
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'automatic-discovery-api-'));
 const dbPath = path.join(tempDir, 'db.json');
+const providerPath = path.join(tempDir, 'automatic-provider.cjs');
+const providerStartedPath = path.join(tempDir, 'provider-started');
+const providerReleasePath = path.join(tempDir, 'provider-release');
 const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 
 await writeFile(dbPath, `${JSON.stringify(createEmptyDb(), null, 2)}\n`, 'utf8');
+await writeFile(providerPath, `'use strict';
+
+const fs = require('fs/promises');
+
+module.exports = async function automaticDiscoveryTestProvider(call = {}) {
+  const startedPath = process.env.AUTOMATIC_DISCOVERY_TEST_PROVIDER_STARTED_PATH;
+  const releasePath = process.env.AUTOMATIC_DISCOVERY_TEST_PROVIDER_RELEASE_PATH;
+  if (startedPath) {
+    await fs.writeFile(startedPath, JSON.stringify({
+      platform: call.platform || null,
+      mode: call.mode || call.inputType || null,
+      input: call.input || call.inputValue || null,
+      downloadVideos: Boolean(call.downloadVideos || call.downloadVideo),
+    }, null, 2));
+  }
+  if (releasePath) {
+    while (true) {
+      try {
+        await fs.access(releasePath);
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+  return [];
+};
+`, 'utf8');
 
 const child = spawn(process.execPath, [SERVER_ENTRY], {
   cwd: ROOT_DIR,
@@ -116,10 +161,13 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     ...process.env,
     PORT: String(port),
     HOST: '127.0.0.1',
-    NODE_ENV: 'development',
+    NODE_ENV: 'test',
     DB_PATH: dbPath,
     APIFY_TOKEN: 'test-apify-token',
     AUTOMATIC_DISCOVERY_ENABLED: 'false',
+    AUTOMATIC_DISCOVERY_TEST_PROVIDER: providerPath,
+    AUTOMATIC_DISCOVERY_TEST_PROVIDER_STARTED_PATH: providerStartedPath,
+    AUTOMATIC_DISCOVERY_TEST_PROVIDER_RELEASE_PATH: providerReleasePath,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -144,11 +192,32 @@ try {
   assert.ok(auth.body?.token);
   assert.ok(auth.body?.user?.workspaceId);
 
+  const authSecond = await requestJson(baseUrl, '/api/auth/email', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'automatic-discovery-other@example.com' }),
+  });
+  assert.equal(authSecond.response.status, 201);
+  assert.ok(authSecond.body?.token);
+  assert.ok(authSecond.body?.user?.workspaceId);
+
   const token = auth.body.token;
   const workspaceId = auth.body.user.workspaceId;
+  const otherWorkspaceId = authSecond.body.user.workspaceId;
   const headers = {
     authorization: `Bearer ${token}`,
   };
+  const otherHeaders = {
+    authorization: `Bearer ${authSecond.body.token}`,
+  };
+
+  const unauthenticatedGet = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`);
+  assert.equal(unauthenticatedGet.response.status, 401);
+
+  const unauthenticatedPatch = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(unauthenticatedPatch.response.status, 401);
 
   const initialStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
     headers,
@@ -156,33 +225,134 @@ try {
   assert.equal(initialStatus.response.status, 200);
   assert.equal(initialStatus.body?.settings?.enabled, true);
   assert.equal(initialStatus.body?.settings?.dailyBudgetUsd, 0.8);
+  assert.equal(initialStatus.body?.settings?.viralScoreThreshold, 70);
   assert.equal(initialStatus.body?.status?.dailySpendUsd, 0);
 
   const patchedStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
     method: 'PATCH',
     headers,
-    body: JSON.stringify({ enabled: false }),
+    body: JSON.stringify({
+      enabled: true,
+      dailyBudgetUsd: 0.8,
+      viralScoreThreshold: 56,
+      platforms: ['instagram'],
+    }),
   });
   assert.equal(patchedStatus.response.status, 200);
-  assert.equal(patchedStatus.body?.settings?.enabled, false);
+  assert.equal(patchedStatus.body?.settings?.enabled, true);
+  assert.equal(patchedStatus.body?.settings?.dailyBudgetUsd, 0.8);
+  assert.equal(patchedStatus.body?.settings?.viralScoreThreshold, 56);
+  assert.deepEqual(patchedStatus.body?.settings?.platforms, ['instagram']);
 
-  const manualRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+  const forbiddenGet = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery`, {
+    headers,
+  });
+  assert.equal(forbiddenGet.response.status, 403);
+
+  const forbiddenPatch = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ enabled: false }),
+  });
+  assert.equal(forbiddenPatch.response.status, 403);
+
+  const notFoundGet = await requestJson(baseUrl, '/api/workspaces/ws_missing/signals/discovery', {
+    headers,
+  });
+  assert.equal(notFoundGet.response.status, 404);
+
+  const otherOwnerStatus = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery`, {
+    headers: otherHeaders,
+  });
+  assert.equal(otherOwnerStatus.response.status, 200);
+
+  const runState = JSON.parse(await readFile(dbPath, 'utf8'));
+  const workspace = runState.workspaces.find((item) => item.id === workspaceId);
+  workspace.discoverySettings = {
+    ...(workspace.discoverySettings || {}),
+    enabled: true,
+    dailyBudgetUsd: 0.8,
+    viralScoreThreshold: 56,
+    platforms: ['instagram'],
+  };
+  workspace.notes = 'pre-existing workspace note';
+  runState.sources.unshift({
+    id: 'src_api_1',
+    workspaceId,
+    handle: '@fitlab',
+    label: 'Fit Lab',
+    type: 'instagram',
+  });
+  runState.discoveryRuns.unshift({
+    id: 'stale_automatic_run',
+    workspaceId,
+    lane: 'automatic',
+    status: 'running',
+    claimedAt: '2026-07-08T00:00:00.000Z',
+    startedAt: '2026-07-08T00:00:00.000Z',
+    updatedAt: '2026-07-08T00:00:00.000Z',
+  });
+  await writeFile(dbPath, `${JSON.stringify(runState, null, 2)}\n`, 'utf8');
+
+  const manualRunPromise = requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
     method: 'POST',
     headers,
     body: JSON.stringify({}),
   });
+
+  await waitForFile(providerStartedPath);
+
+  const persistedClaimState = JSON.parse(await readFile(dbPath, 'utf8'));
+  const activeRun = persistedClaimState.discoveryRuns?.find((run) => run.workspaceId === workspaceId && run.status === 'running');
+  const recoveredRun = persistedClaimState.discoveryRuns?.find((run) => run.id === 'stale_automatic_run');
+
+  assert.equal(activeRun?.lane, 'automatic');
+  assert.equal(activeRun?.status, 'running');
+  assert.equal(recoveredRun?.status, 'failed');
+  assert.equal(recoveredRun?.reason, 'stale_run_recovered');
+  assert.ok(recoveredRun?.finishedAt);
+
+  const overlappingRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  assert.equal(overlappingRun.response.status, 409);
+  assert.equal(overlappingRun.body?.error, 'automatic_discovery_running');
+  assert.equal(overlappingRun.body?.run?.status, 'running');
+
+  persistedClaimState.workspaces.find((item) => item.id === workspaceId).reviewNote = 'survives concurrent merge';
+  persistedClaimState.reels.unshift({
+    id: 'reel_concurrent_unrelated',
+    workspaceId,
+    title: 'Concurrent unrelated reel',
+    sourceUrl: 'https://example.com/concurrent-reel',
+    importedMetadata: {
+      provider: 'manual',
+      platform: 'instagram',
+      externalId: 'concurrent-reel',
+    },
+  });
+  await writeFile(dbPath, `${JSON.stringify(persistedClaimState, null, 2)}\n`, 'utf8');
+  await writeFile(providerReleasePath, 'release\n', 'utf8');
+
+  const manualRun = await manualRunPromise;
   assert.equal(manualRun.response.status, 201);
-  assert.equal(manualRun.body?.run?.status, 'paused');
+  assert.equal(manualRun.body?.run?.status, 'completed');
   assert.equal(manualRun.body?.run?.budgetUsd, 0.8);
 
   const persistedState = JSON.parse(await readFile(dbPath, 'utf8'));
-  const persistedRun = persistedState.discoveryRuns?.find((run) => run.workspaceId === workspaceId);
-  assert.equal(persistedRun?.status, 'paused');
+  const persistedRun = persistedState.discoveryRuns?.find((run) => run.id === activeRun.id);
+  const persistedWorkspace = persistedState.workspaces.find((item) => item.id === workspaceId);
+  const persistedConcurrentReel = persistedState.reels?.find((reel) => reel.id === 'reel_concurrent_unrelated');
+  assert.equal(persistedRun?.status, 'completed');
+  assert.equal(persistedWorkspace?.reviewNote, 'survives concurrent merge');
+  assert.equal(persistedConcurrentReel?.sourceUrl, 'https://example.com/concurrent-reel');
 
   const budgetBlockedState = JSON.parse(await readFile(dbPath, 'utf8'));
-  const workspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);
-  workspace.discoverySettings = {
-    ...(workspace.discoverySettings || {}),
+  const budgetWorkspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);
+  budgetWorkspace.discoverySettings = {
+    ...(budgetWorkspace.discoverySettings || {}),
     enabled: true,
   };
   budgetBlockedState.discoveryRuns.unshift({

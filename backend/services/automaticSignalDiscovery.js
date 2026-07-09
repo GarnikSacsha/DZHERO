@@ -17,6 +17,7 @@ const AUTOMATIC_INPUTS_PER_LANE = 2;
 const AUTOMATIC_METADATA_LIMIT = 1;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 3;
+const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
 
 const DEFAULT_LANES = ['accounts', 'keywords', 'hashtags', 'trends'];
 const PLATFORM_NAMES = ['instagram', 'tiktok'];
@@ -354,6 +355,48 @@ function createRunId(prefix = 'discovery_run') {
   return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function getRunHeartbeatTime(run = {}) {
+  for (const value of [run.updatedAt, run.startedAt, run.claimedAt, run.createdAt]) {
+    const timestamp = Date.parse(value || '');
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  return null;
+}
+
+function recoverStaleRunningRuns(state = {}, args = {}) {
+  const workspaceId = String(args.workspaceId || '').trim();
+  const lane = String(args.lane || '').trim();
+  if (!workspaceId) return [];
+  const now = toDate(args.now || new Date());
+  const leaseMs = Number.isFinite(Number(args.leaseMs)) && Number(args.leaseMs) > 0
+    ? Number(args.leaseMs)
+    : STALE_RUNNING_LEASE_MS;
+  const runs = Array.isArray(state.discoveryRuns) ? state.discoveryRuns : (state.discoveryRuns = []);
+  const recoveredRuns = [];
+
+  for (const run of runs) {
+    if (!run || run.workspaceId !== workspaceId || run.status !== 'running') continue;
+    if (lane && run.lane !== lane) continue;
+    const heartbeatTime = getRunHeartbeatTime(run);
+    if (!Number.isFinite(heartbeatTime)) continue;
+    if (now.getTime() - heartbeatTime < leaseMs) continue;
+    run.status = 'failed';
+    run.reason = 'stale_run_recovered';
+    run.finishedAt = now.toISOString();
+    run.completedAt = run.completedAt || now.toISOString();
+    run.updatedAt = now.toISOString();
+    run.errorCount = Number.isFinite(Number(run.errorCount)) ? Number(run.errorCount) + 1 : 1;
+    run.errors = Array.isArray(run.errors) ? run.errors : [];
+    run.errors.push({
+      code: 'stale_run_recovered',
+      message: 'Recovered a stale running discovery lease before starting a new run.',
+    });
+    recoveredRuns.push(run);
+  }
+
+  return recoveredRuns;
+}
+
 function getWorkspaceDiscoverySettings(state = {}, workspaceId, now = new Date()) {
   const workspace = getWorkspace(state, workspaceId) || {};
   const defaults = defaultDiscoverySettings(now);
@@ -653,6 +696,11 @@ function createAutomaticRun(state = {}, args = {}) {
   const runs = Array.isArray(state.discoveryRuns) ? state.discoveryRuns : (state.discoveryRuns = []);
   const workspaceId = String(args.workspaceId || '').trim();
   if (!workspaceId) return null;
+  recoverStaleRunningRuns(state, {
+    workspaceId,
+    lane: AUTOMATIC_RUN_LANE,
+    now: args.now,
+  });
   const activeConflict = runs.some((run) => (
     run
     && run.workspaceId === workspaceId
@@ -1002,6 +1050,11 @@ function claimDiscoveryRun(state = {}, args = {}) {
   const lane = String(args.lane || '').trim();
   if (!workspaceId || !lane) return null;
   const runs = Array.isArray(state.discoveryRuns) ? state.discoveryRuns : (state.discoveryRuns = []);
+  recoverStaleRunningRuns(state, {
+    workspaceId,
+    lane,
+    now: args.now,
+  });
   const activeConflict = runs.some((run) => (
     run
     && run.workspaceId === workspaceId
@@ -1042,5 +1095,6 @@ module.exports = {
   getDailyAutomaticSpend,
   canStartDiscoveryRun,
   claimDiscoveryRun,
+  recoverStaleRunningRuns,
   executeAutomaticDiscovery,
 };

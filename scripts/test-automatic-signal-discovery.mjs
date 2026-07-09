@@ -251,6 +251,42 @@ const trendClaim = claimDiscoveryRun(claimState, {
 assert.equal(trendClaim.status, 'running');
 assert.equal(claimState.discoveryRuns.length, 2);
 
+const staleClaimNow = new Date('2026-07-08T01:00:00.000Z');
+const staleClaimState = {
+  discoveryRuns: [
+    {
+      id: 'stale_accounts_run',
+      workspaceId: 'ws-1',
+      lane: 'accounts',
+      status: 'running',
+      claimedAt: '2026-07-08T00:00:00.000Z',
+      startedAt: '2026-07-08T00:00:00.000Z',
+      updatedAt: '2026-07-08T00:00:00.000Z',
+    },
+  ],
+};
+
+const recoveredClaim = claimDiscoveryRun(staleClaimState, {
+  workspaceId: 'ws-1',
+  lane: 'accounts',
+  now: staleClaimNow,
+  spentUsd: 0,
+  budgetUsd: 2,
+  platform: 'instagram',
+  limit: 1,
+  discoveryInputs: {
+    accounts: ['@fitlab'],
+  },
+  estimatedCostUsd: 0.01,
+});
+
+assert.equal(recoveredClaim?.status, 'running');
+assert.equal(recoveredClaim?.claimedAt, staleClaimNow.toISOString());
+assert.equal(staleClaimState.discoveryRuns.length, 2);
+assert.equal(staleClaimState.discoveryRuns[1].status, 'failed');
+assert.equal(staleClaimState.discoveryRuns[1].finishedAt, staleClaimNow.toISOString());
+assert.equal(staleClaimState.discoveryRuns[1].reason, 'stale_run_recovered');
+
 const createMappedTikTokReel = (item, suffix) => mapTikTokApifyItem(item, {
   workspaceId: 'ws-1',
   market: 'ua',
@@ -603,6 +639,55 @@ assert.equal(pausedResult.run.status, 'paused');
 assert.equal(pausedResult.run.estimatedCostUsd, 0);
 assert.equal(pausedResult.run.actualCostUsd, 0);
 assert.equal(getDailyAutomaticSpend(pausedState.discoveryRuns, 'ws_paused', now), 0);
+
+const pausedRecoveryState = {
+  workspaces: [
+    {
+      id: 'ws_paused_recovery',
+      brief: {
+        businessType: 'fitness',
+        niche: 'pilates',
+        location: 'Ukraine',
+      },
+      discoverySettings: {
+        enabled: false,
+        dailyBudgetUsd: 4,
+      },
+    },
+  ],
+  sources: [
+    { id: 'src_paused_recovery_1', workspaceId: 'ws_paused_recovery', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [
+    {
+      id: 'stale_automatic_run',
+      workspaceId: 'ws_paused_recovery',
+      lane: 'automatic',
+      status: 'running',
+      claimedAt: '2026-07-07T23:00:00.000Z',
+      startedAt: '2026-07-07T23:00:00.000Z',
+      updatedAt: '2026-07-07T23:00:00.000Z',
+    },
+  ],
+};
+
+const pausedRecoveryResult = await executeAutomaticDiscovery({
+  state: pausedRecoveryState,
+  workspaceId: 'ws_paused_recovery',
+  token: 'test-token',
+  now,
+  fetchSignals: async () => {
+    throw new Error('paused recovery discovery should not fetch');
+  },
+});
+
+assert.equal(pausedRecoveryResult.run.status, 'paused');
+assert.equal(pausedRecoveryState.discoveryRuns.length, 2);
+assert.equal(pausedRecoveryState.discoveryRuns[1].status, 'failed');
+assert.equal(pausedRecoveryState.discoveryRuns[1].finishedAt, now.toISOString());
+assert.equal(pausedRecoveryState.discoveryRuns[1].reason, 'stale_run_recovered');
 
 const notDueState = {
   workspaces: [
