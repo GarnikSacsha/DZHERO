@@ -13,6 +13,18 @@ function pluralize(count, one, few, many) {
   return many;
 }
 
+function formatDiscoveryTimestamp(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('uk-UA', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date).replace(',', '');
+}
+
 export function deriveDiscoveryRunStatusCode(run, settings = {}, fallbackCode = '') {
   if (fallbackCode) return fallbackCode;
   if (run?.status === 'running') return 'running';
@@ -59,7 +71,6 @@ export function deriveDiscoveryRunNotice({
     const updatedText = updated > 0
       ? `${updated} ${pluralize(updated, 'сигнал', 'сигнали', 'сигналів')}`
       : '';
-    const body = [acceptedText, updatedText].filter(Boolean).join(acceptedText && updatedText ? ' і ' : '');
     return {
       tone: 'success',
       message: `Автопошук ${accepted > 0 ? `додав ${acceptedText}` : ''}${accepted > 0 && updated > 0 ? ' і ' : ''}${updated > 0 ? `оновив ${updatedText}` : ''}.`,
@@ -72,6 +83,78 @@ export function deriveDiscoveryRunNotice({
   };
 }
 
+export function deriveDiscoveryToolbarStatus(discovery) {
+  if (!discovery) {
+    return {
+      label: 'Завантаження',
+      tone: 'scheduled',
+      detail: 'Завантажуємо статус автоматизації для Signals.',
+    };
+  }
+
+  const settings = discovery?.settings || {};
+  const status = discovery?.status || {};
+  const latestRun = status.latestRun || null;
+
+  if (status.running || status.code === 'running') {
+    const activeRun = status.activeRun;
+    const attempted = Number(activeRun?.attemptedCallCount || 0);
+    return {
+      label: 'Виконується',
+      tone: 'running',
+      detail: attempted ? `Зараз обробляємо ${attempted} джерел для Signals.` : 'Автоматичний збір сигналів уже триває.',
+    };
+  }
+
+  if (!status.tokenConfigured) {
+    return {
+      label: 'Помилка',
+      tone: 'error',
+      detail: 'APIFY_TOKEN не налаштований у backend, тому автопошук зараз недоступний.',
+    };
+  }
+
+  if (settings.enabled === false || status.code === 'paused') {
+    return {
+      label: 'На паузі',
+      tone: 'paused',
+      detail: 'Автоматичний збір вимкнений. Можна лишити ручний імпорт або увімкнути розклад.',
+    };
+  }
+
+  if (status.workerEnabled === false && settings.enabled !== false) {
+    return {
+      label: 'Помилка',
+      tone: 'error',
+      detail: 'Фоновий worker вимкнений, тож розклад не запуститься автоматично.',
+    };
+  }
+
+  if (status.code === 'budget_reached') {
+    return {
+      label: 'Ліміт вичерпано',
+      tone: 'budget',
+      detail: 'Денний ліміт на метадані вичерпано до наступної UTC-доби.',
+    };
+  }
+
+  if (status.code === 'failed' || latestRun?.status === 'failed') {
+    return {
+      label: 'Помилка',
+      tone: 'error',
+      detail: latestRun?.errors?.[0]?.message || 'Останній автоматичний запуск завершився з помилкою.',
+    };
+  }
+
+  return {
+    label: 'За розкладом',
+    tone: 'scheduled',
+    detail: status.nextRunAt
+      ? `Наступна автоматична перевірка ${formatDiscoveryTimestamp(status.nextRunAt)}.`
+      : 'Розклад увімкнений і чекає на наступне вікно запуску.',
+  };
+}
+
 export function deriveSignalsEmptyState({
   reelsCount = 0,
   filteredReelsCount = 0,
@@ -81,23 +164,54 @@ export function deriveSignalsEmptyState({
   query = '',
   sourceFilter = 'all',
   pastedReelUrl = '',
+  isLoading = false,
+  loadIssue = '',
 } = {}) {
   if (reelsCount === 0 && !hasActiveFilters) {
+    if (isLoading) {
+      return {
+        kind: 'loading',
+        title: 'Завантажуємо Signals',
+        text: 'Підтягуємо статус, розклад і перші сигнали для цього workspace.',
+        primaryAction: null,
+        secondaryAction: null,
+      };
+    }
+
+    if (loadIssue) {
+      return {
+        kind: 'error',
+        title: 'Не вдалося оновити Signals',
+        text: loadIssue,
+        primaryAction: {
+          kind: 'retry',
+          label: 'Спробувати ще раз',
+          disabled: false,
+        },
+        secondaryAction: {
+          kind: 'advanced_import',
+          label: 'Розширений імпорт',
+        },
+      };
+    }
+
     return {
       kind: 'authoritative',
       title: 'Автозбір ще не заповнив банк сигналів',
-      text: 'Автоматичний збір сам підтягує нові сигнали з підключених акаунтів і трендів. Запустіть його зараз або увімкніть автопошук, щоб банк поповнювався без ручної рутини.',
-      primaryAction: automationEnabled
+      text: 'Автоматичний збір сам підтягуватиме нові сигнали з підключених акаунтів і трендів. Запустіть його зараз або увімкніть автопошук, щоб банк поповнювався без ручної рутини.',
+      primaryAction: !automationEnabled
         ? {
-            kind: 'run',
-            label: 'Запустити зараз',
-            disabled: !canRunAutomation,
-          }
-        : {
             kind: 'enable',
             label: 'Увімкнути автозбір',
             disabled: false,
-          },
+          }
+        : canRunAutomation
+          ? {
+              kind: 'run',
+              label: 'Запустити зараз',
+              disabled: false,
+            }
+          : null,
       secondaryAction: {
         kind: 'advanced_import',
         label: 'Розширений імпорт',

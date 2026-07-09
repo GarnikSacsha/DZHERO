@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import {
   deriveDiscoveryRunNotice,
   deriveDiscoveryRunStatusCode,
+  deriveDiscoveryToolbarStatus,
   deriveSignalsEmptyState,
 } from '../src/signalsUiState.mjs';
 
@@ -19,6 +20,48 @@ assert.equal(authoritativeEmpty.primaryAction.kind, 'run');
 assert.equal(authoritativeEmpty.primaryAction.disabled, false);
 assert.equal(authoritativeEmpty.secondaryAction.kind, 'advanced_import');
 assert.ok(authoritativeEmpty.title.length > 0);
+
+const loadingEmpty = deriveSignalsEmptyState({
+  reelsCount: 0,
+  filteredReelsCount: 0,
+  hasActiveFilters: false,
+  isLoading: true,
+});
+
+assert.equal(loadingEmpty.kind, 'loading');
+assert.equal(loadingEmpty.primaryAction, null);
+assert.equal(loadingEmpty.secondaryAction, null);
+
+const loadFailedEmpty = deriveSignalsEmptyState({
+  reelsCount: 0,
+  filteredReelsCount: 0,
+  hasActiveFilters: false,
+  loadIssue: 'Reels fetch failed',
+});
+
+assert.equal(loadFailedEmpty.kind, 'error');
+assert.equal(loadFailedEmpty.primaryAction.kind, 'retry');
+assert.equal(loadFailedEmpty.secondaryAction.kind, 'advanced_import');
+
+const pausedEmpty = deriveSignalsEmptyState({
+  reelsCount: 0,
+  filteredReelsCount: 0,
+  hasActiveFilters: false,
+  automationEnabled: false,
+  canRunAutomation: false,
+});
+
+assert.equal(pausedEmpty.primaryAction.kind, 'enable');
+
+const blockedEmpty = deriveSignalsEmptyState({
+  reelsCount: 0,
+  filteredReelsCount: 0,
+  hasActiveFilters: false,
+  automationEnabled: true,
+  canRunAutomation: false,
+});
+
+assert.equal(blockedEmpty.primaryAction, null);
 
 const filteredEmpty = deriveSignalsEmptyState({
   reelsCount: 0,
@@ -48,15 +91,45 @@ assert.ok(failedNotice.message.length > 0);
 assert.match(failedNotice.message, /1/);
 assert.match(failedNotice.message, /2/);
 
+const runningToolbar = deriveDiscoveryToolbarStatus({
+  status: {
+    running: true,
+    activeRun: { attemptedCallCount: 2 },
+  },
+});
+
+const budgetToolbar = deriveDiscoveryToolbarStatus({
+  settings: { enabled: true },
+  status: { code: 'budget_reached', tokenConfigured: true },
+});
+
+assert.equal(runningToolbar.label, 'Виконується');
+assert.equal(budgetToolbar.label, 'Ліміт вичерпано');
+
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const emptyStateIndex = mainSource.indexOf('const emptyState = deriveSignalsEmptyState({');
 const canRunAutomationIndex = mainSource.indexOf('const canRunAutomation = Boolean(');
+const signalsTableIndex = mainSource.indexOf('isLoading={isSignalDiscoveryLoading}');
+const signalsLoadIssueIndex = mainSource.indexOf('loadIssue={signalDiscoveryError}');
+const refreshWrapperIndex = mainSource.indexOf('onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: true })}');
+const toolbarHelperIndex = mainSource.indexOf('deriveDiscoveryToolbarStatus(discovery)');
+const runHandlerStart = mainSource.indexOf('const runSignalDiscoveryNow = async () => {');
+const runHandlerEnd = mainSource.indexOf('const pushIdeaToPlan = (idea) => {');
 
 assert.notEqual(emptyStateIndex, -1, 'expected emptyState derivation in src/main.jsx');
 assert.notEqual(canRunAutomationIndex, -1, 'expected canRunAutomation declaration in src/main.jsx');
+assert.notEqual(signalsTableIndex, -1, 'expected loading state prop in Signals table call');
+assert.notEqual(signalsLoadIssueIndex, -1, 'expected load error prop in Signals table call');
+assert.notEqual(refreshWrapperIndex, -1, 'expected refresh wrapper in Signals UI');
+assert.notEqual(toolbarHelperIndex, -1, 'expected shared toolbar status helper in src/main.jsx');
 assert.ok(
   canRunAutomationIndex < emptyStateIndex,
   'canRunAutomation must be declared before emptyState derives it',
+);
+assert.ok(runHandlerStart !== -1 && runHandlerEnd !== -1 && runHandlerStart < runHandlerEnd, 'expected run handler block in src/main.jsx');
+assert.ok(
+  !mainSource.slice(runHandlerStart, runHandlerEnd).includes('throw error;'),
+  'run handler must not rethrow after handling notifications',
 );
 
 console.log('signals UI state tests passed');
