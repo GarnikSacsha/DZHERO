@@ -133,6 +133,24 @@ assert.equal(budgetToolbar.label, 'Ліміт вичерпано');
 assert.equal(partialToolbar.label, 'Частково');
 assert.equal(partialToolbar.tone, 'warning');
 assert.match(partialToolbar.detail, /Instagram/);
+const completedToolbar = deriveDiscoveryToolbarStatus({
+  settings: { enabled: true },
+  status: {
+    code: 'completed',
+    tokenConfigured: true,
+    latestRun: {
+      status: 'completed',
+      returnedCount: 32,
+      duplicateCount: 11,
+      rejectedCount: 13,
+      acceptedCount: 8,
+    },
+  },
+});
+assert.match(completedToolbar.detail, /32/);
+assert.match(completedToolbar.detail, /11/);
+assert.match(completedToolbar.detail, /13/);
+assert.match(completedToolbar.detail, /8/);
 
 assert.equal(canRunDiscoveryNow({
   settings: { enabled: false },

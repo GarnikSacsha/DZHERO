@@ -648,6 +648,21 @@ function recalculateSignalScore(reel = {}) {
   });
 }
 
+function hasActionableSignalEvidence(reel = {}) {
+  const metrics = [
+    reel.views,
+    reel.likes,
+    reel.comments,
+    reel.shares,
+    reel.saves,
+    reel.importedMetadata?.stats?.views,
+    reel.importedMetadata?.stats?.likes,
+    reel.importedMetadata?.rawStats?.views,
+    reel.importedMetadata?.rawStats?.likes,
+  ].map((value) => Number(value || 0));
+  return Boolean(getSignalVideoUrl(reel)) || metrics.some((value) => Number.isFinite(value) && value > 0);
+}
+
 function normalizeAutomaticSignal(reel = {}, context = {}) {
   const now = toDate(context.now || new Date());
   const workspaceId = context.workspaceId || reel.workspaceId;
@@ -1292,6 +1307,7 @@ async function executeAutomaticDiscovery(args = {}) {
   advanceSourceCheckpoints(workspace, settings, plannedCalls);
 
   const rankedSignals = Array.from(candidatesById.values())
+    .filter(hasActionableSignalEvidence)
     .sort((left, right) => right.score - left.score);
   const selectedCandidateIds = new Set();
   const selectCandidate = (signal) => {
@@ -1312,6 +1328,10 @@ async function executeAutomaticDiscovery(args = {}) {
       && signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD
     ));
     selectCandidate(fallbackSignal);
+  }
+  for (const signal of rankedSignals) {
+    if (selectedCandidateIds.size >= AUTOMATIC_MAX_WINNERS) break;
+    if (signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD) selectCandidate(signal);
   }
   const shortlistedSignals = rankedSignals
     .filter((signal) => selectedCandidateIds.has(signal.id))
