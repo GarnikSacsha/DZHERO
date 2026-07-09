@@ -376,6 +376,7 @@ function App() {
   const [isSignalsRefreshing, setIsSignalsRefreshing] = useState(false);
   const discoveryRequestRef = useRef(0);
   const reelsRequestRef = useRef(0);
+  const reelsWorkspaceRef = useRef('');
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
   const availableWorkspaces = currentUser
@@ -506,6 +507,10 @@ function App() {
       competitors: data.competitors.filter((competitor) => competitor.market === market),
     };
   }, [data, market]);
+  const workspaceScopedSignalsReels = useMemo(() => {
+    if (!filtered) return [];
+    return reelsWorkspaceRef.current === workspaceId ? filtered.reels : [];
+  }, [filtered, workspaceId]);
 
   const notify = (message) => {
     setToast(message);
@@ -836,19 +841,53 @@ function App() {
       }
     }
   };
+  const normalizeWorkspaceReels = (payload) => (
+    Array.isArray(payload?.reels)
+      ? payload.reels.map((reel) => ({
+          ...reel,
+          handle: reel.handle || reel.sourceHandle || reel.importedMetadata?.source?.handle || '@signal',
+        }))
+      : []
+  );
+  const applyWorkspaceReels = (incomingReels, nextWorkspaceId = workspaceId) => {
+    reelsWorkspaceRef.current = nextWorkspaceId;
+    setData((current) => (current ? { ...current, reels: incomingReels } : current));
+  };
+  const applyDiscoveryRunStatus = (run, code) => {
+    if (!run) return;
+    setSignalDiscovery((current) => {
+      if (!current) return current;
+      const nextCode = code || (run.status === 'running'
+        ? 'running'
+        : run.status === 'blocked_budget'
+          ? 'budget_reached'
+          : current.settings?.enabled === false
+            ? 'paused'
+            : 'scheduled');
+      const isRunning = nextCode === 'running';
+      return {
+        ...current,
+        status: {
+          ...(current.status || {}),
+          code: nextCode,
+          running: isRunning,
+          activeRun: isRunning ? run : null,
+          latestRun: isRunning ? current.status?.latestRun || null : run,
+          lastRunAt: run.completedAt || run.updatedAt || current.status?.lastRunAt,
+          canRunNow: current.status?.tokenConfigured !== false && !isRunning && nextCode !== 'budget_reached',
+        },
+      };
+    });
+  };
+  const describeSignalsRefreshIssue = (error) => error?.message || 'Не вдалося оновити стрічку Signals.';
   const refreshWorkspaceReels = async () => {
     const requestId = ++reelsRequestRef.current;
     const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels`);
     if (!response.ok) throw new Error(await readApiError(response, 'signals_reels_refresh_failed'));
     const payload = await response.json();
-    const incomingReels = Array.isArray(payload.reels)
-      ? payload.reels.map((reel) => ({
-          ...reel,
-          handle: reel.handle || reel.sourceHandle || reel.importedMetadata?.source?.handle || '@signal',
-        }))
-      : [];
-    if (requestId === reelsRequestRef.current && incomingReels.length) {
-      setData((current) => (current ? { ...current, reels: mergeSignalReels(current.reels, incomingReels) } : current));
+    const incomingReels = normalizeWorkspaceReels(payload);
+    if (requestId === reelsRequestRef.current) {
+      applyWorkspaceReels(incomingReels);
     }
     return payload;
   };
@@ -893,8 +932,15 @@ function App() {
       if (!response.ok) throw new Error(await readApiError(response, 'signal_discovery_toggle_failed'));
       const payload = await response.json();
       setSignalDiscovery(payload);
-      await refreshSignalsWorkspaceState({ silent: true });
-      notify(enabled ? 'Автоматичний збір Signals увімкнено.' : 'Автоматичний збір Signals поставлено на паузу.');
+      const successMessage = enabled ? 'Автопошук Signals увімкнено.' : 'Автопошук Signals поставлено на паузу.';
+      try {
+        await refreshSignalsWorkspaceState({ silent: true });
+        notify(successMessage);
+      } catch (refreshError) {
+        const refreshMessage = describeSignalsRefreshIssue(refreshError);
+        setSignalDiscoveryError(refreshMessage);
+        notify(`${successMessage} Але не вдалося оновити Signals: ${refreshMessage}`);
+      }
     } catch (error) {
       setSignalDiscoveryError(error?.message || 'Не вдалося змінити стан автоматизації.');
       notify(`Не вдалося змінити автоматизацію: ${error?.message || 'невідома помилка'}`);
@@ -913,27 +959,47 @@ function App() {
       });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 409 && payload.error === 'automatic_discovery_running') {
-        await refreshSignalsWorkspaceState({ silent: true });
-        notify('Автоматичний збір уже працює. Оновив статус у Signals.');
+        applyDiscoveryRunStatus(payload.run, 'running');
+        try {
+          await refreshSignalsWorkspaceState({ silent: true });
+          notify('Автопошук уже виконується.');
+        } catch (refreshError) {
+          const refreshMessage = describeSignalsRefreshIssue(refreshError);
+          setSignalDiscoveryError(refreshMessage);
+          notify(`Автопошук уже виконується. Але не вдалося оновити Signals: ${refreshMessage}`);
+        }
         return payload;
       }
       if (response.status === 429 && payload.error === 'automatic_budget_reached') {
-        await refreshSignalsWorkspaceState({ silent: true });
-        notify('Денний бюджет автопошуку вже вичерпано.');
+        applyDiscoveryRunStatus(payload.run, 'budget_reached');
+        try {
+          await refreshSignalsWorkspaceState({ silent: true });
+          notify('Денний ліміт автопошуку вже вичерпано.');
+        } catch (refreshError) {
+          const refreshMessage = describeSignalsRefreshIssue(refreshError);
+          setSignalDiscoveryError(refreshMessage);
+          notify(`Денний ліміт автопошуку вже вичерпано. Але не вдалося оновити Signals: ${refreshMessage}`);
+        }
         return payload;
       }
       if (!response.ok) {
         throw new Error(payload.message || payload.error || 'automatic_discovery_run_failed');
       }
-      await refreshSignalsWorkspaceState({ silent: true });
+      applyDiscoveryRunStatus(payload.run);
       const acceptedSignals = Number(payload.acceptedSignals || 0);
       const updatedSignals = Number(payload.updatedSignals || 0);
-      if (acceptedSignals) {
-        notify(`Автопошук додав ${acceptedSignals} нових сигналів${updatedSignals ? ` і оновив ${updatedSignals}` : ''}.`);
-      } else if (updatedSignals) {
-        notify(`Автопошук оновив ${updatedSignals} наявних сигналів.`);
-      } else {
-        notify('Автопошук завершився без нових сигналів.');
+      const successMessage = acceptedSignals
+        ? `Автопошук додав ${acceptedSignals} нових сигналів${updatedSignals ? ` і оновив ${updatedSignals}` : ''}.`
+        : updatedSignals
+          ? `Автопошук оновив ${updatedSignals} наявних сигналів.`
+          : 'Автопошук завершився без нових сигналів.';
+      try {
+        await refreshSignalsWorkspaceState({ silent: true });
+        notify(successMessage);
+      } catch (refreshError) {
+        const refreshMessage = describeSignalsRefreshIssue(refreshError);
+        setSignalDiscoveryError(refreshMessage);
+        notify(`${successMessage} Але не вдалося оновити Signals: ${refreshMessage}`);
       }
       return payload;
     } catch (error) {
@@ -950,6 +1016,9 @@ function App() {
     setSignalDiscovery(null);
     setSignalDiscoveryError('');
     setIsSignalDiscoveryLoading(true);
+    if (reelsWorkspaceRef.current !== workspaceId) {
+      applyWorkspaceReels([], workspaceId);
+    }
     refreshSignalsWorkspaceState({ silent: true })
       .catch(() => {})
       .finally(() => {
@@ -1019,7 +1088,7 @@ function App() {
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
-        {page === 'viral' && <ViralBank reels={filtered.reels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => refreshSignalsWorkspaceState()} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
+        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => refreshSignalsWorkspaceState()} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
         {page === 'settings' && (
@@ -3273,10 +3342,10 @@ function ViralBank({
     ? `${formatUsdAmount(discoveryStatus.dailySpendUsd)} / ${formatUsdAmount(discoveryStatus.dailyBudgetUsd)}`
     : '—';
   const runNowLabel = discoveryStatus.code === 'budget_reached'
-    ? 'Budget reached'
+    ? 'Ліміт вичерпано'
     : automation?.isRunning || discoveryStatus.running
-      ? 'Running...'
-      : 'Run now';
+      ? 'Виконується'
+      : 'Запустити зараз';
   const canRunAutomation = Boolean(
     isAutomationReady
     && !isAutomationBusy
@@ -3292,7 +3361,7 @@ function ViralBank({
         subtitle="Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд."
         actions={<button onClick={exportCsv}><Download size={16} />Експорт</button>}
       />
-      <div className="signals-automation-bar" aria-live="polite">
+      <div className="signals-automation-bar">
         <div className="signals-automation-main">
           <button
             className={`signals-automation-toggle ${automationEnabled ? 'enabled' : ''}`}
@@ -3312,7 +3381,7 @@ function ViralBank({
           </button>
           <div className="signals-automation-summary">
             <span className={`signals-automation-status tone-${discoveryState.tone}`}>{discoveryState.label}</span>
-            <p>{automationStatusText}</p>
+            <p className="signals-automation-status-text" role="status" aria-live="polite">{automationStatusText}</p>
           </div>
           <div className="signals-automation-metrics">
             <div>
@@ -3340,7 +3409,7 @@ function ViralBank({
           </button>
           <button type="button" onClick={() => setApifyModalOpen(true)}>
             <ChevronDown size={16} />
-            Advanced import
+            Розширений імпорт
           </button>
         </div>
       </div>
@@ -4233,22 +4302,6 @@ function getReelPublishedLabel(reel) {
   }).format(date).replace(',', '');
 }
 
-function getSignalReelKey(reel = {}) {
-  return String(
-    reel?.id
-    || reel?.sourceUrl
-    || reel?.importedMetadata?.url
-    || reel?.importedMetadata?.apify?.sourceUrl
-    || `${reel?.handle || ''}:${reel?.title || ''}`,
-  );
-}
-
-function mergeSignalReels(existing = [], incoming = []) {
-  if (!Array.isArray(incoming) || !incoming.length) return existing;
-  const incomingKeys = new Set(incoming.map((reel) => getSignalReelKey(reel)));
-  return [...incoming, ...existing.filter((reel) => !incomingKeys.has(getSignalReelKey(reel)))];
-}
-
 function formatDiscoveryTimestamp(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -4275,7 +4328,7 @@ function formatUsdAmount(value) {
 function getDiscoveryToolbarStatus(discovery) {
   if (!discovery) {
     return {
-      label: 'Loading',
+      label: 'Завантаження',
       tone: 'scheduled',
       detail: 'Завантажуємо статус автоматизації для Signals.',
     };
@@ -4287,48 +4340,48 @@ function getDiscoveryToolbarStatus(discovery) {
     const activeRun = status.activeRun;
     const attempted = Number(activeRun?.attemptedCallCount || 0);
     return {
-      label: 'Running',
+      label: 'Виконується',
       tone: 'running',
       detail: attempted ? `Зараз обробляємо ${attempted} джерел для Signals.` : 'Автоматичний збір сигналів уже триває.',
     };
   }
   if (!status.tokenConfigured) {
     return {
-      label: 'Error',
+      label: 'Помилка',
       tone: 'error',
       detail: 'APIFY_TOKEN не налаштований у backend, тому автопошук зараз недоступний.',
     };
   }
   if (settings.enabled === false || status.code === 'paused') {
     return {
-      label: 'Paused',
+      label: 'На паузі',
       tone: 'paused',
       detail: 'Автоматичний збір вимкнений. Можна лишити ручний імпорт або увімкнути розклад.',
     };
   }
   if (status.workerEnabled === false && settings.enabled !== false) {
     return {
-      label: 'Error',
+      label: 'Помилка',
       tone: 'error',
       detail: 'Фоновий worker вимкнений, тож розклад не запуститься автоматично.',
     };
   }
   if (status.code === 'budget_reached') {
     return {
-      label: 'Budget reached',
+      label: 'Ліміт вичерпано',
       tone: 'budget',
       detail: 'Денний ліміт на метадані вичерпано до наступної UTC-доби.',
     };
   }
   if (status.code === 'failed' || latestRun?.status === 'failed') {
     return {
-      label: 'Error',
+      label: 'Помилка',
       tone: 'error',
       detail: latestRun?.errors?.[0]?.message || 'Останній автоматичний запуск завершився з помилкою.',
     };
   }
   return {
-    label: 'Scheduled',
+    label: 'За розкладом',
     tone: 'scheduled',
     detail: status.nextRunAt
       ? `Наступна автоматична перевірка ${formatDiscoveryTimestamp(status.nextRunAt)}.`
