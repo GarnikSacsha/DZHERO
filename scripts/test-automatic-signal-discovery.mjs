@@ -43,7 +43,8 @@ const runs = [
     lane: 'trends',
     status: 'running',
     estimatedCostUsd: 0.30,
-    actualCostUsd: 0,
+    reservedCostUsd: 0.30,
+    actualCostUsd: null,
     startedAt: '2026-07-08T10:00:00.000Z',
   },
   {
@@ -160,8 +161,8 @@ for (const platform of ['instagram', 'tiktok']) {
 
 assert.ok(inputs.instagram.accounts.includes('@fitlab'));
 assert.ok(inputs.instagram.accounts.includes('@pulseclub'));
-assert.ok(inputs.instagram.accounts.includes('@stretchflow'));
 assert.ok(inputs.instagram.accounts.includes('@coach_mila'));
+assert.ok(!inputs.instagram.accounts.includes('@stretchflow'));
 
 assert.ok(inputs.instagram.keywords.some((value) => value.includes('fitness')));
 assert.ok(inputs.instagram.hashtags.every((value) => value.startsWith('#')));
@@ -169,7 +170,8 @@ assert.ok(inputs.instagram.trends.some((value) => value.includes('pilates')));
 
 assert.ok(inputs.tiktok.accounts.includes('@fitlab'));
 assert.ok(inputs.tiktok.accounts.includes('@reformer_daily'));
-assert.ok(inputs.tiktok.accounts.includes('@coach_mila'));
+assert.ok(inputs.tiktok.accounts.includes('@stretchflow'));
+assert.ok(!inputs.tiktok.accounts.includes('@coach_mila'));
 assert.ok(inputs.tiktok.keywords.some((value) => value.includes('workout')));
 assert.ok(inputs.tiktok.hashtags.every((value) => value.startsWith('#')));
 assert.ok(inputs.tiktok.trends.some((value) => value.includes('ukraine')));
@@ -517,7 +519,7 @@ const rerunResult = await executeAutomaticDiscovery({
 });
 
 assert.equal(rerunCalls.length, 0);
-assert.equal(rerunResult.run.requestedCount, 0);
+assert.equal(rerunResult.run, null);
 
 const laneScheduleState = {
   workspaces: [
@@ -575,12 +577,13 @@ const scheduledResult = await executeAutomaticDiscovery({
   },
 });
 
-assert.equal(scheduledFetchCalls.length, 2);
+assert.equal(scheduledFetchCalls.length, 1);
 assert.equal(scheduledFetchCalls.every((call) => call.mode === 'profile'), true);
 assert.equal(laneScheduleState.workspaces[0].discoverySettings.lastRunAt.accounts, now.toISOString());
 assert.equal(laneScheduleState.workspaces[0].discoverySettings.nextRunAt.accounts, sixHoursLater.toISOString());
 assert.equal(laneScheduleState.workspaces[0].discoverySettings.nextRunAt.keywords, '2026-07-08T12:00:00.000Z');
-assert.equal(scheduledResult.run.actualCostUsd > 0, true);
+assert.equal(scheduledResult.run.actualCostUsd, null);
+assert.equal(scheduledResult.run.estimatedCostUsd > 0, true);
 
 const forcedFetchCalls = [];
 await executeAutomaticDiscovery({
@@ -637,7 +640,7 @@ const pausedResult = await executeAutomaticDiscovery({
 
 assert.equal(pausedResult.run.status, 'paused');
 assert.equal(pausedResult.run.estimatedCostUsd, 0);
-assert.equal(pausedResult.run.actualCostUsd, 0);
+assert.equal(pausedResult.run.actualCostUsd, null);
 assert.equal(getDailyAutomaticSpend(pausedState.discoveryRuns, 'ws_paused', now), 0);
 
 const pausedRecoveryState = {
@@ -735,9 +738,7 @@ const notDueResult = await executeAutomaticDiscovery({
   },
 });
 
-assert.equal(notDueResult.run.estimatedCostUsd, 0);
-assert.equal(notDueResult.run.actualCostUsd, 0);
-assert.equal(notDueResult.run.requestedCount, 0);
+assert.equal(notDueResult.run, null);
 assert.equal(getDailyAutomaticSpend(notDueState.discoveryRuns, 'ws_not_due', now), 0);
 
 const budgetBlockedState = {
@@ -798,7 +799,7 @@ const budgetBlockedResult = await executeAutomaticDiscovery({
 assert.equal(budgetBlockedResult.run.status, 'blocked_budget');
 assert.equal(budgetBlockedResult.run.budgetUsd, 0.8);
 assert.equal(budgetBlockedResult.run.estimatedCostUsd, 0);
-assert.equal(budgetBlockedResult.run.actualCostUsd, 0);
+assert.equal(budgetBlockedResult.run.actualCostUsd, null);
 assert.equal(getDailyAutomaticSpend(budgetBlockedState.discoveryRuns, 'ws_budget', now), 0.79);
 
 console.log('automatic signal discovery policy tests passed');

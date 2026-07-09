@@ -4,6 +4,8 @@ import {
   deriveDiscoveryRunNotice,
   deriveDiscoveryRunStatusCode,
   deriveDiscoveryToolbarStatus,
+  canRunDiscoveryNow,
+  deriveDiscoveryRunNowLabel,
   deriveSignalsEmptyState,
 } from '../src/signalsUiState.mjs';
 
@@ -132,11 +134,50 @@ assert.equal(partialToolbar.label, 'Частково');
 assert.equal(partialToolbar.tone, 'warning');
 assert.match(partialToolbar.detail, /Instagram/);
 
+assert.equal(canRunDiscoveryNow({
+  settings: { enabled: false },
+  status: {
+    canRunNow: true,
+    dailySpendUsd: 0,
+    dailyBudgetUsd: 0.8,
+    remainingBudgetUsd: 0.8,
+  },
+}), false, 'paused discovery cannot run');
+assert.equal(canRunDiscoveryNow({
+  settings: { enabled: true },
+  status: {
+    code: 'budget_reached',
+    canRunNow: true,
+    dailySpendUsd: 0,
+    dailyBudgetUsd: 0.8,
+    remainingBudgetUsd: 0.8,
+  },
+}), true, 'a stale status string must not block a new UTC budget');
+assert.equal(canRunDiscoveryNow({
+  settings: { enabled: true },
+  status: {
+    canRunNow: true,
+    dailySpendUsd: 0.8,
+    dailyBudgetUsd: 0.8,
+    remainingBudgetUsd: 0,
+  },
+}), false, 'the current daily budget fields remain authoritative');
+assert.equal(deriveDiscoveryRunNowLabel({
+  settings: { enabled: true },
+  status: {
+    code: 'budget_reached',
+    canRunNow: true,
+    dailySpendUsd: 0,
+    dailyBudgetUsd: 0.8,
+    remainingBudgetUsd: 0.8,
+  },
+}), 'Запустити зараз');
+
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const emptyStateIndex = mainSource.indexOf('const emptyState = deriveSignalsEmptyState({');
-const canRunAutomationIndex = mainSource.indexOf('const canRunAutomation = Boolean(');
-const signalsTableIndex = mainSource.indexOf('isLoading={isSignalDiscoveryLoading}');
-const signalsLoadIssueIndex = mainSource.indexOf('loadIssue={signalDiscoveryError}');
+const canRunAutomationIndex = mainSource.indexOf('const canRunAutomation = canRunDiscoveryNow(');
+const signalsTableIndex = mainSource.indexOf('isLoading={automation?.isLoading}');
+const signalsLoadIssueIndex = mainSource.indexOf('loadIssue={automation?.error}');
 const refreshWrapperIndex = mainSource.indexOf('onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}');
 const toolbarHelperIndex = mainSource.indexOf('deriveDiscoveryToolbarStatus(discovery)');
 const runHandlerStart = mainSource.indexOf('const runSignalDiscoveryNow = async () => {');
@@ -158,6 +199,7 @@ assert.notEqual(requestGuardHelperIndex, -1, 'expected request guard helper in s
 assert.notEqual(visibleRefreshGuardIndex, -1, 'expected visible refresh overlap guard in src/main.jsx');
 assert.notEqual(toggleGuardIndex, -1, 'expected toggle workspace/request guard in src/main.jsx');
 assert.notEqual(runGuardIndex, -1, 'expected run workspace/request guard in src/main.jsx');
+assert.match(mainSource, /deriveDiscoveryRunNowLabel\(discovery,/);
 assert.ok(
   canRunAutomationIndex < emptyStateIndex,
   'canRunAutomation must be declared before emptyState derives it',

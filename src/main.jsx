@@ -55,6 +55,8 @@ import {
   deriveDiscoveryRunNotice,
   deriveDiscoveryRunStatusCode,
   deriveDiscoveryToolbarStatus,
+  canRunDiscoveryNow,
+  deriveDiscoveryRunNowLabel,
   deriveSignalsEmptyState,
 } from './signalsUiState.mjs';
 import { applyInterfaceLanguage } from './i18n';
@@ -933,7 +935,7 @@ function App() {
           activeRun: isRunning ? run : null,
           latestRun: isRunning ? current.status?.latestRun || null : run,
           lastRunAt: run.completedAt || run.updatedAt || current.status?.lastRunAt,
-          canRunNow: current.status?.tokenConfigured !== false && !isRunning && nextCode !== 'budget_reached',
+          canRunNow: isRunning ? false : current.status?.canRunNow,
         },
       };
     });
@@ -3429,13 +3431,7 @@ function ViralBank({
   const isAutomationBusy = Boolean(automation?.isLoading || automation?.isRefreshing || automation?.isToggling || automation?.isRunning);
   const automationEnabled = discovery?.settings?.enabled !== false;
   const automationStatusText = automation?.error || discoveryState.detail;
-  const canRunAutomation = Boolean(
-    isAutomationReady
-    && !isAutomationBusy
-    && !discoveryStatus.running
-    && discoveryStatus.tokenConfigured !== false
-    && discoveryStatus.code !== 'budget_reached'
-  );
+  const canRunAutomation = canRunDiscoveryNow(discovery, { busy: isAutomationBusy });
   const hasActiveFilters = Boolean(trimmedQuery || pastedReelUrl || sourceFilter !== 'all');
   const emptyState = deriveSignalsEmptyState({
     reelsCount: reels.length,
@@ -3450,11 +3446,9 @@ function ViralBank({
   const spendText = discovery
     ? `${formatUsdAmount(discoveryStatus.dailySpendUsd)} / ${formatUsdAmount(discoveryStatus.dailyBudgetUsd)}`
     : '—';
-  const runNowLabel = discoveryStatus.code === 'budget_reached'
-    ? 'Ліміт вичерпано'
-    : automation?.isRunning || discoveryStatus.running
-    ? 'Виконується'
-    : 'Запустити зараз';
+  const runNowLabel = deriveDiscoveryRunNowLabel(discovery, {
+    busy: Boolean(automation?.isRunning || discoveryStatus.running),
+  });
 
   return (
     <section className="page page-signals">
@@ -3495,7 +3489,7 @@ function ViralBank({
               <strong>{formatDiscoveryTimestamp(discoveryStatus.nextRunAt)}</strong>
             </div>
             <div>
-              <span>Витрати сьогодні</span>
+              <span>{discoveryStatus.dailySpendIsEstimated ? 'Орієнтовні витрати сьогодні' : 'Витрати сьогодні'}</span>
               <strong>{spendText}</strong>
             </div>
           </div>

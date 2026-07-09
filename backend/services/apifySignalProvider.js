@@ -34,6 +34,9 @@ function getApifySignalKey(metadata = {}) {
 }
 
 function mapInstagramApifyItem(item = {}, context = {}) {
+  const snapshotAt = context.now instanceof Date
+    ? context.now.toISOString()
+    : new Date(context.now || Date.now()).toISOString();
   const views = toNumber(item.videoPlayCount);
   const likes = toNumber(item.likesCount);
   const comments = toNumber(item.commentsCount);
@@ -55,6 +58,7 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     videoUrl: item.videoUrl || '',
     audioUrl: item.audioUrl || '',
     publishedAt: item.timestamp || '',
+    snapshotAt,
     stats: { views, likes, comments },
     rawStats: { views, likes, comments },
     source: { label: 'Instagram', tone: 'instagram' },
@@ -89,11 +93,14 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     tag: (item.ownerUsername?.[0] || 'I').toUpperCase(),
     score: buildScore({ views, likes, comments, publishedAt: item.timestamp, sourceQuality: item.videoUrl ? 12 : 8 }),
     importedMetadata: metadata,
-    createdAt: new Date().toISOString(),
+    createdAt: snapshotAt,
   };
 }
 
 function mapTikTokApifyItem(item = {}, context = {}) {
+  const snapshotAt = context.now instanceof Date
+    ? context.now.toISOString()
+    : new Date(context.now || Date.now()).toISOString();
   const url = item.webVideoUrl || item.url || '';
   const tiktokVideoId = parseTikTokVideoId(url);
   const views = toNumber(item.playCount);
@@ -127,6 +134,7 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     videoUrl,
     mediaUrls,
     publishedAt,
+    snapshotAt,
     stats: { views, likes, comments, shares, saves },
     rawStats: { views, likes, comments, shares, saves },
     source: { label: 'TikTok', tone: 'tiktok' },
@@ -161,7 +169,7 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     tag: (authorName[0] || 'T').toUpperCase(),
     score: buildScore({ views, likes, comments, shares, saves, publishedAt, sourceQuality: videoUrl ? 12 : 8 }),
     importedMetadata: metadata,
-    createdAt: new Date().toISOString(),
+    createdAt: snapshotAt,
   };
 }
 
@@ -208,8 +216,14 @@ async function runApifyActor({ token, actorId, input }) {
     throw error;
   }
 
+  const actualCostUsd = run.usageTotalUsd === null || run.usageTotalUsd === undefined
+    ? null
+    : Number(run.usageTotalUsd);
+  const billedCostUsd = Number.isFinite(actualCostUsd) && actualCostUsd >= 0
+    ? actualCostUsd
+    : null;
   const datasetId = run.defaultDatasetId;
-  if (!datasetId) return [];
+  if (!datasetId) return { items: [], actualCostUsd: billedCostUsd };
   const itemResponse = await fetch(`${APIFY_API_BASE}/datasets/${datasetId}/items?clean=true&format=json&token=${encodeURIComponent(token)}`);
   const items = await itemResponse.json().catch(() => []);
   if (!itemResponse.ok) {
@@ -217,7 +231,20 @@ async function runApifyActor({ token, actorId, input }) {
     error.status = itemResponse.status;
     throw error;
   }
-  return Array.isArray(items) ? items : [];
+  return {
+    items: Array.isArray(items) ? items : [],
+    actualCostUsd: billedCostUsd,
+  };
+}
+
+function attachActualCost(signals, actualCostUsd) {
+  Object.defineProperty(signals, 'actualCostUsd', {
+    configurable: true,
+    enumerable: false,
+    value: actualCostUsd,
+    writable: false,
+  });
+  return signals;
 }
 
 function buildInstagramInput({ inputValue, inputType, limit }) {
@@ -293,20 +320,26 @@ async function fetchApifySignals(options = {}) {
   } = options;
   const actorRequest = buildApifyActorRequest(options);
   if (platform === 'instagram') {
-    const items = await runApifyActor({
+    const result = await runApifyActor({
       token,
       actorId: actorRequest.actorId,
       input: actorRequest.input,
     });
-    return items.map((item) => mapInstagramApifyItem(item, { workspaceId, market, createId }));
+    return attachActualCost(
+      result.items.map((item) => mapInstagramApifyItem(item, { workspaceId, market, createId })),
+      result.actualCostUsd,
+    );
   }
   if (platform === 'tiktok') {
-    const items = await runApifyActor({
+    const result = await runApifyActor({
       token,
       actorId: actorRequest.actorId,
       input: actorRequest.input,
     });
-    return items.map((item) => mapTikTokApifyItem(item, { workspaceId, market, createId }));
+    return attachActualCost(
+      result.items.map((item) => mapTikTokApifyItem(item, { workspaceId, market, createId })),
+      result.actualCostUsd,
+    );
   }
   const error = new Error('unsupported_apify_platform');
   error.status = 400;

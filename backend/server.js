@@ -18,12 +18,21 @@ const {
 } = require('./services/apifySignalProvider');
 const {
   defaultDiscoverySettings,
+  ensureWorkspaceDiscoverySettings,
   buildDiscoveryInputs,
+  canonicalizeSignalUrl,
   isDiscoveryDue,
   getDailyAutomaticSpend,
+  getDailyAutomaticSpendSummary,
+  prepareAutomaticDiscovery,
   executeAutomaticDiscovery,
+  mergeSignalSnapshot,
   recoverStaleRunningRuns,
 } = require('./services/automaticSignalDiscovery');
+const {
+  createKeyedMutex,
+  withPostgresStateTransaction,
+} = require('./services/automaticDiscoveryStorage');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -400,6 +409,7 @@ function normalizeDbShape(db = {}) {
 
 let automaticDiscoveryTickInFlight = false;
 const automaticDiscoveryWorkspacesInFlight = new Set();
+const automaticDiscoveryFileMutex = createKeyedMutex();
 let automaticDiscoveryTestProvider = null;
 
 if (AUTOMATIC_DISCOVERY_TEST_PROVIDER) {
@@ -495,6 +505,25 @@ function getExistingReelByApifyKey(db, workspaceId) {
   return map;
 }
 
+async function withAutomaticDiscoveryStateLock(workspaceId, task) {
+  if (DATABASE_URL) {
+    await ensurePostgresState();
+    return withPostgresStateTransaction({
+      pool: getPgPool(),
+      appStateKey: APP_STATE_KEY,
+      workspaceId,
+      normalizeState: normalizeDbShape,
+      task,
+    });
+  }
+  return automaticDiscoveryFileMutex.run('app-state', async () => {
+    const db = await readDb();
+    const result = await task(db);
+    await writeDb(db);
+    return result;
+  });
+}
+
 function normalizeDiscoveryIdentity(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -524,6 +553,15 @@ function copyDiscoverySettings(settings = {}) {
     laneIntervalsMs: settings.laneIntervalsMs ? { ...settings.laneIntervalsMs } : settings.laneIntervalsMs,
     lastRunAt: settings.lastRunAt ? { ...settings.lastRunAt } : settings.lastRunAt,
     nextRunAt: settings.nextRunAt ? { ...settings.nextRunAt } : settings.nextRunAt,
+    retryCounts: settings.retryCounts ? { ...settings.retryCounts } : settings.retryCounts,
+    sourceCheckpoints: settings.sourceCheckpoints
+      ? Object.fromEntries(
+        Object.entries(settings.sourceCheckpoints).map(([platform, checkpoints]) => [
+          platform,
+          { ...(checkpoints || {}) },
+        ])
+      )
+      : settings.sourceCheckpoints,
   };
 }
 
@@ -568,6 +606,20 @@ function mergeAutomaticDiscoverySettings(workspace = {}, snapshotWorkspace = {})
       ...(workspace.discoverySettings.nextRunAt || {}),
       ...(snapshotSettings.nextRunAt || {}),
     },
+    retryCounts: {
+      ...(workspace.discoverySettings.retryCounts || {}),
+      ...(snapshotSettings.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      DISCOVERY_PLATFORM_NAMES.map((platform) => [
+        platform,
+        {
+          ...(workspace.discoverySettings.sourceCheckpoints?.[platform] || {}),
+          ...(snapshotSettings.sourceCheckpoints?.[platform] || {}),
+        },
+      ])
+    ),
+    initializedAt: workspace.discoverySettings.initializedAt || snapshotSettings.initializedAt,
     updatedAt: snapshotSettings.updatedAt || workspace.discoverySettings.updatedAt,
   };
   if (!Object.prototype.hasOwnProperty.call(workspace.discoverySettings, 'enabled')) {
@@ -600,11 +652,11 @@ function findAutomaticDiscoveryReelIndex(reels = [], workspaceId, candidate = {}
     if (indexByApifyKey >= 0) return indexByApifyKey;
   }
 
-  const targetUrl = normalizeDiscoveryIdentity(candidate.sourceUrl || candidate.importedMetadata?.url || '');
+  const targetUrl = normalizeDiscoveryIdentity(canonicalizeSignalUrl(candidate.sourceUrl || candidate.importedMetadata?.url || ''));
   if (!targetUrl) return -1;
   return reels.findIndex((reel) => (
     reel?.workspaceId === workspaceId
-    && normalizeDiscoveryIdentity(reel.sourceUrl || reel.importedMetadata?.url || '') === targetUrl
+    && normalizeDiscoveryIdentity(canonicalizeSignalUrl(reel.sourceUrl || reel.importedMetadata?.url || '')) === targetUrl
   ));
 }
 
@@ -614,14 +666,7 @@ function mergeAutomaticDiscoveryReel(db = {}, workspaceId, reel = {}, { prepend 
   const existingIndex = findAutomaticDiscoveryReelIndex(reels, workspaceId, nextReel);
   if (existingIndex >= 0) {
     const current = reels[existingIndex] || {};
-    reels[existingIndex] = {
-      ...current,
-      ...nextReel,
-      importedMetadata: {
-        ...(current.importedMetadata || {}),
-        ...(nextReel.importedMetadata || {}),
-      },
-    };
+    reels[existingIndex] = mergeSignalSnapshot(current, nextReel, new Date());
     return;
   }
   if (prepend) {
@@ -695,6 +740,7 @@ function normalizeDiscoveryPlatforms(platforms, fallback = DISCOVERY_PLATFORM_NA
 }
 
 function getWorkspaceDiscoverySettingsSnapshot(workspace = {}, now = new Date()) {
+  ensureWorkspaceDiscoverySettings(workspace, now);
   const defaults = defaultDiscoverySettings(now);
   const savedSettings = workspace.discoverySettings || workspace.automaticDiscovery || workspace.signalDiscovery || {};
   return {
@@ -716,6 +762,16 @@ function getWorkspaceDiscoverySettingsSnapshot(workspace = {}, now = new Date())
       ...(defaults.nextRunAt || {}),
       ...(savedSettings.nextRunAt || {}),
     },
+    retryCounts: {
+      ...(savedSettings.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      DISCOVERY_PLATFORM_NAMES.map((platform) => [
+        platform,
+        { ...(savedSettings.sourceCheckpoints?.[platform] || {}) },
+      ])
+    ),
+    initializedAt: savedSettings.initializedAt || defaults.initializedAt,
     updatedAt: savedSettings.updatedAt || defaults.updatedAt,
   };
 }
@@ -735,7 +791,12 @@ function sanitizeDiscoveryRun(run = {}) {
     budgetUsd: Number.isFinite(Number(run.budgetUsd)) ? Number(run.budgetUsd) : null,
     spentUsdBefore: Number.isFinite(Number(run.spentUsdBefore)) ? Number(run.spentUsdBefore) : 0,
     estimatedCostUsd: Number.isFinite(Number(run.estimatedCostUsd)) ? Number(run.estimatedCostUsd) : 0,
-    actualCostUsd: Number.isFinite(Number(run.actualCostUsd)) ? Number(run.actualCostUsd) : 0,
+    reservedCostUsd: Number.isFinite(Number(run.reservedCostUsd)) ? Number(run.reservedCostUsd) : 0,
+    actualCostUsd: run.actualCostUsd !== null
+      && run.actualCostUsd !== undefined
+      && Number.isFinite(Number(run.actualCostUsd))
+      ? Number(run.actualCostUsd)
+      : null,
     attemptedCallCount: Number.isFinite(Number(run.attemptedCallCount)) ? Number(run.attemptedCallCount) : 0,
     requestedCount: Number.isFinite(Number(run.requestedCount)) ? Number(run.requestedCount) : 0,
     returnedCount: Number.isFinite(Number(run.returnedCount)) ? Number(run.returnedCount) : 0,
@@ -767,11 +828,14 @@ function getEarliestTimestamp(values = []) {
   return new Date(Math.min(...timestamps)).toISOString();
 }
 
-function getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd }) {
+function getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd, now = new Date() }) {
   if (activeRun) return 'running';
   if (settings.enabled === false) return 'paused';
   if (dailySpendUsd >= settings.dailyBudgetUsd) return 'budget_reached';
-  if (latestRun?.status === 'blocked_budget') return 'budget_reached';
+  const currentDayKey = new Date(now).toISOString().slice(0, 10);
+  const latestRunDayKey = latestRun?.dayKey
+    || String(latestRun?.claimedAt || latestRun?.startedAt || '').slice(0, 10);
+  if (latestRun?.status === 'blocked_budget' && latestRunDayKey === currentDayKey) return 'budget_reached';
   if (latestRun?.status === 'failed') return 'failed';
   if (latestRun?.status === 'completed') return 'completed';
   return 'idle';
@@ -795,11 +859,12 @@ function buildDiscoveryStatusResponse(db = {}, workspaceId, now = new Date()) {
   const runs = listAutomaticDiscoveryRuns(db, workspaceId);
   const activeRun = runs.find((run) => run.status === 'running') || null;
   const latestRun = runs[0] || null;
-  const dailySpendUsd = getDailyAutomaticSpend(db.discoveryRuns, workspaceId, now);
+  const spendSummary = getDailyAutomaticSpendSummary(db.discoveryRuns, workspaceId, now);
+  const dailySpendUsd = spendSummary.amountUsd;
   const inputs = buildDiscoveryInputs(db, workspaceId);
   const nextRunAt = getEarliestTimestamp(Object.values(settings.nextRunAt || {}));
   const lastScheduledRunAt = getLatestTimestamp(Object.values(settings.lastRunAt || {}));
-  const statusCode = getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd });
+  const statusCode = getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd, now });
 
   return {
     settings: {
@@ -819,13 +884,17 @@ function buildDiscoveryStatusResponse(db = {}, workspaceId, now = new Date()) {
       workerEnabled: AUTOMATIC_DISCOVERY_ENABLED,
       workerTickMs: AUTOMATIC_DISCOVERY_TICK_MS,
       dailySpendUsd,
+      dailySpendIsEstimated: spendSummary.isEstimated,
       dailyBudgetUsd: settings.dailyBudgetUsd,
       remainingBudgetUsd: Math.max(0, Math.round((settings.dailyBudgetUsd - dailySpendUsd) * 100) / 100),
       lastRunAt: latestRun?.completedAt || latestRun?.updatedAt || lastScheduledRunAt,
       nextRunAt,
       activeRun: activeRun ? sanitizeDiscoveryRun(activeRun) : null,
       latestRun: latestRun ? sanitizeDiscoveryRun(latestRun) : null,
-      canRunNow: Boolean(APIFY_TOKEN) && !activeRun && dailySpendUsd < settings.dailyBudgetUsd,
+      canRunNow: Boolean(APIFY_TOKEN)
+        && settings.enabled !== false
+        && !activeRun
+        && dailySpendUsd < settings.dailyBudgetUsd,
     },
     inputs: Object.fromEntries(
       Object.entries(inputs).map(([platform, platformInputs]) => [
@@ -862,6 +931,16 @@ function createPersistedDiscoverySettings(workspace = {}, changes = {}, now = ne
     nextRunAt: {
       ...(current.nextRunAt || {}),
     },
+    retryCounts: {
+      ...(current.retryCounts || {}),
+    },
+    sourceCheckpoints: Object.fromEntries(
+      DISCOVERY_PLATFORM_NAMES.map((platform) => [
+        platform,
+        { ...(current.sourceCheckpoints?.[platform] || {}) },
+      ])
+    ),
+    initializedAt: current.initializedAt,
     updatedAt: new Date(now).toISOString(),
   };
 }
@@ -948,40 +1027,46 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
   automaticDiscoveryWorkspacesInFlight.add(workspaceId);
   try {
     const now = options.now || new Date();
-    const db = await readDb();
-    const recoveredRuns = recoverAutomaticDiscoveryLeases(db, workspaceId, now);
-    if (recoveredRuns.length) {
-      await writeDb(db);
-    }
-    const workspace = db.workspaces.find((item) => item.id === workspaceId);
-    if (!workspace) {
-      const error = new Error('workspace_not_found');
-      error.status = 404;
-      error.payload = { error: 'workspace_not_found' };
-      throw error;
+    const claim = await withAutomaticDiscoveryStateLock(workspaceId, async (db) => {
+      const workspace = db.workspaces.find((item) => item.id === workspaceId);
+      if (!workspace) {
+        const error = new Error('workspace_not_found');
+        error.status = 404;
+        error.payload = { error: 'workspace_not_found' };
+        throw error;
+      }
+      const prepared = prepareAutomaticDiscovery({
+        state: db,
+        workspaceId,
+        now,
+        force: Boolean(options.force),
+        recordPaused: Boolean(options.force),
+      });
+      return { db, prepared };
+    });
+
+    if (!claim.prepared.execution) {
+      return claim.prepared;
     }
 
-    let persistedClaim = false;
     const result = await executeAutomaticDiscovery({
-      state: db,
+      state: claim.db,
       workspaceId,
       now,
-      force: Boolean(options.force),
-      fetchSignals: async (call) => {
-        if (!persistedClaim) {
-          persistedClaim = true;
-          const currentDb = await readDb();
-          mergeAutomaticDiscoveryClaim(currentDb, db, workspaceId);
-          await writeDb(currentDb);
-        }
-        return runAutomaticDiscoveryFetch(call);
+      prepared: claim.prepared,
+      getCurrentTime: () => new Date(),
+      onProgress: async (run) => {
+        await withAutomaticDiscoveryStateLock(workspaceId, async (currentDb) => {
+          upsertAutomaticDiscoveryRun(currentDb, run);
+        });
       },
+      fetchSignals: runAutomaticDiscoveryFetch,
     });
 
     if (result.run) {
-      const currentDb = await readDb();
-      mergeAutomaticDiscoveryResult(currentDb, db, workspaceId, result);
-      await writeDb(currentDb);
+      await withAutomaticDiscoveryStateLock(workspaceId, async (currentDb) => {
+        mergeAutomaticDiscoveryResult(currentDb, claim.db, workspaceId, result);
+      });
     }
 
     return result;
@@ -996,19 +1081,9 @@ async function runAutomaticDiscoveryWorkerTick() {
   try {
     const db = await readDb();
     const now = new Date();
-    let recoveredAny = false;
-    for (const workspace of db.workspaces) {
-      if (!workspace?.id) continue;
-      if (recoverAutomaticDiscoveryLeases(db, workspace.id, now).length) {
-        recoveredAny = true;
-      }
-    }
-    if (recoveredAny) {
-      await writeDb(db);
-    }
     const workspaceIds = db.workspaces
       .map((workspace) => workspace.id)
-      .filter((workspaceId) => shouldRunAutomaticDiscoveryTick(db, workspaceId, now));
+      .filter(Boolean);
 
     for (const workspaceId of workspaceIds) {
       try {
@@ -1022,10 +1097,21 @@ async function runAutomaticDiscoveryWorkerTick() {
   }
 }
 
+function logAutomaticDiscoveryWorkerError(error) {
+  try {
+    const message = error instanceof Error
+      ? error.stack || error.message
+      : String(error || 'unknown_worker_error');
+    console.error('[AutomaticDiscoveryWorker]', message);
+  } catch {
+    // Logging must never turn a scheduler failure into an unhandled rejection.
+  }
+}
+
 function startAutomaticDiscoveryWorker() {
   if (!AUTOMATIC_DISCOVERY_ENABLED) return;
   const timer = setInterval(() => {
-    void runAutomaticDiscoveryWorkerTick();
+    void runAutomaticDiscoveryWorkerTick().catch(logAutomaticDiscoveryWorkerError);
   }, AUTOMATIC_DISCOVERY_TICK_MS);
   timer.unref();
 }
@@ -4273,23 +4359,30 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
 });
 
 app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {
-  const db = await readDb();
-  if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-  if (recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, new Date()).length) {
-    await writeDb(db);
-  }
-  res.json(buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date()));
+  const accessDb = await readDb();
+  if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
+  const payload = await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
+    const now = new Date();
+    const workspace = db.workspaces.find((item) => item.id === req.params.workspaceId);
+    ensureWorkspaceDiscoverySettings(workspace, now);
+    recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, now);
+    return buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
+  });
+  res.json(payload);
 });
 
 app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, next) => {
   try {
-    const db = await readDb();
-    const workspace = requireWorkspace(db, req.params.workspaceId, res);
-    if (!workspace) return;
+    const accessDb = await readDb();
+    if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
     const changes = parseDiscoverySettingsPatch(req.body || {});
-    workspace.discoverySettings = createPersistedDiscoverySettings(workspace, changes, new Date());
-    await writeDb(db);
-    res.json(buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date()));
+    const payload = await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
+      const workspace = db.workspaces.find((item) => item.id === req.params.workspaceId);
+      const now = new Date();
+      workspace.discoverySettings = createPersistedDiscoverySettings(workspace, changes, now);
+      return buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
+    });
+    res.json(payload);
   } catch (error) {
     next(error);
   }
@@ -4297,21 +4390,8 @@ app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, nex
 
 app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, next) => {
   try {
-    const db = await readDb();
-    if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-    const now = new Date();
-    if (recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, now).length) {
-      await writeDb(db);
-    }
-    const currentStatus = buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
-    if (currentStatus.status.activeRun) {
-      res.status(409).json({
-        error: 'automatic_discovery_running',
-        message: 'Automatic discovery is already running for this workspace.',
-        run: currentStatus.status.activeRun,
-      });
-      return;
-    }
+    const accessDb = await readDb();
+    if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
 
     const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, { force: true });
     if (!result.run) {

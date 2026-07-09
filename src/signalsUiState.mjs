@@ -242,6 +242,29 @@ export function deriveDiscoveryToolbarStatus(discovery) {
   };
 }
 
+export function canRunDiscoveryNow(discovery, { busy = false } = {}) {
+  if (!discovery || busy) return false;
+  const settings = discovery.settings || {};
+  const status = discovery.status || {};
+  if (settings.enabled === false || status.running || status.canRunNow !== true) return false;
+
+  const spent = Number(status.dailySpendUsd);
+  const budget = Number(status.dailyBudgetUsd ?? settings.dailyBudgetUsd);
+  const remaining = Number(status.remainingBudgetUsd);
+  if (Number.isFinite(remaining) && remaining <= 0) return false;
+  if (Number.isFinite(spent) && Number.isFinite(budget) && spent >= budget) return false;
+  return true;
+}
+
+export function deriveDiscoveryRunNowLabel(discovery, { busy = false } = {}) {
+  const status = discovery?.status || {};
+  if (busy || status.running) return 'Виконується';
+  if (status.code === 'budget_reached' && !canRunDiscoveryNow(discovery)) {
+    return 'Ліміт вичерпано';
+  }
+  return 'Запустити зараз';
+}
+
 export function deriveSignalsEmptyState({
   reelsCount = 0,
   filteredReelsCount = 0,
