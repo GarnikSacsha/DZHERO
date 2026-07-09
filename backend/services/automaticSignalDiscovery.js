@@ -14,10 +14,10 @@ const DEFAULT_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
 const AUTOMATIC_FALLBACK_SCORE_THRESHOLD = 55;
 const AUTOMATIC_RUN_LANE = 'automatic';
-const AUTOMATIC_INPUTS_PER_LANE = 2;
-const AUTOMATIC_METADATA_LIMIT = 1;
+const AUTOMATIC_INPUTS_PER_LANE = 3;
+const AUTOMATIC_METADATA_LIMIT = 8;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
-const AUTOMATIC_MAX_WINNERS = 3;
+const AUTOMATIC_MAX_WINNERS = 20;
 const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_BASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_CAP_MS = 6 * HOUR_MS;
@@ -1071,7 +1071,8 @@ function prepareAutomaticDiscovery(args = {}) {
   const estimatedMetadataCostUsd = roundUsd(
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
-  if (spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd) {
+  const isForcedRun = Boolean(args.force);
+  if (spentUsd >= settings.dailyBudgetUsd || (!isForcedRun && spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd)) {
     applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
     const run = createAutomaticRun(state, {
       workspaceId,
@@ -1100,7 +1101,7 @@ function prepareAutomaticDiscovery(args = {}) {
     budgetUsd: settings.dailyBudgetUsd,
     spentUsdBefore: spentUsd,
     estimatedCostUsd: estimatedMetadataCostUsd,
-    reservedCostUsd: estimatedMetadataCostUsd,
+    reservedCostUsd: isForcedRun ? 0 : estimatedMetadataCostUsd,
     requestedCount: plannedCalls.length,
   });
   if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });

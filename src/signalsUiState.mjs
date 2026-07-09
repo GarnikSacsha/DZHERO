@@ -174,10 +174,17 @@ export function deriveDiscoveryToolbarStatus(discovery) {
   if (status.running || status.code === 'running') {
     const activeRun = status.activeRun;
     const attempted = Number(activeRun?.attemptedCallCount || 0);
+    const returned = Number(activeRun?.returnedCount || 0);
+    const accepted = Number(activeRun?.acceptedCount || 0);
+    const progressParts = [
+      attempted ? `${attempted} джерел` : '',
+      returned ? `${returned} сирих роликів` : '',
+      accepted ? `${accepted} прийнято` : '',
+    ].filter(Boolean);
     return {
       label: 'Виконується',
       tone: 'running',
-      detail: attempted ? `Зараз обробляємо ${attempted} джерел для Signals.` : 'Автоматичний збір сигналів уже триває.',
+      detail: progressParts.length ? `Зараз обробляємо ${progressParts.join(' · ')} для Signals.` : 'Автоматичний збір сигналів уже триває.',
     };
   }
 
