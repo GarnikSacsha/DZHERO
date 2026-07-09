@@ -22,6 +22,7 @@ const {
   isDiscoveryDue,
   getDailyAutomaticSpend,
   executeAutomaticDiscovery,
+  recoverStaleRunningRuns,
 } = require('./services/automaticSignalDiscovery');
 
 function loadLocalEnv() {
@@ -83,6 +84,9 @@ const AUTOMATIC_DISCOVERY_ENABLED = process.env.AUTOMATIC_DISCOVERY_ENABLED !== 
 const AUTOMATIC_DISCOVERY_TICK_MS = Number.isFinite(Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
   ? Math.max(1000, Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
   : 60000;
+const AUTOMATIC_DISCOVERY_TEST_PROVIDER = process.env.NODE_ENV === 'test'
+  ? String(process.env.AUTOMATIC_DISCOVERY_TEST_PROVIDER || '').trim()
+  : '';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || '';
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || '';
 const TIKTOK_REDIRECT_URI = process.env.TIKTOK_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/tiktok/callback`;
@@ -396,6 +400,19 @@ function normalizeDbShape(db = {}) {
 
 let automaticDiscoveryTickInFlight = false;
 const automaticDiscoveryWorkspacesInFlight = new Set();
+let automaticDiscoveryTestProvider = null;
+
+if (AUTOMATIC_DISCOVERY_TEST_PROVIDER) {
+  const loadedProvider = require(path.resolve(AUTOMATIC_DISCOVERY_TEST_PROVIDER));
+  automaticDiscoveryTestProvider = typeof loadedProvider === 'function'
+    ? loadedProvider
+    : typeof loadedProvider?.default === 'function'
+      ? loadedProvider.default
+      : null;
+  if (!automaticDiscoveryTestProvider) {
+    throw new Error('AUTOMATIC_DISCOVERY_TEST_PROVIDER must export a function when NODE_ENV=test');
+  }
+}
 
 async function readSeedDb() {
   const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
@@ -476,6 +493,183 @@ function getExistingReelByApifyKey(db, workspaceId) {
     if (key && !map.has(key)) map.set(key, reel);
   }
   return map;
+}
+
+function normalizeDiscoveryIdentity(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function cloneDiscoveryRun(run = {}) {
+  return {
+    ...run,
+    errors: Array.isArray(run.errors) ? [...run.errors] : [],
+  };
+}
+
+function cloneDiscoveryReel(reel = {}) {
+  return {
+    ...reel,
+    importedMetadata: reel.importedMetadata
+      ? {
+        ...reel.importedMetadata,
+      }
+      : reel.importedMetadata,
+  };
+}
+
+function copyDiscoverySettings(settings = {}) {
+  return {
+    ...settings,
+    platforms: Array.isArray(settings.platforms) ? [...settings.platforms] : settings.platforms,
+    laneIntervalsMs: settings.laneIntervalsMs ? { ...settings.laneIntervalsMs } : settings.laneIntervalsMs,
+    lastRunAt: settings.lastRunAt ? { ...settings.lastRunAt } : settings.lastRunAt,
+    nextRunAt: settings.nextRunAt ? { ...settings.nextRunAt } : settings.nextRunAt,
+  };
+}
+
+function recoverAutomaticDiscoveryLeases(db = {}, workspaceId, now = new Date()) {
+  return recoverStaleRunningRuns(db, {
+    workspaceId,
+    lane: 'automatic',
+    now,
+  });
+}
+
+function upsertAutomaticDiscoveryRun(db = {}, run = {}) {
+  if (!run?.id) return;
+  const runs = Array.isArray(db.discoveryRuns) ? db.discoveryRuns : (db.discoveryRuns = []);
+  const index = runs.findIndex((item) => item && item.id === run.id);
+  const nextRun = cloneDiscoveryRun(run);
+  if (index >= 0) {
+    runs[index] = nextRun;
+    return;
+  }
+  runs.unshift(nextRun);
+}
+
+function mergeAutomaticDiscoverySettings(workspace = {}, snapshotWorkspace = {}) {
+  const snapshotSettings = snapshotWorkspace.discoverySettings;
+  if (!snapshotSettings) return;
+  if (!workspace.discoverySettings) {
+    workspace.discoverySettings = copyDiscoverySettings(snapshotSettings);
+    return;
+  }
+  workspace.discoverySettings = {
+    ...workspace.discoverySettings,
+    laneIntervalsMs: {
+      ...(workspace.discoverySettings.laneIntervalsMs || {}),
+      ...(snapshotSettings.laneIntervalsMs || {}),
+    },
+    lastRunAt: {
+      ...(workspace.discoverySettings.lastRunAt || {}),
+      ...(snapshotSettings.lastRunAt || {}),
+    },
+    nextRunAt: {
+      ...(workspace.discoverySettings.nextRunAt || {}),
+      ...(snapshotSettings.nextRunAt || {}),
+    },
+    updatedAt: snapshotSettings.updatedAt || workspace.discoverySettings.updatedAt,
+  };
+  if (!Object.prototype.hasOwnProperty.call(workspace.discoverySettings, 'enabled')) {
+    workspace.discoverySettings.enabled = snapshotSettings.enabled;
+  }
+  if (!Object.prototype.hasOwnProperty.call(workspace.discoverySettings, 'dailyBudgetUsd')) {
+    workspace.discoverySettings.dailyBudgetUsd = snapshotSettings.dailyBudgetUsd;
+  }
+  if (!Object.prototype.hasOwnProperty.call(workspace.discoverySettings, 'viralScoreThreshold')) {
+    workspace.discoverySettings.viralScoreThreshold = snapshotSettings.viralScoreThreshold;
+  }
+  if (!Array.isArray(workspace.discoverySettings.platforms) && Array.isArray(snapshotSettings.platforms)) {
+    workspace.discoverySettings.platforms = [...snapshotSettings.platforms];
+  }
+}
+
+function findAutomaticDiscoveryReelIndex(reels = [], workspaceId, candidate = {}) {
+  const targetId = normalizeDiscoveryIdentity(candidate.id);
+  if (targetId) {
+    const indexById = reels.findIndex((reel) => reel?.workspaceId === workspaceId && normalizeDiscoveryIdentity(reel.id) === targetId);
+    if (indexById >= 0) return indexById;
+  }
+
+  const targetApifyKey = normalizeDiscoveryIdentity(getApifySignalKey(candidate.importedMetadata || {}));
+  if (targetApifyKey) {
+    const indexByApifyKey = reels.findIndex((reel) => (
+      reel?.workspaceId === workspaceId
+      && normalizeDiscoveryIdentity(getApifySignalKey(reel.importedMetadata || {})) === targetApifyKey
+    ));
+    if (indexByApifyKey >= 0) return indexByApifyKey;
+  }
+
+  const targetUrl = normalizeDiscoveryIdentity(candidate.sourceUrl || candidate.importedMetadata?.url || '');
+  if (!targetUrl) return -1;
+  return reels.findIndex((reel) => (
+    reel?.workspaceId === workspaceId
+    && normalizeDiscoveryIdentity(reel.sourceUrl || reel.importedMetadata?.url || '') === targetUrl
+  ));
+}
+
+function mergeAutomaticDiscoveryReel(db = {}, workspaceId, reel = {}, { prepend = false } = {}) {
+  const reels = Array.isArray(db.reels) ? db.reels : (db.reels = []);
+  const nextReel = cloneDiscoveryReel(reel);
+  const existingIndex = findAutomaticDiscoveryReelIndex(reels, workspaceId, nextReel);
+  if (existingIndex >= 0) {
+    const current = reels[existingIndex] || {};
+    reels[existingIndex] = {
+      ...current,
+      ...nextReel,
+      importedMetadata: {
+        ...(current.importedMetadata || {}),
+        ...(nextReel.importedMetadata || {}),
+      },
+    };
+    return;
+  }
+  if (prepend) {
+    reels.unshift(nextReel);
+    return;
+  }
+  reels.push(nextReel);
+}
+
+function mergeAutomaticDiscoveryClaim(db = {}, snapshotDb = {}, workspaceId) {
+  const claimRun = listAutomaticDiscoveryRuns(snapshotDb, workspaceId).find((run) => run.status === 'running');
+  if (claimRun) {
+    upsertAutomaticDiscoveryRun(db, claimRun);
+  }
+  return db;
+}
+
+function mergeAutomaticDiscoveryResult(db = {}, snapshotDb = {}, workspaceId, result = {}) {
+  const workspace = db.workspaces.find((item) => item.id === workspaceId);
+  const snapshotWorkspace = snapshotDb.workspaces.find((item) => item.id === workspaceId);
+  if (workspace && snapshotWorkspace) {
+    mergeAutomaticDiscoverySettings(workspace, snapshotWorkspace);
+  }
+
+  if (result.run) {
+    upsertAutomaticDiscoveryRun(db, result.run);
+  }
+
+  for (const reel of Array.isArray(result.updatedSignals) ? result.updatedSignals : []) {
+    mergeAutomaticDiscoveryReel(db, workspaceId, reel);
+  }
+  for (const reel of Array.isArray(result.acceptedSignals) ? result.acceptedSignals : []) {
+    mergeAutomaticDiscoveryReel(db, workspaceId, reel, { prepend: true });
+  }
+
+  return db;
+}
+
+function runAutomaticDiscoveryFetch(call = {}) {
+  if (automaticDiscoveryTestProvider) {
+    return automaticDiscoveryTestProvider({
+      ...call,
+    });
+  }
+  return fetchApifySignals({
+    ...call,
+    token: APIFY_TOKEN,
+  });
 }
 
 function clampAutomaticDiscoveryBudgetUsd(value, fallback) {
@@ -753,7 +947,12 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
 
   automaticDiscoveryWorkspacesInFlight.add(workspaceId);
   try {
+    const now = options.now || new Date();
     const db = await readDb();
+    const recoveredRuns = recoverAutomaticDiscoveryLeases(db, workspaceId, now);
+    if (recoveredRuns.length) {
+      await writeDb(db);
+    }
     const workspace = db.workspaces.find((item) => item.id === workspaceId);
     if (!workspace) {
       const error = new Error('workspace_not_found');
@@ -766,23 +965,23 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
     const result = await executeAutomaticDiscovery({
       state: db,
       workspaceId,
-      now: options.now || new Date(),
+      now,
       force: Boolean(options.force),
-      token: APIFY_TOKEN,
       fetchSignals: async (call) => {
         if (!persistedClaim) {
           persistedClaim = true;
-          await writeDb(db);
+          const currentDb = await readDb();
+          mergeAutomaticDiscoveryClaim(currentDb, db, workspaceId);
+          await writeDb(currentDb);
         }
-        return fetchApifySignals(call);
+        return runAutomaticDiscoveryFetch(call);
       },
     });
 
-    if (!persistedClaim && result.run) {
-      persistedClaim = true;
-    }
     if (result.run) {
-      await writeDb(db);
+      const currentDb = await readDb();
+      mergeAutomaticDiscoveryResult(currentDb, db, workspaceId, result);
+      await writeDb(currentDb);
     }
 
     return result;
@@ -797,6 +996,16 @@ async function runAutomaticDiscoveryWorkerTick() {
   try {
     const db = await readDb();
     const now = new Date();
+    let recoveredAny = false;
+    for (const workspace of db.workspaces) {
+      if (!workspace?.id) continue;
+      if (recoverAutomaticDiscoveryLeases(db, workspace.id, now).length) {
+        recoveredAny = true;
+      }
+    }
+    if (recoveredAny) {
+      await writeDb(db);
+    }
     const workspaceIds = db.workspaces
       .map((workspace) => workspace.id)
       .filter((workspaceId) => shouldRunAutomaticDiscoveryTick(db, workspaceId, now));
@@ -4066,6 +4275,9 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
 app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
+  if (recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, new Date()).length) {
+    await writeDb(db);
+  }
   res.json(buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date()));
 });
 
@@ -4087,7 +4299,11 @@ app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, 
   try {
     const db = await readDb();
     if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-    const currentStatus = buildDiscoveryStatusResponse(db, req.params.workspaceId, new Date());
+    const now = new Date();
+    if (recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, now).length) {
+      await writeDb(db);
+    }
+    const currentStatus = buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
     if (currentStatus.status.activeRun) {
       res.status(409).json({
         error: 'automatic_discovery_running',
