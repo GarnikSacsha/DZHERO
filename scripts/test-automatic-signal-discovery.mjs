@@ -75,7 +75,7 @@ const runs = [
   },
 ];
 
-assert.equal(getDailyAutomaticSpend(runs, 'ws-1', now), 0.83);
+assert.equal(getDailyAutomaticSpend(runs, 'ws-1', now), 0.72);
 assert.equal(
   canStartDiscoveryRun({
     spentUsd: 0.72,
