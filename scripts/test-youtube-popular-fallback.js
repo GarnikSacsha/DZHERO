@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
-const { shouldRetryPopularWithoutCategory } = require('../backend/services/youtubePopularFallback.cjs');
+const {
+  getYouTubeShortsSearchQueries,
+  shouldRetryPopularWithoutCategory,
+} = require('../backend/services/youtubePopularFallback.cjs');
 
 const notFound = new Error('Requested entity was not found.');
 notFound.status = 404;
@@ -31,6 +34,17 @@ assert.equal(
   shouldRetryPopularWithoutCategory(quotaError, '27'),
   false,
   'quota errors should not be hidden by category fallback',
+);
+
+assert.deepEqual(
+  getYouTubeShortsSearchQueries('23'),
+  ['funny shorts', 'comedy shorts', 'viral funny shorts'],
+  'comedy category should search for actual Shorts queries',
+);
+
+assert.ok(
+  getYouTubeShortsSearchQueries('').includes('viral shorts'),
+  'fallback should still target Shorts, not generic videos',
 );
 
 console.log('youtube popular fallback tests passed');
