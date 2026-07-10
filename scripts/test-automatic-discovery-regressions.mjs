@@ -183,11 +183,13 @@ await executeAutomaticDiscovery({
   now: start,
   fetchSignals: async (call) => {
     firstRotationCalls.push(call.inputValue);
-    return [];
+    const result = [];
+    result.actualCostUsd = 0;
+    return result;
   },
 });
-assert.deepEqual(firstRotationCalls, ['@one', '@two']);
-assert.equal(rotationState.workspaces[0].discoverySettings.sourceCheckpoints.instagram.accounts, 2);
+assert.deepEqual(firstRotationCalls, ['@one', '@two', '@three']);
+assert.equal(rotationState.workspaces[0].discoverySettings.sourceCheckpoints.instagram.accounts, 3);
 
 const secondRotationCalls = [];
 await executeAutomaticDiscovery({
@@ -196,10 +198,12 @@ await executeAutomaticDiscovery({
   now: new Date(start.getTime() + 6 * HOUR_MS),
   fetchSignals: async (call) => {
     secondRotationCalls.push(call.inputValue);
-    return [];
+    const result = [];
+    result.actualCostUsd = 0;
+    return result;
   },
 });
-assert.deepEqual(secondRotationCalls, ['@three', '@four']);
+assert.deepEqual(secondRotationCalls, ['@four', '@one', '@two']);
 
 assert.equal(
   canonicalizeSignalUrl('HTTPS://WWW.Instagram.com/reel/ABC123/?utm_source=test#comments'),
