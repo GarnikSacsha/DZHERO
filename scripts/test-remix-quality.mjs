@@ -37,5 +37,25 @@ for (const remix of result.remixes) {
 
 assert.match(REMIX_SYSTEM_PROMPT, /Do not copy/i);
 assert.match(REMIX_SYSTEM_PROMPT, /brand/i);
+assert.match(REMIX_SYSTEM_PROMPT, /CONSULTANT MODE/i);
+assert.match(REMIX_SYSTEM_PROMPT, /Brand Brain is optional/i);
 
 console.log('remix quality tests passed');
+
+const consultantResult = generateHighFidelityFallback({
+  title: 'thank you edwin!! #kpop #SmallBusiness #kpopfyp #ateez #fyp',
+  hook: 'thank you edwin!!',
+  script: 'A customer uses a prize machine after checkout and reacts to the surprise reward.',
+  marketingMechanics: 'purchase -> playful random reward -> authentic customer reaction',
+}, {});
+
+assert.equal(consultantResult.remixes.length, 3);
+for (const remix of consultantResult.remixes) {
+  const output = JSON.stringify(remix);
+  assert.doesNotMatch(output, /thank you edwin|#kpop|#fyp/i);
+  assert.doesNotMatch(output, /продукт або послуга бренду|локальний сервісний бренд/i);
+  assert.match(output, /сюрприз|винагород|реакц|покуп|клієнт/i);
+  assert.ok(remix.visualFlow.every((step) => step.actionDescription.length >= 25));
+}
+
+console.log('consultant remix quality tests passed');

@@ -57,17 +57,44 @@ async function main() {
         postsOverflowY: getComputedStyle(posts).overflowY,
       };
 
+      const jeryk = document.querySelector('.jeryk-idle-card');
+      const planTasks = [...document.querySelectorAll('.page-content-plan .plan-task')];
+      const jerykRect = jeryk?.getBoundingClientRect();
+      const intersects = (first, second) => Boolean(first && second
+        && first.left < second.right
+        && first.right > second.left
+        && first.top < second.bottom
+        && first.bottom > second.top);
+
+      const jerykPlacement = jerykRect ? {
+        inViewport: jerykRect.left >= 0 && jerykRect.top >= 0
+          && jerykRect.right <= window.innerWidth && jerykRect.bottom <= window.innerHeight,
+        alignedToRightEdge: window.innerWidth - jerykRect.right <= 32,
+        aboveCalendar: jerykRect.bottom <= grid.getBoundingClientRect().top,
+        overlapsPlanTask: planTasks.some((task) => intersects(jerykRect, task.getBoundingClientRect())),
+        rect: { left: jerykRect.left, top: jerykRect.top, right: jerykRect.right, bottom: jerykRect.bottom },
+      } : null;
+
       return {
         before,
         after,
         dayHeightStable: Math.abs(after.dayHeight - before.dayHeight) <= 1,
         internalScroll: after.postsScrollHeight > after.postsClientHeight && ['auto', 'scroll'].includes(after.postsOverflowY),
+        jerykPlacement,
       };
     });
 
-    if (!result.dayHeightStable || !result.internalScroll) {
+    if (!result.dayHeightStable || !result.internalScroll
+      || !result.jerykPlacement?.inViewport
+      || !result.jerykPlacement?.alignedToRightEdge
+      || !result.jerykPlacement?.aboveCalendar
+      || result.jerykPlacement?.overlapsPlanTask) {
       console.error(JSON.stringify(result, null, 2));
       throw new Error('Calendar overflow check failed');
+    }
+
+    if (process.env.SCREENSHOT_PATH) {
+      await page.screenshot({ path: process.env.SCREENSHOT_PATH, fullPage: false });
     }
 
     console.log(JSON.stringify({
