@@ -11,7 +11,10 @@ const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
-const { shouldRetryPopularWithoutCategory } = require('./services/youtubePopularFallback.cjs');
+const {
+  getYouTubeShortsSearchQueries,
+  shouldRetryPopularWithoutCategory,
+} = require('./services/youtubePopularFallback.cjs');
 const {
   fetchApifySignals,
   getApifySignalKey,
@@ -2356,6 +2359,17 @@ async function fetchYouTubeApi(resource, params) {
   return data;
 }
 
+async function fetchYouTubeVideosByIds(videoIds = []) {
+  const ids = [...new Set(videoIds.map((value) => String(value || '').trim()).filter(Boolean))];
+  if (!ids.length) return [];
+  const data = await fetchYouTubeApi('videos', {
+    part: 'snippet,statistics,contentDetails',
+    id: ids.slice(0, 50).join(','),
+    maxResults: String(Math.min(ids.length, 50)),
+  });
+  return data.items || [];
+}
+
 function selectYouTubeThumbnail(...thumbnailSets) {
   const preferredSizes = ['maxres', 'standard', 'high', 'medium', 'default'];
   for (const thumbnails of thumbnailSets) {
@@ -2574,25 +2588,52 @@ async function fetchYouTubePopularMetadata(options = {}) {
   }
   const regionCode = normalizeYouTubeRegionCode(options.regionCode);
   const categoryId = normalizeYouTubeCategoryId(options.categoryId);
-  const maxResults = Math.min(Math.max(Number(options.maxResults || 8), 1), 12);
+  const maxResults = Math.min(Math.max(Number(options.maxResults || 12), 1), 24);
+  const searchedVideoIds = [];
+  for (const query of getYouTubeShortsSearchQueries(categoryId)) {
+    if (searchedVideoIds.length >= maxResults) break;
+    const searchData = await fetchYouTubeApi('search', {
+      part: 'snippet',
+      type: 'video',
+      q: query,
+      regionCode,
+      videoDuration: 'short',
+      order: 'viewCount',
+      maxResults: String(Math.min(maxResults - searchedVideoIds.length, 12)),
+    });
+    for (const item of searchData.items || []) {
+      const videoId = item.id?.videoId;
+      if (videoId && !searchedVideoIds.includes(videoId)) searchedVideoIds.push(videoId);
+      if (searchedVideoIds.length >= maxResults) break;
+    }
+  }
   const popularParams = {
     part: 'snippet,statistics,contentDetails',
     chart: 'mostPopular',
     regionCode,
     videoCategoryId: categoryId,
-    maxResults: String(maxResults),
+    maxResults: String(Math.max(maxResults - searchedVideoIds.length, 1)),
   };
-  let popularData;
-  try {
-    popularData = await fetchYouTubeApi('videos', popularParams);
-  } catch (error) {
-    if (!shouldRetryPopularWithoutCategory(error, categoryId)) throw error;
-    popularData = await fetchYouTubeApi('videos', {
-      ...popularParams,
-      videoCategoryId: '',
-    });
+  let videos = await fetchYouTubeVideosByIds(searchedVideoIds);
+  if (videos.length < maxResults) {
+    let popularData;
+    try {
+      popularData = await fetchYouTubeApi('videos', popularParams);
+    } catch (error) {
+      if (!shouldRetryPopularWithoutCategory(error, categoryId)) throw error;
+      popularData = await fetchYouTubeApi('videos', {
+        ...popularParams,
+        videoCategoryId: '',
+      });
+    }
+    const existingIds = new Set(videos.map((video) => video.id).filter(Boolean));
+    for (const video of popularData.items || []) {
+      if (!video?.id || existingIds.has(video.id)) continue;
+      videos.push(video);
+      existingIds.add(video.id);
+      if (videos.length >= maxResults) break;
+    }
   }
-  const videos = popularData.items || [];
   const channelIds = [...new Set(videos.map((video) => video.snippet?.channelId).filter(Boolean))];
   const channels = new Map();
   if (channelIds.length) {
@@ -4622,7 +4663,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
-    const requestedMaxResults = Math.min(Math.max(Number(req.body.maxResults || 8), 1), 12);
+    const requestedMaxResults = Math.min(Math.max(Number(req.body.maxResults || 24), 1), 24);
     const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
     const maxResults = getAllowedBatchSize({
       requested: requestedMaxResults,

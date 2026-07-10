@@ -821,7 +821,7 @@ function App() {
       body: JSON.stringify({
         regionCode,
         categoryId,
-        maxResults: 8,
+        maxResults: 24,
         market: regionCode === 'UA' ? 'ua' : 'global',
       }),
     });

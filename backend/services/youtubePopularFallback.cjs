@@ -15,6 +15,22 @@ function shouldRetryPopularWithoutCategory(error, categoryId) {
     );
 }
 
+function getYouTubeShortsSearchQueries(categoryId = '') {
+  const normalizedCategoryId = String(categoryId || '').trim();
+  const categoryQueries = {
+    17: ['sports shorts', 'fitness shorts', 'workout shorts'],
+    22: ['daily vlog shorts', 'storytime shorts', 'people shorts'],
+    23: ['funny shorts', 'comedy shorts', 'viral funny shorts'],
+    24: ['viral shorts', 'entertainment shorts', 'funny shorts'],
+    26: ['lifestyle shorts', 'food shorts', 'beauty shorts'],
+    27: ['educational shorts', 'business shorts', 'tips shorts'],
+    28: ['tech shorts', 'ai tools shorts', 'productivity shorts'],
+  };
+  const queries = categoryQueries[normalizedCategoryId] || ['viral shorts', 'trending shorts', 'youtube shorts'];
+  return [...new Set(queries)];
+}
+
 module.exports = {
+  getYouTubeShortsSearchQueries,
   shouldRetryPopularWithoutCategory,
 };
