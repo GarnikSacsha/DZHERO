@@ -205,6 +205,9 @@ const requestGuardHelperIndex = mainSource.indexOf('const isSignalsWorkspaceRequ
 const visibleRefreshGuardIndex = mainSource.indexOf('if (!silent && visibleSignalsRefreshPromiseRef.current) return visibleSignalsRefreshPromiseRef.current;');
 const toggleGuardIndex = mainSource.indexOf('if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) return payload;');
 const runGuardIndex = mainSource.indexOf('if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;');
+const viralBankStart = mainSource.indexOf('function ViralBank({');
+const viralBankEnd = mainSource.indexOf('function Competitors(', viralBankStart);
+const viralBankSource = viralBankStart === -1 || viralBankEnd === -1 ? '' : mainSource.slice(viralBankStart, viralBankEnd);
 
 assert.notEqual(emptyStateIndex, -1, 'expected emptyState derivation in src/main.jsx');
 assert.notEqual(canRunAutomationIndex, -1, 'expected canRunAutomation declaration in src/main.jsx');
@@ -227,5 +230,12 @@ assert.ok(
   !mainSource.slice(runHandlerStart, runHandlerEnd).includes('throw error;'),
   'run handler must not rethrow after handling notifications',
 );
+assert.notEqual(viralBankStart, -1, 'expected ViralBank component in src/main.jsx');
+assert.notEqual(viralBankEnd, -1, 'expected ViralBank component to appear before Competitors');
+assert.ok(!viralBankSource.includes("['website'"), 'Signals source tabs must not include Websites');
+assert.ok(!viralBankSource.includes('website link'), 'Signals search placeholder must not mention websites');
+assert.ok(viralBankSource.includes('const realSignalSources = buildSignalSourceSummary(filteredReels);'), 'Signals side panel must derive sources from actual reels');
+assert.ok(!viralBankSource.includes('<span>{competitors.length}'), 'Signals side panel must not count mock competitors as sources');
+assert.ok(!viralBankSource.includes('competitors.slice(0, 6).map'), 'Signals side panel must not render mock competitors');
 
 console.log('signals UI state tests passed');
