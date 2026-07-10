@@ -16,11 +16,40 @@ const AUTOMATIC_FALLBACK_SCORE_THRESHOLD = 55;
 const AUTOMATIC_RUN_LANE = 'automatic';
 const AUTOMATIC_INPUTS_PER_LANE = 3;
 const AUTOMATIC_METADATA_LIMIT = 8;
+const FORCED_AUTOMATIC_INPUTS_PER_LANE = 5;
+const FORCED_AUTOMATIC_METADATA_LIMIT = 12;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 20;
+const FORCED_AUTOMATIC_MAX_WINNERS = 60;
 const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_BASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_CAP_MS = 6 * HOUR_MS;
+
+const BOOTSTRAP_KEYWORDS = [
+  'ai tools',
+  'content marketing',
+  'youtube automation',
+  'small business marketing',
+  'creator economy',
+  'ecommerce ads',
+  'ugc ads',
+  'social media tips',
+  'brand storytelling',
+  'productivity workflow',
+];
+
+const BOOTSTRAP_HASHTAGS = [
+  '#aitools',
+  '#contentmarketing',
+  '#youtubeautomation',
+  '#smallbusiness',
+  '#creatorbusiness',
+  '#ecommerce',
+  '#ugccreator',
+  '#socialmediamarketing',
+  '#marketingtips',
+  '#productivity',
+];
 
 const DEFAULT_LANES = ['accounts', 'keywords', 'hashtags', 'trends'];
 const PLATFORM_NAMES = ['instagram', 'tiktok'];
@@ -252,7 +281,13 @@ function collectKeywordCandidates(workspace = {}, state = {}, workspaceId) {
     values.push(competitor.niche, competitor.market, competitor.handle);
   }
 
-  return uniqueValues(values.map((value) => normalizeText(value).toLowerCase()), MAX_INPUTS_PER_LANE);
+  return uniqueValues(
+    [
+      ...values.map((value) => normalizeText(value).toLowerCase()),
+      ...BOOTSTRAP_KEYWORDS,
+    ],
+    MAX_INPUTS_PER_LANE
+  );
 }
 
 function collectHashtagCandidates(workspace = {}, state = {}, workspaceId) {
@@ -277,10 +312,13 @@ function collectHashtagCandidates(workspace = {}, state = {}, workspaceId) {
   }
 
   return uniqueValues(
-    values
-      .map((value) => slugForHashtag(value))
-      .filter(Boolean)
-      .map((value) => `#${value}`),
+    [
+      ...values
+        .map((value) => slugForHashtag(value))
+        .filter(Boolean)
+        .map((value) => `#${value}`),
+      ...BOOTSTRAP_HASHTAGS,
+    ],
     MAX_INPUTS_PER_LANE
   );
 }
@@ -302,6 +340,7 @@ function buildTrendCandidates(platform, workspace = {}) {
     `${goal || 'lead generation'} content`,
     `${niche} mistakes to avoid`,
     `${businessType} creator trends`,
+    ...BOOTSTRAP_KEYWORDS.map((keyword) => `${platform} ${keyword}`),
   ]);
 }
 
@@ -446,7 +485,7 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
     const hasActualCost = run.actualCostUsd !== null
       && run.actualCostUsd !== undefined
       && Number.isFinite(Number(run.actualCostUsd))
-      && Number(run.actualCostUsd) > 0;
+      && Number(run.actualCostUsd) >= 0;
     const actualCostUsd = hasActualCost ? Number(run.actualCostUsd) : null;
     const reservedCostUsd = Number(run.reservedCostUsd);
     const estimatedCostUsd = Number(run.estimatedCostUsd);
@@ -461,7 +500,7 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
     }
     const amount = hasActualCost
       ? actualCostUsd
-      : run.status === 'running' && Number.isFinite(reservedCostUsd) && reservedCostUsd > 0
+      : Number.isFinite(reservedCostUsd) && reservedCostUsd > 0
         ? reservedCostUsd
       : run.status === 'running' && Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
         ? estimatedCostUsd
@@ -809,20 +848,22 @@ function registerIdentityValue(map, reel, value) {
   }
 }
 
-function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = []) {
+function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], options = {}) {
   const calls = [];
+  const inputLimit = Math.max(1, Math.trunc(Number(options.inputLimit || AUTOMATIC_INPUTS_PER_LANE)));
+  const resultLimit = Math.max(1, Math.trunc(Number(options.resultLimit || AUTOMATIC_METADATA_LIMIT)));
   for (const platform of platforms) {
     const platformInputs = discoveryInputs[platform] || {};
     for (const lane of DEFAULT_LANES) {
       const inputType = INPUT_TYPE_BY_LANE[lane];
       if (!inputType) continue;
-      for (const inputValue of uniqueValues(platformInputs[lane] || [], AUTOMATIC_INPUTS_PER_LANE)) {
+      for (const inputValue of uniqueValues(platformInputs[lane] || [], inputLimit)) {
         calls.push({
           platform,
           lane,
           inputType,
           inputValue,
-          limit: AUTOMATIC_METADATA_LIMIT,
+          limit: resultLimit,
           downloadVideo: false,
         });
       }
@@ -831,9 +872,9 @@ function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = []) {
   return calls;
 }
 
-function getPlannedAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], lanes = DEFAULT_LANES) {
+function getPlannedAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], lanes = DEFAULT_LANES, options = {}) {
   const allowedLanes = new Set(Array.isArray(lanes) ? lanes : DEFAULT_LANES);
-  return planAutomaticDiscoveryCalls(discoveryInputs, platforms).filter((call) => allowedLanes.has(call.lane));
+  return planAutomaticDiscoveryCalls(discoveryInputs, platforms, options).filter((call) => allowedLanes.has(call.lane));
 }
 
 function createLaneScheduleMap(settings = {}) {
@@ -1057,8 +1098,15 @@ function prepareAutomaticDiscovery(args = {}) {
     return createEmptyDiscoveryResult(null, { reason: 'not_due' });
   }
 
+  const isForcedRun = Boolean(args.force);
+  const planningOptions = isForcedRun
+    ? {
+        inputLimit: FORCED_AUTOMATIC_INPUTS_PER_LANE,
+        resultLimit: FORCED_AUTOMATIC_METADATA_LIMIT,
+      }
+    : {};
   const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
-  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes);
+  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes, planningOptions);
   const lanesWithCalls = new Set(plannedCalls.map((call) => call.lane));
   const emptyLanes = dueLanes.filter((lane) => !lanesWithCalls.has(lane));
   applyNormalLaneSchedules(workspace, settings, emptyLanes, now);
@@ -1086,7 +1134,6 @@ function prepareAutomaticDiscovery(args = {}) {
   const estimatedMetadataCostUsd = roundUsd(
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
-  const isForcedRun = Boolean(args.force);
   if (spentUsd >= settings.dailyBudgetUsd || (!isForcedRun && spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd)) {
     applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
     const run = createAutomaticRun(state, {
@@ -1128,6 +1175,7 @@ function prepareAutomaticDiscovery(args = {}) {
       discoveryInputs,
       dueLanes,
       plannedCalls,
+      maxWinners: isForcedRun ? FORCED_AUTOMATIC_MAX_WINNERS : AUTOMATIC_MAX_WINNERS,
       settings,
     },
   };
@@ -1152,6 +1200,7 @@ async function executeAutomaticDiscovery(args = {}) {
   const {
     dueLanes,
     plannedCalls,
+    maxWinners = AUTOMATIC_MAX_WINNERS,
     settings,
   } = prepared.execution;
   const spentUsd = run.spentUsdBefore;
@@ -1207,7 +1256,7 @@ async function executeAutomaticDiscovery(args = {}) {
   }
 
   function recordBilledCost(value) {
-    if (Number.isFinite(value) && value > 0) {
+    if (Number.isFinite(value) && value >= 0) {
       billedCostUsd += value;
       return;
     }
@@ -1330,12 +1379,12 @@ async function executeAutomaticDiscovery(args = {}) {
     selectCandidate(fallbackSignal);
   }
   for (const signal of rankedSignals) {
-    if (selectedCandidateIds.size >= AUTOMATIC_MAX_WINNERS) break;
+    if (selectedCandidateIds.size >= maxWinners) break;
     if (signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD) selectCandidate(signal);
   }
   const shortlistedSignals = rankedSignals
     .filter((signal) => selectedCandidateIds.has(signal.id))
-    .slice(0, AUTOMATIC_MAX_WINNERS);
+    .slice(0, maxWinners);
 
   run.rejectedCount = Math.max(candidatesById.size - shortlistedSignals.length, 0);
 
@@ -1436,7 +1485,7 @@ async function executeAutomaticDiscovery(args = {}) {
   run.acceptedCount = acceptedSignals.length;
   run.status = successfulCalls > 0 ? 'completed' : 'failed';
   const roundedBilledCostUsd = roundUsd(billedCostUsd);
-  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd > 0
+  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd >= 0
     ? roundedBilledCostUsd
     : null;
   run.completedAt = now.toISOString();

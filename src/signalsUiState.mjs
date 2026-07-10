@@ -68,7 +68,10 @@ function getDiscoveryRunErrorContext(run) {
   if (laneLabel) locationParts.push(laneLabel);
 
   const prefix = locationParts.length ? `${locationParts.join(' / ')}: ` : '';
-  const message = String(firstError.message || '').trim();
+  const rawMessage = String(firstError.message || '').trim();
+  const message = isGenericDiscoveryErrorMessage(rawMessage)
+    ? String(firstError.error || firstError.code || firstError.status || rawMessage).trim()
+    : rawMessage;
   const remainingErrors = Math.max(getDiscoveryRunErrorCount(run) - 1, 0);
   const extraText = remainingErrors > 0
     ? ` Ще ${remainingErrors} ${pluralize(remainingErrors, 'помилка', 'помилки', 'помилок')}.`
@@ -78,6 +81,10 @@ function getDiscoveryRunErrorContext(run) {
     return `${prefix.trim()}${extraText}`.trim();
   }
   return `${prefix}${message}${extraText}`.trim();
+}
+
+function isGenericDiscoveryErrorMessage(value = '') {
+  return /^(automatic_discovery_run_failed|automatic_discovery_failed)$/i.test(String(value || '').trim());
 }
 
 function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount) {

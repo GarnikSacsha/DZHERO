@@ -186,6 +186,30 @@ assert.ok(inputs.tiktok.keywords.some((value) => value.includes('workout')));
 assert.ok(inputs.tiktok.hashtags.every((value) => value.startsWith('#')));
 assert.ok(inputs.tiktok.trends.some((value) => value.includes('ukraine')));
 
+const bootstrapInputState = {
+  workspaces: [
+    {
+      id: 'ws_bootstrap_inputs',
+      brief: {},
+      discoverySettings: {
+        ...defaultDiscoverySettings(now),
+        platforms: ['instagram', 'tiktok'],
+      },
+    },
+  ],
+  sources: [],
+  competitors: [],
+  instagramAccounts: [],
+  tiktokAccounts: [],
+  reels: [],
+  discoveryRuns: [],
+};
+const bootstrapInputs = buildDiscoveryInputs(bootstrapInputState, 'ws_bootstrap_inputs');
+assert.ok(bootstrapInputs.instagram.keywords.includes('ai tools'));
+assert.ok(bootstrapInputs.tiktok.keywords.includes('ai tools'));
+assert.ok(bootstrapInputs.instagram.hashtags.includes('#aitools'));
+assert.ok(bootstrapInputs.tiktok.trends.some((value) => value.includes('tiktok ai tools')));
+
 const claimState = { discoveryRuns: [] };
 const firstClaim = claimDiscoveryRun(claimState, {
   workspaceId: 'ws-1',
@@ -653,7 +677,7 @@ const fallbackFillState = {
   discoveryRuns: [],
 };
 
-const fallbackCandidates = Array.from({ length: 8 }, (_, index) => ({
+const fallbackCandidates = Array.from({ length: 45 }, (_, index) => ({
   id: `fallback_candidate_${index}`,
   workspaceId: 'ws_fallback_fill',
   sourceHandle: `@creator${index}`,
