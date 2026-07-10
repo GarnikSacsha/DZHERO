@@ -256,6 +256,15 @@ function attachActualCost(signals, actualCostUsd) {
 
 function buildInstagramInput({ inputValue, inputType, limit }) {
   const directUrlTypes = new Set(['url', 'profile']);
+  const createHashtagUrl = (value) => {
+    const tag = String(value || '')
+      .trim()
+      .replace(/^instagram\s+/i, '')
+      .replace(/^#/, '')
+      .replace(/[^a-zA-Z0-9_]/g, '');
+    if (!tag) return '';
+    return `https://www.instagram.com/explore/tags/${tag}/`;
+  };
   const normalizedProfileUrl = (() => {
     if (inputType !== 'profile') return inputValue;
     const rawValue = String(inputValue || '').trim();
@@ -267,15 +276,20 @@ function buildInstagramInput({ inputValue, inputType, limit }) {
   })();
   const normalizedHashtagUrl = (() => {
     if (inputType !== 'hashtag') return '';
-    const tag = String(inputValue || '').trim().replace(/^#/, '').replace(/[^a-zA-Z0-9_]/g, '');
-    if (!tag) return '';
-    return `https://www.instagram.com/explore/tags/${tag}/`;
+    return createHashtagUrl(inputValue);
   })();
+  const normalizedSearchHashtagUrl = (() => {
+    if (inputType !== 'search') return '';
+    const rawValue = String(inputValue || '').trim();
+    if (!rawValue || /^https?:\/\//i.test(rawValue)) return '';
+    return createHashtagUrl(rawValue);
+  })();
+  const discoveryTagUrl = normalizedHashtagUrl || normalizedSearchHashtagUrl;
   return {
-    directUrls: normalizedHashtagUrl
-      ? [normalizedHashtagUrl]
+    directUrls: discoveryTagUrl
+      ? [discoveryTagUrl]
       : directUrlTypes.has(inputType) ? [normalizedProfileUrl] : [],
-    search: directUrlTypes.has(inputType) || normalizedHashtagUrl ? '' : inputValue,
+    search: directUrlTypes.has(inputType) || discoveryTagUrl ? '' : inputValue,
     resultsType: 'posts',
     resultsLimit: limit,
   };

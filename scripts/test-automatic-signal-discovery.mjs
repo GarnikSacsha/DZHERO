@@ -631,6 +631,7 @@ await executeAutomaticDiscovery({
       platform: call.platform,
       mode: call.mode ?? call.inputType,
       input: call.input ?? call.inputValue,
+      limit: call.limit,
     });
     return [];
   },
@@ -638,6 +639,8 @@ await executeAutomaticDiscovery({
 
 assert.equal(forcedFetchCalls.some((call) => call.mode === 'search'), true);
 assert.equal(forcedFetchCalls.some((call) => call.mode === 'hashtag'), true);
+assert.equal(forcedFetchCalls.some((call) => call.platform === 'instagram' && call.limit === 30), true);
+assert.equal(forcedFetchCalls.some((call) => call.platform === 'tiktok' && call.limit === 12), true);
 
 const fallbackFillState = {
   workspaces: [
