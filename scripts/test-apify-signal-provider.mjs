@@ -54,7 +54,8 @@ const instagramProfileActorRequest = buildApifyActorRequest({
 
 assert.equal(instagramProfileActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramProfileActorRequest.input, {
-  username: ['https://www.instagram.com/maverickgpt/'],
+  username: ['maverickgpt'],
+  directUrls: ['https://www.instagram.com/maverickgpt/'],
   resultsLimit: 2,
   onlyPostsNewerThan: '3 months',
   skipPinnedPosts: true,
@@ -91,7 +92,8 @@ const instagramActorRequest = buildApifyActorRequest({
 
 assert.equal(instagramActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramActorRequest.input, {
-  username: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
+  username: [],
+  directUrls: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
   resultsLimit: 30,
   onlyPostsNewerThan: '3 months',
   skipPinnedPosts: true,

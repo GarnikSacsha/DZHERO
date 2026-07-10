@@ -106,18 +106,9 @@ function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount) {
 
 function buildDiscoveryRunFunnelSummary(run = {}) {
   if (!run || run.status !== 'completed') return '';
-  const returned = Math.max(toInt(run.returnedCount), 0);
-  const duplicate = Math.max(toInt(run.duplicateCount), 0);
-  const rejected = Math.max(toInt(run.rejectedCount), 0);
   const accepted = Math.max(toInt(run.acceptedCount), 0);
-  if (returned <= 0 && duplicate <= 0 && rejected <= 0 && accepted <= 0) return '';
-  const parts = [
-    returned ? `${returned} сирих` : '',
-    duplicate ? `${duplicate} дублів` : '',
-    rejected ? `${rejected} відсіяно` : '',
-    `${accepted} прийнято`,
-  ].filter(Boolean);
-  return `Останній запуск: ${parts.join(' · ')}.`;
+  if (accepted > 0) return 'Останній запуск завершено. Нові релевантні сигнали вже у стрічці.';
+  return 'Останній запуск завершено. Стрічка Signals актуальна.';
 }
 
 function isPartialDiscoveryRun(run) {
@@ -197,12 +188,10 @@ export function deriveDiscoveryToolbarStatus(discovery) {
   if (status.running || status.code === 'running') {
     const activeRun = status.activeRun;
     const attempted = Number(activeRun?.attemptedCallCount || 0);
-    const returned = Number(activeRun?.returnedCount || 0);
     const accepted = Number(activeRun?.acceptedCount || 0);
     const progressParts = [
-      attempted ? `${attempted} джерел` : '',
-      returned ? `${returned} сирих роликів` : '',
-      accepted ? `${accepted} прийнято` : '',
+      attempted ? 'перевіряємо джерела' : '',
+      accepted ? 'додаємо релевантні сигнали' : '',
     ].filter(Boolean);
     return {
       label: 'Виконується',

@@ -14,6 +14,10 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : async 
 };
 
 const DEFAULT_GEMINI_REMIX_MODEL = 'gemini-3.5-flash';
+const {
+  normalizeBrandBrain,
+  buildBrandBrainPromptBlock,
+} = require('./brandBrainContext.cjs');
 
 // The Structured JSON Schema requested
 const REMIX_OUTPUT_SCHEMA = {
@@ -80,6 +84,8 @@ Here are your instructions:
    - Produce exactly 3 distinct script adaptations in natural, modern, native Ukrainian.
    - Avoid Google Translate-style or dry textbook language. Use natural spoken Ukrainian, slang if appropriate, and highly engaging conversational structures.
    - Align each remix with the Ukrainian Business Brief provided (Niche, Product/Offer, Location, and Tone of Voice).
+   - Do not copy or translate the original video title as the remix title, hook, or structure. Use the source only as a mechanism, then rebuild the content around the brand's niche, offer, location, proof, and CTA.
+   - Every visualFlow step must be brand-specific: mention what the brand owner shows, what object/process/result appears in frame, and what local customer pain it answers.
    - NEVER use these generic AI words or phrases: "унікальний", "революційний", "зануртесь", "сфера", "інноваційний", "не пропустіть", "ключ до успіху", "готовий змінити життя?", "відкрийте для себе".
    - Never invent private metrics, client results, testimonials, or revenue numbers. If proof is missing, use safe proof placeholders such as "покажи відгук", "покажи процес", "покажи результат".
    - Format each remix with:
@@ -130,6 +136,22 @@ FEW-SHOT QUALITY TARGETS:
  * Main Remix Engine Generator Function
  */
 async function generateRemix(globalInsight, businessBrief) {
+  const normalizedBrandBrain = normalizeBrandBrain(businessBrief);
+  const enrichedBusinessBrief = {
+    ...(businessBrief || {}),
+    niche: businessBrief?.niche || normalizedBrandBrain.businessType || '',
+    product: businessBrief?.product || normalizedBrandBrain.product || normalizedBrandBrain.offer || '',
+    location: businessBrief?.location || normalizedBrandBrain.location || '',
+    toneOfVoice: businessBrief?.toneOfVoice || normalizedBrandBrain.toneOfVoice || '',
+    audience: businessBrief?.audience || normalizedBrandBrain.audience || '',
+    goals: businessBrief?.goals || normalizedBrandBrain.goals || [],
+    stopTopics: businessBrief?.stopTopics || normalizedBrandBrain.stopTopics || [],
+    contentFocus: businessBrief?.contentFocus || normalizedBrandBrain.contentFocus || '',
+    cta: businessBrief?.cta || normalizedBrandBrain.cta || '',
+    proof: businessBrief?.proof || normalizedBrandBrain.proof || '',
+    brandBrainMode: normalizedBrandBrain.mode,
+    brandBrainReady: normalizedBrandBrain.ready,
+  };
   const {
     title: globalTitle = "",
     hook: globalHook = "",
@@ -142,7 +164,7 @@ async function generateRemix(globalInsight, businessBrief) {
     product = "Спешелті кава та десерти",
     location = "Київ",
     toneOfVoice = "дружній, але професійний"
-  } = businessBrief || {};
+  } = enrichedBusinessBrief || {};
 
   console.log(`[RemixEngine] Generating remixes for: Niche="${niche}", Product="${product}", Location="${location}", Tone="${toneOfVoice}"`);
 
@@ -152,20 +174,20 @@ async function generateRemix(globalInsight, businessBrief) {
 
   if (geminiApiKey) {
     try {
-      return await generateWithGemini(geminiApiKey, globalInsight, businessBrief);
+      return await generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief);
     } catch (err) {
       console.error("[RemixEngine] Gemini API error, falling back to mock generator:", err);
     }
   } else if (openaiApiKey) {
     try {
-      return await generateWithOpenAI(openaiApiKey, globalInsight, businessBrief);
+      return await generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief);
     } catch (err) {
       console.error("[RemixEngine] OpenAI API error, falling back to mock generator:", err);
     }
   }
 
   // Fallback high-fidelity smart script generator
-  return generateHighFidelityFallback(globalInsight, businessBrief);
+  return generateHighFidelityFallback(globalInsight, enrichedBusinessBrief);
 }
 
 /**
@@ -181,6 +203,14 @@ Niche: ${businessBrief.niche}
 Product/Offer: ${businessBrief.product}
 Location: ${businessBrief.location || 'Ukraine'}
 Tone of Voice: ${businessBrief.toneOfVoice}
+Audience: ${businessBrief.audience || ''}
+Content Focus: ${businessBrief.contentFocus || ''}
+CTA: ${businessBrief.cta || ''}
+Proof: ${businessBrief.proof || ''}
+Goals: ${Array.isArray(businessBrief.goals) ? businessBrief.goals.join('; ') : businessBrief.goals || ''}
+Stop Topics: ${Array.isArray(businessBrief.stopTopics) ? businessBrief.stopTopics.join('; ') : businessBrief.stopTopics || ''}
+
+${buildBrandBrainPromptBlock(businessBrief)}
 
 === GLOBAL INSIGHT TO ADAPT ===
 Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
@@ -237,6 +267,14 @@ Niche: ${businessBrief.niche}
 Product/Offer: ${businessBrief.product}
 Location: ${businessBrief.location || 'Ukraine'}
 Tone of Voice: ${businessBrief.toneOfVoice}
+Audience: ${businessBrief.audience || ''}
+Content Focus: ${businessBrief.contentFocus || ''}
+CTA: ${businessBrief.cta || ''}
+Proof: ${businessBrief.proof || ''}
+Goals: ${Array.isArray(businessBrief.goals) ? businessBrief.goals.join('; ') : businessBrief.goals || ''}
+Stop Topics: ${Array.isArray(businessBrief.stopTopics) ? businessBrief.stopTopics.join('; ') : businessBrief.stopTopics || ''}
+
+${buildBrandBrainPromptBlock(businessBrief)}
 
 === GLOBAL INSIGHT TO ADAPT ===
 Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
@@ -277,11 +315,124 @@ Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null
   return JSON.parse(textResponse.trim());
 }
 
+function cleanBriefValue(value, fallback) {
+  return String(value || fallback || '').replace(/\s+/g, ' ').trim();
+}
+
+function getMechanicSummary(globalInsight = {}) {
+  const video = globalInsight.videoIntelligence?.video || {};
+  const candidates = [
+    video.contentMechanic,
+    video.videoSummary,
+    globalInsight.marketingMechanics,
+    globalInsight.script,
+    globalInsight.hook
+  ];
+
+  const summary = candidates
+    .map((value) => String(value || '').replace(/\s+/g, ' ').trim())
+    .find((value) => value.length > 12);
+
+  return summary || 'visual surprise -> proof -> simple repeatable routine -> CTA';
+}
+
+function generateBrandAdaptedFallback(globalInsight, businessBrief) {
+  const niche = cleanBriefValue(businessBrief?.niche, 'локальний сервісний бренд');
+  const product = cleanBriefValue(businessBrief?.product, 'стартова пропозиція');
+  const location = cleanBriefValue(businessBrief?.location, 'Україна');
+  const toneOfVoice = cleanBriefValue(businessBrief?.toneOfVoice, 'спокійний, практичний, експертний');
+  const mechanic = getMechanicSummary(globalInsight);
+  const directKeyword = product.split(/\s+/).slice(0, 2).join(' ') || 'start';
+
+  const makeStep = (timeframe, actionDescription, onScreenText, audioVoiceover) => ({
+    timeframe,
+    actionDescription,
+    onScreenText,
+    audioVoiceover
+  });
+
+  const makeRemix = (title, hook, angle, pain, proof, ctaVerb) => ({
+    title,
+    hook,
+    visualFlow: [
+      makeStep(
+        '0:00-0:03',
+        `Крупний план: власник ${niche} показує перший видимий контраст для болю "${pain}", потім переводить камеру на реальний процес ${product} у ${location}.`,
+        `${pain}: подивись сюди`,
+        `Спершу не обіцянка, а деталь у кадрі. Вона пояснює, чому ${product} може інакше спрацювати для людей у ${location}.`
+      ),
+      makeStep(
+        '0:03-0:09',
+        `Кадр переходить від проблеми до процесу: руки, екран, простір, інструмент або результат, який показує, як ${niche} розв'язує ситуацію.`,
+        `Процес, не слогани`,
+        `Ми не беремо назву оригіналу. Беремо контраст, доказ і routine, а далі показуємо, як це реально працює у ${niche}.`
+      ),
+      makeStep(
+        '0:09-0:15',
+        `Покажи конкретний наступний крок: запис, чекліст, приклад результату, нотатку консультації або до/після, прив'язане до ${product}.`,
+        `${product} у ${location}`,
+        `${ctaVerb}, якщо хочеш такий самий шлях без здогадок. Я надішлю наступний крок для ${product} і поясню, що підготувати.`
+      )
+    ],
+    cta: `${ctaVerb} "${directKeyword}" у Direct або залиш коментар, і ми надішлемо наступний крок для ${product} у ${location}.`,
+    strategicNote: `${angle}. Адаптовано з механіки джерела: ${mechanic.slice(0, 180)}`
+  });
+
+  return {
+    deconstruction: {
+      coreMechanics: `Корисний патерн джерела: visual contrast -> proof -> routine -> CTA. Ми залишаємо механіку, але перебудовуємо її під ${niche}, ${product}, ${location}; назву оригіналу не копіюємо.`,
+      psychologicalTriggers: [
+        `Візуальний контраст, який зупиняє глядача ${niche}`,
+        `Конкретний доказ або процес до будь-якої обіцянки про ${product}`,
+        `Простий локальний CTA для людей у ${location}`
+      ],
+      removedCulturalContext: [
+        'Прибрано особу оригінального автора, формулювання назви та нерелевантну сцену',
+        'Іноземні референси й неперевірені результати замінено власним доказом бренду',
+        `Подачу адаптовано під тон: ${toneOfVoice}`
+      ]
+    },
+    viabilityFilter: {
+      isAdaptable: true,
+      uaMentalityCheck: `Працює для ${niche} у ${location}, бо спершу показує практичний доказ, а вже потім просить довіру і веде глядача до ${product}.`,
+      productionFeasibility: 'Можна зняти на телефон у реальному просторі: один крупний план, один кадр процесу, один результат або крок запису. Студійна команда не потрібна.'
+    },
+    remixes: [
+      makeRemix(
+        `${product}: спершу доказ`,
+        `Не вір обіцянці. Подивись доказ ${niche} у ${location}.`,
+        'Адаптація через доказ',
+        'прихований бар’єр',
+        'видимий процес',
+        'Напиши'
+      ),
+      makeRemix(
+        `${niche}: тест рутини`,
+        `Ось маленька routine, яка стоїть за ${product}.`,
+        'Розкриття рутини',
+        'щоденна помилка',
+        'повторювана routine',
+        'Коментуй'
+      ),
+      makeRemix(
+        `${location}: перед записом`,
+        `Перед тим як обрати ${product}, перевір одну річ.`,
+        'Чекліст покупця',
+        'ризик неправильного вибору',
+        'простий чекліст',
+        'Надішли'
+      )
+    ]
+  };
+}
+
 /**
  * Generates highly realistic, custom tailored scripts when API keys are not set.
  * This guarantees the frontend works seamlessly with gorgeous high-quality content.
  */
 function generateHighFidelityFallback(globalInsight, businessBrief) {
+  return generateBrandAdaptedFallback(globalInsight, businessBrief);
+
   const {
     niche = "Кафе/Ресторан",
     product = "Спешелті кава та десерти",
@@ -578,5 +729,6 @@ function generateHighFidelityFallback(globalInsight, businessBrief) {
 
 module.exports = {
   generateRemix,
+  generateHighFidelityFallback,
   REMIX_SYSTEM_PROMPT
 };

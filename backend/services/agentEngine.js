@@ -1,5 +1,9 @@
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_TEXT_MODEL = 'gemini-3.5-flash';
+const {
+  normalizeBrandBrain,
+  buildBrandBrainPromptBlock,
+} = require('./brandBrainContext.cjs');
 
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
@@ -7,6 +11,7 @@ function compactText(value) {
 
 function buildBusinessContext(workspace = {}, snapshot = {}) {
   const brief = workspace.brief || {};
+  const brandBrain = normalizeBrandBrain(brief);
   const reels = snapshot.reels || [];
   const ideas = snapshot.ideas || [];
   const sources = snapshot.sources || [];
@@ -17,14 +22,18 @@ function buildBusinessContext(workspace = {}, snapshot = {}) {
       marketFocus: workspace.marketFocus || ['ua', 'us', 'eu', 'global'],
     },
     brand: {
-      businessType: brief.businessType || brief.niche || 'expert_creator',
-      location: brief.location || 'Ukraine',
-      audience: brief.audience || 'Ukrainian Instagram audience',
-      product: brief.product || 'consultations, launches, content production',
-      toneOfVoice: brief.toneOfVoice || 'clear, useful, confident',
-      goals: brief.goals || ['find market signals', 'create scripts', 'plan content'],
-      stopTopics: brief.stopTopics || ['copying other creators directly', 'unverified promises'],
+      businessType: brandBrain.businessType || (brandBrain.ready ? '' : 'general consultant mode'),
+      location: brandBrain.location || '',
+      audience: brandBrain.audience || '',
+      product: brandBrain.product || brandBrain.offer || '',
+      toneOfVoice: brandBrain.toneOfVoice || '',
+      goals: brandBrain.goals.length ? brandBrain.goals : [],
+      stopTopics: brandBrain.stopTopics.length ? brandBrain.stopTopics : ['copying other creators directly', 'unverified promises'],
+      contentFocus: brandBrain.contentFocus || '',
+      cta: brandBrain.cta || '',
+      proof: brandBrain.proof || '',
     },
+    brandBrain,
     recentSignals: reels.slice(0, 5).map((reel) => ({
       title: reel.title || reel.caption || reel.hook,
       market: reel.market,
@@ -111,6 +120,8 @@ Quality bar:
 
 Business context:
 ${JSON.stringify(context, null, 2)}
+
+${buildBrandBrainPromptBlock(context.brandBrain)}
 
 When answering, prefer this structure when useful:
 1. Short decision.

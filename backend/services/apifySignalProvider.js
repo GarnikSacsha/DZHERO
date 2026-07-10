@@ -13,6 +13,23 @@ function cleanSocialToken(value = '') {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
+function getInstagramProfileHandle(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (!/^https?:\/\//i.test(raw) && !/instagram\.com\//i.test(raw)) {
+    return cleanSocialToken(raw);
+  }
+  try {
+    const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
+    if (!/instagram\.com$/i.test(url.hostname.replace(/^www\./, ''))) return '';
+    const [handle] = url.pathname.split('/').filter(Boolean);
+    if (!handle || ['p', 'reel', 'reels', 'tv', 'explore'].includes(handle.toLowerCase())) return '';
+    return cleanSocialToken(handle);
+  } catch {
+    return cleanSocialToken(raw);
+  }
+}
+
 function toNumber(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -271,19 +288,23 @@ function attachActualCost(signals, actualCostUsd) {
 
 function buildInstagramInput({ inputValue, inputType, limit }) {
   const rawValue = String(inputValue || '').trim();
-  const profileInput = (() => {
-    if (inputType === 'url' && rawValue) return rawValue;
-    if (inputType !== 'profile') return rawValue;
-    if (/instagram\.com\//i.test(rawValue)) return rawValue;
-    const handle = cleanSocialToken(rawValue);
-    return handle ? `https://www.instagram.com/${handle}/` : rawValue;
-  })();
+  const isUrl = /^https?:\/\//i.test(rawValue) || /instagram\.com\//i.test(rawValue);
+  const normalizedUrl = isUrl && /^https?:\/\//i.test(rawValue) ? rawValue : isUrl ? `https://${rawValue}` : '';
+  const profileHandle = inputType === 'profile'
+    ? getInstagramProfileHandle(rawValue)
+    : '';
+  const directUrls = normalizedUrl
+    ? [normalizedUrl]
+    : profileHandle
+      ? [`https://www.instagram.com/${profileHandle}/`]
+      : [];
   const hashtagInput = cleanSocialToken(rawValue);
   if (inputType === 'profile' || inputType === 'url') {
     return {
       actorId: 'apify/instagram-reel-scraper',
       input: {
-        username: profileInput ? [profileInput] : [],
+        username: profileHandle ? [profileHandle] : [],
+        directUrls,
         resultsLimit: limit,
         onlyPostsNewerThan: '3 months',
         skipPinnedPosts: true,

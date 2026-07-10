@@ -5000,6 +5000,37 @@ nav button.active::before {
   line-height: 1.55;
 }
 
+.page-remix-studio .analysis-stack .insight-card,
+.page-remix-studio .remix-script-timeline article {
+  min-width: 0;
+}
+
+.page-remix-studio .remix-script-timeline {
+  gap: 12px;
+}
+
+.page-remix-studio .remix-script-timeline article {
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: start;
+  padding: 14px;
+}
+
+.page-remix-studio .remix-script-timeline span {
+  justify-self: start;
+  white-space: nowrap;
+}
+
+.page-remix-studio .remix-script-timeline strong,
+.page-remix-studio .remix-script-timeline p {
+  overflow-wrap: anywhere;
+}
+
+.page-remix-studio .remix-script-timeline p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .remix-checklist {
   display: grid;
   gap: 8px;
@@ -10159,6 +10190,39 @@ button.dark,
   width: min(620px, calc(100vw - 28px));
 }
 
+.calendar-post-modal-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 8px;
+}
+
+.calendar-post-modal-head small {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--primary);
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.calendar-post-modal-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+
+.calendar-post-modal-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .content-notes-panel {
   margin-top: 18px;
   border: 1px solid var(--border);
@@ -10222,6 +10286,32 @@ button.dark,
   resize: vertical;
 }
 
+.content-note-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.content-note-editor input,
+.content-note-editor textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.content-note-editor input {
+  min-height: 38px;
+  padding: 0 11px;
+}
+
+.content-note-editor textarea {
+  min-height: 88px;
+  padding: 10px 11px;
+  resize: vertical;
+}
+
 .content-notes-list article {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -10231,6 +10321,12 @@ button.dark,
   border-radius: 8px;
   padding: 12px;
   background: rgba(0, 0, 0, 0.14);
+}
+
+.content-notes-list article.is-editing-note {
+  align-items: stretch;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
 }
 
 .content-notes-list small {
@@ -10277,6 +10373,13 @@ button.dark,
   padding: 0;
   border-color: rgba(248, 113, 113, 0.32);
   color: #fecaca;
+}
+
+.content-note-actions .icon,
+.calendar-post-modal-head .icon {
+  width: 36px;
+  min-height: 34px;
+  padding: 0;
 }
 
 @media (max-width: 860px) {
@@ -10326,6 +10429,31 @@ button.dark,
   color: #bae6fd;
   font-size: 11px;
   font-weight: 850;
+}
+
+.calendar-post-danger-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(248, 113, 113, 0.24);
+  border-radius: 8px;
+  background: rgba(248, 113, 113, 0.06);
+}
+
+.calendar-post-danger-zone strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.calendar-post-danger-zone span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .calendar-post-form span {
@@ -12891,6 +13019,24 @@ nav button.active::before {
   transform: translateY(-1px);
 }
 
+.reel-row.is-adapting {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.signal-adapt-button:disabled {
+  cursor: progress;
+  opacity: 0.88;
+  transform: none;
+}
+
+.is-spinning {
+  animation: spin 0.9s linear infinite;
+}
+
+.metric-sort-button.active {
+  color: var(--accent);
+}
+
 .signals-source-panel {
   display: grid;
   gap: 12px;
@@ -13700,6 +13846,18 @@ nav button.active::before {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.sources-instagram-only {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
+}
+
+.sources-instagram-only .source-connect-button {
+  width: auto;
+  min-width: 220px;
+  margin-top: 0;
 }
 
 .source-api-roadmap {
