@@ -18,6 +18,7 @@ const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
 } = require('./brandBrainContext.cjs');
+const { assessRemixQuality } = require('./remixQuality.cjs');
 
 // The Structured JSON Schema requested
 const REMIX_OUTPUT_SCHEMA = {
@@ -83,9 +84,10 @@ Here are your instructions:
 3. 3x UKRAINIAN REMIX GENERATION:
    - Produce exactly 3 distinct script adaptations in natural, modern, native Ukrainian.
    - Avoid Google Translate-style or dry textbook language. Use natural spoken Ukrainian, slang if appropriate, and highly engaging conversational structures.
-   - Align each remix with the Ukrainian Business Brief provided (Niche, Product/Offer, Location, and Tone of Voice).
-   - Do not copy or translate the original video title as the remix title, hook, or structure. Use the source only as a mechanism, then rebuild the content around the brand's niche, offer, location, proof, and CTA.
-   - Every visualFlow step must be brand-specific: mention what the brand owner shows, what object/process/result appears in frame, and what local customer pain it answers.
+   - Brand Brain is optional. First inspect the BRAND BRAIN MODE block in the user prompt.
+   - BRAND MODE: align each remix with the supplied niche, offer, audience, location, proof, Tone of Voice, and CTA. Every visualFlow step must name the concrete object, process, result, or customer pain the brand can actually show.
+   - CONSULTANT MODE: when Brand Brain is empty, never invent a niche, product, location, customer result, or offer. Build a polished demonstration from the source's visible mechanic and human situation. Use concrete roles and props visible or implied by the source (for example customer, seller, product, receipt, reward), and use an engagement CTA that does not require a fabricated offer.
+   - Do not copy or translate the original video title as the remix title, hook, or structure. In Brand Mode rebuild the mechanism around the brand's niche, offer, location, proof, and CTA. In Consultant Mode rebuild it around the source action, tension, reveal, and viewer interaction.
    - NEVER use these generic AI words or phrases: "унікальний", "революційний", "зануртесь", "сфера", "інноваційний", "не пропустіть", "ключ до успіху", "готовий змінити життя?", "відкрийте для себе".
    - Never invent private metrics, client results, testimonials, or revenue numbers. If proof is missing, use safe proof placeholders such as "покажи відгук", "покажи процес", "покажи результат".
    - Format each remix with:
@@ -174,26 +176,55 @@ async function generateRemix(globalInsight, businessBrief) {
 
   if (geminiApiKey) {
     try {
-      return await generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief);
+      return await generateValidatedProviderResult({
+        provider: 'gemini',
+        model: process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL,
+        generate: (qualityFeedback = '') => generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
+        globalInsight,
+      });
     } catch (err) {
-      console.error("[RemixEngine] Gemini API error, falling back to mock generator:", err);
+      console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
     }
   } else if (openaiApiKey) {
     try {
-      return await generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief);
+      return await generateValidatedProviderResult({
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
+        globalInsight,
+      });
     } catch (err) {
-      console.error("[RemixEngine] OpenAI API error, falling back to mock generator:", err);
+      console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
     }
   }
 
-  // Fallback high-fidelity smart script generator
-  return generateHighFidelityFallback(globalInsight, enrichedBusinessBrief);
+  const fallback = generateHighFidelityFallback(globalInsight, enrichedBusinessBrief);
+  fallback._generation = { provider: 'fallback', model: null, attempts: 0, fallback: true };
+  return fallback;
+}
+
+async function generateValidatedProviderResult({ provider, model, generate, globalInsight }) {
+  let qualityFeedback = '';
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const result = await generate(qualityFeedback);
+    const assessment = assessRemixQuality(result, { globalInsight });
+    if (assessment.ok) {
+      result._generation = { provider, model, attempts: attempt, fallback: false };
+      console.log(`[RemixEngine] ${provider}/${model} accepted on attempt ${attempt}`);
+      return result;
+    }
+    qualityFeedback = assessment.reasons.join(' ');
+    console.warn(`[RemixEngine] ${provider}/${model} rejected on attempt ${attempt}: ${qualityFeedback}`);
+  }
+  const error = new Error(`Provider output failed quality validation: ${qualityFeedback}`);
+  error.code = 'remix_quality_rejected';
+  throw error;
 }
 
 /**
  * Gemini SDK or REST API integration
  */
-async function generateWithGemini(apiKey, globalInsight, businessBrief) {
+async function generateWithGemini(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
   const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
@@ -220,6 +251,7 @@ Marketing Mechanics: ${globalInsight.marketingMechanics}
 Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
 
 Please deconstruct and generate 3 custom adaptations. Respond strictly with a JSON object that satisfies the output schema.
+${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedback}\nRewrite all three variants from scratch. Do not repeat the rejected wording.` : ''}
 `;
 
   const response = await fetch(url, {
@@ -258,7 +290,7 @@ Please deconstruct and generate 3 custom adaptations. Respond strictly with a JS
 /**
  * OpenAI REST API integration
  */
-async function generateWithOpenAI(apiKey, globalInsight, businessBrief) {
+async function generateWithOpenAI(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
   const url = "https://api.openai.com/v1/chat/completions";
 
   const prompt = `
@@ -282,6 +314,7 @@ Original Hook: ${globalInsight.hook}
 Original Script/Text: ${globalInsight.script}
 Marketing Mechanics: ${globalInsight.marketingMechanics}
 Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
+${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedback}\nRewrite all three variants from scratch. Do not repeat the rejected wording.` : ''}
 `;
 
   const response = await fetch(url, {
@@ -430,7 +463,83 @@ function generateBrandAdaptedFallback(globalInsight, businessBrief) {
  * Generates highly realistic, custom tailored scripts when API keys are not set.
  * This guarantees the frontend works seamlessly with gorgeous high-quality content.
  */
+function generateConsultantFallback(globalInsight = {}) {
+  const mechanic = getMechanicSummary(globalInsight);
+  const mechanicText = [
+    globalInsight.marketingMechanics,
+    globalInsight.script,
+    globalInsight.videoIntelligence?.video?.contentMechanic,
+  ].filter(Boolean).join(' ').toLowerCase();
+  const isRewardMechanic = /reward|prize|surprise|random|purchase|checkout|винагород|сюрприз|покуп/.test(mechanicText);
+  const concept = isRewardMechanic
+    ? {
+      subject: 'покупка із сюрпризом',
+      object: 'товар, жетон або картку з випадковою винагородою',
+      reveal: 'момент випадкового вибору та справжню реакцію клієнта',
+      action: 'запропонуй глядачеві обрати наступну винагороду',
+    }
+    : {
+      subject: 'звична дія з неочікуваним фіналом',
+      object: 'один зрозумілий предмет або етап процесу з джерельної механіки',
+      reveal: 'контраст між очікуванням і реальним результатом',
+      action: 'попроси глядача запропонувати наступний тест',
+    };
+
+  const variants = [
+    {
+      title: 'Сюрприз після звичайної дії',
+      hook: `Звичайна ${concept.subject} закінчується не так, як очікує клієнт.`,
+      opener: 'Почни зі звичайного моменту без пояснень, щоб глядач упізнав ситуацію.',
+      middle: `Одразу після основної дії покажи ${concept.object}; не розкривай результат до останньої секунди.`,
+      ending: `Зніми ${concept.reveal} одним безперервним крупним планом.`,
+    },
+    {
+      title: 'Клієнт обирає фінал',
+      hook: 'Тут результат вирішує не продавець, а один випадковий вибір клієнта.',
+      opener: `Поклади в кадр ${concept.object} і запропонуй клієнту зробити вибір навмання.`,
+      middle: 'Чергуй крупний план руки, коротку паузу перед відкриттям і обличчя людини без постановочної реакції.',
+      ending: `Покажи ${concept.reveal}, а потім залиш у кадрі обидва елементи: покупку та бонус.`,
+    },
+    {
+      title: 'Чи пощастить наступному?',
+      hook: 'Перший клієнт уже отримав свій сюрприз. Що дістанеться наступному?',
+      opener: 'Відкрий ролик готовою реакцією, а потім швидко повернись на кілька секунд назад до моменту вибору.',
+      middle: `Покажи правила через дію: основний предмет, випадковий вибір і ${concept.object} без довгого пояснення.`,
+      ending: 'Заверши порожнім місцем для наступного бонусу, щоб продовження стало природною частиною серії.',
+    },
+  ];
+
+  return {
+    deconstruction: {
+      coreMechanics: `Механіка джерела: ${mechanic.slice(0, 220)}. Для адаптації збережено очікування, випадковий поворот і живу реакцію, але прибрано назву та текст оригіналу.`,
+      psychologicalTriggers: ['цікавість до прихованого результату', 'справжня реакція замість постановки', 'можливість глядача вплинути на продовження'],
+      removedCulturalContext: ['назва, хештеги та персонажі джерела', 'непідтверджені факти про бренд', 'складний продакшн'],
+    },
+    viabilityFilter: {
+      isAdaptable: true,
+      uaMentalityCheck: 'Сценарій працює без знання бренду, бо тримається на зрозумілій людській дії, чесній реакції та простому інтерактиві.',
+      productionFeasibility: 'Потрібні телефон, один клієнт або учасник, предмет у кадрі та три короткі плани без студійного світла.',
+    },
+    remixes: variants.map((variant) => ({
+      title: variant.title,
+      hook: variant.hook,
+      visualFlow: [
+        { timeframe: '0:00-0:03', actionDescription: variant.opener, onScreenText: variant.hook, audioVoiceover: 'Не пояснюй усе одразу. Дай глядачеві секунду здогадатися, що станеться.' },
+        { timeframe: '0:03-0:09', actionDescription: variant.middle, onScreenText: 'Обирай. Відкриваємо зараз.', audioVoiceover: 'Один вибір, одна спроба і жодних перегравань заради камери.' },
+        { timeframe: '0:09-0:15', actionDescription: variant.ending, onScreenText: 'Що додати наступного разу?', audioVoiceover: `${concept.action}. Найцікавішу відповідь використаємо у продовженні.` },
+      ],
+      cta: `${concept.action}. Залиш конкретний варіант у коментарях, щоб він міг потрапити в наступний ролик.`,
+      strategicNote: `Consultant mode: сценарій спирається на механіку джерела без вигаданих даних Brand Brain.`,
+    })),
+  };
+}
+
 function generateHighFidelityFallback(globalInsight, businessBrief) {
+  const normalized = normalizeBrandBrain(businessBrief);
+  const hasUsableBrandFacts = Boolean(normalized.businessType || normalized.product || normalized.offer);
+  if (!hasUsableBrandFacts) {
+    return generateConsultantFallback(globalInsight);
+  }
   return generateBrandAdaptedFallback(globalInsight, businessBrief);
 
   const {
@@ -729,6 +838,7 @@ function generateHighFidelityFallback(globalInsight, businessBrief) {
 
 module.exports = {
   generateRemix,
+  generateValidatedProviderResult,
   generateHighFidelityFallback,
   REMIX_SYSTEM_PROMPT
 };

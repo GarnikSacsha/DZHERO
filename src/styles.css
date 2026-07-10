@@ -14127,7 +14127,17 @@ nav button.active::before {
 
 @media (min-width: 1180px) {
   .app:not(.auth-app):has(.page-content-plan) .jeryk-idle-card {
-    right: 348px;
+    top: 72px;
+    right: 16px;
+    bottom: auto;
+    width: 64px;
+    height: 64px;
+  }
+
+  .app:not(.auth-app):has(.page-content-plan) .jeryk-idle-card .jeryk-producer {
+    width: 62px;
+    height: 62px;
+    filter: drop-shadow(0 10px 18px rgba(14, 165, 233, 0.22)) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.18));
   }
 }
 
