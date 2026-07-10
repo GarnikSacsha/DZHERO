@@ -147,10 +147,9 @@ const completedToolbar = deriveDiscoveryToolbarStatus({
     },
   },
 });
-assert.match(completedToolbar.detail, /32/);
-assert.match(completedToolbar.detail, /11/);
-assert.match(completedToolbar.detail, /13/);
-assert.match(completedToolbar.detail, /8/);
+assert.doesNotMatch(completedToolbar.detail, /32|11|13|8/);
+assert.doesNotMatch(completedToolbar.detail, /сирих|дублів|відсіяно|прийнято/i);
+assert.match(completedToolbar.detail, /сигнали|Signals/i);
 
 assert.equal(canRunDiscoveryNow({
   settings: { enabled: false },

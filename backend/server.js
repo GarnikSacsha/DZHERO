@@ -9,6 +9,10 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
+const {
+  normalizeBrandBrain,
+  buildBusinessBriefFromBrandBrain,
+} = require('./services/brandBrainContext.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
@@ -36,6 +40,12 @@ const {
   createKeyedMutex,
   withPostgresStateTransaction,
 } = require('./services/automaticDiscoveryStorage');
+const {
+  findAuthSession,
+  getAuthTokenCandidates,
+  getBearerToken,
+  parseCookies,
+} = require('./services/authSession.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -1308,6 +1318,10 @@ function normalizeContentPlanPosts(posts) {
     done: Boolean(post?.done),
     source: String(post?.source || '').trim().slice(0, 80),
     sourceKey: String(post?.sourceKey || '').trim().slice(0, 180),
+    sourceTitle: String(post?.sourceTitle || '').trim().slice(0, 180),
+    sourceUrl: String(post?.sourceUrl || '').trim().slice(0, 500),
+    sourceReelId: String(post?.sourceReelId || '').trim().slice(0, 120),
+    sourceHandle: String(post?.sourceHandle || '').trim().slice(0, 80),
     dayLabel: String(post?.dayLabel || '').trim().slice(0, 24),
   }));
 }
@@ -1338,12 +1352,25 @@ function verifyPassword(password, storedHash) {
     && crypto.timingSafeEqual(expectedBuffer, candidateBuffer);
 }
 
+function getPublicUserProvider(user) {
+  if (normalizeEmail(user.email) === 'demo@dzhero.app' || String(user.workspaceId || '').startsWith('ws_demo_')) {
+    return 'demo';
+  }
+  if ((user.oauthProviders || []).includes('google')) return 'google';
+  if (user.authProvider === 'email_trial') return 'email';
+  if (user.authProvider) return user.authProvider;
+  return 'email';
+}
+
 function publicUser(user) {
+  const provider = getPublicUserProvider(user);
   return {
     id: user.id,
     name: user.name,
     email: user.email,
     role: user.role,
+    provider,
+    isDemo: provider === 'demo',
     workspaceId: user.workspaceId,
     createdAt: user.createdAt,
   };
@@ -1359,6 +1386,7 @@ function ensureOAuthUser(db, profile) {
     user.name = user.name || profile.name || email.split('@')[0];
     user.avatarUrl = user.avatarUrl || profile.picture || '';
     user.oauthProviders = Array.from(new Set([...(user.oauthProviders || []), profile.provider]));
+    user.authProvider = profile.provider;
     user.lastLoginAt = new Date().toISOString();
     return user;
   }
@@ -1380,6 +1408,7 @@ function ensureOAuthUser(db, profile) {
     role: 'owner',
     workspaceId: workspace.id,
     passwordHash: hashPassword(crypto.randomBytes(18).toString('hex')),
+    authProvider: profile.provider,
     oauthProviders: [profile.provider],
     oauthSubject: profile.sub || null,
     avatarUrl: profile.picture || '',
@@ -2883,23 +2912,6 @@ function createSession(db, userId) {
 
 const SESSION_COOKIE_NAME = 'dzhero_session';
 
-function safeDecodeCookieValue(value) {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function parseCookies(req) {
-  const header = String(req.headers.cookie || '');
-  return Object.fromEntries(header.split(';').map((part) => {
-    const [rawKey, ...rawValue] = part.trim().split('=');
-    if (!rawKey) return null;
-    return [safeDecodeCookieValue(rawKey), safeDecodeCookieValue(rawValue.join('='))];
-  }).filter(Boolean));
-}
-
 function getSessionCookieOptions() {
   return [
     'Path=/',
@@ -2918,14 +2930,8 @@ function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
 }
 
-function getBearerToken(req) {
-  const header = req.headers.authorization || '';
-  if (!header.startsWith('Bearer ')) return '';
-  return header.slice('Bearer '.length).trim();
-}
-
 function getAuthToken(req) {
-  return getBearerToken(req) || parseCookies(req)[SESSION_COOKIE_NAME] || '';
+  return getAuthTokenCandidates(req, SESSION_COOKIE_NAME)[0] || parseCookies(req)[SESSION_COOKIE_NAME] || '';
 }
 
 function isTrustedRequestUrl(value) {
@@ -2974,10 +2980,8 @@ function requireAdmin(req, res) {
 }
 
 function getAuthUser(db, req) {
-  const token = getAuthToken(req);
-  const session = db.sessions.find((item) => item.token === token);
+  const session = findAuthSession(db, req, SESSION_COOKIE_NAME);
   if (!session) return null;
-  if (session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) return null;
   return db.users.find((user) => user.id === session.userId) || null;
 }
 
@@ -3348,12 +3352,12 @@ function isDoneStatus(status = '') {
 
 function buildAgentReelAnalysis(reel = {}, workspace = {}) {
   const base = analyzeReel(reel, workspace);
-  const brief = workspace.brief || {};
+  const brief = buildBusinessBriefFromBrandBrain(workspace.brief || {});
   const sourceTitle = reel.title || reel.caption || reel.hook || 'market signal';
   return {
     ...base,
     topic: sourceTitle,
-    audience: brief.audience || 'Ukrainian Instagram audience',
+    audience: brief.audience || 'general audience until Brand Brain is filled',
     format: reel.market === 'ua' ? 'local proof reel' : 'global trend adaptation',
     hookPattern: reel.hook || sourceTitle,
     whyItWorked: [
@@ -3364,7 +3368,9 @@ function buildAgentReelAnalysis(reel = {}, workspace = {}) {
     adaptation: {
       market: 'ua',
       rule: 'adapt the mechanism, not the original creative',
-      angle: `Connect the trend to ${brief.product || 'the offer'} for ${brief.location || 'Ukraine'}.`,
+      angle: brief.brandBrainReady
+        ? `Connect the trend to ${brief.product || 'the offer'} for ${brief.location || 'the selected market'}.`
+        : 'Use consultant mode: ask for missing Brand Brain facts or make assumptions explicit.',
     },
     risks: [
       base.copyRisk === 'high' ? 'avoid copying brand-specific visuals' : 'keep visual execution original',
@@ -3376,9 +3382,9 @@ function buildAgentReelAnalysis(reel = {}, workspace = {}) {
 }
 
 function buildScriptFromIdea(idea = {}, workspace = {}) {
-  const brief = workspace.brief || {};
+  const brief = buildBusinessBriefFromBrandBrain(workspace.brief || {});
   const product = brief.product || 'offer';
-  const location = brief.location || 'Ukraine';
+  const location = brief.location || 'the selected market';
   const title = idea.title || 'Content idea';
   const hook = idea.hook || title;
   return {
@@ -5184,6 +5190,7 @@ app.get('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   res.json({
     workspaceId: workspace.id,
     brief: workspace.brief || {},
+    brandBrain: normalizeBrandBrain(workspace.brief || {}),
     providers: getAiProviderStatus(),
     memory: db.aiMemory.filter((item) => item.workspaceId === req.params.workspaceId).slice(0, 20),
   });
@@ -5209,7 +5216,12 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   db.aiMemory.unshift(memory);
   incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
   await writeDb(db);
-  res.json({ brief: workspace.brief, memory, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
+  res.json({
+    brief: workspace.brief,
+    brandBrain: normalizeBrandBrain(workspace.brief || {}),
+    memory,
+    billing: buildEntitlements(db, req.params.workspaceId, req.authUser),
+  });
 });
 
 app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
@@ -5457,7 +5469,24 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
       toneOfVoice: businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень'
     };
 
-    const result = await generateRemix(globalInsight, mergedBrief);
+    const storedBrief = buildBusinessBriefFromBrandBrain(workspace.brief || {});
+    const finalBrief = {
+      ...mergedBrief,
+      ...storedBrief,
+      ...(businessBrief || {}),
+      niche: businessBrief?.niche || storedBrief.niche || '',
+      product: businessBrief?.product || storedBrief.product || '',
+      location: businessBrief?.location || storedBrief.location || '',
+      toneOfVoice: businessBrief?.toneOfVoice || storedBrief.toneOfVoice || '',
+      audience: businessBrief?.audience || storedBrief.audience || '',
+      goals: businessBrief?.goals || storedBrief.goals || [],
+      stopTopics: businessBrief?.stopTopics || storedBrief.stopTopics || [],
+      contentFocus: businessBrief?.contentFocus || storedBrief.contentFocus || '',
+      cta: businessBrief?.cta || storedBrief.cta || '',
+      proof: businessBrief?.proof || storedBrief.proof || '',
+    };
+
+    const result = await generateRemix(globalInsight, finalBrief);
     res.json(result);
   } catch (err) {
     next(err);

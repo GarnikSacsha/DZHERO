@@ -64,6 +64,20 @@ import {
   createWorkspaceRequestContext,
   isWorkspaceRequestCurrent,
 } from './workspaceRequestGuard.mjs';
+import {
+  compareSignalReels,
+  getSignalSourceGroup,
+  parseMetric,
+} from './signalFeedUtils.mjs';
+import {
+  buildCalendarPostSourceKey,
+  buildEditableContentNote,
+  buildReelFromCalendarPost,
+  findReelForCalendarPost,
+  mergeEditableNotes,
+  normalizeContentIdentity,
+  updateEditableNote,
+} from './contentPlanUtils.mjs';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const isBrowser = typeof window !== 'undefined';
@@ -208,10 +222,6 @@ function normalizeContentFormat(format, fallback = 'Post') {
   if (CONTENT_FORMATS.includes(clean)) return clean;
   const normalized = clean.toLowerCase().replace(/\s+/g, ' ');
   return CONTENT_FORMAT_ALIASES[normalized] || fallback;
-}
-
-function normalizeContentIdentity(value) {
-  return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
 function getPublicPage() {
@@ -675,16 +685,9 @@ function App() {
     const sourcePlan = reel.scanPlan?.length ? reel.scanPlan : [['Пн', reel.scanExample?.title || reel.title || 'Brand Scan production draft']];
     const todayDay = new Date().getDate();
     const daysInCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-    const sourceIdentity = normalizeContentIdentity(
-      reel.sourceUrl
-      || reel.profileUrl
-      || reel.importedMetadata?.url
-      || reel.scanLabel
-      || reel.title
-      || reel.scanExample?.title
-      || 'brand-scan'
-    );
-    const sourceKey = `brand-scan:${sourceIdentity.slice(0, 140)}`;
+    const sourceKey = buildCalendarPostSourceKey(reel);
+    const sourceUrl = reel.sourceUrl || reel.profileUrl || reel.importedMetadata?.url || '';
+    const sourceTitle = reel.scanExample?.title || reel.title || 'Brand Scan production draft';
     const planPosts = sourcePlan.slice(0, 7).map(([dayLabel, title], index) => {
       const text = String(title || reel.scanExample?.title || reel.title || 'Brand Scan production draft').trim();
       const lower = text.toLowerCase();
@@ -702,6 +705,10 @@ function App() {
         done: false,
         source: 'brand_scan',
         sourceKey,
+        sourceReelId: reel.id || '',
+        sourceTitle,
+        sourceUrl,
+        sourceHandle: reel.handle || reel.scanLabel || '',
         dayLabel,
       };
     });
@@ -734,6 +741,15 @@ function App() {
       notify(error?.message || 'Не вдалося додати draft у контент-план. Перевір backend.');
       return false;
     }
+  };
+  const openCalendarPostInStudio = (post) => {
+    const sourceReel = findReelForCalendarPost(post, [
+      ...workspaceScopedSignalsReels,
+      ...(data?.reels || []),
+    ]);
+    setRemixDraft(sourceReel || buildReelFromCalendarPost(post));
+    setMvpPage('remix');
+    notify(sourceReel ? 'Відкрито матеріал цієї події в Студії' : 'Відкрито draft цієї події в Студії');
   };
   const saveBrandScanToBrain = async (reel) => {
     if (!reel?.scanLabel && !reel?.scanExample && !reel?.importedMetadata) {
@@ -1183,7 +1199,7 @@ function App() {
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
-        {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} />}
+        {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
         {page === 'settings' && (
           <DataSources
             sources={data.sources}
@@ -3296,18 +3312,6 @@ function normalizeSignalUrl(value) {
   return /^https?:\/\//i.test(clean) ? clean : `https://${clean}`;
 }
 
-function getSignalSourceGroup(reel = {}) {
-  const sourceLabel = String(reel.scanLabel || reel.sourceType || reel.importedMetadata?.source?.label || '').toLowerCase();
-  const sourceStatus = String(reel.sourceStatus || '').toLowerCase();
-  const sourceUrl = String(reel.sourceUrl || reel.importedMetadata?.url || '').toLowerCase();
-  const statusText = Array.isArray(reel.status) ? reel.status.join(' ').toLowerCase() : '';
-  if (sourceLabel.includes('youtube') || sourceStatus.includes('youtube') || sourceUrl.includes('youtube') || sourceUrl.includes('youtu.be') || statusText.includes('youtube')) return 'youtube';
-  if (sourceLabel.includes('tiktok') || sourceUrl.includes('tiktok') || statusText.includes('tiktok')) return 'tiktok';
-  if (sourceLabel.includes('instagram') || sourceLabel.includes('reels') || sourceUrl.includes('instagram') || statusText.includes('instagram')) return 'instagram';
-  if (sourceLabel.includes('website') || /^https?:\/\//i.test(sourceUrl)) return 'website';
-  return 'bank';
-}
-
 function getSignalYouTubeVideoId(reel = {}) {
   const directId = reel.importedMetadata?.youtube?.videoId || reel.youtube?.videoId || '';
   if (directId) return String(directId).trim();
@@ -3457,13 +3461,7 @@ function ViralBank({
   const filteredReels = reels
     .filter((reel) => sourceFilter === 'all' || getSignalSourceGroup(reel) === sourceFilter)
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${(reel.status || []).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
-    .sort((a, b) => {
-      if (sort === 'views') return parseMetric(b.views) - parseMetric(a.views);
-      if (sort === 'likes') return parseMetric(b.likes) - parseMetric(a.likes);
-      if (sort === 'comments') return parseMetric(b.comments) - parseMetric(a.comments);
-      if (sort === 'newest') return new Date(b.createdAt || b.publishedAt || b.importedMetadata?.publishedAt || 0) - new Date(a.createdAt || a.publishedAt || a.importedMetadata?.publishedAt || 0);
-      return scoreSortDirection === 'asc' ? a.score - b.score : b.score - a.score;
-    });
+    .sort((a, b) => compareSignalReels(a, b, { sort, scoreSortDirection }));
   const openManualImport = () => openModal({ type: 'reel', url: pastedReelUrl });
   const importPastedReel = async () => {
     if (!pastedReelUrl || isImportingUrl) return;
@@ -3483,7 +3481,6 @@ function ViralBank({
     setIsPullingYoutube(true);
     try {
       await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: getYouTubeCategoryId(youtubeCategory) });
-      setSourceFilter('youtube');
     } catch (error) {
       notify(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`);
     } finally {
@@ -3602,7 +3599,7 @@ function ViralBank({
         </div>
         <div className="signals-automation-actions">
           <button className="dark" type="button" onClick={() => onRunAutomation?.()} disabled={!canRunAutomation}>
-            <Bot size={16} />
+            {automation?.isRunning || discoveryStatus.running ? <RefreshCw className="is-spinning" size={16} /> : <Bot size={16} />}
             {runNowLabel}
           </button>
           <button type="button" onClick={() => void onRefreshAutomation?.()} disabled={isAutomationBusy}>
@@ -3685,6 +3682,8 @@ function ViralBank({
         <div className="trends-table-wrap">
           <SignalsReelsTable
             reels={filteredReels}
+            sort={sort}
+            onSortChange={setSort}
             scoreSortDirection={scoreSortDirection}
             onToggleScoreSort={toggleScoreSort}
             onOpenPreview={openPreview}
@@ -4545,26 +4544,34 @@ function formatUsdAmount(value) {
   }).format(numeric);
 }
 
-function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
+function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
+  const [adaptingKey, setAdaptingKey] = useState('');
+  const adaptReel = (reel) => {
+    const key = reel.id || `${reel.handle}-${reel.title}`;
+    setAdaptingKey(key);
+    window.setTimeout(() => onAdapt?.(reel), 120);
+  };
   return (
     <div className="table-card trend-analytics-table">
       <div className="table-head trend-grid signals-grid">
         <span>#</span>
         <span>Сигнал</span>
         <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Оцінка <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
-        <span>Перегляди</span>
-        <span>Лайки</span>
+        <button className={`score-sort-button metric-sort-button ${sort === 'views' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('views')}>Перегляди <span>{sort === 'views' ? '↓' : ''}</span></button>
+        <button className={`score-sort-button metric-sort-button ${sort === 'likes' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('likes')}>Лайки <span>{sort === 'likes' ? '↓' : ''}</span></button>
         <span>Ринок</span>
         <span>Теги</span>
         <span></span>
       </div>
       {reels.map((reel, index) => {
+        const rowKey = reel.id || `${reel.handle}-${reel.title}`;
+        const isAdapting = adaptingKey === rowKey;
         const previewImage = getReelPreviewImage(reel);
         const viewsLabel = formatMetricDisplay(reel.views);
         const likesLabel = formatMetricDisplay(reel.likes);
         const metaLine = [marketLabel(reel.market), getReelDurationLabel(reel), getReelPublishedLabel(reel)].filter(Boolean).join(' · ');
         return (
-        <div className="reel-row trend-grid signals-grid" key={`${reel.handle}-${reel.title}`}>
+        <div className={`reel-row trend-grid signals-grid ${isAdapting ? 'is-adapting' : ''}`} key={rowKey}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
           <div className="reel-info">
             <button
@@ -4584,8 +4591,9 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
           <span>{likesLabel}</span>
           <span>{marketLabel(reel.market)}</span>
           <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s)} key={s}>{compactStatusLabel(s)}</em>)}</div>
-          <button className="signal-adapt-button" type="button" onClick={() => onAdapt?.(reel)}>
-            <Wand2 size={14} />Адаптувати
+          <button className="signal-adapt-button" type="button" onClick={() => adaptReel(reel)} disabled={isAdapting}>
+            {isAdapting ? <RefreshCw className="is-spinning" size={14} /> : <Wand2 size={14} />}
+            {isAdapting ? 'Відкриваємо...' : 'Адаптувати'}
           </button>
         </div>
         );
@@ -4602,6 +4610,8 @@ function ReelsTable({ reels, scoreSortDirection, onToggleScoreSort, onOpenPrevie
 
 function SignalsReelsTable({
   reels,
+  sort = 'score',
+  onSortChange,
   scoreSortDirection,
   onToggleScoreSort,
   onOpenPreview,
@@ -4709,6 +4719,8 @@ function SignalsReelsTable({
   return (
     <ReelsTable
       reels={reels}
+      sort={sort}
+      onSortChange={onSortChange}
       scoreSortDirection={scoreSortDirection}
       onToggleScoreSort={onToggleScoreSort}
       onOpenPreview={onOpenPreview}
@@ -4855,7 +4867,7 @@ function buildRemixScenario(reel, observedContext = '') {
     .slice(0, 4);
   const videoShotList = Array.isArray(video.shotList) ? video.shotList.map(sanitizeSourceContext).filter(Boolean) : [];
   const videoBeats = Array.isArray(video.sceneBeats) ? video.sceneBeats.map(sanitizeSourceContext).filter(Boolean) : [];
-  const coreSignal = sanitizeSourceContext(video.hook) || sanitizeSourceContext(video.contentMechanic) || videoBeats[0] || sourceSentences[0] || cleanTitle;
+  const coreSignal = sanitizeSourceContext(video.hook) || sanitizeSourceContext(video.contentMechanic) || videoBeats[0] || sourceSentences[0] || 'visual contrast, proof, routine, and a simple brand-specific CTA';
   const proofSignal = sanitizeSourceContext(video.twist) || videoBeats[1] || sourceSentences[1] || 'покажи конкретний поворот, контраст або доказ, який тримає увагу';
   const frictionSignal = sanitizeSourceContext(video.ukrainianAdaptation) || videoBeats[2] || sourceSentences[2] || 'перенеси механіку в локальну ситуацію без копіювання персонажів, звуку або сцени';
   const cta = 'Напиши "ХОЧУ" в Direct або залиш коментар, і я надішлю шаблон під твою нішу.';
@@ -5166,7 +5178,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
             <div className="insight-card hero-card">
               <small>Вхідний сигнал</small>
               <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
-              <p>{reel.transcript || reel.caption || 'Джеро використовує назву, метрики і механіку сигналу. Коли буде підключене джерело, сюди підтягнеться caption або транскрипт.'}</p>
+              {(reel.transcript || reel.caption) && <p>{reel.transcript || reel.caption}</p>}
             </div>
           )}
           <div className="remix-bottom">
@@ -6014,7 +6026,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   );
 }
 
-function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId }) {
+function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId, onOpenPostInStudio }) {
   const today = new Date();
   const formatSuggestions = CONTENT_FORMATS;
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -6023,13 +6035,26 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   const [isNotesOpen, setIsNotesOpen] = useState(true);
   const [draft, setDraft] = useState({ title: '', format: 'Reels', time: '10:00' });
   const notesStorageKey = `dzhero-content-notes-${workspaceId || 'default'}`;
+  const deletedNotesStorageKey = `dzhero-content-notes-deleted-${workspaceId || 'default'}`;
   const [noteDraft, setNoteDraft] = useState({ title: '', body: '' });
-  const [manualNotes, setManualNotes] = useState(() => {
+  const [editingNoteId, setEditingNoteId] = useState('');
+  const [noteEditDraft, setNoteEditDraft] = useState({ title: '', body: '' });
+  const [contentNotes, setContentNotes] = useState(() => {
     if (!isBrowser) return [];
     try {
       const stored = window.localStorage.getItem(`dzhero-content-notes-${workspaceId || 'default'}`);
       const parsed = stored ? JSON.parse(stored) : [];
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? parsed.map(buildEditableContentNote) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [deletedGeneratedNoteIds, setDeletedGeneratedNoteIds] = useState(() => {
+    if (!isBrowser) return [];
+    try {
+      const stored = window.localStorage.getItem(`dzhero-content-notes-deleted-${workspaceId || 'default'}`);
+      const parsed = stored ? JSON.parse(stored) : [];
+      return Array.isArray(parsed) ? parsed.map(String) : [];
     } catch {
       return [];
     }
@@ -6052,7 +6077,10 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   ], [daysInMonth, firstWeekday]);
   const doneCount = posts.filter((post) => post.done).length;
   const pendingPosts = posts.filter((post) => !post.done);
-  const allNotes = useMemo(() => [...manualNotes, ...ideas], [manualNotes, ideas]);
+  const allNotes = useMemo(() => {
+    const deleted = new Set(deletedGeneratedNoteIds.map(String));
+    return mergeEditableNotes(contentNotes, ideas).filter((note) => !deleted.has(String(note.id)));
+  }, [contentNotes, ideas, deletedGeneratedNoteIds]);
   const weeklyActions = [
     ['Review scripts', pendingPosts.length, 'Перевірити хук, доказ і CTA перед зйомкою.'],
     ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти рілси одним блоком і закрити тиждень.'],
@@ -6063,8 +6091,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   }, [posts]);
   useEffect(() => {
     if (!isBrowser) return;
-    window.localStorage.setItem(notesStorageKey, JSON.stringify(manualNotes));
-  }, [notesStorageKey, manualNotes]);
+    window.localStorage.setItem(notesStorageKey, JSON.stringify(contentNotes));
+  }, [notesStorageKey, contentNotes]);
+  useEffect(() => {
+    if (!isBrowser) return;
+    window.localStorage.setItem(deletedNotesStorageKey, JSON.stringify(deletedGeneratedNoteIds));
+  }, [deletedNotesStorageKey, deletedGeneratedNoteIds]);
   useEffect(() => {
     let ignore = false;
     authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`)
@@ -6170,13 +6202,50 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       title: title || body.slice(0, 80),
       hook: body || title,
       status: 'saved',
+      origin: 'manual',
     };
-    setManualNotes((current) => [note, ...current]);
+    setContentNotes((current) => [buildEditableContentNote(note), ...current]);
     setNoteDraft({ title: '', body: '' });
     notify('Note збережено');
   };
-  const deleteManualNote = (noteId) => {
-    setManualNotes((current) => current.filter((note) => note.id !== noteId));
+  const startEditNote = (note) => {
+    setEditingNoteId(note.id);
+    setNoteEditDraft({ title: note.title || '', body: note.hook || note.body || '' });
+  };
+  const cancelEditNote = () => {
+    setEditingNoteId('');
+    setNoteEditDraft({ title: '', body: '' });
+  };
+  const saveEditedNote = (note) => {
+    const title = noteEditDraft.title.trim();
+    const body = noteEditDraft.body.trim();
+    if (!title && !body) {
+      notify('Note не може бути порожнім');
+      return;
+    }
+    const patch = {
+      ...note,
+      title: title || body.slice(0, 80),
+      hook: body || title,
+      origin: note.origin || 'generated',
+      status: note.status || 'saved',
+    };
+    setContentNotes((current) => {
+      const exists = current.some((item) => String(item.id) === String(note.id));
+      return exists
+        ? updateEditableNote(current, note.id, patch)
+        : [buildEditableContentNote(patch), ...current];
+    });
+    setDeletedGeneratedNoteIds((current) => current.filter((id) => String(id) !== String(note.id)));
+    cancelEditNote();
+    notify('Note оновлено');
+  };
+  const deleteContentNote = (note) => {
+    setContentNotes((current) => current.filter((item) => String(item.id) !== String(note.id)));
+    if (note.origin !== 'manual') {
+      setDeletedGeneratedNoteIds((current) => (current.includes(String(note.id)) ? current : [...current, String(note.id)]));
+    }
+    if (editingNoteId === note.id) cancelEditNote();
     notify('Note видалено');
   };
   const postFormatClass = (format) => {
@@ -6278,7 +6347,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 <strong>{post.title}</strong>
                 <small>{post.day} · {post.time} · {post.format}</small>
               </div>
-              <button type="button" onClick={() => { setPage('remix'); notify('Відкрив Remix Studio для цього поста'); }}>
+              <button type="button" onClick={() => onOpenPostInStudio?.(post)}>
                 <Wand2 size={14} />
               </button>
             </article>
@@ -6306,25 +6375,53 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               />
               <button type="submit"><Plus size={15} />Додати note</button>
             </form>
-            {allNotes.length ? allNotes.map((idea, index) => (
-              <article key={idea.id || `${idea.title}-${index}`}>
-                <div>
-                  <small>{idea.source || idea.status || 'generated'}</small>
-                  <strong>{idea.title || idea.hook}</strong>
-                  <p>{idea.hook || idea.angle || 'Ідея готова до сценарію або календаря.'}</p>
-                </div>
+            {allNotes.length ? allNotes.map((idea, index) => {
+              const isEditingNote = editingNoteId === idea.id;
+              return (
+              <article className={isEditingNote ? 'is-editing-note' : ''} key={idea.id || `${idea.title}-${index}`}>
+                {isEditingNote ? (
+                  <div className="content-note-editor">
+                    <input
+                      value={noteEditDraft.title}
+                      onChange={(event) => setNoteEditDraft((current) => ({ ...current, title: event.target.value }))}
+                      placeholder="Назва note"
+                    />
+                    <textarea
+                      value={noteEditDraft.body}
+                      onChange={(event) => setNoteEditDraft((current) => ({ ...current, body: event.target.value }))}
+                      placeholder="Текст note"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <small>{idea.source || idea.status || 'generated'}</small>
+                    <strong>{idea.title || idea.hook}</strong>
+                    <p>{idea.hook || idea.angle || 'Ідея готова до сценарію або календаря.'}</p>
+                  </div>
+                )}
                 <div className="content-note-actions">
-                  {String(idea.id || '').startsWith('manual-note-') && (
-                    <button className="ghost danger" type="button" onClick={() => deleteManualNote(idea.id)}>
-                      <X size={14} />
-                    </button>
+                  {isEditingNote ? (
+                    <>
+                      <button className="ghost" type="button" onClick={cancelEditNote}>Скасувати</button>
+                      <button className="dark" type="button" onClick={() => saveEditedNote(idea)}>Зберегти</button>
+                    </>
+                  ) : (
+                    <>
+                      <button className="ghost icon" type="button" onClick={() => startEditNote(idea)} aria-label="Редагувати note">
+                        <Pencil size={14} />
+                      </button>
+                      <button className="ghost danger icon" type="button" onClick={() => deleteContentNote(idea)} aria-label="Видалити note">
+                        <X size={14} />
+                      </button>
+                      <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
+                        <CalendarDays size={15} />Додати в план
+                      </button>
+                    </>
                   )}
-                  <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
-                    <CalendarDays size={15} />Додати в план
-                  </button>
                 </div>
               </article>
-            )) : (
+              );
+            }) : (
               <article>
                 <div>
                   <small>Поки порожньо</small>
@@ -6339,7 +6436,18 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       {modalDay && (
         <div className="modal-backdrop" onClick={closePostModal}>
           <div className="quick-modal calendar-post-modal" onClick={(event) => event.stopPropagation()}>
-            <h2>{editingPostId ? 'Редагувати подію' : 'Нова подія'}</h2>
+            <div className="calendar-post-modal-head">
+              <div>
+                <small>{editingPostId ? 'Редагувати подію' : 'Нова подія'}</small>
+                <h2>{draft.title || 'Контент у календарі'}</h2>
+              </div>
+              <button className="ghost icon" type="button" onClick={closePostModal} aria-label="Закрити">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="calendar-post-modal-subtitle">
+              {modalDay} {monthLabel} · {draft.time} · {draft.format}
+            </p>
             <div className="calendar-post-form">
               <label>
                 <span>Дата</span>
@@ -6367,8 +6475,16 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 <textarea autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Перша строчка майбутнього поста" />
               </label>
             </div>
+            {editingPostId && (
+              <div className="calendar-post-danger-zone">
+                <div>
+                  <strong>Видалити подію</strong>
+                  <span>Прибере цей матеріал тільки з календаря. Джерело або Studio draft не видаляються.</span>
+                </div>
+                <button className="danger" type="button" onClick={deletePost}>Видалити</button>
+              </div>
+            )}
             <div className="modal-actions">
-              {editingPostId && <button className="danger" type="button" onClick={deletePost}>Видалити</button>}
               <button onClick={closePostModal}>Скасувати</button>
               <button className="dark" onClick={savePost}>{editingPostId ? 'Зберегти зміни' : 'Додати в календар'}</button>
             </div>
@@ -6901,19 +7017,17 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
   const [sourcePreview, setSourcePreview] = useState(null);
   const [sourceError, setSourceError] = useState('');
   const [isScanning, setIsScanning] = useState(false);
-  const connectedSources = Array.isArray(sources) ? sources : [];
   const sourceTypes = [
     ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
     ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
     ['YouTube Shorts', 'Можна додати', 'Встав Shorts або канал, щоб зібрати контекст для контент-плану.', 'shorts'],
-    ['Website', 'Можна додати', 'Сайт або landing page дає позиціонування, офер і мову бренду.', 'website'],
     ['Manual brief', 'Завжди доступно', 'Короткого опису бізнесу достатньо, якщо бренд тільки запускається.', 'text'],
   ];
 
   const buildSourcePreview = async () => {
     const cleanInput = sourceInput.trim();
     if (!cleanInput) {
-      setSourceError('Встав Instagram, TikTok, YouTube Shorts, сайт або короткий опис бізнесу.');
+      setSourceError('Встав Instagram, TikTok, YouTube Shorts або короткий опис бізнесу.');
       return;
     }
     setIsScanning(true);
@@ -6960,7 +7074,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
     <section className="page">
       <PageTitle
         title="Джерела"
-        subtitle="Додай профіль, сайт або короткий опис бізнесу. Джеро збере контекст і перетворить його на план."
+        subtitle="Додай профіль або короткий опис бізнесу. Джеро збере контекст і перетворить його на план."
       />
       <Tabs
         active={tab}
@@ -6976,7 +7090,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
           <div className="sources-command">
             <div>
               <small>Quick source scan</small>
-              <h2>Додай Instagram, TikTok, Shorts, сайт або brief</h2>
+              <h2>Додай Instagram, TikTok, Shorts або brief</h2>
               <p>Джеро спробує прочитати відкритий контекст, визначить нішу, збере першу генерацію і відкриє це в Studio.</p>
             </div>
             <div className="source-scan-form">
@@ -7070,26 +7184,10 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
             </article>
           )}
 
-          <div className="sources-bottom-grid">
-            <article className="source-api-roadmap">
-              <small>Джерела</small>
-              <h3>{connectedSources.length ? 'Активні джерела' : 'Поки без підключених джерел'}</h3>
-              {connectedSources.length ? (
-                <div className="connected-source-list">
-                  {connectedSources.map((source) => (
-                    <span key={source.id || source.label}>
-                      <strong>{source.label || source.handle || source.url}</strong>
-                      <em>{source.type || 'джерело'}</em>
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p>Це нормально для старту. Додай профіль, сайт або короткий опис, щоб зібрати перший контекст бренду.</p>
-              )}
-              <button className="dark source-connect-button" type="button" onClick={connectInstagram}>
-                <Link2 size={16} /> Підключити Instagram
-              </button>
-            </article>
+          <div className="sources-instagram-only">
+            <button className="dark source-connect-button" type="button" onClick={connectInstagram}>
+              <Link2 size={16} /> Підключити Instagram
+            </button>
           </div>
         </div>
       )}
@@ -7334,16 +7432,6 @@ function marketLabel(market) {
 function filterByMarket(items, market) {
   if (market === 'all') return items;
   return items.filter((item) => item.market === market);
-}
-
-function parseMetric(value) {
-  if (!value || value === '-') return 0;
-  const normalized = String(value).replace(',', '.').toUpperCase();
-  const number = parseFloat(normalized);
-  if (Number.isNaN(number)) return 0;
-  if (normalized.includes('M')) return number * 1000000;
-  if (normalized.includes('K')) return number * 1000;
-  return number;
 }
 
 function formatMetricDisplay(value) {
