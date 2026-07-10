@@ -213,6 +213,11 @@ assert.equal(
   canonicalizeSignalUrl('https://instagram.com/reel/ABC123'),
   'https://instagram.com/reel/ABC123',
 );
+assert.notEqual(
+  canonicalizeSignalUrl('https://www.youtube.com/watch?v=AAA111&utm_source=test'),
+  canonicalizeSignalUrl('https://youtube.com/watch?v=BBB222'),
+  'different YouTube watch videos must not share a discovery identity',
+);
 
 const mergeState = {
   workspaces: [{

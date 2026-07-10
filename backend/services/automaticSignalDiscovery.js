@@ -108,10 +108,13 @@ function canonicalizeSignalUrl(value) {
     const url = new URL(raw);
     url.protocol = url.protocol.toLowerCase();
     url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
-    url.search = '';
+    const youtubeVideoId = url.hostname === 'youtube.com' && url.pathname.replace(/\/+$/, '') === '/watch'
+      ? url.searchParams.get('v')
+      : '';
+    url.search = youtubeVideoId ? `?v=${encodeURIComponent(youtubeVideoId)}` : '';
     url.hash = '';
     url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`;
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}${url.search}`;
   } catch {
     return raw.replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
   }
