@@ -52,12 +52,13 @@ const instagramProfileActorRequest = buildApifyActorRequest({
   limit: 2,
 });
 
-assert.equal(instagramProfileActorRequest.actorId, 'apify/instagram-scraper');
+assert.equal(instagramProfileActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramProfileActorRequest.input, {
-  directUrls: ['https://www.instagram.com/maverickgpt/'],
-  search: '',
-  resultsType: 'posts',
+  username: ['https://www.instagram.com/maverickgpt/'],
   resultsLimit: 2,
+  onlyPostsNewerThan: '3 months',
+  skipPinnedPosts: true,
+  skipTrialReels: false,
 });
 
 const tiktok = mapTikTokApifyItem({
@@ -88,12 +89,13 @@ const instagramActorRequest = buildApifyActorRequest({
   limit: 99,
 });
 
-assert.equal(instagramActorRequest.actorId, 'apify/instagram-scraper');
+assert.equal(instagramActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramActorRequest.input, {
-  directUrls: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
-  search: '',
-  resultsType: 'posts',
+  username: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
   resultsLimit: 30,
+  onlyPostsNewerThan: '3 months',
+  skipPinnedPosts: true,
+  skipTrialReels: false,
 });
 
 const instagramHashtagActorRequest = buildApifyActorRequest({
@@ -103,12 +105,12 @@ const instagramHashtagActorRequest = buildApifyActorRequest({
   limit: 4,
 });
 
-assert.equal(instagramHashtagActorRequest.actorId, 'apify/instagram-scraper');
+assert.equal(instagramHashtagActorRequest.actorId, 'apify/instagram-hashtag-scraper');
 assert.deepEqual(instagramHashtagActorRequest.input, {
-  directUrls: ['https://www.instagram.com/explore/tags/aitools/'],
-  search: '',
-  resultsType: 'posts',
+  hashtags: ['aitools'],
+  resultsType: 'reels',
   resultsLimit: 4,
+  keywordSearch: false,
 });
 
 const instagramSearchActorRequest = buildApifyActorRequest({
@@ -118,12 +120,12 @@ const instagramSearchActorRequest = buildApifyActorRequest({
   limit: 9,
 });
 
-assert.equal(instagramSearchActorRequest.actorId, 'apify/instagram-scraper');
+assert.equal(instagramSearchActorRequest.actorId, 'apify/instagram-hashtag-scraper');
 assert.deepEqual(instagramSearchActorRequest.input, {
-  directUrls: ['https://www.instagram.com/explore/tags/aitools/'],
-  search: '',
-  resultsType: 'posts',
+  hashtags: ['aitools'],
+  resultsType: 'reels',
   resultsLimit: 9,
+  keywordSearch: true,
 });
 
 const tiktokProfileActorRequest = buildApifyActorRequest({
