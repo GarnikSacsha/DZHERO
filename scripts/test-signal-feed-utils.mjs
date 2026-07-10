@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import {
+  canonicalizeSignalUrl,
   compareSignalReels,
   getSignalSourceGroup,
   parseMetric,
 } from '../src/signalFeedUtils.mjs';
+
+assert.notEqual(
+  canonicalizeSignalUrl('https://www.youtube.com/watch?v=AAA111&utm_source=test'),
+  canonicalizeSignalUrl('https://youtube.com/watch?v=BBB222'),
+  'different YouTube watch videos must keep different canonical identities',
+);
 
 assert.equal(parseMetric('1,234'), 1234);
 assert.equal(parseMetric('1.2M'), 1200000);

@@ -65,6 +65,7 @@ import {
   isWorkspaceRequestCurrent,
 } from './workspaceRequestGuard.mjs';
 import {
+  canonicalizeSignalUrl as canonicalizeFeedSignalUrl,
   compareSignalReels,
   getSignalSourceGroup,
   parseMetric,
@@ -3337,19 +3338,7 @@ function getSignalYouTubeVideoId(reel = {}) {
 }
 
 function canonicalSignalUrl(value = '') {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
-  try {
-    const url = new URL(raw.startsWith('www.') ? `https://${raw}` : raw);
-    url.protocol = url.protocol.toLowerCase();
-    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
-    url.search = '';
-    url.hash = '';
-    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
-    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}`.toLowerCase();
-  } catch {
-    return raw.replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
-  }
+  return canonicalizeFeedSignalUrl(value);
 }
 
 function getSignalStableKeys(reel = {}) {

@@ -28,6 +28,25 @@ export function parseMetric(value) {
   return number;
 }
 
+export function canonicalizeSignalUrl(value = '') {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw.startsWith('www.') ? `https://${raw}` : raw);
+    url.protocol = url.protocol.toLowerCase();
+    url.hostname = url.hostname.toLowerCase().replace(/^www\./, '');
+    const youtubeVideoId = url.hostname === 'youtube.com' && url.pathname.replace(/\/+$/, '') === '/watch'
+      ? url.searchParams.get('v')
+      : '';
+    url.search = youtubeVideoId ? `?v=${encodeURIComponent(youtubeVideoId)}` : '';
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '') || '/';
+    return `${url.protocol}//${url.host}${url.pathname === '/' ? '' : url.pathname}${url.search}`.toLowerCase();
+  } catch {
+    return raw.replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase();
+  }
+}
+
 export function getSignalSourceGroup(reel = {}) {
   const metadata = reel.importedMetadata || {};
   const platform = String(metadata.platform || '').toLowerCase();
