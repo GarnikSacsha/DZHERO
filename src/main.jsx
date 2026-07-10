@@ -78,6 +78,10 @@ import {
   normalizeContentIdentity,
   updateEditableNote,
 } from './contentPlanUtils.mjs';
+import {
+  createRemixAutoRequest,
+  shouldRunRemixAutoRequest,
+} from './remixAutoGeneration.mjs';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const isBrowser = typeof window !== 'undefined';
@@ -377,6 +381,7 @@ function App() {
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState('');
   const [remixDraft, setRemixDraft] = useState(null);
+  const [remixAutoRequest, setRemixAutoRequest] = useState(null);
   const [themeMode, setThemeMode] = useState(getInitialThemeMode);
   const [autoTheme, setAutoTheme] = useState(getAutoTheme);
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
@@ -1197,8 +1202,8 @@ function App() {
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
-        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
+        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
+        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
         {page === 'settings' && (
           <DataSources
@@ -5016,7 +5021,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
   );
 }
 
-function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBrandBrain }) {
+function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain }) {
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
   const [observedContext, setObservedContext] = useState('');
@@ -5072,12 +5077,15 @@ function RemixStudio({ reel, notify, setPage, workspaceId, onAddToPlan, onSaveBr
     }
   };
   useEffect(() => {
-    const sourceKey = reel.id || reel.sourceUrl || reel.title;
-    const autoKey = `${workspaceId || 'workspace'}:${sourceKey}`;
-    if (!workspaceId || !hasYouTubeIntelligence || !sourceKey || autoRemixKeyRef.current === autoKey) return;
-    autoRemixKeyRef.current = autoKey;
+    if (!shouldRunRemixAutoRequest({
+      request: autoGenerateRequest,
+      lastHandledId: autoRemixKeyRef.current,
+      workspaceId,
+    })) return;
+    autoRemixKeyRef.current = autoGenerateRequest.id;
+    onAutoGenerateConsumed?.();
     adaptScenario();
-  }, [reel.id, reel.sourceUrl, reel.title, workspaceId, hasYouTubeIntelligence]);
+  }, [autoGenerateRequest, workspaceId]);
   const copyScenario = async () => {
     const scenarioText = [
       `Джерело: ${reelHandle}`,
