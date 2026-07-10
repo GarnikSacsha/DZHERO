@@ -265,9 +265,17 @@ function buildInstagramInput({ inputValue, inputType, limit }) {
     if (!handle) return '';
     return `https://www.instagram.com/${handle}/`;
   })();
+  const normalizedHashtagUrl = (() => {
+    if (inputType !== 'hashtag') return '';
+    const tag = String(inputValue || '').trim().replace(/^#/, '').replace(/[^a-zA-Z0-9_]/g, '');
+    if (!tag) return '';
+    return `https://www.instagram.com/explore/tags/${tag}/`;
+  })();
   return {
-    directUrls: directUrlTypes.has(inputType) ? [normalizedProfileUrl] : [],
-    search: directUrlTypes.has(inputType) ? '' : inputValue,
+    directUrls: normalizedHashtagUrl
+      ? [normalizedHashtagUrl]
+      : directUrlTypes.has(inputType) ? [normalizedProfileUrl] : [],
+    search: directUrlTypes.has(inputType) || normalizedHashtagUrl ? '' : inputValue,
     resultsType: 'posts',
     resultsLimit: limit,
   };
