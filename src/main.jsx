@@ -3383,6 +3383,37 @@ function dedupeSignalReels(reels = []) {
   return result;
 }
 
+function buildSignalSourceSummary(reels = []) {
+  const sourcesByKey = new Map();
+  for (const reel of reels) {
+    const platform = getSignalSourceGroup(reel);
+    if (!['youtube', 'instagram', 'tiktok'].includes(platform)) continue;
+    const metadata = reel.importedMetadata || {};
+    const handle = reel.handle || reel.sourceHandle || metadata.handle || metadata.author || metadata.channelTitle || '';
+    const sourceUrl = reel.sourceUrl || metadata.url || metadata.webVideoUrl || metadata.sourceUrl || '';
+    const label = String(handle || sourceUrl || platform).trim();
+    if (!label) continue;
+    const key = `${platform}:${label.toLowerCase()}`;
+    const current = sourcesByKey.get(key) || {
+      key,
+      platform,
+      label,
+      market: reel.market || 'global',
+      count: 0,
+      bestViews: 0,
+      bestScore: 0,
+    };
+    current.count += 1;
+    current.bestViews = Math.max(current.bestViews, parseMetric(reel.views));
+    current.bestScore = Math.max(current.bestScore, Number(reel.score) || 0);
+    if (current.market === 'global' && reel.market) current.market = reel.market;
+    sourcesByKey.set(key, current);
+  }
+  return Array.from(sourcesByKey.values())
+    .sort((left, right) => right.count - left.count || right.bestScore - left.bestScore || right.bestViews - left.bestViews)
+    .slice(0, 6);
+}
+
 function ViralBank({
   reels,
   competitors = [],
@@ -3416,14 +3447,13 @@ function ViralBank({
     ['youtube', 'YouTube'],
     ['instagram', 'Instagram'],
     ['tiktok', 'TikTok'],
-    ['website', 'Сайти'],
   ];
   const sourceCounts = reels.reduce((acc, reel) => {
     const group = getSignalSourceGroup(reel);
     acc.all += 1;
     acc[group] = (acc[group] || 0) + 1;
     return acc;
-  }, { all: 0, youtube: 0, instagram: 0, tiktok: 0, website: 0 });
+  }, { all: 0, youtube: 0, instagram: 0, tiktok: 0 });
   const filteredReels = reels
     .filter((reel) => sourceFilter === 'all' || getSignalSourceGroup(reel) === sourceFilter)
     .filter((reel) => pastedReelUrl ? true : `${reel.title} ${reel.handle} ${(reel.status || []).join(' ')}`.toLowerCase().includes(query.toLowerCase()))
@@ -3518,6 +3548,7 @@ function ViralBank({
     sourceFilter,
     pastedReelUrl,
   });
+  const realSignalSources = buildSignalSourceSummary(filteredReels);
   const spendText = discovery
     ? `${formatUsdAmount(discoveryStatus.dailySpendUsd)} / ${formatUsdAmount(discoveryStatus.dailyBudgetUsd)}`
     : '—';
@@ -3585,7 +3616,7 @@ function ViralBank({
         </div>
       </div>
       <div className="search-row">
-        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Пошук або посилання на TikTok, Reels, Shorts чи сайт..." /></label>
+        <label><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && pastedReelUrl && importPastedReel()} placeholder="Search or paste a TikTok, Reels, or Shorts link..." /></label>
         <select value={market} readOnly><option>{market === 'all' ? 'Всі ринки' : 'Обраний ринок'}</option></select>
         <select value={sort} onChange={(event) => setSort(event.target.value)}>
           <option value="score">За оцінкою</option>
@@ -3675,7 +3706,7 @@ function ViralBank({
                 : trimmedQuery
                 ? {
                     title: 'Нічого не знайшли',
-                    text: 'Спробуй інший запит або встав посилання на TikTok, Reels, YouTube Shorts чи сайт.',
+                    text: 'Try another query or paste a TikTok, Reels, or YouTube Shorts link.',
                   }
                 : sourceFilter !== 'all'
                   ? {
@@ -3686,19 +3717,28 @@ function ViralBank({
           />
         </div>
         <aside className="signals-source-panel">
-          <div className="panel-title"><strong>Джерела</strong><span>{competitors.length} джерел</span></div>
-          <p>Акаунти й сайти, за якими Джеро відстежує робочі механіки для стрічки сигналів.</p>
+          <div className="panel-title"><strong>Sources</strong><span>{realSignalSources.length} active</span></div>
+          <p>Only accounts and searches that actually produced visible Signals in this bank.</p>
           <div className="signals-source-list">
-            {competitors.slice(0, 6).map((row) => (
-              <article key={row.handle}>
-                <b>{row.handle[1]?.toUpperCase() || 'C'}</b>
+            {realSignalSources.map((row) => (
+              <article key={row.key}>
+                <b>{row.label.replace(/^@/, '')[0]?.toUpperCase() || row.platform[0]?.toUpperCase() || 'S'}</b>
                 <div>
-                  <strong>{row.handle}</strong>
-                  <span>{marketLabel(row.market)} · до {row.bestViews} переглядів</span>
+                  <strong>{row.label}</strong>
+                  <span>{row.platform} - {row.count} signals - up to {formatMetricDisplay(row.bestViews)} views</span>
                 </div>
-                <Score value={row.score} compact />
+                <Score value={row.bestScore} compact />
               </article>
             ))}
+            {!realSignalSources.length && (
+              <article className="signals-source-empty">
+                <b>?</b>
+                <div>
+                  <strong>No active sources yet</strong>
+                  <span>Run Apify import to populate this list.</span>
+                </div>
+              </article>
+            )}
           </div>
         </aside>
       </div>
