@@ -18,6 +18,7 @@ const AUTOMATIC_INPUTS_PER_LANE = 3;
 const AUTOMATIC_METADATA_LIMIT = 8;
 const FORCED_AUTOMATIC_INPUTS_PER_LANE = 5;
 const FORCED_AUTOMATIC_METADATA_LIMIT = 12;
+const FORCED_AUTOMATIC_INSTAGRAM_METADATA_LIMIT = 30;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 20;
 const FORCED_AUTOMATIC_MAX_WINNERS = 60;
@@ -852,8 +853,13 @@ function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], optio
   const calls = [];
   const inputLimit = Math.max(1, Math.trunc(Number(options.inputLimit || AUTOMATIC_INPUTS_PER_LANE)));
   const resultLimit = Math.max(1, Math.trunc(Number(options.resultLimit || AUTOMATIC_METADATA_LIMIT)));
+  const resultLimitByPlatform = options.resultLimitByPlatform || {};
   for (const platform of platforms) {
     const platformInputs = discoveryInputs[platform] || {};
+    const platformResultLimit = Math.max(
+      1,
+      Math.trunc(Number(resultLimitByPlatform[platform] || resultLimit))
+    );
     for (const lane of DEFAULT_LANES) {
       const inputType = INPUT_TYPE_BY_LANE[lane];
       if (!inputType) continue;
@@ -863,7 +869,7 @@ function planAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [], optio
           lane,
           inputType,
           inputValue,
-          limit: resultLimit,
+          limit: platformResultLimit,
           downloadVideo: false,
         });
       }
@@ -1103,6 +1109,9 @@ function prepareAutomaticDiscovery(args = {}) {
     ? {
         inputLimit: FORCED_AUTOMATIC_INPUTS_PER_LANE,
         resultLimit: FORCED_AUTOMATIC_METADATA_LIMIT,
+        resultLimitByPlatform: {
+          instagram: FORCED_AUTOMATIC_INSTAGRAM_METADATA_LIMIT,
+        },
       }
     : {};
   const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
