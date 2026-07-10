@@ -5,6 +5,14 @@ function compactText(value = '', maxLength = 1600) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
+function cleanSocialToken(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^instagram\s+/i, '')
+    .replace(/^#|^@/, '')
+    .replace(/[^a-zA-Z0-9_]/g, '');
+}
+
 function toNumber(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
@@ -44,35 +52,42 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     || item.viewsCount
     || item.playsCount
     || item.playCount
+    || item.views
+    || item.plays
   );
-  const likes = toNumber(item.likesCount);
-  const comments = toNumber(item.commentsCount);
-  const thumbnailUrl = item.displayUrl || item.images?.[0] || '';
-  const handle = item.ownerUsername ? `@${item.ownerUsername}` : '@instagram';
-  const title = compactText(item.caption || `Instagram Reel ${item.shortCode || item.id || ''}`, 180);
-  const url = item.url || (item.shortCode ? `https://www.instagram.com/reel/${item.shortCode}/` : '');
+  const likes = toNumber(item.likesCount || item.likes);
+  const comments = toNumber(item.commentsCount || item.comments);
+  const shares = toNumber(item.sharesCount || item.shareCount || item.shares);
+  const thumbnailUrl = item.displayUrl || item.thumbnailUrl || item.coverUrl || item.imageUrl || item.images?.[0] || '';
+  const ownerUsername = item.ownerUsername || item.username || item.owner?.username || item.user?.username || '';
+  const handle = ownerUsername ? `@${String(ownerUsername).replace(/^@/, '')}` : '@instagram';
+  const title = compactText(item.caption || item.text || item.description || `Instagram Reel ${item.shortCode || item.code || item.id || ''}`, 180);
+  const shortCode = item.shortCode || item.code || '';
+  const url = item.url || item.inputUrl || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : '');
+  const videoUrl = item.videoUrl || item.video_url || item.mediaUrl || item.mediaUrls?.[0] || '';
+  const publishedAt = item.timestamp || item.takenAtTimestamp || item.createdAt || item.date || '';
   const metadata = {
     provider: 'apify',
-    providerActor: 'apify/instagram-scraper',
+    providerActor: context.providerActor || 'apify/instagram-scraper',
     platform: 'instagram',
     externalId: item.id || '',
-    shortCode: item.shortCode || '',
+    shortCode,
     url,
     title,
-    description: item.caption || '',
+    description: item.caption || item.text || item.description || '',
     handle,
     image: thumbnailUrl,
-    videoUrl: item.videoUrl || '',
+    videoUrl,
     audioUrl: item.audioUrl || '',
-    publishedAt: item.timestamp || '',
+    publishedAt,
     snapshotAt,
-    stats: { views, likes, comments },
-    rawStats: { views, likes, comments },
+    stats: { views, likes, comments, shares },
+    rawStats: { views, likes, comments, shares },
     source: { label: 'Instagram', tone: 'instagram' },
-    sourceStatus: item.videoUrl ? 'apify_video' : 'apify_metadata',
-    duration: item.videoDuration || '',
+    sourceStatus: videoUrl ? 'apify_video' : 'apify_metadata',
+    duration: item.videoDuration || item.duration || '',
     apify: item,
-    analysisText: compactText([item.caption, handle, url].filter(Boolean).join(' '), 2400),
+    analysisText: compactText([item.caption, item.text, handle, url].filter(Boolean).join(' '), 2400),
   };
   return {
     id: context.createId ? context.createId('reel') : undefined,
@@ -86,19 +101,19 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     sourceType: 'Instagram',
     market: context.market || 'global',
     title,
-    caption: item.caption || '',
-    transcript: '',
+    caption: item.caption || item.text || item.description || '',
+    transcript: item.transcript || item.transcription || '',
     image: thumbnailUrl,
-    videoUrl: item.videoUrl || '',
+    videoUrl,
     views,
     likes,
     comments,
-    shares: 0,
+    shares,
     saves: 0,
     hook: title,
-    status: ['Instagram', 'Apify', item.videoUrl ? 'Player ready' : 'Metadata'],
-    tag: (item.ownerUsername?.[0] || 'I').toUpperCase(),
-    score: buildScore({ views, likes, comments, publishedAt: item.timestamp, sourceQuality: item.videoUrl ? 12 : 8 }),
+    status: ['Instagram', 'Apify', videoUrl ? 'Player ready' : 'Metadata'],
+    tag: (String(ownerUsername || 'I')[0] || 'I').toUpperCase(),
+    score: buildScore({ views, likes, comments, shares, publishedAt, sourceQuality: videoUrl ? 12 : 8 }),
     importedMetadata: metadata,
     createdAt: snapshotAt,
   };
@@ -255,43 +270,35 @@ function attachActualCost(signals, actualCostUsd) {
 }
 
 function buildInstagramInput({ inputValue, inputType, limit }) {
-  const directUrlTypes = new Set(['url', 'profile']);
-  const createHashtagUrl = (value) => {
-    const tag = String(value || '')
-      .trim()
-      .replace(/^instagram\s+/i, '')
-      .replace(/^#/, '')
-      .replace(/[^a-zA-Z0-9_]/g, '');
-    if (!tag) return '';
-    return `https://www.instagram.com/explore/tags/${tag}/`;
-  };
-  const normalizedProfileUrl = (() => {
-    if (inputType !== 'profile') return inputValue;
-    const rawValue = String(inputValue || '').trim();
-    if (!rawValue) return '';
-    const urlMatch = rawValue.match(/instagram\.com\/([^/?#]+)/i);
-    const handle = (urlMatch?.[1] || rawValue).replace(/^@/, '').replace(/\/+$/, '');
-    if (!handle) return '';
-    return `https://www.instagram.com/${handle}/`;
+  const rawValue = String(inputValue || '').trim();
+  const profileInput = (() => {
+    if (inputType === 'url' && rawValue) return rawValue;
+    if (inputType !== 'profile') return rawValue;
+    if (/instagram\.com\//i.test(rawValue)) return rawValue;
+    const handle = cleanSocialToken(rawValue);
+    return handle ? `https://www.instagram.com/${handle}/` : rawValue;
   })();
-  const normalizedHashtagUrl = (() => {
-    if (inputType !== 'hashtag') return '';
-    return createHashtagUrl(inputValue);
-  })();
-  const normalizedSearchHashtagUrl = (() => {
-    if (inputType !== 'search') return '';
-    const rawValue = String(inputValue || '').trim();
-    if (!rawValue || /^https?:\/\//i.test(rawValue)) return '';
-    return createHashtagUrl(rawValue);
-  })();
-  const discoveryTagUrl = normalizedHashtagUrl || normalizedSearchHashtagUrl;
+  const hashtagInput = cleanSocialToken(rawValue);
+  if (inputType === 'profile' || inputType === 'url') {
+    return {
+      actorId: 'apify/instagram-reel-scraper',
+      input: {
+        username: profileInput ? [profileInput] : [],
+        resultsLimit: limit,
+        onlyPostsNewerThan: '3 months',
+        skipPinnedPosts: true,
+        skipTrialReels: false,
+      },
+    };
+  }
   return {
-    directUrls: discoveryTagUrl
-      ? [discoveryTagUrl]
-      : directUrlTypes.has(inputType) ? [normalizedProfileUrl] : [],
-    search: directUrlTypes.has(inputType) || discoveryTagUrl ? '' : inputValue,
-    resultsType: 'posts',
-    resultsLimit: limit,
+    actorId: 'apify/instagram-hashtag-scraper',
+    input: {
+      hashtags: hashtagInput ? [hashtagInput] : [],
+      resultsType: 'reels',
+      resultsLimit: limit,
+      keywordSearch: inputType === 'search',
+    },
   };
 }
 
@@ -321,10 +328,7 @@ function buildApifyActorRequest(options = {}) {
   const boundedLimit = Math.min(Math.max(Number(limit || 5), 1), 30);
 
   if (platform === 'instagram') {
-    return {
-      actorId: 'apify/instagram-scraper',
-      input: buildInstagramInput({ inputValue, inputType, limit: boundedLimit }),
-    };
+    return buildInstagramInput({ inputValue, inputType, limit: boundedLimit });
   }
 
   if (platform === 'tiktok') {
@@ -355,7 +359,12 @@ async function fetchApifySignals(options = {}) {
       input: actorRequest.input,
     });
     return attachActualCost(
-      result.items.map((item) => mapInstagramApifyItem(item, { workspaceId, market, createId })),
+      result.items.map((item) => mapInstagramApifyItem(item, {
+        workspaceId,
+        market,
+        createId,
+        providerActor: actorRequest.actorId,
+      })),
       result.actualCostUsd,
     );
   }
