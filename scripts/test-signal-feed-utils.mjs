@@ -36,6 +36,18 @@ assert.deepEqual(
   ['tiktok', 'youtube', 'instagram'],
 );
 
+assert.equal(getSignalSourceGroup({
+  title: 'at this point youtube shorts comments cannot be typed by humans',
+  sourceType: 'youtube metadata',
+  sourceStatus: 'metadata',
+  status: ['TikTok', 'джерело', 'metadata'],
+  sourceUrl: 'https://www.tiktok.com/@yt.shorts.disliker/video/123',
+  importedMetadata: {
+    platform: 'tiktok',
+    providerPlatform: 'youtube',
+  },
+}), 'tiktok');
+
 assert.deepEqual(
   [...reels].sort((left, right) => compareSignalReels(left, right, { sort: 'views' })).map((reel) => reel.title),
   ['YouTube signal', 'Instagram signal', 'TikTok signal'],
