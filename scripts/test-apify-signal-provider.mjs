@@ -96,6 +96,21 @@ assert.deepEqual(instagramActorRequest.input, {
   resultsLimit: 30,
 });
 
+const instagramHashtagActorRequest = buildApifyActorRequest({
+  platform: 'instagram',
+  mode: 'hashtag',
+  input: '#ai-tools!',
+  limit: 4,
+});
+
+assert.equal(instagramHashtagActorRequest.actorId, 'apify/instagram-scraper');
+assert.deepEqual(instagramHashtagActorRequest.input, {
+  directUrls: ['https://www.instagram.com/explore/tags/aitools/'],
+  search: '',
+  resultsType: 'posts',
+  resultsLimit: 4,
+});
+
 const tiktokProfileActorRequest = buildApifyActorRequest({
   platform: 'tiktok',
   inputType: 'profile',
