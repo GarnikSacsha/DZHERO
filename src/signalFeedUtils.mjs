@@ -30,15 +30,30 @@ export function parseMetric(value) {
 
 export function getSignalSourceGroup(reel = {}) {
   const metadata = reel.importedMetadata || {};
-  const platform = String(metadata.platform || metadata.providerPlatform || metadata.source?.tone || '').toLowerCase();
+  const platform = String(metadata.platform || '').toLowerCase();
+  const providerPlatform = String(metadata.providerPlatform || metadata.source?.tone || '').toLowerCase();
   const sourceLabel = String(reel.scanLabel || reel.sourceType || metadata.source?.label || '').toLowerCase();
   const sourceStatus = String(reel.sourceStatus || metadata.sourceStatus || '').toLowerCase();
   const sourceUrl = String(reel.sourceUrl || metadata.url || metadata.webVideoUrl || metadata.sourceUrl || '').toLowerCase();
   const statusText = Array.isArray(reel.status) ? reel.status.join(' ').toLowerCase() : '';
-  const haystack = [platform, sourceLabel, sourceStatus, sourceUrl, statusText].join(' ');
-  if (haystack.includes('youtube') || haystack.includes('youtu.be') || haystack.includes('shorts')) return 'youtube';
-  if (haystack.includes('instagram') || haystack.includes('reels') || haystack.includes('instagram.com')) return 'instagram';
-  if (haystack.includes('tiktok') || haystack.includes('tiktok.com')) return 'tiktok';
+
+  if (/https?:\/\/(?:www\.)?tiktok\.com\//.test(sourceUrl)) return 'tiktok';
+  if (/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\//.test(sourceUrl)) return 'youtube';
+  if (/https?:\/\/(?:www\.)?instagram\.com\//.test(sourceUrl)) return 'instagram';
+
+  const explicitPlatform = [platform, providerPlatform].find((value) => value);
+  if (explicitPlatform?.includes('tiktok')) return 'tiktok';
+  if (explicitPlatform?.includes('youtube')) return 'youtube';
+  if (explicitPlatform?.includes('instagram')) return 'instagram';
+
+  const sourceIdentity = [sourceStatus, sourceLabel].join(' ');
+  if (sourceIdentity.includes('tiktok')) return 'tiktok';
+  if (sourceIdentity.includes('youtube') || sourceIdentity.includes('youtu.be') || sourceIdentity.includes('shorts')) return 'youtube';
+  if (sourceIdentity.includes('instagram') || sourceIdentity.includes('reels')) return 'instagram';
+
+  if (statusText.includes('tiktok')) return 'tiktok';
+  if (statusText.includes('youtube') || statusText.includes('shorts')) return 'youtube';
+  if (statusText.includes('instagram') || statusText.includes('reels')) return 'instagram';
   if (sourceLabel.includes('website') || /^https?:\/\//i.test(sourceUrl)) return 'website';
   return 'bank';
 }
