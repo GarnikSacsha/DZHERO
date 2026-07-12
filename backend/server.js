@@ -358,6 +358,7 @@ const publicPreviewDailyLimiter = rateLimit({
 
 app.use('/api', apiLimiter);
 app.use('/api', verifyTrustedWriteRequest);
+app.use('/api', serializeMutatingApiRequests);
 app.use('/api/auth/meta/start', oauthLimiter);
 app.use('/api/auth/instagram/start', oauthLimiter);
 app.use('/api/auth/google/start', oauthLimiter);
@@ -464,7 +465,7 @@ async function ensurePostgresState() {
   );
 }
 
-async function readDb() {
+async function readDbSnapshot() {
   if (DATABASE_URL) {
     await ensurePostgresState();
     const result = await getPgPool().query('SELECT data FROM app_state WHERE key = $1', [APP_STATE_KEY]);
@@ -472,8 +473,22 @@ async function readDb() {
   }
 
   await ensureDbFile();
-  const raw = await fs.readFile(DB_PATH, 'utf8');
-  return normalizeDbShape(JSON.parse(raw));
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const raw = await fs.readFile(DB_PATH, 'utf8');
+      return normalizeDbShape(JSON.parse(raw));
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+  throw lastError;
+}
+
+async function readDb() {
+  if (DATABASE_URL) return readDbSnapshot();
+  return automaticDiscoveryFileMutex.run('app-state', readDbSnapshot);
 }
 
 async function writeDbSnapshot(db) {
@@ -492,7 +507,10 @@ async function writeDbSnapshot(db) {
   }
 
   await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-  await fs.writeFile(DB_PATH, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+  const tempPath = `${DB_PATH}.${process.pid}.${Date.now()}.tmp`;
+  await fs.writeFile(tempPath, `${JSON.stringify(normalized, null, 2)}\n`, 'utf8');
+  await fs.rm(DB_PATH, { force: true });
+  await fs.rename(tempPath, DB_PATH);
 }
 
 async function writeDb(db, { preserveAutomaticDiscovery = true } = {}) {
@@ -538,7 +556,7 @@ async function writeDb(db, { preserveAutomaticDiscovery = true } = {}) {
 
   await automaticDiscoveryFileMutex.run('app-state', async () => {
     try {
-      const latestDb = await readDb();
+      const latestDb = await readDbSnapshot();
       nextDb = mergeAutomaticDiscoveryWriteSnapshot(nextDb, latestDb);
     } catch {
       // If the file does not exist yet, write the normalized snapshot below.
@@ -676,7 +694,7 @@ async function withAutomaticDiscoveryStateLock(workspaceId, task) {
     });
   }
   return automaticDiscoveryFileMutex.run('app-state', async () => {
-    const db = await readDb();
+    const db = await readDbSnapshot();
     const result = await task(db);
     await writeDbSnapshot(db);
     return result;
@@ -2961,6 +2979,34 @@ function verifyTrustedWriteRequest(req, res, next) {
     return;
   }
   res.status(403).json({ error: 'untrusted_origin', message: 'Write requests must originate from Dzhero.' });
+}
+
+let mutatingApiQueue = Promise.resolve();
+
+function serializeMutatingApiRequests(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    next();
+    return;
+  }
+
+  let releaseQueue;
+  const currentTurn = new Promise((resolve) => {
+    releaseQueue = resolve;
+  });
+  const previousTurn = mutatingApiQueue.catch(() => {});
+  mutatingApiQueue = previousTurn.then(() => currentTurn);
+
+  previousTurn.then(() => {
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      releaseQueue();
+    };
+    res.once('finish', release);
+    res.once('close', release);
+    next();
+  }).catch(next);
 }
 
 function getAdminToken(req) {
