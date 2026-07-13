@@ -17,6 +17,9 @@ const {
   buildBrandBrainEnrichment,
   shouldUseApifyForBrandScan,
 } = require('./services/brandBrainExtractor.cjs');
+const {
+  shouldChargeBrandBrainSave,
+} = require('./services/brandBrainPersistence.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
@@ -4514,13 +4517,21 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
+  const shouldChargeSave = shouldChargeBrandBrainSave({
+    existingBrief: workspace.brief || {},
+    nextBrief: req.body || {},
+  });
+  if (shouldChargeSave) {
+    assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
+  }
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
     updatedAt: new Date().toISOString(),
   };
-  incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
+  if (shouldChargeSave) {
+    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
+  }
   await writeDb(db);
   res.json({ brief: workspace.brief, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
@@ -5324,7 +5335,13 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
+  const shouldChargeSave = shouldChargeBrandBrainSave({
+    existingBrief: workspace.brief || {},
+    nextBrief: req.body || {},
+  });
+  if (shouldChargeSave) {
+    assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
+  }
   workspace.brief = {
     ...(workspace.brief || {}),
     ...req.body,
@@ -5338,7 +5355,9 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
     createdAt: new Date().toISOString(),
   };
   db.aiMemory.unshift(memory);
-  incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
+  if (shouldChargeSave) {
+    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.brandBrainSaves);
+  }
   await writeDb(db);
   res.json({
     brief: workspace.brief,
