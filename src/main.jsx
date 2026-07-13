@@ -519,6 +519,18 @@ function App() {
     };
   }, [currentUser, workspaceId]);
 
+  const applyAuthPayload = (payload) => {
+    const user = payload?.user || null;
+    const workspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
+    setCurrentUser(user);
+    setUserWorkspaces(workspaces);
+    const primaryWorkspaceId = user?.workspaceId || workspaces[0]?.id || '';
+    if (primaryWorkspaceId) {
+      setWorkspaceId(primaryWorkspaceId);
+      window.localStorage.setItem(WORKSPACE_KEY, primaryWorkspaceId);
+    }
+  };
+
   useEffect(() => {
     const timers = [0, 80, 250].map((delay) => window.setTimeout(() => applyInterfaceLanguage(language), delay));
     return () => timers.forEach((timer) => window.clearTimeout(timer));
@@ -536,8 +548,7 @@ function App() {
       })
       .then((payload) => {
         if (!isMounted) return;
-        setCurrentUser(payload.user);
-        if (payload.user?.workspaceId) setWorkspaceId(payload.user.workspaceId);
+        applyAuthPayload(payload);
         setAuthStatus('ready');
       })
       .catch(() => {
@@ -606,8 +617,7 @@ function App() {
   const handleAuthSuccess = (payload) => {
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
     setSessionRevision((revision) => revision + 1);
-    setCurrentUser(payload.user);
-    if (payload.user?.workspaceId) setWorkspaceId(payload.user.workspaceId);
+    applyAuthPayload(payload);
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
   };
