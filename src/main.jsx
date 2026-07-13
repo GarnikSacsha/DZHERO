@@ -5423,14 +5423,19 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         return;
       }
       const scan = composeBrandScanResult(cleanSeed, metadata, payload.capabilities || null);
-      const nextBrief = buildBrandBrainFromScanReel(buildReelFromBrandScan(scan), language);
+      const structuredDraft = payload.brandBrainDraft && typeof payload.brandBrainDraft === 'object'
+        ? payload.brandBrainDraft
+        : null;
+      const nextBrief = structuredDraft || buildBrandBrainFromScanReel(buildReelFromBrandScan(scan), language);
       setBrief((current) => ({
         ...current,
         ...nextBrief,
         stopTopics: Array.isArray(nextBrief.stopTopics) ? nextBrief.stopTopics.join(', ') : nextBrief.stopTopics || current.stopTopics,
       }));
       setStatus('ready');
-      notify?.('Brand Brain заповнено з джерела. Можна підправити і зберегти.');
+      notify?.(structuredDraft
+        ? 'Brand Brain зібрано з профілю, Apify-сигналів і AI-структури. Можна підправити і зберегти.'
+        : 'Brand Brain заповнено з джерела. Можна підправити і зберегти.');
     } catch {
       setBrief((current) => ({
         ...current,
