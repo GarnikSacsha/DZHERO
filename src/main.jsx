@@ -437,14 +437,18 @@ function App() {
   }, [page]);
 
   useEffect(() => {
+    if (!currentUser || !workspaceId) return undefined;
     let isMounted = true;
-    fetchProducerSnapshot().then((snapshot) => {
-      if (isMounted) setData(snapshot);
+    setData(null);
+    fetchProducerSnapshot({ workspaceId, apiBase: API_BASE, fetcher: authFetch }).then((snapshot) => {
+      if (!isMounted) return;
+      reelsWorkspaceRef.current = workspaceId;
+      setData(snapshot);
     });
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentUser, workspaceId]);
 
   useEffect(() => {
     window.localStorage.setItem(THEME_MODE_KEY, themeMode);
@@ -2066,7 +2070,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       googleButton: 'Sign in with Google',
       divider: 'or email',
       emailLabel: 'Email address',
-      emailButton: 'Continue with email',
+      emailButton: 'Demo access by email',
       privacy: 'No password. No account access.',
       demoButton: 'View demo',
       ready: 'Preview ready',

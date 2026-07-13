@@ -56,6 +56,9 @@ const {
 const {
   buildAuthWorkspacePayload,
 } = require('./services/authWorkspacePayload.cjs');
+const {
+  isEmailTrialLoginAllowed,
+} = require('./services/emailTrialAccess.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -4218,6 +4221,13 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 app.post('/api/auth/email', async (req, res) => {
+  if (!isEmailTrialLoginAllowed()) {
+    res.status(403).json({
+      error: 'email_trial_login_disabled',
+      message: 'Email trial login is disabled. Use Google or password registration.',
+    });
+    return;
+  }
   const db = await readDb();
   const email = normalizeEmail(req.body.email);
   if (!email || !email.includes('@')) {
