@@ -13,6 +13,10 @@ const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
 } = require('./services/brandBrainContext.cjs');
+const {
+  buildBrandBrainEnrichment,
+  shouldUseApifyForBrandScan,
+} = require('./services/brandBrainExtractor.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
@@ -2206,6 +2210,34 @@ async function analyzeSourceImageWithGemini(metadata) {
   }
 }
 
+async function generateGeminiJsonText(prompt, options = {}) {
+  if (!GEMINI_API_KEY || !prompt) return '';
+  const model = options.model || GEMINI_VISION_MODEL;
+  const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }],
+      }],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: options.temperature ?? 0.25,
+        topP: 0.8,
+        maxOutputTokens: options.maxOutputTokens || 1600,
+      },
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload?.error?.message || `Gemini HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
+}
+
 async function analyzeYouTubeVideoWithGemini(metadata) {
   const videoUrl = metadata?.url || metadata?.youtube?.url || '';
   if (!GEMINI_API_KEY || !metadata?.youtube?.videoId || !videoUrl) return null;
@@ -3591,10 +3623,42 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
       return;
     }
     const metadata = await fetchPublicSourceMetadata(input);
+    let apifyBrandSignals = [];
+    let brandBrainWarning = '';
+    if (APIFY_TOKEN && shouldUseApifyForBrandScan(input, metadata)) {
+      try {
+        apifyBrandSignals = await fetchApifySignals({
+          token: APIFY_TOKEN,
+          platform: 'instagram',
+          inputType: 'profile',
+          inputValue: input,
+          limit: 8,
+          downloadVideo: false,
+          market: 'brand',
+        });
+      } catch (error) {
+        brandBrainWarning = error?.message || 'apify_brand_scan_failed';
+      }
+    }
+    const brandBrain = await buildBrandBrainEnrichment({
+      input,
+      metadata,
+      apifySignals: apifyBrandSignals,
+      geminiClient: GEMINI_API_KEY
+        ? (prompt) => generateGeminiJsonText(prompt, { maxOutputTokens: 1800, temperature: 0.2 })
+        : null,
+    });
     res.json({
       input,
       source: metadata.source,
       metadata,
+      brandBrainDraft: brandBrain.brief,
+      brandBrainEvidence: {
+        ...brandBrain.evidence,
+        warning: brandBrainWarning,
+      },
+      brandBrainConfidence: brandBrain.confidence,
+      brandBrainMissingFields: brandBrain.missingFields,
       capabilities: {
         mode: metadata.sourceStatus === 'youtube_api'
           ? 'youtube_data_api'
@@ -3604,6 +3668,20 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
         officialApi: metadata.sourceStatus === 'youtube_api',
         statsAreOfficial: metadata.sourceStatus === 'youtube_api',
         intelligence: metadata.videoIntelligence?.confidence || null,
+        brandBrain: {
+          mode: brandBrain.sourceStatus,
+          apify: {
+            configured: Boolean(APIFY_TOKEN),
+            used: apifyBrandSignals.length > 0,
+            returned: apifyBrandSignals.length,
+          },
+          gemini: {
+            configured: Boolean(GEMINI_API_KEY),
+            used: brandBrain.sourceStatus === 'brand_brain_gemini',
+          },
+          confidence: brandBrain.confidence,
+          missingFields: brandBrain.missingFields,
+        },
         note: ['public_metadata', 'instagram_web_profile'].includes(metadata.sourceStatus)
           ? 'Dzhero використав відкритий опис сторінки. Приватні дані акаунта не читались.'
           : ['youtube_oembed', 'youtube_api'].includes(metadata.sourceStatus)
