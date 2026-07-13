@@ -53,6 +53,9 @@ const {
   getBearerToken,
   parseCookies,
 } = require('./services/authSession.cjs');
+const {
+  buildAuthWorkspacePayload,
+} = require('./services/authWorkspacePayload.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -1399,6 +1402,10 @@ function publicUser(user) {
     workspaceId: user.workspaceId,
     createdAt: user.createdAt,
   };
+}
+
+function buildAuthPayload(db, user) {
+  return buildAuthWorkspacePayload(db, user, publicUser);
 }
 
 function ensureOAuthUser(db, profile) {
@@ -4192,7 +4199,7 @@ app.post('/api/auth/register', async (req, res) => {
   const session = createSession(db, user.id);
   await writeDb(db);
   setSessionCookie(res, session.token);
-  res.status(201).json({ user: publicUser(user), token: session.token });
+  res.status(201).json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
 app.post('/api/auth/login', async (req, res) => {
@@ -4207,7 +4214,7 @@ app.post('/api/auth/login', async (req, res) => {
   const session = createSession(db, user.id);
   await writeDb(db);
   setSessionCookie(res, session.token);
-  res.json({ user: publicUser(user), token: session.token });
+  res.json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
 app.post('/api/auth/email', async (req, res) => {
@@ -4246,7 +4253,7 @@ app.post('/api/auth/email', async (req, res) => {
   const session = createSession(db, user.id);
   await writeDb(db);
   setSessionCookie(res, session.token);
-  res.status(user.authProvider === 'email_trial' ? 201 : 200).json({ user: publicUser(user), token: session.token });
+  res.status(user.authProvider === 'email_trial' ? 201 : 200).json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
 app.post('/api/auth/demo', async (req, res) => {
@@ -4272,7 +4279,7 @@ app.post('/api/auth/demo', async (req, res) => {
   const session = createSession(db, user.id);
   await writeDb(db);
   setSessionCookie(res, session.token);
-  res.json({ user: publicUser(user), token: session.token });
+  res.json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
 app.get('/api/auth/me', async (req, res) => {
@@ -4282,7 +4289,7 @@ app.get('/api/auth/me', async (req, res) => {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
-  res.json({ user: publicUser(user) });
+  res.json(buildAuthPayload(db, user));
 });
 
 app.post('/api/auth/logout', async (req, res) => {
