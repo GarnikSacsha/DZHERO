@@ -162,6 +162,46 @@ const snapshot = {
   ],
 };
 
-export async function fetchProducerSnapshot() {
-  return snapshot;
+function normalizePlanPost(post) {
+  if (Array.isArray(post)) return post;
+  return [
+    String(post?.title || '').trim() || 'Untitled post',
+    String(post?.time || '').trim() || '10:00',
+    String(post?.format || '').trim() || 'Post',
+  ];
+}
+
+export function buildWorkspaceProducerSnapshot(baseSnapshot = snapshot, workspaceData = {}) {
+  return {
+    ...baseSnapshot,
+    competitors: Array.isArray(workspaceData.competitors) ? workspaceData.competitors : [],
+    reels: Array.isArray(workspaceData.reels) ? workspaceData.reels : [],
+    ideas: Array.isArray(workspaceData.ideas) ? workspaceData.ideas : [],
+    plans: Array.isArray(workspaceData.contentPlanPosts)
+      ? workspaceData.contentPlanPosts.map(normalizePlanPost)
+      : [],
+  };
+}
+
+async function readJson(fetcher, url) {
+  const response = await fetcher(url);
+  if (!response.ok) return null;
+  return response.json();
+}
+
+export async function fetchProducerSnapshot(options = {}) {
+  const { workspaceId = '', apiBase = '', fetcher = fetch } = options;
+  if (!workspaceId || !apiBase) return snapshot;
+
+  const [reelsPayload, ideasPayload, contentPlanPayload] = await Promise.all([
+    readJson(fetcher, `${apiBase}/workspaces/${workspaceId}/reels`).catch(() => null),
+    readJson(fetcher, `${apiBase}/workspaces/${workspaceId}/ideas`).catch(() => null),
+    readJson(fetcher, `${apiBase}/workspaces/${workspaceId}/content-plan`).catch(() => null),
+  ]);
+
+  return buildWorkspaceProducerSnapshot(snapshot, {
+    reels: reelsPayload?.reels || [],
+    ideas: ideasPayload?.ideas || [],
+    contentPlanPosts: contentPlanPayload?.posts || [],
+  });
 }
