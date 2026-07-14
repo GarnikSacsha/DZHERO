@@ -115,6 +115,24 @@ async function requestJson(baseUrl, pathname, options = {}) {
   return { response, body, text };
 }
 
+async function requestBinary(baseUrl, pathname, bytes, options = {}) {
+  const response = await fetch(`${baseUrl}${pathname}`, {
+    method: 'POST',
+    ...options,
+    headers: {
+      'content-type': 'video/mp4',
+      'x-file-name': encodeURIComponent('source-reel.mp4'),
+      ...(options.headers || {}),
+    },
+    body: bytes,
+  });
+  const text = await response.text();
+  const body = text && (response.headers.get('content-type') || '').includes('application/json')
+    ? JSON.parse(text)
+    : null;
+  return { response, body, text };
+}
+
 async function waitForRun(baseUrl, workspaceId, runId, headers, statuses) {
   const accepted = new Set(statuses);
   const deadline = Date.now() + 15000;
@@ -151,7 +169,17 @@ const fixture = require(process.env.AGENT_STUDIO_TEST_FIXTURE);
 const criticCalls = new Map();
 
 module.exports = {
-  async analyzeVideo({ input }) {
+  async uploadVideo({ bytes, mimeType, displayName }) {
+    if (!bytes || !bytes.length) throw new Error('test upload missing bytes');
+    return { name: 'files/test-upload', uri: 'https://gemini.example/files/test-upload', mimeType, originalName: displayName };
+  },
+  async analyzeVideo({ input, uploadedFile }) {
+    if (uploadedFile?.uri) {
+      return {
+        ...fixture.evidence,
+        source: { kind: 'upload', title: uploadedFile.originalName || 'Uploaded source' },
+      };
+    }
     if (String(input.sourceUrl || '').includes('unavailable') && !input.userNotes) {
       return {
         ...fixture.evidence,
@@ -248,6 +276,36 @@ try {
   const stale = await waitForRun(baseUrl, 'ws_1', 'agent_run_stale', headers, ['failed']);
   assert.equal(stale.error.code, 'interrupted');
 
+  const initialUpload = await requestBinary(baseUrl, '/api/workspaces/ws_1/agent-studio/uploads', Buffer.from('fake-video-bytes'), { headers });
+  assert.equal(initialUpload.response.status, 201);
+  assert.ok(initialUpload.body.uploadId);
+  const uploadedCreate = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/runs', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      mode: 'adapt_reel',
+      objective: 'Adapt the uploaded original video',
+      uploadId: initialUpload.body.uploadId,
+      idempotencyKey: 'uploaded_run_1',
+    }),
+  });
+  assert.equal(uploadedCreate.response.status, 201, JSON.stringify(uploadedCreate.body));
+  const uploadedCompleted = await waitForRun(baseUrl, 'ws_1', uploadedCreate.body.run.id, headers, ['awaiting_approval', 'failed']);
+  assert.equal(uploadedCompleted.status, 'awaiting_approval');
+  assert.equal(uploadedCompleted.artifacts.evidence.source.kind, 'upload');
+  const duplicateUploadedCreate = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/runs', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      mode: 'adapt_reel',
+      objective: 'Adapt the uploaded original video',
+      uploadId: initialUpload.body.uploadId,
+      idempotencyKey: 'uploaded_run_1',
+    }),
+  });
+  assert.equal(duplicateUploadedCreate.response.status, 200);
+  assert.equal(duplicateUploadedCreate.body.run.id, uploadedCreate.body.run.id);
+
   const create = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/runs', {
     method: 'POST',
     headers,
@@ -341,15 +399,16 @@ try {
   const retriedNeedsContext = await waitForRun(baseUrl, 'ws_1', contextCreate.body.run.id, headers, ['needs_context']);
   assert.equal(retriedNeedsContext.contextRequest.question.includes('what happens'), true);
 
-  const context = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${contextCreate.body.run.id}/context`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ userNotes: 'A barista reveals a warm croissant next to espresso after a quiet setup.' }),
-  });
+  const context = await requestBinary(
+    baseUrl,
+    `/api/workspaces/ws_1/agent-studio/runs/${contextCreate.body.run.id}/source-file`,
+    Buffer.from('fallback-video-bytes'),
+    { headers },
+  );
   assert.equal(context.response.status, 202);
   const resumed = await waitForRun(baseUrl, 'ws_1', contextCreate.body.run.id, headers, ['awaiting_approval', 'failed']);
   assert.equal(resumed.status, 'awaiting_approval');
-  assert.equal(resumed.artifacts.evidence.items.some((item) => item.sourceType === 'user_note'), true);
+  assert.equal(resumed.artifacts.evidence.source.kind, 'upload');
 
   const cancelCreate = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/runs', {
     method: 'POST',
@@ -373,7 +432,7 @@ try {
   const persisted = JSON.parse(await readFile(dbPath, 'utf8'));
   const workspace = persisted.workspaces.find((item) => item.id === 'ws_1');
   assert.equal(workspace.contentPlanPosts.filter((post) => post.source === 'agent_studio').length, 7);
-  assert.equal(persisted.agentStudioRuns.filter((run) => run.workspaceId === 'ws_1').length, 4);
+  assert.equal(persisted.agentStudioRuns.filter((run) => run.workspaceId === 'ws_1').length, 5);
 
   console.log('Agent Studio API checks passed.');
 } catch (error) {

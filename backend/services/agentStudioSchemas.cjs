@@ -11,15 +11,16 @@ const AgentStudioInputSchema = z.object({
   objective: ShortText,
   signalId: Identifier.optional(),
   sourceUrl: OptionalUrl,
+  uploadId: Identifier.optional(),
   userNotes: z.string().trim().max(4000).optional(),
   idempotencyKey: Identifier.optional(),
 }).strict().superRefine((value, context) => {
   if (value.mode !== 'adapt_reel') return;
-  if (value.signalId || value.sourceUrl || value.userNotes) return;
+  if (value.signalId || value.sourceUrl || value.uploadId || value.userNotes) return;
   context.addIssue({
     code: 'custom',
     path: ['signalId'],
-    message: 'Adapt Reel requires a signal, URL, or user notes.',
+    message: 'Adapt Reel requires a signal, URL, or uploaded video.',
   });
 });
 
@@ -243,6 +244,7 @@ function normalizeAgentStudioInput(input = {}) {
     objective: cleanOptional(input.objective),
     signalId: cleanOptional(input.signalId),
     sourceUrl: cleanOptional(input.sourceUrl),
+    uploadId: cleanOptional(input.uploadId),
     userNotes: cleanOptional(input.userNotes),
     idempotencyKey: cleanOptional(input.idempotencyKey),
   };

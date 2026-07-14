@@ -3,6 +3,7 @@ import {
   Bot,
   Check,
   CircleCheck,
+  FileVideo,
   Film,
   Lightbulb,
   LoaderCircle,
@@ -12,6 +13,7 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
+  Upload,
 } from 'lucide-react';
 
 import {
@@ -40,6 +42,17 @@ async function readResponse(response) {
     throw error;
   }
   return payload;
+}
+
+async function uploadVideoSource(fetcher, url, file) {
+  return readResponse(await fetcher(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': file.type || 'application/octet-stream',
+      'X-File-Name': encodeURIComponent(file.name || 'uploaded-video.mp4'),
+    },
+    body: file,
+  }));
 }
 
 function AgentStageRail({ run, copy }) {
@@ -281,9 +294,13 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [isApproving, setIsApproving] = useState(false);
   const [isHybridizing, setIsHybridizing] = useState(false);
   const [isRetryingSource, setIsRetryingSource] = useState(false);
-  const [contextNotes, setContextNotes] = useState('');
+  const [isUploadingSource, setIsUploadingSource] = useState(false);
+  const [sourceFile, setSourceFile] = useState(null);
+  const [contextFile, setContextFile] = useState(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const pollGenerationRef = useRef(0);
+  const sourceFileRef = useRef(null);
+  const contextFileRef = useRef(null);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
   const selectedSignal = useMemo(
@@ -349,12 +366,21 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
       setError(language === 'en' ? 'Add a clear objective first.' : 'Спочатку додай чітку ціль.');
       return;
     }
-    if (effectiveForm.mode === 'adapt_reel' && !effectiveForm.signalId && !effectiveForm.sourceUrl.trim() && effectiveForm.userNotes.trim().length < 10) {
-      setError(language === 'en' ? 'Choose a signal, paste a URL, or describe the Reel.' : 'Обери сигнал, встав URL або опиши рілс.');
+    if (sourceFile && sourceFile.size > 100 * 1024 * 1024) {
+      setError(language === 'en' ? 'The video file must be 100 MB or smaller.' : 'Відеофайл має бути не більшим за 100 МБ.');
+      return;
+    }
+    if (effectiveForm.mode === 'adapt_reel' && !effectiveForm.signalId && !effectiveForm.sourceUrl.trim() && !sourceFile) {
+      setError(language === 'en' ? 'Choose a signal, paste a video URL, or upload the video.' : 'Обери сигнал, встав URL відео або завантаж файл.');
       return;
     }
     setIsSubmitting(true);
     try {
+      if (sourceFile) {
+        setIsUploadingSource(true);
+        const upload = await uploadVideoSource(fetcher, `${baseUrl}/uploads`, sourceFile);
+        effectiveForm.uploadId = upload.uploadId;
+      }
       const payload = buildAgentStudioCreatePayload(effectiveForm, buildIdempotencyKey());
       const result = await readResponse(await fetcher(`${baseUrl}/runs`, {
         method: 'POST',
@@ -367,23 +393,32 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     } catch (nextError) {
       setError(getAgentStudioErrorMessage(nextError, language));
     } finally {
+      setIsUploadingSource(false);
       setIsSubmitting(false);
     }
   };
 
-  const submitContext = async (event) => {
+  const uploadBlockedSource = async (event) => {
     event.preventDefault();
     setError('');
+    if (!contextFile) {
+      setError(language === 'en' ? 'Choose the video file first.' : 'Спочатку обери відеофайл.');
+      return;
+    }
+    if (contextFile.size > 100 * 1024 * 1024) {
+      setError(language === 'en' ? 'The video file must be 100 MB or smaller.' : 'Відеофайл має бути не більшим за 100 МБ.');
+      return;
+    }
+    setIsUploadingSource(true);
     try {
-      const payload = await readResponse(await fetcher(`${baseUrl}/runs/${encodeURIComponent(run.id)}/context`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userNotes: contextNotes }),
-      }));
+      const payload = await uploadVideoSource(fetcher, `${baseUrl}/runs/${encodeURIComponent(run.id)}/source-file`, contextFile);
       setRun(payload.run);
-      setContextNotes('');
+      setContextFile(null);
+      if (contextFileRef.current) contextFileRef.current.value = '';
     } catch (nextError) {
       setError(getAgentStudioErrorMessage(nextError, language));
+    } finally {
+      setIsUploadingSource(false);
     }
   };
 
@@ -459,7 +494,10 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     pollGenerationRef.current += 1;
     setRun(null);
     setError('');
-    setContextNotes('');
+    setSourceFile(null);
+    setContextFile(null);
+    if (sourceFileRef.current) sourceFileRef.current.value = '';
+    if (contextFileRef.current) contextFileRef.current.value = '';
     setSelectedCandidateId('');
     setIsHybridizing(false);
     setIsRetryingSource(false);
@@ -501,7 +539,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
         <div className="agent-studio-provider-strip">
           <span><Bot size={15} /> Jeryk Manager</span>
           <span>OpenAI Agents SDK</span>
-          <span>Apify source + Gemini evidence</span>
+          <span>Any URL / upload + Gemini evidence</span>
         </div>
         {run && ['completed', 'failed', 'cancelled'].includes(run.status) && <button className="ghost" type="button" onClick={resetRun}><RefreshCw size={15} /><span data-i18n-content>{copy.newRun}</span></button>}
       </header>
@@ -551,9 +589,15 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                   {signals.map((signal) => <option value={signal.id} key={signal.id}>{signal.title || signal.handle || signal.id}</option>)}
                 </select>
               </label>
-              <label className="agent-studio-field agent-studio-wide-field">
-                <span data-i18n-content>{copy.notes}</span>
-                <textarea value={form.userNotes} onChange={(event) => updateForm('userNotes', event.target.value)} placeholder={copy.notesPlaceholder} rows={3} maxLength={4000} />
+              <label className="agent-studio-field agent-studio-wide-field agent-studio-upload-field">
+                <span data-i18n-content>{copy.upload}</span>
+                <input
+                  ref={sourceFileRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/3gpp,video/*"
+                  onChange={(event) => setSourceFile(event.target.files?.[0] || null)}
+                />
+                <small><FileVideo size={14} /> <span data-i18n-content>{sourceFile ? `${copy.uploadSelected}: ${sourceFile.name}` : copy.uploadHint}</span></small>
               </label>
             </div>
           )}
@@ -561,7 +605,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
           {error && <div className="agent-studio-error" role="alert" data-i18n-content>{error}</div>}
           <button className="agent-studio-run-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Play size={18} />}
-            <span data-i18n-content>{isSubmitting ? copy.running : copy.run}</span>
+            <span data-i18n-content>{isUploadingSource ? copy.uploading : isSubmitting ? copy.running : copy.run}</span>
           </button>
         </form>
       ) : (
@@ -587,18 +631,31 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
             )}
 
             {run.status === 'needs_context' && (
-              <form className="agent-studio-context-card" onSubmit={submitContext}>
+              <form className="agent-studio-context-card" onSubmit={uploadBlockedSource}>
                 <Film size={23} />
                 <div>
                   <h2 data-i18n-content>{copy.contextTitle}</h2>
                   <p data-i18n-content>{run.contextRequest?.message || copy.contextDescription}</p>
-                  <textarea value={contextNotes} onChange={(event) => setContextNotes(event.target.value)} placeholder={copy.contextPlaceholder} rows={4} minLength={10} required />
+                  <label className="agent-studio-field agent-studio-upload-field">
+                    <span data-i18n-content>{copy.upload}</span>
+                    <input
+                      ref={contextFileRef}
+                      type="file"
+                      accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/3gpp,video/*"
+                      onChange={(event) => setContextFile(event.target.files?.[0] || null)}
+                      required
+                    />
+                    <small><FileVideo size={14} /> <span data-i18n-content>{contextFile ? `${copy.uploadSelected}: ${contextFile.name}` : copy.uploadHint}</span></small>
+                  </label>
                   <div className="agent-studio-context-actions">
                     <button type="button" onClick={retrySource} disabled={isRetryingSource}>
                       {isRetryingSource ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
                       <span data-i18n-content>{isRetryingSource ? copy.retryingSource : copy.retrySource}</span>
                     </button>
-                    <button className="dark" type="submit"><Play size={16} /><span data-i18n-content>{copy.resume}</span></button>
+                    <button className="dark" type="submit" disabled={isUploadingSource}>
+                      {isUploadingSource ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
+                      <span data-i18n-content>{isUploadingSource ? copy.uploading : copy.resume}</span>
+                    </button>
                   </div>
                 </div>
               </form>

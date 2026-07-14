@@ -116,24 +116,19 @@ function getHeader(response, name) {
   return response?.headers?.get?.(name) || response?.headers?.get?.(name.toLowerCase()) || '';
 }
 
-async function uploadGeminiVideoFromUrl({
-  sourceUrl,
+async function uploadGeminiVideoBytes({
+  bytes: rawBytes,
+  mimeType: rawMimeType = 'video/mp4',
+  displayName = 'dzhero-agent-studio-video',
   apiKey,
   fetchImpl = globalThis.fetch,
   sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
 }) {
-  const download = await fetchImpl(sourceUrl, {
-    headers: { Accept: 'video/*,*/*;q=0.8' },
-    redirect: 'follow',
-  });
-  if (!download.ok) throw new Error(`video_download_failed_${download.status}`);
-  const declaredLength = Number(getHeader(download, 'content-length') || 0);
-  if (declaredLength > maxBytes) throw new Error('video_download_too_large');
-  const bytes = Buffer.from(await download.arrayBuffer());
+  const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes || []);
   if (!bytes.length) throw new Error('video_download_empty');
   if (bytes.length > maxBytes) throw new Error('video_download_too_large');
-  const mimeType = String(getHeader(download, 'content-type') || 'video/mp4').split(';')[0].trim() || 'video/mp4';
+  const mimeType = String(rawMimeType || 'video/mp4').split(';')[0].trim() || 'video/mp4';
   if (!mimeType.startsWith('video/')) throw new Error('video_download_invalid_mime');
 
   const start = await fetchImpl(GEMINI_UPLOAD_API, {
@@ -146,7 +141,7 @@ async function uploadGeminiVideoFromUrl({
       'X-Goog-Upload-Header-Content-Length': String(bytes.length),
       'X-Goog-Upload-Header-Content-Type': mimeType,
     },
-    body: JSON.stringify({ file: { display_name: 'dzhero-agent-studio-reel' } }),
+    body: JSON.stringify({ file: { display_name: String(displayName || 'dzhero-agent-studio-video').slice(0, 180) } }),
   });
   if (!start.ok) throw new Error(`gemini_upload_start_failed_${start.status}`);
   const uploadUrl = getHeader(start, 'x-goog-upload-url');
@@ -186,6 +181,32 @@ async function uploadGeminiVideoFromUrl({
   };
 }
 
+async function uploadGeminiVideoFromUrl({
+  sourceUrl,
+  apiKey,
+  fetchImpl = globalThis.fetch,
+  sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
+}) {
+  const download = await fetchImpl(sourceUrl, {
+    headers: { Accept: 'video/*,*/*;q=0.8' },
+    redirect: 'follow',
+  });
+  if (!download.ok) throw new Error(`video_download_failed_${download.status}`);
+  const declaredLength = Number(getHeader(download, 'content-length') || 0);
+  if (declaredLength > maxBytes) throw new Error('video_download_too_large');
+  const bytes = Buffer.from(await download.arrayBuffer());
+  return uploadGeminiVideoBytes({
+    bytes,
+    mimeType: getHeader(download, 'content-type') || 'video/mp4',
+    displayName: 'dzhero-agent-studio-reel',
+    apiKey,
+    fetchImpl,
+    sleepImpl,
+    maxBytes,
+  });
+}
+
 async function deleteGeminiFile({ fileName, apiKey, fetchImpl = globalThis.fetch }) {
   if (!fileName) return;
   try {
@@ -198,17 +219,17 @@ async function deleteGeminiFile({ fileName, apiKey, fetchImpl = globalThis.fetch
   }
 }
 
-function buildSource({ input = {}, selectedTrend = {}, signal = {}, sourceUrl = '' }) {
+function buildSource({ input = {}, selectedTrend = {}, signal = {}, sourceUrl = '', uploadedFile = null }) {
   return {
-    kind: input.signalId || selectedTrend.signalId || signal?.id ? 'signal' : 'url',
+    kind: uploadedFile ? 'upload' : input.signalId || selectedTrend.signalId || signal?.id ? 'signal' : 'url',
     signalId: input.signalId || selectedTrend.signalId || signal?.id || undefined,
     url: sourceUrl || undefined,
-    title: compactText(selectedTrend.title || signal?.title || signal?.caption || 'Reel selected for adaptation', 500),
+    title: compactText(uploadedFile?.originalName || selectedTrend.title || signal?.title || signal?.caption || 'Video selected for adaptation', 500),
   };
 }
 
-function buildBaseEvidence({ input, selectedTrend, signal, sourceUrl }) {
-  const source = buildSource({ input, selectedTrend, signal, sourceUrl });
+function buildBaseEvidence({ input, selectedTrend, signal, sourceUrl, uploadedFile }) {
+  const source = buildSource({ input, selectedTrend, signal, sourceUrl, uploadedFile });
   const items = [{
     id: 'ev_source_metadata',
     sourceType: 'source_metadata',
@@ -280,6 +301,7 @@ async function analyzeAgentStudioVideo({
   fetchImpl = globalThis.fetch,
   resolveSource,
   sleepImpl,
+  uploadedFile: providedUpload = null,
 }) {
   const publicSourceUrl = getPublicSourceUrl({ input, selectedTrend, signal });
   let resolvedSignal = signal || {};
@@ -309,8 +331,9 @@ async function analyzeAgentStudioVideo({
     selectedTrend,
     signal: resolvedSignal,
     sourceUrl: publicSourceUrl || sourceUrl,
+    uploadedFile: providedUpload,
   });
-  if (!sourceUrl) {
+  if (!sourceUrl && !providedUpload?.uri) {
     return buildUnavailableEvidence({
       ...base,
       reason: 'No playable video URL was supplied.',
@@ -329,7 +352,7 @@ async function analyzeAgentStudioVideo({
     });
   }
 
-  let uploadedFile = null;
+  let uploadedFile = providedUpload?.uri ? providedUpload : null;
   const resolvedVideoUrl = String(
     resolvedSignal.videoUrl
     || resolvedSignal.importedMetadata?.videoUrl
@@ -337,7 +360,7 @@ async function analyzeAgentStudioVideo({
     || resolvedSignal.importedMetadata?.apify?.mediaUrls?.[0]
     || '',
   ).trim();
-  if (resolvedVideoUrl && !isYouTubeUrl(sourceUrl)) {
+  if (!uploadedFile && resolvedVideoUrl && !isYouTubeUrl(sourceUrl)) {
     try {
       uploadedFile = await uploadGeminiVideoFromUrl({
         sourceUrl,
@@ -456,6 +479,7 @@ module.exports = {
   GeminiVideoResultSchema,
   parseGeminiInteractionText,
   normalizeGeminiVideoResult,
+  uploadGeminiVideoBytes,
   uploadGeminiVideoFromUrl,
   deleteGeminiFile,
   analyzeAgentStudioVideo,

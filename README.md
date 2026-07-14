@@ -9,13 +9,13 @@ Agent Studio is an isolated multi-agent workflow that turns one real short-form 
 The user starts in one of two ways:
 
 - **Find a trend for me** — the Trend Analyst selects the best existing signal for the business objective.
-- **Adapt a Reel** — the user supplies an existing DZHERO signal, a public URL, or a labelled description of what happens in the Reel.
+- **Adapt a Reel** — the user supplies an existing DZHERO signal, any public video URL, or the original MP4/MOV/WebM/M4V file from their device.
 
 Both modes enter the same bounded production workflow:
 
 `Trend Analyst → Gemini video evidence → Brand Strategist → Creative Producer → Critic → Content Planner → Jeryk Manager → human approval`
 
-OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. For Instagram and TikTok URLs, the backend first reuses the existing Apify signal provider to resolve a downloadable video, transfers that media into the Gemini Files API, waits for processing, and deletes the temporary Gemini file after analysis. YouTube URLs continue to use Gemini's native URL input. Observations, metadata, and user notes remain separate evidence types. If neither the source resolver nor Gemini can obtain the video, the run pauses instead of inventing scenes.
+OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. For Instagram and TikTok URLs, the backend first reuses the existing Apify signal provider to resolve a downloadable video, transfers that media into the Gemini Files API, waits for processing, and deletes the temporary Gemini file after analysis. YouTube URLs continue to use Gemini's native URL input. If a platform blocks public retrieval, the user uploads the original video instead of manually describing it; the same grounded Gemini evidence pipeline then resumes automatically. Observations and metadata remain separate evidence types. If no playable source is available, the run pauses instead of inventing scenes.
 
 The final package contains:
 
@@ -40,6 +40,7 @@ The following work was added on the isolated `hackathon/openai-build-week` branc
 - OpenAI Agents SDK specialists using GPT-5.6;
 - Gemini video evidence with explicit provenance and honest `needs_context` degradation;
 - automatic Apify-to-Gemini media bridging for supported public Instagram and TikTok URLs;
+- authenticated original-video upload for private, login-only, and otherwise blocked sources;
 - authenticated workspace-scoped create, poll, context, cancel, hybrid, and approve APIs;
 - the separate English/Ukrainian Agent Studio Beta interface;
 - approval of one candidate into exactly seven existing Content Plan entries;
@@ -222,13 +223,12 @@ The repository also contains regression coverage for authentication, workspace i
 
 - Agent Studio uses polling rather than server-sent events.
 - Interrupted active runs become explicit retryable failures after a backend restart; automatic distributed resume is not part of the Build Week scope.
-- Public platforms may block video retrieval. DZHERO asks for labelled user context in that case.
+- Public platforms may block video retrieval. DZHERO requests the original video file in that case and never presents an inaccessible page as observed evidence.
 - Autonomous publishing and automatic Brand Brain changes are intentionally excluded.
 
 ## Next steps
 
 - per-run token and cost telemetry;
-- uploaded-video support;
 - durable job queue and explicit retry;
 - team approval roles and version comparison;
 - post-performance feedback for future signal selection.

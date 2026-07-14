@@ -30,7 +30,11 @@ const {
   orchestrateAgentStudio,
   orchestrateAgentStudioHybrid,
 } = require('./services/agentStudioAgents.cjs');
-const { analyzeAgentStudioVideo } = require('./services/agentStudioVideoTool.cjs');
+const {
+  analyzeAgentStudioVideo,
+  uploadGeminiVideoBytes,
+  deleteGeminiFile,
+} = require('./services/agentStudioVideoTool.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
 const {
   normalizeBrandBrain,
@@ -497,6 +501,7 @@ function normalizeDbShape(db = {}) {
   db.testerAccessGrants ||= [];
   db.demoSessions ||= [];
   db.agentStudioRuns ||= [];
+  db.agentStudioUploads ||= [];
   return db;
 }
 
@@ -3632,6 +3637,63 @@ function getAiProviderStatus() {
 }
 
 const agentStudioRunsInFlight = new Set();
+const agentStudioVideoBody = express.raw({
+  type: () => true,
+  limit: '100mb',
+});
+
+function getAgentStudioUploadName(req) {
+  const encoded = String(req.get('x-file-name') || '').trim();
+  if (!encoded) return 'uploaded-video';
+  try {
+    return decodeURIComponent(encoded).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'uploaded-video';
+  } catch {
+    return encoded.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 180) || 'uploaded-video';
+  }
+}
+
+async function uploadAgentStudioVideo(req) {
+  const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || []);
+  if (!bytes.length) {
+    const error = new Error('agent_studio_video_file_required');
+    error.status = 400;
+    throw error;
+  }
+  const rawMimeType = String(req.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
+  const allowedMimeTypes = new Set([
+    'video/mp4',
+    'video/quicktime',
+    'video/webm',
+    'video/x-m4v',
+    'video/3gpp',
+    'application/octet-stream',
+  ]);
+  if (!allowedMimeTypes.has(rawMimeType)) {
+    const error = new Error('agent_studio_video_type_unsupported');
+    error.status = 415;
+    throw error;
+  }
+  const originalName = getAgentStudioUploadName(req);
+  const inferredMimeType = rawMimeType === 'application/octet-stream'
+    ? originalName.toLowerCase().endsWith('.mov') ? 'video/quicktime'
+      : originalName.toLowerCase().endsWith('.webm') ? 'video/webm'
+        : 'video/mp4'
+    : rawMimeType;
+  const uploadVideo = agentStudioTestProvider?.uploadVideo || uploadGeminiVideoBytes;
+  const uploaded = await uploadVideo({
+    bytes,
+    mimeType: inferredMimeType,
+    displayName: originalName,
+    apiKey: GEMINI_API_KEY,
+  });
+  return {
+    name: uploaded.name,
+    uri: uploaded.uri,
+    mimeType: uploaded.mimeType || inferredMimeType,
+    originalName,
+    size: bytes.length,
+  };
+}
 
 function getAgentStudioConfig() {
   const missing = [
@@ -3756,6 +3818,7 @@ async function finalizeAgentStudioResult(runId, result) {
       });
       nextRun = {
         ...nextRun,
+        sourceUpload: null,
         artifacts: {
           ...(nextRun.artifacts || {}),
           selectedTrend: result.selectedTrend,
@@ -3775,6 +3838,7 @@ async function finalizeAgentStudioResult(runId, result) {
         : run;
       nextRun = {
         ...nextRun,
+        sourceUpload: null,
         artifacts: result.finalPackage,
         hybridRequest: null,
         error: null,
@@ -3802,7 +3866,7 @@ async function failAgentStudioRun(runId, cause) {
       error,
       now: new Date().toISOString(),
     });
-    db.agentStudioRuns[index] = failed;
+    db.agentStudioRuns[index] = { ...failed, sourceUpload: null };
     await writeDb(db);
     return failed;
   });
@@ -3820,15 +3884,17 @@ async function executeAgentStudioRun(runId) {
     if (!workspace) throw new Error('workspace_not_found');
     const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
     const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
-    const analyzeVideo = agentStudioTestProvider?.analyzeVideo || ((args) => analyzeAgentStudioVideo({
+    const providerAnalyzeVideo = agentStudioTestProvider?.analyzeVideo || analyzeAgentStudioVideo;
+    const analyzeVideo = (args) => providerAnalyzeVideo({
       ...args,
+      uploadedFile: run.sourceUpload || null,
       resolveSource: ({ sourceUrl }) => resolveAgentStudioVideoSource({
         token: APIFY_TOKEN,
         sourceUrl,
         workspaceId: run.workspaceId,
         market: workspace.market || 'global',
       }),
-    }));
+    });
     const result = await orchestrateAgentStudio({
       runId,
       input: run.input,
@@ -5180,6 +5246,39 @@ app.get('/api/workspaces/:workspaceId/agent-studio/config', async (req, res) => 
   res.json(getAgentStudioConfig());
 });
 
+app.post('/api/workspaces/:workspaceId/agent-studio/uploads', expensiveLimiter, agentStudioVideoBody, async (req, res, next) => {
+  try {
+    if (!requireAgentStudioEnabled(res)) return;
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    const file = await uploadAgentStudioVideo(req);
+    const now = Date.now();
+    const upload = {
+      id: `agent_upload_${crypto.randomUUID().replaceAll('-', '')}`,
+      workspaceId: workspace.id,
+      userId: req.authUser.id,
+      file,
+      createdAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + (45 * 60 * 1000)).toISOString(),
+    };
+    db.agentStudioUploads = (db.agentStudioUploads || [])
+      .filter((item) => Date.parse(item.expiresAt || '') > now);
+    db.agentStudioUploads.push(upload);
+    await writeDb(db);
+    res.status(201).json({
+      uploadId: upload.id,
+      file: { name: file.originalName, size: file.size, mimeType: file.mimeType },
+    });
+  } catch (error) {
+    if (error?.status) {
+      res.status(error.status).json({ error: error.message, message: error.message });
+      return;
+    }
+    next(error);
+  }
+});
+
 app.post('/api/workspaces/:workspaceId/agent-studio/runs', expensiveLimiter, async (req, res, next) => {
   try {
     if (!requireAgentStudioEnabled(res)) return;
@@ -5206,12 +5305,31 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs', expensiveLimiter, asy
         return;
       }
     }
+    const sourceUpload = input.uploadId
+      ? (db.agentStudioUploads || []).find((item) => (
+        item.id === input.uploadId
+        && item.workspaceId === workspace.id
+        && item.userId === req.authUser.id
+        && Date.parse(item.expiresAt || '') > Date.now()
+      ))
+      : null;
+    if (input.uploadId && !sourceUpload) {
+      res.status(400).json({
+        error: 'agent_studio_upload_invalid',
+        message: 'The uploaded video expired or does not belong to this workspace.',
+      });
+      return;
+    }
     assertUsageAvailable(db, workspace.id, 'aiOperations', 1, req.authUser);
     const run = createAgentStudioRun({
       workspaceId: workspace.id,
       userId: req.authUser.id,
       input,
     });
+    if (sourceUpload) {
+      run.sourceUpload = sourceUpload.file;
+      db.agentStudioUploads = (db.agentStudioUploads || []).filter((item) => item.id !== sourceUpload.id);
+    }
     db.agentStudioRuns.unshift(run);
     incrementUsage(db, workspace.id, USAGE_METRICS.aiOperations, 1);
     await writeDb(db);
@@ -5272,6 +5390,57 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/context', expens
     res.status(202).json({ run: toPublicAgentStudioRun(resumed) });
     scheduleAgentStudioRun(resumed.id);
   } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/source-file', expensiveLimiter, agentStudioVideoBody, async (req, res, next) => {
+  let uploaded = null;
+  try {
+    if (!requireAgentStudioEnabled(res)) return;
+    let db = await readDb();
+    let index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === req.params.workspaceId
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    if (db.agentStudioRuns[index].status !== 'needs_context') {
+      res.status(409).json({ error: 'agent_studio_context_not_requested' });
+      return;
+    }
+    uploaded = await uploadAgentStudioVideo(req);
+    db = await readDb();
+    index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === req.params.workspaceId
+    ));
+    const run = index >= 0 ? db.agentStudioRuns[index] : null;
+    if (!run || run.status !== 'needs_context') {
+      await deleteGeminiFile({ fileName: uploaded.name, apiKey: GEMINI_API_KEY });
+      res.status(409).json({ error: 'agent_studio_context_not_requested' });
+      return;
+    }
+    const resumed = transitionAgentStudioRun(run, 'analyzing_video', {
+      agent: 'Jeryk Manager',
+      summary: 'The user uploaded the source video for automatic Gemini analysis.',
+      now: new Date().toISOString(),
+    });
+    db.agentStudioRuns[index] = {
+      ...resumed,
+      sourceUpload: uploaded,
+      contextRequest: null,
+      error: null,
+    };
+    await writeDb(db);
+    res.status(202).json({ run: toPublicAgentStudioRun(db.agentStudioRuns[index]) });
+    scheduleAgentStudioRun(run.id);
+  } catch (error) {
+    if (uploaded?.name) await deleteGeminiFile({ fileName: uploaded.name, apiKey: GEMINI_API_KEY });
+    if (error?.status) {
+      res.status(error.status).json({ error: error.message, message: error.message });
+      return;
+    }
     next(error);
   }
 });

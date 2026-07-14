@@ -81,8 +81,9 @@ assert.doesNotMatch(getAgentStudioErrorMessage({ error: 'agent_studio_disabled' 
 const pageSource = readFileSync(new URL('../src/AgentStudioPage.jsx', import.meta.url), 'utf8');
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 assert.match(pageSource, /\/agent-studio`/);
-assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/context/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/retry-source/);
+assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/source-file/);
+assert.match(pageSource, /\$\{baseUrl\}\/uploads/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
 assert.match(pageSource, /shouldPollAgentStudioRun/);
