@@ -6,6 +6,8 @@
     "build": "vite build",
     "test:i18n-core": "node scripts/test-i18n-core.mjs",
     "test:i18n-provider": "node scripts/test-i18n-provider.mjs",
+    "test:i18n-components": "node scripts/test-i18n-component-coverage.mjs",
+    "test:i18n-render": "node scripts/test-render-i18n.mjs",
     "test:brand-brain": "node scripts/test-brand-brain.mjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
     "check:calendar-overflow": "node scripts/check-calendar-overflow.js",

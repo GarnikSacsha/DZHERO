@@ -22,6 +22,8 @@ const enT = createTranslator('en');
 const ukT = createTranslator('uk');
 assert.equal(enT('common.cancel'), 'Cancel');
 assert.equal(ukT('common.cancel'), 'Скасувати');
+assert.equal(enT('auth.brandScan.addSources'), 'Add sources');
+assert.equal(ukT('settings.sources.noConnectedSources'), 'Поки без підключених джерел');
 assert.equal(enT('common.itemsCount', { count: 3 }), '3 items');
 assert.equal(interpolateMessage('{count} items', { count: 0 }), '0 items');
 assert.throws(() => enT('missing.key'), /Missing translation key: missing\.key \(en\)/);

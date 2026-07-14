@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 
 import { createTranslator, getLocaleTag, normalizeLanguage } from './i18nCore.mjs';
+import { setRenderLanguage, translateUiValue } from './renderI18n.mjs';
 
 export const LANGUAGE_STORAGE_KEY = 'insta-producer-language';
 
@@ -27,6 +28,7 @@ function readInitialLanguage(explicitLanguage) {
 
 export function I18nProvider({ children, initialLanguage }) {
   const [language, setLanguageState] = useState(() => readInitialLanguage(initialLanguage));
+  setRenderLanguage(language);
   const setLanguage = useCallback((value) => {
     setLanguageState(normalizeLanguage(value));
   }, []);
@@ -49,6 +51,7 @@ export function I18nProvider({ children, initialLanguage }) {
       setLanguage,
       locale,
       t,
+      translateText: (value) => translateUiValue(value, language),
       formatNumber: (number, options) => new Intl.NumberFormat(locale, options).format(number),
       formatDate: (date, options) => new Intl.DateTimeFormat(locale, options).format(date),
     }),

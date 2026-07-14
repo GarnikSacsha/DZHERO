@@ -7,4 +7,13 @@ export const en = Object.freeze({
   'common.error': 'Error',
   'common.itemsCount': '{count} items',
   'language.interface': 'Interface language',
+  'auth.brandScan.addBusiness': 'Add business',
+  'auth.brandScan.addSources': 'Add sources',
+  'auth.brandScan.publicContext': 'Public context',
+  'auth.brandScan.examplePlaceholder': 'For example: a coffee shop in Lviv serving breakfast',
+  'auth.brandScan.instagramHint': 'Paste an Instagram profile to collect brand context.',
+  'auth.brandScan.tiktokHint': 'Paste a TikTok profile or video to find short-form signals.',
+  'auth.brandScan.youtubeHint': 'Paste YouTube Shorts or a channel to collect topics and formats.',
+  'auth.brandScan.startingBusinessHint': 'A short description is enough if the business is just launching.',
+  'settings.sources.noConnectedSources': 'No connected sources yet',
 });

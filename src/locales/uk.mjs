@@ -7,4 +7,13 @@ export const uk = Object.freeze({
   'common.error': 'Помилка',
   'common.itemsCount': '{count} елементів',
   'language.interface': 'Мова інтерфейсу',
+  'auth.brandScan.addBusiness': 'Додати бізнес',
+  'auth.brandScan.addSources': 'Додати джерела',
+  'auth.brandScan.publicContext': 'Публічний контекст',
+  'auth.brandScan.examplePlaceholder': 'Наприклад: кавʼярня у Львові зі сніданками',
+  'auth.brandScan.instagramHint': 'Встав профіль Instagram, щоб зібрати контекст бренду.',
+  'auth.brandScan.tiktokHint': 'Встав TikTok-профіль або відео, щоб знайти short-form сигнали.',
+  'auth.brandScan.youtubeHint': 'Встав YouTube Shorts або канал, щоб зібрати теми й формати.',
+  'auth.brandScan.startingBusinessHint': 'Короткого опису достатньо, якщо бізнес тільки запускається.',
+  'settings.sources.noConnectedSources': 'Поки без підключених джерел',
 });

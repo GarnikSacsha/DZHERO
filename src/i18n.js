@@ -869,7 +869,7 @@ const EN_REPLACEMENTS = [
   [/джерело/g, 'source'],
 ];
 
-function translateValue(value, lang) {
+export function translateValue(value, lang) {
   if (lang !== 'en') return value;
   const trimmed = value.trim();
   let translated = EN_TEXT[trimmed] || trimmed;
