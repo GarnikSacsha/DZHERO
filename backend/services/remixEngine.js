@@ -137,6 +137,18 @@ FEW-SHOT QUALITY TARGETS:
 /**
  * Main Remix Engine Generator Function
  */
+function createRemixProviderError(provider, cause) {
+  const error = new Error(`${provider} remix generation failed`);
+  error.code = 'remix_provider_failed';
+  error.status = 502;
+  error.payload = {
+    error: 'remix_provider_failed',
+    message: 'AI-адаптація не завершилась. Спробуй ще раз за хвилину.',
+  };
+  error.cause = cause;
+  return error;
+}
+
 async function generateRemix(globalInsight, businessBrief) {
   const normalizedBrandBrain = normalizeBrandBrain(businessBrief);
   const enrichedBusinessBrief = {
@@ -184,6 +196,7 @@ async function generateRemix(globalInsight, businessBrief) {
       });
     } catch (err) {
       console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
+      throw createRemixProviderError('Gemini', err);
     }
   } else if (openaiApiKey) {
     try {
@@ -195,6 +208,7 @@ async function generateRemix(globalInsight, businessBrief) {
       });
     } catch (err) {
       console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
+      throw createRemixProviderError('OpenAI', err);
     }
   }
 
