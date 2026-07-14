@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { translateValue } from './i18n.js';
+import { translateValue } from './interfaceTranslations.mjs';
 
 const TRANSLATED_ATTRIBUTES = new Set(['alt', 'aria-label', 'placeholder', 'title']);
 const reactCreateElement = React.createElement;

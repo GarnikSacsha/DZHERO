@@ -362,7 +362,7 @@ function MobilePreviewFrame({ src }) {
 }
 
 function App() {
-  const { language, setLanguage, t } = useI18n();
+  const { language, setLanguage, t, translateText } = useI18n();
   const [page, setPage] = useState(getInitialAppPage);
   const [market, setMarket] = useState('all');
   const [data, setData] = useState(null);
@@ -575,7 +575,7 @@ function App() {
   }, [currentUser, page, workspaceId]);
 
   const notify = (message) => {
-    setToast(message);
+    setToast(translateText(message));
     window.clearTimeout(window.__toastTimer);
     window.__toastTimer = window.setTimeout(() => setToast(''), 2600);
   };
