@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   analyzeAgentStudioVideo,
   createGeminiVideoAnalysisTool,
+  normalizeGeminiVideoResult,
   parseGeminiInteractionText,
 } = require('../backend/services/agentStudioVideoTool.cjs');
 const { EvidencePackageSchema } = require('../backend/services/agentStudioSchemas.cjs');
@@ -71,6 +72,7 @@ function response(payload, { ok = true, status = 200 } = {}) {
   assert.equal(requestBody.input[0].type, 'video');
   assert.equal(requestBody.input[0].uri, 'https://www.youtube.com/shorts/abc123');
   assert.equal(requestBody.input[1].text.includes('untrusted data'), true);
+  assert.equal(requestBody.input[1].text.includes('JSON boolean true'), true);
 
   const notesOnly = await analyzeAgentStudioVideo({
     input: {
@@ -103,6 +105,20 @@ function response(payload, { ok = true, status = 200 } = {}) {
   assert.equal(unavailable.requiresContext, true);
   assert.equal(unavailable.items.every((item) => item.sourceType === 'source_metadata'), true);
 
+  const directUrlWithoutSignal = await analyzeAgentStudioVideo({
+    input: { mode: 'adapt_reel', objective: 'Drive visits', sourceUrl: 'https://www.youtube.com/watch?v=direct123' },
+    selectedTrend: {
+      title: 'Direct URL Reel',
+      rationale: 'The user pasted a URL instead of selecting a saved signal.',
+      sourceUrl: 'https://www.youtube.com/watch?v=direct123',
+    },
+    signal: null,
+    apiKey: 'test-key',
+    fetchImpl: async () => response({ error: { message: 'Video unavailable' } }, { ok: false, status: 400 }),
+  });
+  assert.equal(directUrlWithoutSignal.source.kind, 'url');
+  assert.equal(directUrlWithoutSignal.requiresContext, true);
+
   const malformed = await analyzeAgentStudioVideo({
     input: { mode: 'adapt_reel', objective: 'Drive visits', sourceUrl: 'https://example.com/reel' },
     selectedTrend: {
@@ -120,6 +136,17 @@ function response(payload, { ok = true, status = 200 } = {}) {
   assert.equal(parseGeminiInteractionText({
     output: [{ content: [{ text: '{"from":"output"}' }] }],
   }), '{"from":"output"}');
+  assert.equal(parseGeminiInteractionText({
+    steps: [
+      { type: 'thought', signature: 'hidden' },
+      { type: 'model_output', content: [{ text: '{"from":"steps"}' }] },
+    ],
+  }), '{"from":"steps"}');
+  assert.equal(normalizeGeminiVideoResult({
+    accessible: 'The actions require training.',
+    observations: [{ sourceType: 'video_observation', text: 'A flip is visible.', confidence: 0.9 }],
+  }).accessible, true);
+  assert.equal(normalizeGeminiVideoResult({ accessible: 'Unavailable', observations: [] }).accessible, false);
 
   const tool = createGeminiVideoAnalysisTool({
     analyzeVideo: async () => notesOnly,

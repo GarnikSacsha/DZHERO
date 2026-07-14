@@ -3717,7 +3717,7 @@ async function persistAgentStudioEvent(runId, event) {
         instructions: [event.summary || 'Revise the creative using the critic feedback.'],
         now,
       });
-    } else if (event.status === 'started' && event.stage !== run.status) {
+    } else if (event.status === 'started' && event.stage !== run.status && event.stage !== 'awaiting_approval') {
       nextRun = transitionAgentStudioRun(run, event.stage, {
         agent: event.agent,
         summary: event.summary,
@@ -3761,10 +3761,19 @@ async function finalizeAgentStudioResult(runId, result) {
         },
       };
     } else {
+      const now = new Date().toISOString();
+      nextRun = run.status === 'planning'
+        ? transitionAgentStudioRun(run, 'awaiting_approval', {
+          agent: 'Jeryk Manager',
+          traceStatus: 'completed',
+          summary: result.finalPackage?.managerReview?.headline || 'Final package is ready for human approval.',
+          now,
+        })
+        : run;
       nextRun = {
-        ...run,
+        ...nextRun,
         artifacts: result.finalPackage,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       };
     }
     db.agentStudioRuns[index] = nextRun;
