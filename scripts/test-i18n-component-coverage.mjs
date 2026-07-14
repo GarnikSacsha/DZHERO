@@ -36,6 +36,14 @@ const renderTimeLocalized = [
   'ReelsTable',
   'SignalsReelsTable',
   'Competitors',
+  'AssistantDrawer',
+  'BrandScanStudioPanel',
+  'RemixStudio',
+  'IdeasBoard',
+  'AgentPipeline',
+  'BrandBrain',
+  'VideoTaskQueue',
+  'CreatorAssistant',
 ];
 
 for (const name of renderTimeLocalized) {
