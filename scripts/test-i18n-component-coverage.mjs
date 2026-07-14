@@ -29,6 +29,13 @@ const renderTimeLocalized = [
   'HomeDashboard',
   'ProductRoadmap',
   'TikTokSignalsDemo',
+  'ViralBank',
+  'ApifySignalImportModal',
+  'BusinessPlaybooks',
+  'StrategyBrain',
+  'ReelsTable',
+  'SignalsReelsTable',
+  'Competitors',
 ];
 
 for (const name of renderTimeLocalized) {
