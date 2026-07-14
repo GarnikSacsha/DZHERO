@@ -9,6 +9,7 @@ const {
   getDailyAutomaticSpend,
   canStartDiscoveryRun,
   claimDiscoveryRun,
+  prepareAutomaticDiscovery,
   executeAutomaticDiscovery,
 } = discovery;
 const { mapTikTokApifyItem } = provider;
@@ -16,6 +17,58 @@ const { mapTikTokApifyItem } = provider;
 const now = new Date('2026-07-08T00:00:00.000Z');
 const sixHoursLater = new Date('2026-07-08T06:00:00.000Z');
 const twelveHoursLater = new Date('2026-07-08T12:00:00.000Z');
+const testerPolicy = {
+  dailyBudgetUsd: 0.4,
+  dailyTarget: 10,
+  maxBudgetedRunsPerDay: 1,
+  resultLimitPerPlatform: 5,
+  maxPlannedCalls: 2,
+};
+
+const testerPolicyState = {
+  workspaces: [{
+    id: 'ws_tester_policy',
+    brief: { businessType: 'coffee shop', niche: 'coffee', location: 'Kyiv' },
+    discoverySettings: {
+      enabled: true,
+      dailyBudgetUsd: 0.8,
+      platforms: ['instagram', 'tiktok'],
+    },
+  }],
+  sources: [
+    { id: 'src_tester_ig', workspaceId: 'ws_tester_policy', handle: '@coffee_ig', type: 'instagram' },
+    { id: 'src_tester_tt', workspaceId: 'ws_tester_policy', handle: '@coffee_tt', type: 'tiktok' },
+  ],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+const testerPrepared = prepareAutomaticDiscovery({
+  state: testerPolicyState,
+  workspaceId: 'ws_tester_policy',
+  now,
+  force: true,
+  policy: testerPolicy,
+});
+assert.equal(testerPrepared.run.budgetUsd, 0.4);
+assert.equal(testerPrepared.execution.plannedCalls.length, 2);
+assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.platform), ['instagram', 'tiktok']);
+assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.limit), [5, 5]);
+assert.equal(testerPrepared.execution.maxWinners, 10);
+assert.ok(testerPrepared.run.reservedCostUsd <= 0.4);
+
+testerPrepared.run.status = 'completed';
+testerPrepared.run.attemptedCallCount = 2;
+testerPrepared.run.completedAt = now.toISOString();
+const testerSecondRun = prepareAutomaticDiscovery({
+  state: testerPolicyState,
+  workspaceId: 'ws_tester_policy',
+  now: new Date('2026-07-08T14:00:00.000Z'),
+  force: true,
+  policy: testerPolicy,
+});
+assert.equal(testerSecondRun.execution, null);
+assert.equal(testerSecondRun.reason, 'daily_run_limit');
 
 const settings = defaultDiscoverySettings(now);
 

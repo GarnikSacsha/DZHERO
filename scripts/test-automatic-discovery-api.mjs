@@ -138,6 +138,7 @@ module.exports = async function automaticDiscoveryTestProvider(call = {}) {
       platform: call.platform || null,
       mode: call.mode || call.inputType || null,
       input: call.input || call.inputValue || null,
+      limit: Number(call.limit || 0),
       downloadVideos: Boolean(call.downloadVideos || call.downloadVideo),
     }, null, 2));
   }
@@ -164,6 +165,7 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     NODE_ENV: 'test',
     DB_PATH: dbPath,
     APIFY_TOKEN: 'test-apify-token',
+    ADMIN_TOKEN: 'test-admin-token',
     AUTOMATIC_DISCOVERY_ENABLED: 'false',
     AUTOMATIC_DISCOVERY_TEST_PROVIDER: providerPath,
     AUTOMATIC_DISCOVERY_TEST_PROVIDER_STARTED_PATH: providerStartedPath,
@@ -184,17 +186,25 @@ child.stderr.on('data', (chunk) => {
 try {
   await waitForServer(baseUrl, child);
 
-  const auth = await requestJson(baseUrl, '/api/auth/email', {
+  const auth = await requestJson(baseUrl, '/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email: 'automatic-discovery-smoke@example.com' }),
+    body: JSON.stringify({
+      name: 'Automatic Discovery Smoke',
+      email: 'automatic-discovery-smoke@example.com',
+      password: 'test-password-1',
+    }),
   });
   assert.equal(auth.response.status, 201);
   assert.ok(auth.body?.token);
   assert.ok(auth.body?.user?.workspaceId);
 
-  const authSecond = await requestJson(baseUrl, '/api/auth/email', {
+  const authSecond = await requestJson(baseUrl, '/api/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email: 'automatic-discovery-other@example.com' }),
+    body: JSON.stringify({
+      name: 'Automatic Discovery Other',
+      email: 'automatic-discovery-other@example.com',
+      password: 'test-password-2',
+    }),
   });
   assert.equal(authSecond.response.status, 201);
   assert.ok(authSecond.body?.token);
@@ -210,6 +220,20 @@ try {
     authorization: `Bearer ${authSecond.body.token}`,
   };
 
+  const verifiedGoogleState = JSON.parse(await readFile(dbPath, 'utf8'));
+  const verifiedGoogleUser = verifiedGoogleState.users.find((user) => user.id === auth.body.user.id);
+  verifiedGoogleUser.authProvider = 'google';
+  verifiedGoogleUser.oauthProviders = ['google'];
+  await writeFile(dbPath, `${JSON.stringify(verifiedGoogleState, null, 2)}\n`, 'utf8');
+
+  const testerGrant = await requestJson(baseUrl, '/api/admin/testers/grant', {
+    method: 'POST',
+    headers: { 'x-admin-token': 'test-admin-token' },
+    body: JSON.stringify({ email: 'automatic-discovery-smoke@example.com' }),
+  });
+  assert.equal(testerGrant.response.status, 201);
+  assert.equal(testerGrant.body?.tester?.status, 'active');
+
   const unauthenticatedGet = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`);
   assert.equal(unauthenticatedGet.response.status, 401);
 
@@ -224,7 +248,7 @@ try {
   });
   assert.equal(initialStatus.response.status, 200);
   assert.equal(initialStatus.body?.settings?.enabled, true);
-  assert.equal(initialStatus.body?.settings?.dailyBudgetUsd, 0.8);
+  assert.equal(initialStatus.body?.settings?.dailyBudgetUsd, 0.4);
   assert.equal(initialStatus.body?.settings?.viralScoreThreshold, 70);
   assert.equal(initialStatus.body?.status?.dailySpendUsd, 0);
   assert.equal(initialStatus.body?.status?.dailySpendIsEstimated, false);
@@ -245,14 +269,14 @@ try {
       enabled: true,
       dailyBudgetUsd: 0.8,
       viralScoreThreshold: 56,
-      platforms: ['instagram'],
+      platforms: ['instagram', 'tiktok'],
     }),
   });
   assert.equal(patchedStatus.response.status, 200);
   assert.equal(patchedStatus.body?.settings?.enabled, true);
-  assert.equal(patchedStatus.body?.settings?.dailyBudgetUsd, 0.8);
+  assert.equal(patchedStatus.body?.settings?.dailyBudgetUsd, 0.4);
   assert.equal(patchedStatus.body?.settings?.viralScoreThreshold, 56);
-  assert.deepEqual(patchedStatus.body?.settings?.platforms, ['instagram']);
+  assert.deepEqual(patchedStatus.body?.settings?.platforms, ['instagram', 'tiktok']);
 
   const forbiddenGet = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery`, {
     headers,
@@ -336,7 +360,7 @@ try {
     enabled: true,
     dailyBudgetUsd: 0.8,
     viralScoreThreshold: 56,
-    platforms: ['instagram'],
+    platforms: ['instagram', 'tiktok'],
   };
   workspace.notes = 'pre-existing workspace note';
   runState.sources.unshift({
@@ -364,6 +388,9 @@ try {
   });
 
   await waitForFile(providerStartedPath);
+
+  const startedProviderCall = JSON.parse(await readFile(providerStartedPath, 'utf8'));
+  assert.equal(startedProviderCall.limit, 5);
 
   const persistedClaimState = JSON.parse(await readFile(dbPath, 'utf8'));
   const activeRun = persistedClaimState.discoveryRuns?.find((run) => run.workspaceId === workspaceId && run.status === 'running');
@@ -402,9 +429,12 @@ try {
   const manualRun = await manualRunPromise;
   assert.equal(manualRun.response.status, 201);
   assert.equal(manualRun.body?.run?.status, 'completed');
-  assert.equal(manualRun.body?.run?.budgetUsd, 0.8);
+  assert.equal(manualRun.body?.run?.budgetUsd, 0.4);
   assert.equal(manualRun.body?.run?.actualCostUsd, null);
-  assert.ok(manualRun.body?.run?.estimatedCostUsd > 0);
+  assert.equal(manualRun.body?.run?.attemptedCallCount, 2);
+  assert.equal(manualRun.body?.run?.requestedCount, 2);
+  assert.equal(manualRun.body?.acceptedSignals, 0);
+  assert.ok(manualRun.body?.run?.estimatedCostUsd > 0 && manualRun.body?.run?.estimatedCostUsd <= 0.4);
 
   const persistedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const persistedRun = persistedState.discoveryRuns?.find((run) => run.id === activeRun.id);
@@ -417,8 +447,17 @@ try {
   const estimatedSpendStatus = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery`, {
     headers,
   });
-  assert.equal(estimatedSpendStatus.body?.status?.dailySpendUsd, 0);
-  assert.equal(estimatedSpendStatus.body?.status?.dailySpendIsEstimated, false);
+  assert.ok(estimatedSpendStatus.body?.status?.dailySpendUsd > 0);
+  assert.equal(estimatedSpendStatus.body?.status?.dailySpendIsEstimated, true);
+  assert.equal(estimatedSpendStatus.body?.status?.canRunNow, false);
+
+  const secondTesterRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  assert.equal(secondTesterRun.response.status, 429);
+  assert.equal(secondTesterRun.body?.error, 'automatic_daily_run_limit_reached');
 
   const budgetBlockedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const budgetWorkspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);
@@ -442,7 +481,7 @@ try {
     body: JSON.stringify({}),
   });
   assert.equal(blockedRun.response.status, 429);
-  assert.equal(blockedRun.body?.error, 'automatic_budget_reached');
+  assert.equal(blockedRun.body?.error, 'automatic_daily_run_limit_reached');
 
   console.log('automatic discovery API smoke tests passed');
 } catch (error) {

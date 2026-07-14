@@ -2,6 +2,11 @@
 
 Latest known commit themes, newest first:
 
+- `Add owner-managed Tester Pro access` - Google-email grants, manual revoke, owner-only UI, and internal capped entitlements.
+- `Meter paid AI attempts before dispatch` - persistent monthly reservations count provider failures and retries before external calls.
+- `Bound Tester Pro Apify discovery` - up to 10 signals daily, USD 0.40 cap, and one paid run per UTC day.
+- `Cap public paid previews globally` - persistent 20/day Brand Scan circuit breaker on top of the per-IP limiter.
+- `Keep landing authentication Google-only` - remove the passwordless email entry point and form.
 - `Polish Studio video copy and preview` - cleaner Studio copy and preview behavior.
 - `Fallback YouTube popular category pulls` - retry YouTube popular without category on category 404/not found.
 - `Cap YouTube imports to plan allowance` - cap popular imports by remaining allowance, except unlimited plans.
@@ -19,4 +24,3 @@ Latest known commit themes, newest first:
 - `Add TikTok auth review hardening` - legal/security/app-review improvements.
 
 Use `git log --oneline -20` for the latest authoritative list.
-

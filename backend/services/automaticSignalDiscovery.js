@@ -1069,6 +1069,18 @@ function prepareAutomaticDiscovery(args = {}) {
 
   ensureWorkspaceDiscoverySettings(workspace, now);
   const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
+  const rawPolicy = args.policy && typeof args.policy === 'object' ? args.policy : null;
+  const policy = rawPolicy ? {
+    dailyBudgetUsd: clampNumber(rawPolicy.dailyBudgetUsd, 0.01, MAX_DAILY_BUDGET_USD, DEFAULT_DAILY_BUDGET_USD),
+    dailyTarget: Math.max(1, Math.trunc(Number(rawPolicy.dailyTarget || AUTOMATIC_MAX_WINNERS))),
+    maxBudgetedRunsPerDay: Math.max(1, Math.trunc(Number(rawPolicy.maxBudgetedRunsPerDay || 1))),
+    resultLimitPerPlatform: Math.max(1, Math.trunc(Number(rawPolicy.resultLimitPerPlatform || AUTOMATIC_METADATA_LIMIT))),
+    maxPlannedCalls: Math.max(1, Math.trunc(Number(rawPolicy.maxPlannedCalls || 1))),
+  } : null;
+  if (policy) {
+    settings.dailyBudgetUsd = Math.min(settings.dailyBudgetUsd, policy.dailyBudgetUsd);
+    workspace.discoverySettings.dailyBudgetUsd = settings.dailyBudgetUsd;
+  }
   recoverStaleRunningRuns(state, {
     workspaceId,
     lane: AUTOMATIC_RUN_LANE,
@@ -1078,6 +1090,21 @@ function prepareAutomaticDiscovery(args = {}) {
     .find((run) => run?.workspaceId === workspaceId && run.lane === AUTOMATIC_RUN_LANE && run.status === 'running');
   if (activeRun) {
     return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+  }
+
+  if (policy) {
+    const dayKey = toUtcDayKey(now);
+    const budgetedRunsToday = (Array.isArray(state.discoveryRuns) ? state.discoveryRuns : []).filter((run) => {
+      if (!run || run.workspaceId !== workspaceId || run.lane !== AUTOMATIC_RUN_LANE) return false;
+      const runDayKey = run.dayKey || toUtcDayKey(run.claimedAt || run.startedAt || run.createdAt || run.completedAt);
+      if (runDayKey !== dayKey) return false;
+      return Number(run.attemptedCallCount || 0) > 0
+        || Number(run.reservedCostUsd || 0) > 0
+        || Number(run.actualCostUsd || 0) > 0;
+    }).length;
+    if (budgetedRunsToday >= policy.maxBudgetedRunsPerDay) {
+      return createEmptyDiscoveryResult(null, { reason: 'daily_run_limit' });
+    }
   }
 
   if (settings.enabled === false) {
@@ -1108,7 +1135,12 @@ function prepareAutomaticDiscovery(args = {}) {
   }
 
   const isForcedRun = Boolean(args.force);
-  const planningOptions = isForcedRun
+  const planningOptions = policy
+    ? {
+        inputLimit: 1,
+        resultLimit: policy.resultLimitPerPlatform,
+      }
+    : isForcedRun
     ? {
         inputLimit: FORCED_AUTOMATIC_INPUTS_PER_LANE,
         resultLimit: FORCED_AUTOMATIC_METADATA_LIMIT,
@@ -1118,7 +1150,22 @@ function prepareAutomaticDiscovery(args = {}) {
       }
     : {};
   const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
-  const plannedCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes, planningOptions);
+  const candidateCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes, planningOptions);
+  const plannedCalls = policy
+    ? (() => {
+        const selected = [];
+        for (const platform of settings.platforms) {
+          const call = candidateCalls.find((item) => item.platform === platform && !selected.includes(item));
+          if (call) selected.push(call);
+          if (selected.length >= policy.maxPlannedCalls) break;
+        }
+        for (const call of candidateCalls) {
+          if (selected.length >= policy.maxPlannedCalls) break;
+          if (!selected.includes(call)) selected.push(call);
+        }
+        return selected;
+      })()
+    : candidateCalls;
   const lanesWithCalls = new Set(plannedCalls.map((call) => call.lane));
   const emptyLanes = dueLanes.filter((lane) => !lanesWithCalls.has(lane));
   applyNormalLaneSchedules(workspace, settings, emptyLanes, now);
@@ -1146,14 +1193,15 @@ function prepareAutomaticDiscovery(args = {}) {
   const estimatedMetadataCostUsd = roundUsd(
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
-  if (spentUsd >= settings.dailyBudgetUsd || (!isForcedRun && spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd)) {
+  const estimateExceedsBudget = spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd;
+  if (spentUsd >= settings.dailyBudgetUsd || (policy ? estimateExceedsBudget : (!isForcedRun && estimateExceedsBudget))) {
     applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
     const run = createAutomaticRun(state, {
       workspaceId,
       now,
       budgetUsd: settings.dailyBudgetUsd,
       spentUsdBefore: spentUsd,
-      estimatedCostUsd: 0,
+      estimatedCostUsd: policy ? estimatedMetadataCostUsd : 0,
       reservedCostUsd: 0,
       requestedCount: plannedCalls.length,
     });
@@ -1175,7 +1223,7 @@ function prepareAutomaticDiscovery(args = {}) {
     budgetUsd: settings.dailyBudgetUsd,
     spentUsdBefore: spentUsd,
     estimatedCostUsd: estimatedMetadataCostUsd,
-    reservedCostUsd: isForcedRun ? 0 : estimatedMetadataCostUsd,
+    reservedCostUsd: policy || !isForcedRun ? estimatedMetadataCostUsd : 0,
     requestedCount: plannedCalls.length,
   });
   if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
@@ -1187,7 +1235,7 @@ function prepareAutomaticDiscovery(args = {}) {
       discoveryInputs,
       dueLanes,
       plannedCalls,
-      maxWinners: isForcedRun ? FORCED_AUTOMATIC_MAX_WINNERS : AUTOMATIC_MAX_WINNERS,
+      maxWinners: policy ? policy.dailyTarget : isForcedRun ? FORCED_AUTOMATIC_MAX_WINNERS : AUTOMATIC_MAX_WINNERS,
       settings,
     },
   };

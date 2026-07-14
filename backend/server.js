@@ -57,9 +57,16 @@ const {
 const {
   buildAuthWorkspacePayload,
 } = require('./services/authWorkspacePayload.cjs');
+const { reserveUsageCounter } = require('./services/paidUsage.cjs');
 const {
-  isEmailTrialLoginAllowed,
-} = require('./services/emailTrialAccess.cjs');
+  getActiveTesterGrant,
+  getTesterDiscoveryPolicy,
+  linkTesterGrant,
+  normalizeTesterEmail,
+  resolveAccessPlan,
+  revokeTesterGrant,
+  upsertTesterGrant,
+} = require('./services/testerAccess.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -116,6 +123,10 @@ const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidco
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
+const PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT = Math.max(
+  1,
+  Number(process.env.PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT || 20),
+);
 const AUTOMATIC_DISCOVERY_ENABLED = process.env.AUTOMATIC_DISCOVERY_ENABLED !== 'false';
 const AUTOMATIC_DISCOVERY_TICK_MS = Number.isFinite(Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
   ? Math.max(1000, Number(process.env.AUTOMATIC_DISCOVERY_TICK_MS))
@@ -172,6 +183,7 @@ const PLAN_CATALOG = [
     billingPeriod: 'temporary',
     priceUah: 0,
     limits: {
+      aiOperations: 5,
       agentChat: 20,
       reelImports: 3,
       competitors: 8,
@@ -189,6 +201,7 @@ const PLAN_CATALOG = [
     billingPeriod: '3 days',
     priceUah: 0,
     limits: {
+      aiOperations: 5,
       agentChat: 5,
       reelImports: 3,
       competitors: 2,
@@ -206,6 +219,7 @@ const PLAN_CATALOG = [
     billingPeriod: 'month',
     priceUah: 590,
     limits: {
+      aiOperations: 150,
       agentChat: 150,
       reelImports: 30,
       competitors: 5,
@@ -223,6 +237,7 @@ const PLAN_CATALOG = [
     billingPeriod: 'month',
     priceUah: 1490,
     limits: {
+      aiOperations: 600,
       agentChat: 600,
       reelImports: 250,
       competitors: 30,
@@ -240,6 +255,7 @@ const PLAN_CATALOG = [
     billingPeriod: 'month',
     priceUah: 3900,
     limits: {
+      aiOperations: 2500,
       agentChat: 2500,
       reelImports: 500,
       competitors: 50,
@@ -250,6 +266,25 @@ const PLAN_CATALOG = [
       contentPlanPosts: 2000,
     },
     features: ['everything_pro', 'multi_client_workspaces', 'ai_direct_unlimited', 'approval_flow', 'priority_support'],
+  },
+  {
+    id: 'tester_pro',
+    name: 'Tester Pro',
+    billingPeriod: 'internal',
+    priceUah: 0,
+    internal: true,
+    limits: {
+      aiOperations: 50,
+      agentChat: 50,
+      reelImports: 30,
+      competitors: 5,
+      workspaces: 1,
+      teamMembers: 1,
+      instagramAccounts: 1,
+      brandBrainSaves: 10,
+      contentPlanPosts: 50,
+    },
+    features: ['tester_pro', 'assistant', 'remix_studio', 'content_plan', 'apify_discovery'],
   },
 ];
 
@@ -283,6 +318,7 @@ const CONTENT_FORMAT_ALIASES = {
 };
 
 const USAGE_METRICS = {
+  aiOperations: 'ai_operations',
   agentChat: 'agent_chat',
   reelImports: 'reel_imports',
   competitors: 'competitors',
@@ -383,7 +419,6 @@ app.use('/api/auth/callback/google', oauthLimiter);
 app.use('/api/auth/tiktok/callback', oauthLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
-app.use('/api/auth/email', authLimiter);
 app.use('/api/auth/demo', authLimiter);
 app.use('/api/data-deletion/request', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
@@ -431,6 +466,7 @@ function normalizeDbShape(db = {}) {
   db.plans ||= PLAN_CATALOG;
   db.subscriptions ||= [];
   db.usageCounters ||= [];
+  db.testerAccessGrants ||= [];
   db.demoSessions ||= [];
   return db;
 }
@@ -1064,6 +1100,26 @@ function getDiscoveryStatusCode({ settings, activeRun, latestRun, dailySpendUsd,
   return 'idle';
 }
 
+function getWorkspaceTesterDiscoveryPolicy(db = {}, workspaceId, actorUser = null) {
+  const workspaceUser = actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
+  const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
+  return getTesterDiscoveryPolicy(entitlements.plan.id);
+}
+
+function hasReachedTesterDiscoveryDailyRunLimit(db = {}, workspaceId, policy, now = new Date()) {
+  if (!policy) return false;
+  const dayKey = now.toISOString().slice(0, 10);
+  const budgetedRunsToday = listAutomaticDiscoveryRuns(db, workspaceId).filter((run) => (
+    (run.dayKey || String(run.claimedAt || run.startedAt || run.completedAt || '').slice(0, 10)) === dayKey
+    && (
+      Number(run.attemptedCallCount || 0) > 0
+      || Number(run.reservedCostUsd || 0) > 0
+      || Number(run.actualCostUsd || 0) > 0
+    )
+  )).length;
+  return budgetedRunsToday >= policy.maxBudgetedRunsPerDay;
+}
+
 function getDiscoveryStatusLabel(code) {
   const labels = {
     idle: 'Idle',
@@ -1079,6 +1135,11 @@ function getDiscoveryStatusLabel(code) {
 function buildDiscoveryStatusResponse(db = {}, workspaceId, now = new Date()) {
   const workspace = db.workspaces.find((item) => item.id === workspaceId) || {};
   const settings = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
+  const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
+  if (policy) {
+    settings.dailyBudgetUsd = Math.min(settings.dailyBudgetUsd, policy.dailyBudgetUsd);
+  }
+  const testerDailyRunLimitReached = hasReachedTesterDiscoveryDailyRunLimit(db, workspaceId, policy, now);
   const runs = listAutomaticDiscoveryRuns(db, workspaceId);
   const activeRun = runs.find((run) => run.status === 'running') || null;
   const latestRun = runs[0] || null;
@@ -1117,6 +1178,7 @@ function buildDiscoveryStatusResponse(db = {}, workspaceId, now = new Date()) {
       canRunNow: Boolean(APIFY_TOKEN)
         && settings.enabled !== false
         && !activeRun
+        && !testerDailyRunLimitReached
         && dailySpendUsd < settings.dailyBudgetUsd,
     },
     inputs: Object.fromEntries(
@@ -1224,6 +1286,11 @@ function shouldRunAutomaticDiscoveryTick(db = {}, workspaceId, now = new Date())
   const workspace = db.workspaces.find((item) => item.id === workspaceId);
   if (!workspace) return false;
   const settings = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
+  const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
+  if (policy) {
+    settings.dailyBudgetUsd = Math.min(settings.dailyBudgetUsd, policy.dailyBudgetUsd);
+    if (hasReachedTesterDiscoveryDailyRunLimit(db, workspaceId, policy, now)) return false;
+  }
   if (settings.enabled === false) return false;
   const runs = listAutomaticDiscoveryRuns(db, workspaceId);
   if (runs.some((run) => run.status === 'running')) return false;
@@ -1258,12 +1325,14 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         error.payload = { error: 'workspace_not_found' };
         throw error;
       }
+      const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
       const prepared = prepareAutomaticDiscovery({
         state: db,
         workspaceId,
         now,
         force: Boolean(options.force),
         recordPaused: Boolean(options.force),
+        policy,
       });
       return { db, prepared };
     });
@@ -1395,6 +1464,10 @@ function getPublicUserProvider(user) {
   return 'email';
 }
 
+function isVerifiedGoogleUser(user) {
+  return user?.authProvider === 'google' || (user?.oauthProviders || []).includes('google');
+}
+
 function publicUser(user) {
   const provider = getPublicUserProvider(user);
   return {
@@ -1404,8 +1477,10 @@ function publicUser(user) {
     role: user.role,
     provider,
     isDemo: provider === 'demo',
+    canManageTesters: userHasUnlimitedAccess(user),
     workspaceId: user.workspaceId,
     createdAt: user.createdAt,
+    lastLoginAt: user.lastLoginAt || null,
   };
 }
 
@@ -1572,13 +1647,27 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
   const subscription = ensureWorkspaceSubscription(db, workspaceId);
   const basePlan = getPlan(subscription.planId);
   const unlimited = workspaceHasUnlimitedAccess(db, workspaceId, actorUser);
-  const plan = unlimited ? buildUnlimitedPlan(basePlan) : basePlan;
+  const workspaceUser = actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
+  const testerGrant = getActiveTesterGrant(db, workspaceUser);
+  const testerPlan = PLAN_CATALOG.find((item) => item.id === 'tester_pro');
+  const resolvedAccess = resolveAccessPlan({
+    basePlan,
+    testerPlan,
+    grant: testerGrant,
+    unlimited,
+  });
+  const plan = unlimited ? buildUnlimitedPlan(basePlan) : resolvedAccess.plan;
   const period = getUsagePeriod();
   const usage = {
+    aiOperations: getUsageCounter(db, workspaceId, USAGE_METRICS.aiOperations, period).value,
     agentChat: getUsageCounter(db, workspaceId, USAGE_METRICS.agentChat, period).value,
     reelImports: getUsageCounter(db, workspaceId, USAGE_METRICS.reelImports, period).value,
     brandBrainSaves: getUsageCounter(db, workspaceId, USAGE_METRICS.brandBrainSaves, period).value,
     competitors: db.competitors.filter((item) => item.workspaceId === workspaceId).length,
+    workspaces: workspaceUser
+      ? db.workspaces.filter((item) => canAccessWorkspace(workspaceUser, item.id)).length
+      : 0,
+    teamMembers: getWorkspaceUsers(db, workspaceId).length,
     instagramAccounts: db.instagramAccounts.filter((item) => item.workspaceId === workspaceId).length,
     contentPlanPosts: normalizeContentPlanPosts(db.workspaces.find((item) => item.id === workspaceId)?.contentPlanPosts || []).length,
   };
@@ -1589,9 +1678,10 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
     })
   );
   const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
+  const testerAccessActive = resolvedAccess.accessSource === 'tester_grant';
   const trial = {
-    active: !unlimited && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
-    expired: !unlimited && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
+    active: !unlimited && !testerAccessActive && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
+    expired: !unlimited && !testerAccessActive && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
     endsAt: subscription.trialEndsAt,
     daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (24 * 60 * 60 * 1000))) : null,
   };
@@ -1603,6 +1693,14 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
     usage,
     remaining,
     unlimited,
+    accessSource: resolvedAccess.accessSource,
+    testerGrant: testerGrant ? {
+      id: testerGrant.id,
+      email: testerGrant.email,
+      status: testerGrant.status,
+      grantedAt: testerGrant.grantedAt || null,
+      activatedAt: testerGrant.activatedAt || null,
+    } : null,
   };
 }
 
@@ -1646,9 +1744,27 @@ function incrementUsage(db, workspaceId, metric, amount = 1) {
   return counter;
 }
 
+function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
+  let queue = Promise.resolve();
+  return () => {
+    queue = queue.then(async () => {
+      const billing = buildEntitlements(db, workspaceId, actorUser);
+      reserveUsageCounter(db, {
+        workspaceId,
+        metric: USAGE_METRICS.aiOperations,
+        period: billing.period,
+        limit: billing.plan.limits.aiOperations,
+        unlimited: billing.unlimited,
+      });
+      await writeDb(db);
+    });
+    return queue;
+  };
+}
+
 function activateWorkspacePlan(db, workspaceId, planId, options = {}) {
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || ['demo', 'trial'].includes(plan.id)) {
+  if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
     throw new Error('valid_paid_plan_required');
   }
   const now = new Date();
@@ -2172,11 +2288,18 @@ function parseGeminiJson(text = '') {
   }
 }
 
-async function analyzeSourceImageWithGemini(metadata) {
+async function analyzeSourceImageWithGemini(metadata, options = {}) {
   if (!GEMINI_API_KEY || !metadata?.image) return null;
   const inlineData = await fetchImageInlineData(metadata.image);
   if (!inlineData) return null;
   try {
+    if (typeof options.beforeProviderAttempt === 'function') {
+      await options.beforeProviderAttempt({
+        provider: 'gemini',
+        model: GEMINI_VISION_MODEL,
+        operation: 'thumbnail_analysis',
+      });
+    }
     const response = await fetch(`${GEMINI_API_BASE}/models/${GEMINI_VISION_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2221,6 +2344,7 @@ async function analyzeSourceImageWithGemini(metadata) {
       adaptationGuardrails: Array.isArray(parsed.adaptationGuardrails) ? parsed.adaptationGuardrails.slice(0, 5).map((item) => compactText(item, 180)) : [],
     };
   } catch (error) {
+    if (error?.status === 402) throw error;
     return { source: 'gemini_thumbnail_vision', error: error.message };
   }
 }
@@ -2228,6 +2352,9 @@ async function analyzeSourceImageWithGemini(metadata) {
 async function generateGeminiJsonText(prompt, options = {}) {
   if (!GEMINI_API_KEY || !prompt) return '';
   const model = options.model || GEMINI_VISION_MODEL;
+  if (typeof options.beforeProviderAttempt === 'function') {
+    await options.beforeProviderAttempt({ provider: 'gemini', model, operation: options.operation || 'json_generation' });
+  }
   const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2253,7 +2380,7 @@ async function generateGeminiJsonText(prompt, options = {}) {
   return payload.candidates?.[0]?.content?.parts?.map((part) => part.text || '').join('').trim() || '';
 }
 
-async function analyzeYouTubeVideoWithGemini(metadata) {
+async function analyzeYouTubeVideoWithGemini(metadata, options = {}) {
   const videoUrl = metadata?.url || metadata?.youtube?.url || '';
   if (!GEMINI_API_KEY || !metadata?.youtube?.videoId || !videoUrl) return null;
   const model = process.env.GEMINI_VIDEO_MODEL || GEMINI_VISION_MODEL;
@@ -2269,6 +2396,9 @@ async function analyzeYouTubeVideoWithGemini(metadata) {
     `Stats: ${JSON.stringify(metadata.stats || {})}`,
   ].join('\n');
   try {
+    if (typeof options.beforeProviderAttempt === 'function') {
+      await options.beforeProviderAttempt({ provider: 'gemini', model, operation: 'video_analysis' });
+    }
     const response = await fetch(`${GEMINI_API_BASE}/interactions`, {
       method: 'POST',
       headers: {
@@ -2318,6 +2448,7 @@ async function analyzeYouTubeVideoWithGemini(metadata) {
       guardrails: Array.isArray(parsed.guardrails) ? parsed.guardrails.slice(0, 6).map((item) => compactText(item, 180)) : [],
     };
   } catch (error) {
+    if (error?.status === 402) throw error;
     return { source: 'gemini_youtube_video', status: 'error', error: error.message };
   }
 }
@@ -2356,11 +2487,11 @@ function buildVideoIntelligenceReadiness({ metadata, transcript, visual, video }
   };
 }
 
-async function enrichVideoIntelligence(metadata) {
+async function enrichVideoIntelligence(metadata, options = {}) {
   const transcript = metadata.youtube?.videoId ? await fetchYouTubeTranscript(metadata.youtube.videoId) : null;
   const [video, visual] = await Promise.all([
-    analyzeYouTubeVideoWithGemini(metadata),
-    analyzeSourceImageWithGemini(metadata),
+    analyzeYouTubeVideoWithGemini(metadata, options),
+    analyzeSourceImageWithGemini(metadata, options),
   ]);
   const readiness = buildVideoIntelligenceReadiness({ metadata, transcript, visual, video });
   const intelligence = {
@@ -2745,7 +2876,7 @@ async function fetchYouTubePopularMetadata(options = {}) {
   ));
 }
 
-async function fetchPublicSourceMetadata(rawInput) {
+async function fetchPublicSourceMetadata(rawInput, options = {}) {
   const source = detectPublicSource(rawInput);
   const fallback = {
     source,
@@ -2766,8 +2897,9 @@ async function fetchPublicSourceMetadata(rawInput) {
   if (source.tone === 'instagram') {
     try {
       const instagramMetadata = await fetchInstagramWebProfileMetadata(url, fallback);
-      if (instagramMetadata) return await enrichVideoIntelligence(instagramMetadata);
+      if (instagramMetadata) return await enrichVideoIntelligence(instagramMetadata, options);
     } catch (error) {
+      if (error?.status === 402) throw error;
       fallback.instagramWebProfileError = error.message;
     }
   }
@@ -2775,8 +2907,9 @@ async function fetchPublicSourceMetadata(rawInput) {
   if (source.tone === 'shorts') {
     try {
       const youtubeMetadata = await fetchYouTubeMetadata(rawInput);
-      if (youtubeMetadata) return await enrichVideoIntelligence(youtubeMetadata);
+      if (youtubeMetadata) return await enrichVideoIntelligence(youtubeMetadata, options);
     } catch (error) {
+      if (error?.status === 402) throw error;
       fallback.youtubeError = error.message;
     }
     try {
@@ -2784,8 +2917,9 @@ async function fetchPublicSourceMetadata(rawInput) {
       if (oEmbedMetadata) return await enrichVideoIntelligence({
         ...oEmbedMetadata,
         youtubeError: fallback.youtubeError,
-      });
+      }, options);
     } catch (error) {
+      if (error?.status === 402) throw error;
       fallback.youtubeOEmbedError = error.message;
     }
   }
@@ -2830,16 +2964,18 @@ async function fetchPublicSourceMetadata(rawInput) {
       stats,
       sourceStatus: title || description ? 'public_metadata' : 'url_only',
       analysisText,
-    });
+    }, options);
   } catch (error) {
+    if (error?.status === 402) throw error;
     return { ...fallback, url, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
   }
 }
 
-async function enrichVideoIntelligenceSafe(metadata) {
+async function enrichVideoIntelligenceSafe(metadata, options = {}) {
   try {
-    return await enrichVideoIntelligence(metadata);
+    return await enrichVideoIntelligence(metadata, options);
   } catch (error) {
+    if (error?.status === 402) throw error;
     return {
       ...metadata,
       videoIntelligence: {
@@ -3031,7 +3167,9 @@ function verifyTrustedWriteRequest(req, res, next) {
 let mutatingApiQueue = Promise.resolve();
 
 function serializeMutatingApiRequests(req, res, next) {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+  const usesWorkspaceDiscoveryLock = req.method === 'POST'
+    && /^\/workspaces\/[^/]+\/signals\/discovery\/run\/?$/.test(req.path);
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || usesWorkspaceDiscoveryLock) {
     next();
     return;
   }
@@ -3082,6 +3220,16 @@ function requireAuthUser(db, req, res) {
   const user = getAuthUser(db, req);
   if (!user) {
     res.status(401).json({ error: 'unauthorized' });
+    return null;
+  }
+  return user;
+}
+
+function requireOwnerUser(db, req, res) {
+  const user = requireAuthUser(db, req, res);
+  if (!user) return null;
+  if (!userHasUnlimitedAccess(user)) {
+    res.status(403).json({ error: 'owner_access_required' });
     return null;
   }
   return user;
@@ -3637,6 +3785,27 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
       res.status(413).json({ error: 'input_too_large', message: 'Brand Scan input is too long.' });
       return;
     }
+    if (APIFY_TOKEN || GEMINI_API_KEY) {
+      const db = await readDb();
+      try {
+        reserveUsageCounter(db, {
+          workspaceId: 'platform_global',
+          metric: 'public_brand_scan_preview',
+          period: new Date().toISOString().slice(0, 10),
+          limit: PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT,
+        });
+      } catch (error) {
+        if (error?.payload?.error === 'plan_limit_reached') {
+          res.status(429).json({
+            error: 'preview_global_daily_limit_reached',
+            message: 'Daily preview capacity is used. Sign in with Google to continue.',
+          });
+          return;
+        }
+        throw error;
+      }
+      await writeDb(db);
+    }
     const metadata = await fetchPublicSourceMetadata(input);
     let apifyBrandSignals = [];
     let brandBrainWarning = '';
@@ -3920,7 +4089,7 @@ app.get('/api/auth/meta/callback', async (req, res) => {
       return;
     }
     const pages = await getMetaPages(tokenResult.access_token);
-    const connectedAccounts = pages
+    const discoveredAccounts = pages
       .filter((page) => page.instagram_business_account)
       .map((page) => ({
         id: createId('ig'),
@@ -3938,6 +4107,15 @@ app.get('/api/auth/meta/callback', async (req, res) => {
           expiresIn: tokenResult.expires_in || null,
         },
       }));
+
+    const workspaceUser = db.users.find((item) => item.id === stateRecord.userId)
+      || getWorkspaceUsers(db, workspaceId)[0]
+      || null;
+    const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
+    const allowedAccountCount = entitlements.unlimited
+      ? discoveredAccounts.length
+      : Math.max(0, Number(entitlements.plan.limits.instagramAccounts || 0));
+    const connectedAccounts = discoveredAccounts.slice(0, allowedAccountCount);
 
     db.instagramAccounts = db.instagramAccounts.filter((account) => account.workspaceId !== workspaceId);
     db.instagramAccounts.unshift(...connectedAccounts);
@@ -3987,6 +4165,7 @@ app.get('/api/auth/callback/google', async (req, res) => {
       name: profile.name,
       picture: profile.picture,
     });
+    linkTesterGrant(db, { user });
     stateRecord.usedAt = new Date().toISOString();
     const session = createSession(db, user.id);
     await writeDb(db);
@@ -4045,6 +4224,20 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
         expiresIn: tokenResult.expires_in || null,
       },
     };
+
+    const workspaceUser = db.users.find((item) => item.id === stateRecord.userId)
+      || getWorkspaceUsers(db, workspaceId)[0]
+      || null;
+    const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
+    const existingWorkspaceAccounts = db.instagramAccounts.filter((account) => account.workspaceId === workspaceId);
+    const replacesExisting = existingWorkspaceAccounts.some((account) => account.instagramId === connectedAccount.instagramId);
+    const accountLimit = entitlements.plan.limits.instagramAccounts;
+    if (!entitlements.unlimited && !replacesExisting && Number.isFinite(accountLimit) && existingWorkspaceAccounts.length >= accountLimit) {
+      stateRecord.usedAt = new Date().toISOString();
+      await writeDb(db);
+      res.redirect(`${CLIENT_URL}/?instagram=limit_reached`);
+      return;
+    }
 
     db.instagramAccounts = db.instagramAccounts.filter((account) => (
       account.workspaceId !== workspaceId || account.instagramId !== connectedAccount.instagramId
@@ -4222,52 +4415,6 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
-app.post('/api/auth/email', async (req, res) => {
-  if (!isEmailTrialLoginAllowed()) {
-    res.status(403).json({
-      error: 'email_trial_login_disabled',
-      message: 'Email trial login is disabled. Use Google or password registration.',
-    });
-    return;
-  }
-  const db = await readDb();
-  const email = normalizeEmail(req.body.email);
-  if (!email || !email.includes('@')) {
-    res.status(400).json({ error: 'valid_email_required' });
-    return;
-  }
-  let user = db.users.find((item) => item.email === email);
-  if (!user) {
-    const name = email.split('@')[0] || 'User';
-    const workspace = {
-      id: createId('ws'),
-      name: `${name} workspace`,
-      owner: name,
-      mode: 'own_business',
-      marketFocus: ['ua', 'us', 'eu', 'global'],
-      createdAt: new Date().toISOString(),
-      brief: {},
-    };
-    user = {
-      id: createId('usr'),
-      name,
-      email,
-      role: 'owner',
-      workspaceId: workspace.id,
-      passwordHash: hashPassword(crypto.randomBytes(18).toString('hex')),
-      authProvider: 'email_trial',
-      createdAt: new Date().toISOString(),
-    };
-    db.workspaces.unshift(workspace);
-    db.users.unshift(user);
-  }
-  ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'trial' });
-  const session = createSession(db, user.id);
-  await writeDb(db);
-  setSessionCookie(res, session.token);
-  res.status(user.authProvider === 'email_trial' ? 201 : 200).json({ ...buildAuthPayload(db, user), token: session.token });
-});
-
 app.post('/api/auth/demo', async (req, res) => {
   if (!ALLOW_DEMO_LOGIN) {
     res.status(403).json({ error: 'demo_login_disabled' });
@@ -4342,7 +4489,7 @@ app.get('/api/schema', (req, res) => {
 });
 
 app.get('/api/billing/plans', (req, res) => {
-  res.json({ plans: PLAN_CATALOG.map(publicPlan) });
+  res.json({ plans: PLAN_CATALOG.filter((plan) => !plan.internal).map(publicPlan) });
 });
 
 app.get('/api/workspaces', async (req, res) => {
@@ -4357,6 +4504,15 @@ app.post('/api/workspaces', async (req, res) => {
   const db = await readDb();
   const user = requireAuthUser(db, req, res);
   if (!user) return;
+  const entitlementWorkspaceId = user.workspaceId || user.workspaceIds?.[0];
+  if (entitlementWorkspaceId) {
+    try {
+      assertUsageAvailable(db, entitlementWorkspaceId, 'workspaces', 1, user);
+    } catch (error) {
+      res.status(error.status || 402).json(error.payload || { error: error.message });
+      return;
+    }
+  }
   const workspace = {
     id: createId('ws'),
     name: req.body.name || 'New workspace',
@@ -4388,7 +4544,7 @@ app.get('/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
   if (!workspace) return;
   const planId = String(req.query.planId || '').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || ['demo', 'trial'].includes(plan.id)) {
+  if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -4421,7 +4577,7 @@ app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) =>
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const planId = String(req.body.planId || '').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || ['demo', 'trial'].includes(plan.id)) {
+  if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -4448,7 +4604,7 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
   const planId = String(req.body.planId || 'pro').trim();
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || ['demo', 'trial'].includes(plan.id)) {
+  if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
@@ -4461,68 +4617,107 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
   res.json(buildEntitlements(db, req.params.workspaceId, req.authUser));
 });
 
+function publicTesterGrant(db, grant) {
+  const user = db.users.find((item) => item.id === grant.userId)
+    || db.users.find((item) => normalizeTesterEmail(item.email) === normalizeTesterEmail(grant.email))
+    || null;
+  const workspaceId = grant.workspaceId || user?.workspaceId || '';
+  const workspace = workspaceId
+    ? db.workspaces.find((item) => item.id === workspaceId) || null
+    : null;
+  return {
+    id: grant.id,
+    email: grant.email,
+    status: grant.status,
+    planId: grant.planId,
+    note: grant.note || '',
+    userId: user?.id || null,
+    workspaceId: workspace?.id || null,
+    workspaceName: workspace?.name || '',
+    grantedAt: grant.grantedAt || null,
+    activatedAt: grant.activatedAt || null,
+    revokedAt: grant.revokedAt || null,
+    lastLoginAt: user?.lastLoginAt || null,
+    billing: workspace ? buildEntitlements(db, workspace.id, user) : null,
+    discovery: workspace ? buildDiscoveryStatusResponse(db, workspace.id, new Date()) : null,
+  };
+}
+
+app.get('/api/owner/testers', async (req, res) => {
+  const db = await readDb();
+  if (!requireOwnerUser(db, req, res)) return;
+  res.json({
+    testers: db.testerAccessGrants.map((grant) => publicTesterGrant(db, grant)),
+  });
+});
+
+app.post('/api/owner/testers', async (req, res) => {
+  const db = await readDb();
+  const owner = requireOwnerUser(db, req, res);
+  if (!owner) return;
+  const email = normalizeTesterEmail(req.body.email);
+  if (!email || !email.includes('@')) {
+    res.status(400).json({ error: 'valid_email_required' });
+    return;
+  }
+  const grant = upsertTesterGrant(db, {
+    email,
+    ownerUserId: owner.id,
+    note: req.body.note,
+    createId,
+  });
+  const user = db.users.find((item) => normalizeTesterEmail(item.email) === email);
+  if (isVerifiedGoogleUser(user)) linkTesterGrant(db, { user });
+  await writeDb(db);
+  res.status(201).json({ tester: publicTesterGrant(db, grant) });
+});
+
+app.delete('/api/owner/testers/:grantId', async (req, res) => {
+  const db = await readDb();
+  if (!requireOwnerUser(db, req, res)) return;
+  const grant = revokeTesterGrant(db, { grantId: req.params.grantId });
+  if (!grant) {
+    res.status(404).json({ error: 'tester_grant_not_found' });
+    return;
+  }
+  await writeDb(db);
+  res.json({ tester: publicTesterGrant(db, grant) });
+});
+
 app.post('/api/admin/testers/grant', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   const db = await readDb();
-  const email = normalizeEmail(req.body.email);
+  const email = normalizeTesterEmail(req.body.email);
   const requestedWorkspaceId = String(req.body.workspaceId || '').trim();
-  const user = email ? db.users.find((item) => normalizeEmail(item.email) === email) : null;
-  const workspaceId = requestedWorkspaceId || user?.workspaceId || '';
-  const workspace = workspaceId ? requireWorkspace(db, workspaceId, res) : null;
-  if (!workspace) {
-    if (!res.headersSent) res.status(404).json({ error: 'tester_workspace_not_found' });
+  const workspace = requestedWorkspaceId
+    ? db.workspaces.find((item) => item.id === requestedWorkspaceId) || null
+    : null;
+  const user = email
+    ? db.users.find((item) => normalizeTesterEmail(item.email) === email) || null
+    : db.users.find((item) => item.workspaceId === workspace?.id) || null;
+  const testerEmail = email || normalizeTesterEmail(user?.email);
+  if (!testerEmail || !testerEmail.includes('@')) {
+    res.status(400).json({ error: 'valid_email_required' });
     return;
   }
-  const planId = String(req.body.planId || 'agency').trim();
-  const plan = PLAN_CATALOG.find((item) => item.id === planId);
-  if (!plan || ['demo', 'trial'].includes(plan.id)) {
-    res.status(400).json({ error: 'valid_paid_plan_required' });
-    return;
-  }
-  const subscription = activateWorkspacePlan(db, workspace.id, plan.id, {
-    provider: 'tester_grant',
-    days: Number(req.body.days || 90),
-    tester: true,
-    note: req.body.note || `Tester access${email ? ` for ${email}` : ''}`,
+  const grant = upsertTesterGrant(db, {
+    email: testerEmail,
+    ownerUserId: 'admin_token',
+    note: req.body.note,
+    createId,
   });
-  workspace.testerAccess = {
-    enabled: true,
-    email: email || user?.email || '',
-    planId: plan.id,
-    grantedAt: new Date().toISOString(),
-    expiresAt: subscription.currentPeriodEnd,
-  };
+  if (isVerifiedGoogleUser(user)) linkTesterGrant(db, { user });
   await writeDb(db);
-  res.json({
+  res.status(201).json({
     ok: true,
-    user: user ? publicUser(user) : null,
-    workspace: {
-      id: workspace.id,
-      name: workspace.name,
-    },
-    billing: buildEntitlements(db, workspace.id),
+    tester: publicTesterGrant(db, grant),
   });
 });
 
 app.get('/api/admin/testers', async (req, res) => {
   if (!requireAdmin(req, res)) return;
   const db = await readDb();
-  const testers = db.subscriptions
-    .filter((subscription) => subscription.tester || subscription.provider === 'tester_grant')
-    .map((subscription) => {
-      const workspace = db.workspaces.find((item) => item.id === subscription.workspaceId);
-      const user = db.users.find((item) => item.workspaceId === subscription.workspaceId);
-      return {
-        workspaceId: subscription.workspaceId,
-        workspaceName: workspace?.name || '',
-        email: user?.email || workspace?.testerAccess?.email || '',
-        planId: subscription.planId,
-        status: subscription.status,
-        currentPeriodEnd: subscription.currentPeriodEnd,
-        note: subscription.note || '',
-      };
-    });
-  res.json({ testers });
+  res.json({ testers: db.testerAccessGrants.map((grant) => publicTesterGrant(db, grant)) });
 });
 
 app.get('/api/workspaces/:workspaceId/brief', async (req, res) => {
@@ -4774,6 +4969,10 @@ app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, nex
     const payload = await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
       const workspace = db.workspaces.find((item) => item.id === req.params.workspaceId);
       const now = new Date();
+      const policy = getWorkspaceTesterDiscoveryPolicy(db, req.params.workspaceId, req.authUser);
+      if (policy && Object.prototype.hasOwnProperty.call(changes, 'dailyBudgetUsd')) {
+        changes.dailyBudgetUsd = Math.min(changes.dailyBudgetUsd, policy.dailyBudgetUsd);
+      }
       workspace.discoverySettings = createPersistedDiscoverySettings(workspace, changes, now);
       return buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
     });
@@ -4790,6 +4989,13 @@ app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, 
 
     const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, { force: true });
     if (!result.run) {
+      if (result.reason === 'daily_run_limit') {
+        res.status(429).json({
+          error: 'automatic_daily_run_limit_reached',
+          message: "Today's Tester Pro signal run has already been used. New signals will be available after the next UTC day starts.",
+        });
+        return;
+      }
       const refreshed = buildDiscoveryStatusResponse(await readDb(), req.params.workspaceId, new Date());
       res.status(409).json({
         error: 'automatic_discovery_running',
@@ -4823,6 +5029,11 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
+    const beforeProviderAttempt = createPaidAiAttemptGuard({
+      db,
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+    });
     const requestedMaxResults = Math.min(Math.max(Number(req.body.maxResults || 24), 1), 24);
     const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
     const maxResults = getAllowedBatchSize({
@@ -4830,6 +5041,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       limit: entitlements.plan.limits.reelImports,
       used: entitlements.usage.reelImports,
       unlimited: entitlements.unlimited,
+      perRequestLimit: entitlements.plan.id === 'tester_pro' ? 5 : undefined,
     });
     try {
       assertUsageAvailable(db, req.params.workspaceId, 'reelImports', Math.max(1, maxResults), req.authUser);
@@ -4843,7 +5055,9 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
       categoryId: req.body.categoryId,
       maxResults,
     });
-    const metadataItems = await Promise.all(baseMetadataItems.map((metadata) => enrichVideoIntelligenceSafe(metadata)));
+    const metadataItems = await Promise.all(baseMetadataItems.map((metadata) => enrichVideoIntelligenceSafe(metadata, {
+      beforeProviderAttempt,
+    })));
     const existingByStableKey = getExistingReelByStableKey(db, req.params.workspaceId);
     const existingByVideoId = new Map();
     for (const reel of db.reels.filter((item) => item.workspaceId === req.params.workspaceId)) {
@@ -4982,6 +5196,7 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
       limit: entitlements.plan.limits.reelImports,
       used: entitlements.usage.reelImports,
       unlimited: entitlements.unlimited,
+      perRequestLimit: entitlements.plan.id === 'tester_pro' ? 5 : undefined,
     });
     if (maxResults <= 0) {
       res.status(402).json({
@@ -5070,6 +5285,11 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
+    const beforeProviderAttempt = createPaidAiAttemptGuard({
+      db,
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+    });
     try {
       assertUsageAvailable(db, req.params.workspaceId, 'reelImports', 1, req.authUser);
     } catch (err) {
@@ -5086,7 +5306,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       return;
     }
 
-    const metadata = await fetchPublicSourceMetadata(url);
+    const metadata = await fetchPublicSourceMetadata(url, { beforeProviderAttempt });
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
     const mergedBrief = {
       niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Локальний бізнес',
@@ -5095,7 +5315,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       toneOfVoice: req.body.businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень',
     };
 
-    const remixResult = await generateRemix(globalInsight, mergedBrief);
+    const remixResult = await generateRemix(globalInsight, mergedBrief, { beforeProviderAttempt });
     const sourceLabel = metadata.source?.label || 'URL import';
     const tagSeed = metadata.youtube?.channelTitle || metadata.handle || sourceLabel;
     const importedReel = {
@@ -5195,13 +5415,18 @@ app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze-ai', async (req, re
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  const beforeProviderAttempt = createPaidAiAttemptGuard({
+    db,
+    workspaceId: req.params.workspaceId,
+    actorUser: req.authUser,
+  });
   const reel = db.reels.find((item) => item.id === req.params.reelId && item.workspaceId === req.params.workspaceId);
   if (!reel) {
     res.status(404).json({ error: 'reel_not_found' });
     return;
   }
   if (reel.importedMetadata?.youtube?.videoId) {
-    const refreshedMetadata = await enrichVideoIntelligenceSafe(reel.importedMetadata);
+    const refreshedMetadata = await enrichVideoIntelligenceSafe(reel.importedMetadata, { beforeProviderAttempt });
     reel.importedMetadata = {
       ...reel.importedMetadata,
       ...refreshedMetadata,
@@ -5401,7 +5626,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
   }
   let billing;
   try {
-    billing = assertUsageAvailable(db, req.params.workspaceId, 'agentChat', 1, req.authUser);
+    billing = assertUsageAvailable(db, req.params.workspaceId, 'aiOperations', 1, req.authUser);
   } catch (err) {
     res.status(err.status || 402).json(err.payload || { error: err.message });
     return;
@@ -5412,9 +5637,14 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     ideas: db.ideas.filter((item) => item.workspaceId === req.params.workspaceId),
     sources: db.sources.filter((item) => item.workspaceId === req.params.workspaceId),
   };
+  const beforeProviderAttempt = createPaidAiAttemptGuard({
+    db,
+    workspaceId: req.params.workspaceId,
+    actorUser: req.authUser,
+  });
 
   try {
-    const result = await generateAgentReply({ message, history, workspace, snapshot });
+    const result = await generateAgentReply({ message, history, workspace, snapshot, beforeProviderAttempt });
     const job = {
       id: createId('ai_job'),
       workspaceId: req.params.workspaceId,
@@ -5453,6 +5683,10 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     });
   } catch (err) {
     console.error('[AgentChat]', err);
+    if (err.status && err.payload) {
+      res.status(err.status).json(err.payload);
+      return;
+    }
     res.status(502).json({
       error: 'agent_provider_failed',
       message: IS_PRODUCTION ? 'AI provider request failed. Please try again.' : err.message,
@@ -5615,6 +5849,11 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
+    const beforeProviderAttempt = createPaidAiAttemptGuard({
+      db,
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+    });
 
     const { globalInsight, businessBrief } = req.body;
     
@@ -5648,7 +5887,7 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
       proof: businessBrief?.proof || storedBrief.proof || '',
     };
 
-    const result = await generateRemix(globalInsight, finalBrief);
+    const result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
     res.json(result);
   } catch (err) {
     next(err);
