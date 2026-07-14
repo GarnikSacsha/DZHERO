@@ -4244,7 +4244,7 @@ function renderChatMessageText(text) {
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
+    .map((block, index) => <p data-i18n-content key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
 }
 
 function TypewriterText({ text, active }) {
@@ -4271,6 +4271,7 @@ function TypewriterText({ text, active }) {
 }
 
 function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace, language = 'uk' }) {
+  useI18n();
   const isEnglishUi = language === 'en';
   const assistantName = isEnglishUi ? 'Jeryk' : 'Джерик';
   const drawerCopy = isEnglishUi
@@ -4457,7 +4458,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
           <button className="icon" type="button" onClick={onClose} aria-label={drawerCopy.closeLabel}><X size={17} /></button>
         </div>
         <div className="jeryk-context">
-          <span>{activeWorkspace?.name || 'Workspace'}</span>
+          <span data-i18n-content>{activeWorkspace?.name || 'Workspace'}</span>
           <em>{agentMeta.provider}</em>
         </div>
         <div className="jeryk-thread" ref={threadRef}>
@@ -5033,6 +5034,7 @@ function buildGlobalInsightForRemix(reel, observedContext = '') {
 }
 
 function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
+  useI18n();
   const metadata = reel.importedMetadata || {};
   const stats = metadata.stats || {};
   const example = reel.scanExample;
@@ -5044,43 +5046,43 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
       <div className="brand-studio-head">
         <div>
           <small>Brand Scan draft</small>
-          <h3>{reel.scanLabel || metadata.source?.label || reel.status?.[0] || 'Публічний профіль'}</h3>
+          <h3 data-i18n-content>{reel.scanLabel || metadata.source?.label || reel.status?.[0] || 'Публічний профіль'}</h3>
         </div>
       </div>
       <div className="brand-studio-meta">
         <article>
           <small>Джерело</small>
-          <strong>{metadata.handle || reel.handle}</strong>
-          <p>{metadata.title || reel.sourceUrl || reel.title}</p>
+          <strong data-i18n-content>{metadata.handle || reel.handle}</strong>
+          <p data-i18n-content>{metadata.title || reel.sourceUrl || reel.title}</p>
         </article>
         <article>
           <small>Сигнали бренду</small>
-          <strong>{metadataStatChips(metadata)[0] || reel.scanLabel || 'Контекст готовий'}</strong>
+          <strong data-i18n-content>{metadataStatChips(metadata)[0] || reel.scanLabel || 'Контекст готовий'}</strong>
           <p>{stats.posts ? `${stats.posts} posts · ${stats.following || '-'} following` : 'Опис, ніша і контекст для сценаріїв.'}</p>
         </article>
       </div>
       {!!reel.scanIdeas?.length && (
         <div className="brand-studio-tags">
-          {reel.scanIdeas.map((idea) => <span key={idea}>{idea}</span>)}
+          {reel.scanIdeas.map((idea) => <span data-i18n-content key={idea}>{idea}</span>)}
         </div>
       )}
       {example && (
         <div className="brand-studio-example">
           <small>Перша production-генерація</small>
-          <strong>{example.hook}</strong>
+          <strong data-i18n-content>{example.hook}</strong>
           <div>
             {(example.script || []).map(([time, text]) => (
-              <span key={time}><b>{time}</b>{text}</span>
+              <span data-i18n-content key={time}><b>{time}</b>{text}</span>
             ))}
           </div>
-          <p>{example.caption}</p>
+          <p data-i18n-content>{example.caption}</p>
         </div>
       )}
       {!!reel.scanPlan?.length && (
         <div className="brand-studio-week">
           <small>Перший тиждень</small>
           {reel.scanPlan.map(([day, title]) => (
-            <span key={day}><b>{day}</b>{title}</span>
+            <span data-i18n-content key={day}><b>{day}</b>{title}</span>
           ))}
         </div>
       )}
@@ -5094,6 +5096,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
 }
 
 function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain }) {
+  const { translateText } = useI18n();
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
   const [observedContext, setObservedContext] = useState('');
@@ -5128,7 +5131,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
   const adaptScenario = async () => {
     setAdaptationState('loading');
     setAdaptationError('');
-    notify('Джеро думає над адаптацією, це вже реальний AI-запит');
+    notify(translateText('Джеро думає над адаптацією, це вже реальний AI-запит'));
     try {
       const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/remix/generate`, {
         method: 'POST',
@@ -5141,11 +5144,11 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
       if (!response.ok) throw new Error(payload.message || payload.error || 'remix_generation_failed');
       setGeneratedRemix(payload);
       setAdaptationState('ready');
-      notify('Підготовлено 3 AI-варіанти адаптації');
+      notify(translateText('Підготовлено 3 AI-варіанти адаптації'));
     } catch (error) {
       setAdaptationState('idle');
       setAdaptationError(error?.message || 'Не вдалося згенерувати адаптацію');
-      notify('AI-адаптація не пройшла. Залишив чернетку, можна спробувати ще раз.');
+      notify(translateText('AI-адаптація не пройшла. Залишив чернетку, можна спробувати ще раз.'));
     }
   };
   useEffect(() => {
@@ -5185,17 +5188,17 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
     };
     try {
       if (copyWithTextarea()) {
-        notify('Сценарій скопійовано!');
+        notify(translateText('Сценарій скопійовано!'));
         return;
       }
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(scenarioText);
-        notify('Сценарій скопійовано!');
+        notify(translateText('Сценарій скопійовано!'));
         return;
       }
-      notify('Сценарій скопійовано!');
+      notify(translateText('Сценарій скопійовано!'));
     } catch {
-      notify('Сценарій скопійовано!');
+      notify(translateText('Сценарій скопійовано!'));
     }
   };
   const saveCurrentBrandBrain = async (currentReel) => {
@@ -5218,7 +5221,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title="Студія" actions={<button onClick={adaptScenario} disabled={adaptationState === 'loading'}><RefreshCw size={16} />{adaptationState === 'loading' ? 'Генеруємо...' : 'Перегенерувати AI'}</button>} />
+      <PageTitle title={translateText('Студія')} actions={<button onClick={adaptScenario} disabled={adaptationState === 'loading'}><RefreshCw size={16} />{adaptationState === 'loading' ? 'Генеруємо...' : 'Перегенерувати AI'}</button>} />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -5233,7 +5236,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
                   window.open(sourceUrl, '_blank', 'noopener,noreferrer');
                   return;
                 }
-                notify('Оригінал відео недоступний, але Джеро вже використовує превʼю та метрики сигналу.');
+                notify(translateText('Оригінал відео недоступний, але Джеро вже використовує превʼю та метрики сигналу.'));
               }}>▶</button>
               <strong>{phoneLabel}<br />TO UA</strong>
             </div>
@@ -5247,7 +5250,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
               <textarea
                 value={observedContext}
                 onChange={(event) => setObservedContext(event.target.value)}
-                placeholder="Наприклад: людина просить пропустити її в черзі, отримує відмову, а потім виявляється, що саме вона мала виграти приз."
+                placeholder={translateText('Наприклад: людина просить пропустити її в черзі, отримує відмову, а потім виявляється, що саме вона мала виграти приз.')}
               />
             </div>
           )}
@@ -5257,8 +5260,8 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
           {!isBrandScanDraft && (
             <div className="insight-card hero-card">
               <small>Вхідний сигнал</small>
-              <h2 className="remix-idea-title">{reel.title.replace('...', '')}</h2>
-              {(reel.transcript || reel.caption) && <p>{reel.transcript || reel.caption}</p>}
+              <h2 className="remix-idea-title" data-i18n-content>{reel.title.replace('...', '')}</h2>
+              {(reel.transcript || reel.caption) && <p data-i18n-content>{reel.transcript || reel.caption}</p>}
             </div>
           )}
           <div className="remix-bottom">
@@ -5268,7 +5271,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
               {adaptationError && adaptationState !== 'loading' && <p className="studio-error-note">{adaptationError}</p>}
               {adaptationState === 'loading' && (
                 <JerykLoading
-                  title="Джерик адаптує сценарій"
+                  title={translateText('Джерик адаптує сценарій')}
                   text="Розбираю механіку сигналу і збираю версію під твій бренд."
                 />
               )}
@@ -5279,8 +5282,8 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
                     {scenario.script.map((step) => (
                       <article key={step.time}>
                         <span>{step.time}</span>
-                        <strong>{step.frame}</strong>
-                        <p>{step.voice}</p>
+                        <strong data-i18n-content>{step.frame}</strong>
+                        <p data-i18n-content>{step.voice}</p>
                       </article>
                     ))}
                   </div>
@@ -5298,14 +5301,15 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
 }
 
 function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
+  const { translateText } = useI18n();
   const [status, setStatus] = useState('all');
   const visibleIdeas = ideas.filter((idea) => status === 'all' || idea.status === status);
 
   return (
     <section className="page">
       <PageTitle
-        title="Ідеї"
-        subtitle="Чернетки, які народилися з глобальних рілсів і мають бути адаптовані під український контекст."
+        title={translateText('Ідеї')}
+        subtitle={translateText('Чернетки, які народилися з глобальних рілсів і мають бути адаптовані під український контекст.')}
         actions={<><button onClick={() => setStatus(status === 'all' ? 'Потрібен розбір' : 'all')}><Filter size={16} />За статусом</button><button className="dark" onClick={() => openModal('idea')}><Plus size={16} />Нова ідея</button></>}
       />
       <div className="idea-summary">
@@ -5322,14 +5326,14 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
                 <span>{marketLabel(idea.market)}</span>
                 <strong className="idea-score-pill"><small>UA fit</small>{idea.score}</strong>
               </div>
-              <h3>{idea.title}</h3>
-              <p>{idea.angle}</p>
+              <h3 data-i18n-content>{idea.title}</h3>
+              <p data-i18n-content>{idea.angle}</p>
               <div className="idea-hook">
                 <small>Хук</small>
-                <strong>{idea.hook}</strong>
+                <strong data-i18n-content>{idea.hook}</strong>
               </div>
               <div className="idea-meta">
-                <span>{idea.source}</span>
+                <span data-i18n-content>{idea.source}</span>
                 <span>Складність: {idea.effort}</span>
                 <em>{idea.status}</em>
               </div>
@@ -5355,6 +5359,7 @@ function IdeasBoard({ ideas, openModal, onToRemix, onToPlan }) {
 }
 
 function AgentPipeline({ workspaceId, language = 'uk' }) {
+  useI18n();
   const [status, setStatus] = useState(null);
 
   useEffect(() => {
@@ -5447,6 +5452,7 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
 }
 
 function BrandBrain({ notify, workspaceId, language = 'uk' }) {
+  const { translateText } = useI18n();
   const [seed, setSeed] = useState('');
   const [brief, setBrief] = useState({
     businessType: '',
@@ -5502,7 +5508,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       const metadata = payload.metadata || null;
       if (!canBuildFromSourceOnly(cleanSeed, metadata)) {
         setStatus('ready');
-        notify?.('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.');
+        notify?.(translateText('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.'));
         return;
       }
       const scan = composeBrandScanResult(cleanSeed, metadata, payload.capabilities || null);
@@ -5516,9 +5522,9 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         stopTopics: Array.isArray(nextBrief.stopTopics) ? nextBrief.stopTopics.join(', ') : nextBrief.stopTopics || current.stopTopics,
       }));
       setStatus('ready');
-      notify?.(structuredDraft
+      notify?.(translateText(structuredDraft
         ? 'Brand Brain зібрано з профілю, Apify-сигналів і AI-структури. Можна підправити і зберегти.'
-        : 'Brand Brain заповнено з джерела. Можна підправити і зберегти.');
+        : 'Brand Brain заповнено з джерела. Можна підправити і зберегти.'));
     } catch {
       setBrief((current) => ({
         ...current,
@@ -5528,7 +5534,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         toneOfVoice: current.toneOfVoice || 'коротко, конкретно, дружньо',
       }));
       setStatus('ready');
-      notify?.('Не вдалося прочитати джерело автоматично, але я підготував чернетку з опису.');
+      notify?.(translateText('Не вдалося прочитати джерело автоматично, але я підготував чернетку з опису.'));
     }
   };
 
@@ -5549,11 +5555,11 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       });
       if (!response.ok) throw new Error('save_failed');
       setStatus('saved');
-      notify?.('Brand Brain збережено. Асистент уже використовує цей контекст.');
+      notify?.(translateText('Brand Brain збережено. Асистент уже використовує цей контекст.'));
       window.setTimeout(() => setStatus('ready'), 1800);
     } catch (error) {
       setStatus('error');
-      notify?.(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
+      notify?.(translateText(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.'));
     }
   };
 
@@ -5587,7 +5593,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         <textarea
           value={seed}
           onChange={(event) => setSeed(event.target.value)}
-          placeholder="Instagram, YouTube, TikTok, сайт або коротко: кавʼярня у Львові, сніданки, аудиторія 20-35..."
+          placeholder={translateText('Instagram, YouTube, TikTok, сайт або коротко: кавʼярня у Львові, сніданки, аудиторія 20-35...')}
         />
         <button className="dark" type="button" onClick={analyzeSeed} disabled={!seed.trim() || status === 'analyzing'}>
           <Sparkles size={16} />{status === 'analyzing' ? 'Аналізую...' : 'Проаналізувати і заповнити'}
@@ -5595,7 +5601,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       </div>
       {status === 'analyzing' && (
         <JerykLoading
-          title="Джерик аналізує Brand Brain"
+          title={translateText('Джерик аналізує Brand Brain')}
           text="Витягую нішу, аудиторію, офер, CTA і тон голосу з джерела."
           feature
         />
@@ -5639,6 +5645,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
 }
 
 function VideoTaskQueue({ notify, workspaceId }) {
+  const { translateText } = useI18n();
   const [jobs, setJobs] = useState([]);
   const [status, setStatus] = useState('loading');
 
@@ -5674,10 +5681,10 @@ function VideoTaskQueue({ notify, workspaceId }) {
       if (!response.ok) throw new Error(payload.error || 'video_job_failed');
       setJobs((current) => [payload.videoJob, ...current]);
       setStatus('ready');
-      notify('Video task додано в чергу.');
+      notify(translateText('Video task додано в чергу.'));
     } catch (err) {
       setStatus('error');
-      notify(`Не вдалося створити video task: ${err.message}`);
+      notify(translateText(`Не вдалося створити video task: ${err.message}`));
     }
   };
 
@@ -5712,8 +5719,8 @@ function VideoTaskQueue({ notify, workspaceId }) {
               <span>{job.status}</span>
               <em>{job.provider}</em>
             </div>
-            <h4>{job.prompt?.title || 'Untitled video task'}</h4>
-            <p>{job.prompt?.caption || 'Prompt буде збережено після створення задачі.'}</p>
+            <h4 data-i18n-content>{job.prompt?.title || 'Untitled video task'}</h4>
+            <p data-i18n-content>{job.prompt?.caption || 'Prompt буде збережено після створення задачі.'}</p>
             <div className="video-job-meta">
               <strong>{job.prompt?.format || 'Reels'}</strong>
               <span>{job.prompt?.scenes?.length || 0} scenes</span>
@@ -5727,6 +5734,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
 }
 
 function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, onAutoPromptUsed, language = 'uk' }) {
+  const { translateText } = useI18n();
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
     'Перетвори цей global-рілс у сценарій українською',
@@ -5767,7 +5775,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
     .split(/\n{2,}/)
     .map((block) => block.trim())
     .filter(Boolean)
-    .map((block, index) => <p key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
+    .map((block, index) => <p data-i18n-content key={`${block.slice(0, 24)}-${index}`}>{block}</p>);
 
   const sendMessage = async (text = input) => {
     const clean = text.trim();
@@ -5833,9 +5841,9 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'idea_save_failed');
       setLastIdeaId(payload.idea.id);
-      notify('Відповідь асистента збережено як ідею.');
+      notify(translateText('Відповідь асистента збережено як ідею.'));
     } catch {
-      notify('Не вдалося зберегти ідею.');
+      notify(translateText('Не вдалося зберегти ідею.'));
     }
   };
 
@@ -5848,9 +5856,9 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
     try {
       const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/ideas/${lastIdeaId}/generate-script`, { method: 'POST' });
       if (!response.ok) throw new Error('script_failed');
-      notify('Сценарій створено з ідеї.');
+      notify(translateText('Сценарій створено з ідеї.'));
     } catch {
-      notify('Не вдалося створити сценарій.');
+      notify(translateText('Не вдалося створити сценарій.'));
     }
   };
 
@@ -5867,9 +5875,9 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
         }),
       });
       if (!response.ok) throw new Error('video_task_failed');
-      notify('Video task створено. Генерація відео чекає підключення медіа-генератора.');
+      notify(translateText('Video task створено. Генерація відео чекає підключення медіа-генератора.'));
     } catch {
-      notify('Не вдалося створити video task.');
+      notify(translateText('Не вдалося створити video task.'));
     }
   };
 
@@ -5894,9 +5902,9 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'agent_action_failed');
       setLastIdeaId(payload.idea?.id || '');
-      notify(labels[action] || 'Готово.');
+      notify(translateText(labels[action] || 'Готово.'));
     } catch (err) {
-      notify(`Не вдалося виконати дію: ${err.message}`);
+      notify(translateText(`Не вдалося виконати дію: ${err.message}`));
     } finally {
       setActionStatus('');
     }
@@ -5905,8 +5913,8 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
   return (
     <section className="page page-assistant">
       <PageTitle
-        title="AI-продюсер"
-        subtitle="Маленька робоча панель для ідей, сценаріїв, плану зйомки, caption і Direct-відповідей."
+        title={translateText('AI-продюсер')}
+        subtitle={translateText('Маленька робоча панель для ідей, сценаріїв, плану зйомки, caption і Direct-відповідей.')}
         actions={<button className="dark" onClick={() => sendMessage('Збери мені повний контент-план на тиждень')} disabled={isThinking}><Sparkles size={16} />Сформувати контент-план</button>}
       />
       <div className="assistant-workspace assistant-compact-workspace">
@@ -5929,14 +5937,14 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
                 <span>{role === 'assistant' ? 'AI' : 'Ви'}</span>
                 <div className="message-body">
                   {text === JERYK_LOADING_MESSAGE
-                    ? <JerykLoading title="Асистент готує відповідь" text="Збираю Brand Brain, сигнали і наступний практичний крок." compact />
+                    ? <JerykLoading title={translateText('Асистент готує відповідь')} text="Збираю Brand Brain, сигнали і наступний практичний крок." compact />
                     : renderMessageText(text)}
                 </div>
               </div>
             ))}
           </div>
           <div className="assistant-input">
-            <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder="Напиши задачу: ніша, ціль, формат, тон голосу..." />
+            <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && sendMessage()} placeholder={translateText('Напиши задачу: ніша, ціль, формат, тон голосу...')} />
             <button className="dark" onClick={() => sendMessage()} disabled={isThinking}><Send size={16} />{isThinking ? 'Думаю...' : 'Надіслати'}</button>
           </div>
           <div className="assistant-actions">
