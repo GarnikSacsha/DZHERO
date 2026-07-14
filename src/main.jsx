@@ -59,8 +59,8 @@ import {
   deriveDiscoveryRunNowLabel,
   deriveSignalsEmptyState,
 } from './signalsUiState.mjs';
-import { applyInterfaceLanguage } from './i18n';
 import { I18nProvider, useI18n } from './i18nProvider.mjs';
+import { createLocalizedElement } from './renderI18n.mjs';
 import {
   createWorkspaceRequestContext,
   isWorkspaceRequestCurrent,
@@ -86,6 +86,8 @@ import {
   createRemixAutoRequest,
   shouldRunRemixAutoRequest,
 } from './remixAutoGeneration.mjs';
+
+React.createElement = createLocalizedElement;
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const isBrowser = typeof window !== 'undefined';
@@ -194,6 +196,7 @@ async function readApiError(response, fallback = 'Request failed') {
 }
 
 function JerykLoading({ title = 'Джерик думає', text = 'Збираю контекст і готую відповідь.', compact = false, feature = false }) {
+  useI18n();
   const className = [
     'jeryk-loading',
     compact ? 'compact' : '',
@@ -246,6 +249,7 @@ function getInitialAppPage() {
 }
 
 function PublicLegalPage({ page }) {
+  useI18n();
   const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
   const [deletionResult, setDeletionResult] = useState(null);
   const [deletionStatus, setDeletionStatus] = useState('');
@@ -365,6 +369,7 @@ function getMobilePreviewUrl() {
 }
 
 function MobilePreviewFrame({ src }) {
+  useI18n();
   return (
     <main className="mobile-preview-page">
       <div className="mobile-preview-toolbar">
@@ -533,11 +538,6 @@ function App() {
       window.localStorage.setItem(WORKSPACE_KEY, primaryWorkspaceId);
     }
   };
-
-  useEffect(() => {
-    const timers = [0, 80, 250].map((delay) => window.setTimeout(() => applyInterfaceLanguage(language), delay));
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [language, page, market, data, modal, toast, currentUser, authStatus, theme, remixDraft, workspaceId]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1266,6 +1266,7 @@ function App() {
 }
 
 function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSidebar, onCloseSidebar }) {
+  useI18n();
   const startedRef = useRef(false);
   const openSidebarRef = useRef(onOpenSidebar);
   const closeSidebarRef = useRef(onCloseSidebar);
@@ -1496,6 +1497,7 @@ function ProductTour({ page, setPage, currentUser, dataReady, language, onOpenSi
 }
 
 function LegacyProductTour({ page, setPage, currentUser, dataReady, language, onOpenSidebar, onCloseSidebar }) {
+  useI18n();
   const tourRef = useRef(null);
   const startedRef = useRef(false);
   const openSidebarRef = useRef(onOpenSidebar);
@@ -2059,6 +2061,7 @@ function GoogleIcon() {
 }
 
 function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, language, setLanguage }) {
+  useI18n();
   const [scanInput, setScanInput] = useState('');
   const [emailInput, setEmailInput] = useState('');
   const [scanResult, setScanResult] = useState(null);
@@ -2123,6 +2126,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       sourceRead: 'Dzhero read the source and built a production preview.',
       publicRead: 'Dzhero read the public account description.',
       previewBuilt: 'Dzhero built a preview plan without connecting the account.',
+      insufficientSource: 'The public profile does not provide enough data. Add a short business description after the link: what you sell, who it is for, and the CTA.',
+      insufficientSourceNotice: 'There is not enough public data. Add a short description and Dzhero will build a factual preview.',
       loginRequired: 'To save the result, sign in. The preview is already ready.',
       metaPreview: 'Preview works without connecting the account.',
       actions: {
@@ -2192,6 +2197,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       sourceRead: 'Джеро прочитав джерело і зібрав production preview.',
       publicRead: 'Джеро прочитав публічний опис акаунта.',
       previewBuilt: 'Джеро зібрав preview-план без підключення акаунта.',
+      insufficientSource: 'Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання: що продаєте, для кого і який CTA.',
+      insufficientSourceNotice: 'Публічних даних недостатньо. Додай короткий опис, і Джеро збере preview без вигадок.',
       loginRequired: 'Щоб зберегти результат, треба увійти. Preview вже готовий.',
       metaPreview: 'Preview працює без підключення акаунта.',
       actions: {
@@ -2233,8 +2240,8 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     }
     if (!canBuildFromSourceOnly(cleanInput, metadata)) {
       setSourcePreview(null);
-      setSourceError('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання: що продаєте, для кого і який CTA.');
-      notify('Публічних даних недостатньо. Додай короткий опис, і Джеро збере preview без вигадок.');
+      setSourceError(scanCopy.insufficientSource);
+      notify(scanCopy.insufficientSourceNotice);
       return;
     }
     const result = composeBrandScanResult(cleanInput, metadata, capabilities);
@@ -2452,14 +2459,14 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
             <div className="auth-scan-result">
               <div className="scan-source">
                 <span>{scanCopy.source}</span>
-                <strong>{scanResult.source}</strong>
-                <em data-source={scanResult.sourceTone}>{scanResult.sourceType}</em>
+                <strong data-i18n-content>{scanResult.source}</strong>
+                <em data-i18n-content data-source={scanResult.sourceTone}>{scanResult.sourceType}</em>
               </div>
               {hasSourceMetadata(scanResult.metadata) && (
                 <div className="scan-public-meta">
                   <span>{scanCopy.profile}</span>
-                  <strong>{scanResult.metadata.handle}</strong>
-                  <p>{scanResult.metadata.title || scanResult.metadata.description}</p>
+                  <strong data-i18n-content>{scanResult.metadata.handle}</strong>
+                  <p data-i18n-content>{scanResult.metadata.title || scanResult.metadata.description}</p>
                   <div>
                     {metadataStatChips(scanResult.metadata).map((chip) => <b key={chip}>{chip}</b>)}
                   </div>
@@ -2565,6 +2572,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
 }
 
 function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
+  useI18n();
   const [error, setError] = useState('');
   const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -2584,6 +2592,10 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
       personalRejected: 'Personal accounts are not supported',
       demoButton: 'Start with demo',
+      setupError: 'Instagram Login is still being configured. A real connection requires Meta App keys on the backend.',
+      setupNotice: 'Instagram Login is ready in the UI, but Meta App keys are required.',
+      demoError: 'Demo login did not work. Check the server connection.',
+      serverError: 'The server is not responding. Check the Railway deployment or local backend.',
     }
     : {
       brandSub: 'AI-продюсер для України і глобальних трендів',
@@ -2600,6 +2612,10 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
       personalRejected: 'Personal не підходить',
       demoButton: 'Почати з демо',
+      setupError: 'Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.',
+      setupNotice: 'Instagram Login готовий у UI, але потрібні ключі Meta App',
+      demoError: 'Демо-вхід не спрацював. Перевір підключення до сервера.',
+      serverError: 'Сервер не відповідає. Перевір Railway deploy або локальний backend.',
     };
 
   const startInstagramLogin = async () => {
@@ -2617,9 +2633,9 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       window.location.href = payload.authUrl;
     } catch (authError) {
       if (authError.message !== 'meta_not_configured') {
-        setError('Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.');
+        setError(authCopy.setupError);
       }
-      notify('Instagram Login готовий у UI, але потрібні ключі Meta App');
+      notify(authCopy.setupNotice);
     } finally {
       setIsLoading(false);
     }
@@ -2634,8 +2650,8 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       if (!response.ok) throw new Error(payload.error || 'demo_error');
       onAuth(payload);
     } catch (authError) {
-      setError('Демо-вхід не спрацював. Перевір підключення до сервера.');
-      notify('Сервер не відповідає. Перевір Railway deploy або локальний backend.');
+      setError(authCopy.demoError);
+      notify(authCopy.serverError);
     } finally {
       setIsLoading(false);
     }
@@ -2693,6 +2709,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
 }
 
 function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWorkspaceChange, onLogout, isOpen, onClose }) {
+  const { translateText } = useI18n();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const tourTargets = {
     home: 'sidebar-home',
@@ -2730,7 +2747,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
           <span>Україна + світ</span>
         </div>
       </div>
-      <button className="mobile-menu-close" type="button" aria-label="Закрити меню" onClick={onClose}>
+      <button className="mobile-menu-close" type="button" aria-label={translateText('Закрити меню')} onClick={onClose}>
         <X size={18} />
       </button>
       <nav>
@@ -2758,8 +2775,8 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
                   onClose?.();
                 }}
               >
-                <span>{workspace.name}</span>
-                <small>{workspace.handle} · {workspace.type}</small>
+                <span data-i18n-content>{workspace.name}</span>
+                <small data-i18n-content>{workspace.handle} · {workspace.type}</small>
               </button>
             ))}
             <button type="button" onClick={() => { setPage('settings'); setIsSwitcherOpen(false); }}>
@@ -2771,12 +2788,12 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
         <button className="account" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
           <div className="avatar">{activeWorkspace?.name?.[0]?.toUpperCase() || currentUser?.name?.[0]?.toUpperCase() || 'A'}</div>
           <div>
-            <strong>{activeWorkspace?.name || currentUser?.name || 'Адмін'}</strong>
-            <span>{activeWorkspace?.handle || currentUser?.email || 'робочий простір'}</span>
+            <strong data-i18n-content>{activeWorkspace?.name || currentUser?.name || 'Адмін'}</strong>
+            <span data-i18n-content>{activeWorkspace?.handle || currentUser?.email || 'робочий простір'}</span>
           </div>
           <ChevronDown size={14} />
         </button>
-        <button className="logout-button" type="button" title="Вийти" onClick={onLogout}>
+        <button className="logout-button" type="button" title={translateText('Вийти')} onClick={onLogout}>
           <LogOut size={14} />
         </button>
       </div>
@@ -2785,6 +2802,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
 }
 
 function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, isOpen, onClose }) {
+  useI18n();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const accountName = currentUser?.name || currentUser?.email?.split('@')?.[0] || (language === 'en' ? 'Your account' : 'Твій кабінет');
   const accountEmail = currentUser?.email || (language === 'en' ? 'Demo session' : 'Демо-сесія');
@@ -2857,8 +2875,8 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
             <div className="avatar user-avatar">{accountInitial}</div>
             <div>
               <small>{language === 'en' ? 'Signed in as' : 'Увійшли як'}</small>
-              <strong>{accountName}</strong>
-              <span>{accountEmail}</span>
+              <strong data-i18n-content>{accountName}</strong>
+              <span data-i18n-content>{accountEmail}</span>
             </div>
             <ChevronDown size={14} />
           </button>
@@ -2883,8 +2901,8 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
                   onClose?.();
                 }}
               >
-                <span>{workspace.name}</span>
-                <small>{workspace.handle} · {workspace.type}</small>
+                <span data-i18n-content>{workspace.name}</span>
+                <small data-i18n-content>{workspace.handle} · {workspace.type}</small>
               </button>
             ))}
             <button type="button" onClick={() => { selectPage('settings'); setIsSwitcherOpen(false); }}>
@@ -2906,6 +2924,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
 }
 
 function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
+  const { translateText } = useI18n();
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
     : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
@@ -2917,7 +2936,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
   return (
     <header className="topbar">
       <div className="topbar-title">
-        <button className="mobile-menu-trigger" type="button" aria-label="Відкрити меню" onClick={onOpenMenu}>
+        <button className="mobile-menu-trigger" type="button" aria-label={translateText('Відкрити меню')} onClick={onOpenMenu}>
           <Menu size={18} />
         </button>
       </div>
@@ -2940,6 +2959,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
 }
 
 function MarketFilter({ segments, market, setMarket }) {
+  useI18n();
   return (
     <div className="market-strip">
       <div>
@@ -2959,6 +2979,7 @@ function MarketFilter({ segments, market, setMarket }) {
 }
 
 function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' }) {
+  useI18n();
   const steps = [
     ['signals', 'Signals', 'Find content mechanics', 'viral', Radio],
     ['studio', 'Studio', 'Adapt into script', 'remix', Wand2],
@@ -2997,11 +3018,12 @@ function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' })
 }
 
 function StudioEmptyState({ onOpenSignals }) {
+  const { translateText } = useI18n();
   return (
     <section className="page">
       <PageTitle
-        title="Студія"
-        subtitle="Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA."
+        title={translateText('Студія')}
+        subtitle={translateText('Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA.')}
       />
       <div className="table-card signals-empty-shell">
         <div className="signals-empty-state signals-empty-state--authoritative">
@@ -3018,6 +3040,7 @@ function StudioEmptyState({ onOpenSignals }) {
 }
 
 function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId }) {
+  const { translateText } = useI18n();
   const topReel = data.reels[0];
   const activeMarket = data.marketSegments.find((segment) => segment.id === market);
   const [onboarding, setOnboarding] = useState({
@@ -3084,8 +3107,8 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
   return (
     <section className="page page-home">
       <PageTitle
-        title="Головна"
-        subtitle="Короткий стан MVP: джерела, готові ідеї і одна дія на тиждень."
+        title={translateText('Головна')}
+        subtitle={translateText('Короткий стан MVP: джерела, готові ідеї і одна дія на тиждень.')}
       />
       <div className="mvp-home-grid">
         <article className="mvp-home-hero">
@@ -3122,6 +3145,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
 }
 
 function ProductRoadmap({ notify, setPage }) {
+  const { translateText } = useI18n();
   const mvp = [
     ['MVP core', 'Джерела даних, конкуренти, банк рілсів, ідеї, ремікс-студія, контент-план, AI Direct.', 'робимо першим'],
     ['Phase 2', 'Запуски, аналітика прибутку, бюджет, команда, юридичний сейф, повна CRM-логіка.', 'після ядра'],
@@ -3159,9 +3183,9 @@ function ProductRoadmap({ notify, setPage }) {
   return (
     <section className="page">
       <PageTitle
-        title="MVP / ТЗ"
-        subtitle="Робоча карта продукту: що будуємо першим, які дані потрібні, як виглядає backend і як показувати demo-flow."
-        actions={<button className="dark" onClick={() => { setPage('settings'); notify('MVP scope зафіксовано. Відкрив налаштування продукту.'); }}><ClipboardList size={16} />Зафіксувати MVP</button>}
+        title={translateText('MVP / ТЗ')}
+        subtitle={translateText('Робоча карта продукту: що будуємо першим, які дані потрібні, як виглядає backend і як показувати demo-flow.')}
+        actions={<button className="dark" onClick={() => { setPage('settings'); notify(translateText('MVP scope зафіксовано. Відкрив налаштування продукту.')); }}><ClipboardList size={16} />Зафіксувати MVP</button>}
       />
       <article className="spec-hero">
         <small>Позиціонування</small>
@@ -3229,6 +3253,7 @@ function ProductRoadmap({ notify, setPage }) {
 }
 
 function TikTokSignalsDemo({ notify, setPage }) {
+  useI18n();
   const [step, setStep] = useState('ready');
   const isConnected = step === 'connected' || step === 'analyzed' || step === 'planned';
   const isAnalyzed = step === 'analyzed' || step === 'planned';
