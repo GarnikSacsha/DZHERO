@@ -16533,6 +16533,27 @@ nav button.active::before {
   box-shadow: 0 12px 26px rgba(0, 0, 0, 0.18);
 }
 
+.agent-studio-demo-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  border-radius: 12px;
+  background: rgba(14, 165, 233, 0.14);
+  color: #e0f2fe;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.agent-studio-demo-button:hover:not(:disabled) {
+  border-color: rgba(125, 211, 252, 0.72);
+  background: rgba(14, 165, 233, 0.24);
+  transform: translateY(-1px);
+}
+
 .google-auth-icon {
   width: 20px;
   height: 20px;
