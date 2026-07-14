@@ -110,6 +110,34 @@ function assertRunMutable(run) {
   }
 }
 
+function appendAgentStudioTrace(run, {
+  agent = 'Jeryk Manager',
+  stage = run?.currentStage,
+  status = 'completed',
+  summary = 'Completed the Agent Studio stage.',
+  now = defaultNow(),
+  traceId,
+  idFactory = defaultIdFactory,
+}) {
+  if (!run?.id) throw new Error('agent_studio_run_required');
+  return {
+    ...run,
+    updatedAt: now,
+    trace: [
+      ...(run.trace || []),
+      createTraceEntry({
+        id: traceId,
+        agent,
+        stage,
+        status,
+        summary,
+        createdAt: now,
+        idFactory,
+      }),
+    ],
+  };
+}
+
 function transitionAgentStudioRun(run, nextStatus, options = {}) {
   assertRunMutable(run);
   const allowed = ALLOWED_TRANSITIONS[run.status];
@@ -400,6 +428,7 @@ module.exports = {
   ACTIVE_AGENT_STUDIO_STATUSES,
   ALLOWED_TRANSITIONS,
   createAgentStudioRun,
+  appendAgentStudioTrace,
   transitionAgentStudioRun,
   requestAgentStudioContext,
   resumeAgentStudioRunWithContext,

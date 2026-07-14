@@ -146,6 +146,7 @@ async function orchestrateAgentStudio({
   input: rawInput,
   workspace,
   signals = [],
+  selectedTrend: preselectedTrend = null,
   runAgent = createOpenAIAgentRunner(),
   analyzeVideo,
   emit = () => {},
@@ -175,7 +176,9 @@ async function orchestrateAgentStudio({
     return validated;
   };
 
-  const selectedTrend = input.mode === 'find_trend'
+  const selectedTrend = preselectedTrend
+    ? TrendBriefSchema.parse(preselectedTrend)
+    : input.mode === 'find_trend'
     ? await runSpecialist('trend_analyst', {
       objective: input.objective,
       brandBrain,

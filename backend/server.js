@@ -9,6 +9,27 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const { generateAgentReply } = require('./services/agentEngine');
 const { generateRemix } = require('./services/remixEngine');
+const { normalizeAgentStudioInput } = require('./services/agentStudioSchemas.cjs');
+const {
+  ACTIVE_AGENT_STUDIO_STATUSES,
+  TERMINAL_AGENT_STUDIO_STATUSES,
+  createAgentStudioRun,
+  appendAgentStudioTrace,
+  transitionAgentStudioRun,
+  requestAgentStudioContext,
+  resumeAgentStudioRunWithContext,
+  requestAgentStudioCriticRevision,
+  cancelAgentStudioRun,
+  classifyAgentStudioError,
+  approveAgentStudioRun,
+  recoverInterruptedAgentStudioRun,
+  toPublicAgentStudioRun,
+} = require('./services/agentStudioRun.cjs');
+const {
+  createOpenAIAgentRunner,
+  orchestrateAgentStudio,
+} = require('./services/agentStudioAgents.cjs');
+const { analyzeAgentStudioVideo } = require('./services/agentStudioVideoTool.cjs');
 const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
@@ -150,6 +171,11 @@ const UNLIMITED_ACCESS_EMAILS = new Set(
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
+const ENABLE_AGENT_STUDIO = process.env.ENABLE_AGENT_STUDIO === 'true';
+const OPENAI_AGENT_MODEL = process.env.OPENAI_AGENT_MODEL || 'gpt-5.6';
+const AGENT_STUDIO_TEST_PROVIDER = process.env.NODE_ENV === 'test'
+  ? String(process.env.AGENT_STUDIO_TEST_PROVIDER || '').trim()
+  : '';
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID || META_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || META_APP_SECRET;
 const INSTAGRAM_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/instagram/callback`;
@@ -468,6 +494,7 @@ function normalizeDbShape(db = {}) {
   db.usageCounters ||= [];
   db.testerAccessGrants ||= [];
   db.demoSessions ||= [];
+  db.agentStudioRuns ||= [];
   return db;
 }
 
@@ -475,6 +502,7 @@ let automaticDiscoveryTickInFlight = false;
 const automaticDiscoveryWorkspacesInFlight = new Set();
 const automaticDiscoveryFileMutex = createKeyedMutex();
 let automaticDiscoveryTestProvider = null;
+let agentStudioTestProvider = null;
 
 if (AUTOMATIC_DISCOVERY_TEST_PROVIDER) {
   const loadedProvider = require(path.resolve(AUTOMATIC_DISCOVERY_TEST_PROVIDER));
@@ -485,6 +513,17 @@ if (AUTOMATIC_DISCOVERY_TEST_PROVIDER) {
       : null;
   if (!automaticDiscoveryTestProvider) {
     throw new Error('AUTOMATIC_DISCOVERY_TEST_PROVIDER must export a function when NODE_ENV=test');
+  }
+}
+
+if (AGENT_STUDIO_TEST_PROVIDER) {
+  const loadedProvider = require(path.resolve(AGENT_STUDIO_TEST_PROVIDER));
+  agentStudioTestProvider = loadedProvider?.default || loadedProvider;
+  if (
+    typeof agentStudioTestProvider?.runAgent !== 'function'
+    || typeof agentStudioTestProvider?.analyzeVideo !== 'function'
+  ) {
+    throw new Error('AGENT_STUDIO_TEST_PROVIDER must export runAgent and analyzeVideo functions when NODE_ENV=test');
   }
 }
 
@@ -3194,6 +3233,18 @@ function serializeMutatingApiRequests(req, res, next) {
   }).catch(next);
 }
 
+function serializeBackgroundMutation(task) {
+  let releaseQueue;
+  const currentTurn = new Promise((resolve) => {
+    releaseQueue = resolve;
+  });
+  const previousTurn = mutatingApiQueue.catch(() => {});
+  mutatingApiQueue = previousTurn.then(() => currentTurn);
+  return previousTurn
+    .then(task)
+    .finally(() => releaseQueue());
+}
+
 function getAdminToken(req) {
   return String(req.headers['x-admin-token'] || '').trim();
 }
@@ -3576,6 +3627,229 @@ function getAiProviderStatus() {
       status: process.env.VIDEO_PROVIDER_API_KEY ? 'ready' : 'queued_for_later',
     },
   };
+}
+
+const agentStudioRunsInFlight = new Set();
+
+function getAgentStudioConfig() {
+  const missing = [
+    !process.env.OPENAI_API_KEY && 'OPENAI_API_KEY',
+    !GEMINI_API_KEY && 'GEMINI_API_KEY',
+  ].filter(Boolean);
+  return {
+    enabled: ENABLE_AGENT_STUDIO,
+    configured: ENABLE_AGENT_STUDIO && missing.length === 0,
+    model: OPENAI_AGENT_MODEL,
+    manager: 'Jeryk Manager',
+    provider: 'openai-agents-sdk',
+    videoProvider: 'gemini',
+    missing,
+  };
+}
+
+function requireAgentStudioEnabled(res) {
+  const config = getAgentStudioConfig();
+  if (!config.enabled) {
+    res.status(404).json({ error: 'agent_studio_disabled', message: 'Agent Studio Beta is not enabled.' });
+    return false;
+  }
+  if (!config.configured && !agentStudioTestProvider) {
+    res.status(503).json({
+      error: 'agent_studio_not_configured',
+      message: 'Agent Studio providers are not configured.',
+      missing: config.missing,
+    });
+    return false;
+  }
+  return true;
+}
+
+function findAgentStudioRun(db, workspaceId, runId) {
+  return (db.agentStudioRuns || []).find((run) => (
+    run.id === runId && run.workspaceId === workspaceId
+  )) || null;
+}
+
+function buildAgentStudioContentPlanPosts(run, candidateId) {
+  const finalPackage = run.artifacts || {};
+  const hero = finalPackage.creative?.heroReel;
+  const alternatives = finalPackage.creative?.alternatives || [];
+  const candidate = hero?.id === candidateId
+    ? hero
+    : alternatives.find((item) => item.id === candidateId);
+  if (!candidate) throw new Error('agent_studio_candidate_not_found');
+  const days = finalPackage.contentPlan?.days || [];
+  if (days.length !== 7) throw new Error('agent_studio_content_plan_missing');
+  const sourceKey = `agent-studio:${run.id}`;
+  const today = new Date();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+  return normalizeContentPlanPosts(days.map((day, index) => ({
+    id: `agent-studio-${run.id}-${day.day}`,
+    day: ((today.getDate() - 1 + index) % daysInMonth) + 1,
+    title: day.title,
+    body: index === 0 && hero?.id === candidateId
+      ? [hero.concept, hero.hook, hero.cta].filter(Boolean).join('\n\n')
+      : [day.hook, day.cta].filter(Boolean).join('\n\n'),
+    format: day.format,
+    time: index % 2 === 0 ? '10:00' : '18:30',
+    done: false,
+    source: 'agent_studio',
+    sourceKey,
+    sourceTitle: candidate.title,
+    sourceUrl: finalPackage.selectedTrend?.sourceUrl || '',
+    sourceReelId: finalPackage.selectedTrend?.signalId || '',
+    sourceHandle: 'Jeryk + agent team',
+    dayLabel: `Day ${day.day}`,
+  })));
+}
+
+async function persistAgentStudioEvent(runId, event) {
+  return serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
+    if (index < 0) return null;
+    const run = db.agentStudioRuns[index];
+    if (TERMINAL_AGENT_STUDIO_STATUSES.has(run.status)) return run;
+    const now = new Date().toISOString();
+    let nextRun;
+    if (event.status === 'revised' && event.agentId === 'critic' && run.status === 'evaluating') {
+      nextRun = requestAgentStudioCriticRevision(run, {
+        instructions: [event.summary || 'Revise the creative using the critic feedback.'],
+        now,
+      });
+    } else if (event.status === 'started' && event.stage !== run.status) {
+      nextRun = transitionAgentStudioRun(run, event.stage, {
+        agent: event.agent,
+        summary: event.summary,
+        now,
+      });
+    } else {
+      nextRun = appendAgentStudioTrace(run, {
+        agent: event.agent,
+        stage: event.stage || run.currentStage,
+        status: event.status || 'completed',
+        summary: event.summary,
+        now,
+      });
+    }
+    db.agentStudioRuns[index] = nextRun;
+    await writeDb(db);
+    return nextRun;
+  });
+}
+
+async function finalizeAgentStudioResult(runId, result) {
+  return serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
+    if (index < 0) return null;
+    const run = db.agentStudioRuns[index];
+    if (TERMINAL_AGENT_STUDIO_STATUSES.has(run.status)) return run;
+    let nextRun = run;
+    if (result.type === 'needs_context') {
+      nextRun = requestAgentStudioContext(run, {
+        question: result.contextRequest.question,
+        reason: result.contextRequest.reason,
+        now: new Date().toISOString(),
+      });
+      nextRun = {
+        ...nextRun,
+        artifacts: {
+          ...(nextRun.artifacts || {}),
+          selectedTrend: result.selectedTrend,
+          evidence: result.evidence,
+        },
+      };
+    } else {
+      nextRun = {
+        ...run,
+        artifacts: result.finalPackage,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    db.agentStudioRuns[index] = nextRun;
+    await writeDb(db);
+    return nextRun;
+  });
+}
+
+async function failAgentStudioRun(runId, cause) {
+  return serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
+    if (index < 0) return null;
+    const run = db.agentStudioRuns[index];
+    if (TERMINAL_AGENT_STUDIO_STATUSES.has(run.status)) return run;
+    const error = classifyAgentStudioError(cause);
+    const failed = transitionAgentStudioRun(run, 'failed', {
+      agent: 'Jeryk Manager',
+      traceStatus: 'failed',
+      summary: error.message,
+      error,
+      now: new Date().toISOString(),
+    });
+    db.agentStudioRuns[index] = failed;
+    await writeDb(db);
+    return failed;
+  });
+}
+
+async function executeAgentStudioRun(runId) {
+  if (agentStudioRunsInFlight.has(runId)) return;
+  agentStudioRunsInFlight.add(runId);
+  let eventQueue = Promise.resolve();
+  try {
+    const db = await readDb();
+    const run = (db.agentStudioRuns || []).find((item) => item.id === runId);
+    if (!run || TERMINAL_AGENT_STUDIO_STATUSES.has(run.status) || run.status === 'needs_context') return;
+    const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
+    if (!workspace) throw new Error('workspace_not_found');
+    const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
+    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
+    const analyzeVideo = agentStudioTestProvider?.analyzeVideo || analyzeAgentStudioVideo;
+    const result = await orchestrateAgentStudio({
+      runId,
+      input: run.input,
+      workspace,
+      signals,
+      selectedTrend: run.contextHistory?.length ? run.artifacts?.selectedTrend : null,
+      runAgent,
+      analyzeVideo,
+      emit(event) {
+        eventQueue = eventQueue.then(() => persistAgentStudioEvent(runId, event));
+      },
+    });
+    await eventQueue;
+    await finalizeAgentStudioResult(runId, result);
+  } catch (error) {
+    try {
+      await eventQueue;
+    } catch {
+      // The classified failure below is the authoritative terminal state.
+    }
+    await failAgentStudioRun(runId, error);
+  } finally {
+    agentStudioRunsInFlight.delete(runId);
+  }
+}
+
+function scheduleAgentStudioRun(runId) {
+  setImmediate(() => {
+    void executeAgentStudioRun(runId).catch((error) => {
+      console.error('[AgentStudio]', runId, error);
+    });
+  });
+}
+
+async function recoverInterruptedAgentStudioRunsOnStartup() {
+  const db = await readDb();
+  let changed = false;
+  db.agentStudioRuns = (db.agentStudioRuns || []).map((run) => {
+    if (!ACTIVE_AGENT_STUDIO_STATUSES.has(run.status)) return run;
+    changed = true;
+    return recoverInterruptedAgentStudioRun(run, { now: new Date().toISOString() });
+  });
+  if (changed) await writeDb(db);
 }
 
 function normalizeChecklistItems(items = []) {
@@ -4783,6 +5057,224 @@ app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
   res.json({ posts: workspace.contentPlanPosts, updatedAt: workspace.contentPlanUpdatedAt, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
 
+app.get('/api/workspaces/:workspaceId/agent-studio/config', async (req, res) => {
+  res.json(getAgentStudioConfig());
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs', expensiveLimiter, async (req, res, next) => {
+  try {
+    if (!requireAgentStudioEnabled(res)) return;
+    let input;
+    try {
+      input = normalizeAgentStudioInput(req.body || {});
+    } catch (error) {
+      res.status(400).json({
+        error: 'invalid_agent_studio_input',
+        message: error?.issues?.[0]?.message || 'Choose a mode, objective, and valid source.',
+      });
+      return;
+    }
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    if (input.idempotencyKey) {
+      const existing = (db.agentStudioRuns || []).find((run) => (
+        run.workspaceId === workspace.id
+        && run.input?.idempotencyKey === input.idempotencyKey
+      ));
+      if (existing) {
+        res.status(200).json({ run: toPublicAgentStudioRun(existing), idempotent: true });
+        return;
+      }
+    }
+    assertUsageAvailable(db, workspace.id, 'aiOperations', 1, req.authUser);
+    const run = createAgentStudioRun({
+      workspaceId: workspace.id,
+      userId: req.authUser.id,
+      input,
+    });
+    db.agentStudioRuns.unshift(run);
+    incrementUsage(db, workspace.id, USAGE_METRICS.aiOperations, 1);
+    await writeDb(db);
+    res.status(201).json({ run: toPublicAgentStudioRun(run) });
+    scheduleAgentStudioRun(run.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/workspaces/:workspaceId/agent-studio/runs/:runId', async (req, res) => {
+  const db = await readDb();
+  const run = findAgentStudioRun(db, req.params.workspaceId, req.params.runId);
+  if (!run) {
+    res.status(404).json({ error: 'agent_studio_run_not_found' });
+    return;
+  }
+  res.json({ run: toPublicAgentStudioRun(run) });
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/context', expensiveLimiter, async (req, res, next) => {
+  try {
+    if (!requireAgentStudioEnabled(res)) return;
+    const userNotes = String(req.body?.userNotes || '').trim();
+    if (userNotes.length < 10 || userNotes.length > 4000) {
+      res.status(400).json({
+        error: 'agent_studio_context_required',
+        message: 'Add one or two sentences describing the key action and reveal.',
+      });
+      return;
+    }
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === req.params.workspaceId
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    const run = db.agentStudioRuns[index];
+    if (run.status !== 'needs_context') {
+      res.status(409).json({ error: 'agent_studio_context_not_requested' });
+      return;
+    }
+    let resumed = resumeAgentStudioRunWithContext(run, {
+      userNotes,
+      now: new Date().toISOString(),
+    });
+    resumed = {
+      ...resumed,
+      input: {
+        ...resumed.input,
+        userNotes,
+      },
+    };
+    db.agentStudioRuns[index] = resumed;
+    await writeDb(db);
+    res.status(202).json({ run: toPublicAgentStudioRun(resumed) });
+    scheduleAgentStudioRun(resumed.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === req.params.workspaceId
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    const run = db.agentStudioRuns[index];
+    if (run.status === 'completed' || run.status === 'failed') {
+      res.status(409).json({ error: 'agent_studio_run_terminal' });
+      return;
+    }
+    const cancelled = cancelAgentStudioRun(run, {
+      now: new Date().toISOString(),
+      reason: 'The user cancelled this Agent Studio run.',
+    });
+    db.agentStudioRuns[index] = cancelled;
+    await writeDb(db);
+    res.json({ run: toPublicAgentStudioRun(cancelled) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/approve', async (req, res, next) => {
+  try {
+    const candidateId = String(req.body?.candidateId || '').trim();
+    const addToContentPlan = req.body?.addToContentPlan !== false;
+    if (!candidateId) {
+      res.status(400).json({ error: 'agent_studio_candidate_required' });
+      return;
+    }
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    const index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === workspace.id
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    const run = db.agentStudioRuns[index];
+    const hero = run.artifacts?.creative?.heroReel;
+    const candidateExists = hero?.id === candidateId
+      || (run.artifacts?.creative?.alternatives || []).some((item) => item.id === candidateId);
+    if (!candidateExists) {
+      res.status(400).json({ error: 'agent_studio_candidate_not_found' });
+      return;
+    }
+    let addedPosts = 0;
+    let contentPlanWriteId = run.approval?.contentPlanWriteId || null;
+    if (addToContentPlan) {
+      const sourceKey = `agent-studio:${run.id}`;
+      const existingPosts = normalizeContentPlanPosts(workspace.contentPlanPosts || []);
+      const generatedPosts = buildAgentStudioContentPlanPosts(run, candidateId);
+      const uniquePosts = generatedPosts.filter((post) => !existingPosts.some((existing) => (
+        existing.sourceKey === sourceKey && existing.id === post.id
+      )));
+      const nextPosts = [...existingPosts, ...uniquePosts];
+      const billing = buildEntitlements(db, workspace.id, req.authUser);
+      const limit = billing.plan.limits.contentPlanPosts;
+      if (Number.isFinite(limit) && nextPosts.length > limit) {
+        res.status(402).json({
+          error: 'plan_limit_reached',
+          usageKey: 'contentPlanPosts',
+          limit,
+          used: billing.usage.contentPlanPosts,
+          requested: uniquePosts.length,
+          remaining: billing.remaining.contentPlanPosts,
+          plan: billing.plan,
+          message: 'Content plan post limit reached for this plan.',
+        });
+        return;
+      }
+      workspace.contentPlanPosts = nextPosts;
+      workspace.contentPlanUpdatedAt = new Date().toISOString();
+      addedPosts = uniquePosts.length;
+      contentPlanWriteId = `agent_studio_plan:${run.id}`;
+    }
+    let approved;
+    try {
+      approved = approveAgentStudioRun(run, {
+        candidateId,
+        contentPlanWriteId,
+        now: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (error.message === 'agent_studio_already_approved') {
+        res.status(409).json({ error: error.message });
+        return;
+      }
+      if (error.message === 'agent_studio_not_awaiting_approval') {
+        res.status(409).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
+    if (approved === run && contentPlanWriteId && !approved.approval?.contentPlanWriteId) {
+      approved = {
+        ...approved,
+        approval: {
+          ...approved.approval,
+          contentPlanWriteId,
+        },
+      };
+    }
+    db.agentStudioRuns[index] = approved;
+    await writeDb(db);
+    res.json({ run: toPublicAgentStudioRun(approved), addedPosts });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/workspaces/:workspaceId/checklists/:scope', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
@@ -5919,7 +6411,15 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(CLIENT_DIST_PATH, 'index.html'));
 });
 
-app.listen(PORT, HOST, () => {
-  console.log(`Dzhero listening on http://${HOST}:${PORT}`);
-  startAutomaticDiscoveryWorker();
+async function startServer() {
+  await recoverInterruptedAgentStudioRunsOnStartup();
+  app.listen(PORT, HOST, () => {
+    console.log(`Dzhero listening on http://${HOST}:${PORT}`);
+    startAutomaticDiscoveryWorker();
+  });
+}
+
+void startServer().catch((error) => {
+  console.error('[ServerStartup]', error);
+  process.exitCode = 1;
 });
