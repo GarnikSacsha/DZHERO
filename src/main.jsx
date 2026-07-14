@@ -3107,8 +3107,8 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
           <div className="mvp-ideas-preview">
             {previewIdeas.map((idea) => (
               <button type="button" key={idea.id || idea.title} onClick={() => setPage('plan')}>
-                <small>{idea.source || 'note'}</small>
-                <b>{idea.title}</b>
+                <small data-i18n-content>{idea.source || 'note'}</small>
+                <b data-i18n-content>{idea.title}</b>
               </button>
             ))}
           </div>
@@ -4629,6 +4629,7 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
           <div className="reel-info">
             <button
               className={`thumb market-${reel.market}`}
+              data-i18n-content
               type="button"
               onClick={() => onOpenPreview(reel)}
               aria-label={translateText(`Відкрити прев'ю ${reel.title}`)}
@@ -5572,6 +5573,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       </div>
       <div className="brand-brain-intake">
         <textarea
+          data-i18n-content
           value={seed}
           onChange={(event) => setSeed(event.target.value)}
           placeholder={translateText('Instagram, YouTube, TikTok, сайт або коротко: кавʼярня у Львові, сніданки, аудиторія 20-35...')}
@@ -5592,6 +5594,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
           <label className="brand-field" key={field}>
             <span>{label}</span>
             <textarea
+              data-i18n-content
               value={brief[field] || ''}
               onChange={(event) => updateField(field, event.target.value)}
               placeholder={placeholder}
@@ -5611,6 +5614,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
             <label className={field === 'proof' || field === 'stopTopics' ? 'brand-field wide' : 'brand-field'} key={field}>
               <span>{label}</span>
               <textarea
+                data-i18n-content
                 value={brief[field] || ''}
                 onChange={(event) => updateField(field, event.target.value)}
                 placeholder={placeholder}
