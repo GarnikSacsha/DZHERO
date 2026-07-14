@@ -3084,7 +3084,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
         <article className="mvp-counter-card">
           <span>Сигнали</span>
           <strong>{data.reels.length}</strong>
-          <p>Найсильніший: {topReel.score} score</p>
+          <p>{topReel ? `Найсильніший: ${topReel.score} score` : 'Сигналів ще немає'}</p>
         </article>
       </div>
     </section>
