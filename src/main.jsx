@@ -1124,6 +1124,7 @@ function App() {
         run: payload.run,
         acceptedSignalsCount: acceptedSignals,
         updatedSignalsCount: updatedSignals,
+        language,
       });
       if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
       applyDiscoveryRunStatus(payload.run, deriveDiscoveryRunStatusCode(payload.run, signalDiscovery?.settings), requestContext);
@@ -3497,6 +3498,7 @@ function ViralBank({
   onToggleAutomation,
   onRunAutomation,
 }) {
+  const { language, t, translateText } = useI18n();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
@@ -3545,7 +3547,7 @@ function ViralBank({
     try {
       await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: getYouTubeCategoryId(youtubeCategory) });
     } catch (error) {
-      notify(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`);
+      notify(translateText(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`));
     } finally {
       setIsPullingYoutube(false);
     }
@@ -3579,7 +3581,7 @@ function ViralBank({
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    notify('CSV експорт завантажено');
+    notify(translateText('CSV експорт завантажено'));
   };
   const openPreview = (reel) => {
     setPreviewReel(reel);
@@ -3590,12 +3592,12 @@ function ViralBank({
   const previewImage = getReelPreviewImage(previewReel);
   const previewVideoSource = getReelVideoSource(previewReel);
   const discovery = automation?.discovery || null;
-  const discoveryState = deriveDiscoveryToolbarStatus(discovery);
+  const discoveryState = deriveDiscoveryToolbarStatus(discovery, { language });
   const discoveryStatus = discovery?.status || {};
   const isAutomationReady = Boolean(discovery);
   const isAutomationBusy = Boolean(automation?.isLoading || automation?.isRefreshing || automation?.isToggling || automation?.isRunning);
   const automationEnabled = discovery?.settings?.enabled !== false;
-  const automationStatusText = automation?.error || discoveryState.detail;
+  const automationStatusText = automation?.error ? t('signals.discovery.status.failedDetail') : discoveryState.detail;
   const canRunAutomation = canRunDiscoveryNow(discovery, { busy: isAutomationBusy });
   const hasActiveFilters = Boolean(trimmedQuery || pastedReelUrl || sourceFilter !== 'all');
   const emptyState = deriveSignalsEmptyState({
@@ -3607,6 +3609,7 @@ function ViralBank({
     query: trimmedQuery,
     sourceFilter,
     pastedReelUrl,
+    language,
   });
   const realSignalSources = buildSignalSourceSummary(filteredReels);
   const spendText = discovery
@@ -3614,13 +3617,14 @@ function ViralBank({
     : '—';
   const runNowLabel = deriveDiscoveryRunNowLabel(discovery, {
     busy: Boolean(automation?.isRunning || discoveryStatus.running),
+    language,
   });
 
   return (
     <section className="page page-signals">
       <PageTitle
-        title="Сигнали"
-        subtitle="Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд."
+        title={translateText('Сигнали')}
+        subtitle={translateText('Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд.')}
         actions={<button onClick={exportCsv}><Download size={16} />Експорт</button>}
       />
       <div className="signals-automation-bar">
@@ -3648,11 +3652,11 @@ function ViralBank({
           <div className="signals-automation-metrics">
             <div>
               <span>Останній запуск</span>
-              <strong>{formatDiscoveryTimestamp(discoveryStatus.lastRunAt)}</strong>
+              <strong>{formatDiscoveryTimestamp(discoveryStatus.lastRunAt, language)}</strong>
             </div>
             <div>
               <span>Наступний</span>
-              <strong>{formatDiscoveryTimestamp(discoveryStatus.nextRunAt)}</strong>
+              <strong>{formatDiscoveryTimestamp(discoveryStatus.nextRunAt, language)}</strong>
             </div>
             <div>
               <span>{discoveryStatus.dailySpendIsEstimated ? 'Орієнтовні витрати сьогодні' : 'Витрати сьогодні'}</span>
@@ -3686,7 +3690,7 @@ function ViralBank({
           <option value="newest">Нові</option>
         </select>
       </div>
-      <div className="signal-source-tabs" aria-label="Фільтр джерел сигналів">
+      <div className="signal-source-tabs" aria-label={translateText('Фільтр джерел сигналів')}>
         {sourceTabs.map(([value, label]) => (
           <button
             className={sourceFilter === value ? 'active' : ''}
@@ -3720,7 +3724,7 @@ function ViralBank({
             <select value={youtubeCategory} onChange={(event) => setYoutubeCategory(event.target.value)}>
               {YOUTUBE_POPULAR_CATEGORIES.map((category) => (
                 <option value={category.id} key={category.id}>
-                  {category.label}
+                  {t(category.labelKey)}
                 </option>
               ))}
             </select>
@@ -3786,7 +3790,7 @@ function ViralBank({
               <article key={row.key}>
                 <b>{row.label.replace(/^@/, '')[0]?.toUpperCase() || row.platform[0]?.toUpperCase() || 'S'}</b>
                 <div>
-                  <strong>{row.label}</strong>
+                  <strong data-i18n-content>{row.label}</strong>
                   <span>{row.platform} - {row.count} signals - up to {formatMetricDisplay(row.bestViews)} views</span>
                 </div>
                 <Score value={row.bestScore} compact />
@@ -3814,7 +3818,7 @@ function ViralBank({
       {previewReel && (
         <div className="video-preview-backdrop" onClick={closePreview}>
           <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label="Закрити прев'ю">
+            <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label={translateText("Закрити прев'ю")}>
               <X size={16} />
             </button>
             {previewVideoSource ? (
@@ -3825,7 +3829,7 @@ function ViralBank({
                 style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0.08), rgba(3, 7, 18, 0.74)), url("${previewImage}")` } : undefined}
               >
                 <span className="video-preview-play" aria-hidden="true" />
-                <strong>{previewReel.handle}</strong>
+                <strong data-i18n-content>{previewReel.handle}</strong>
                 {getSignalSourceUrl(previewReel) && (
                   <a className="video-preview-play-here" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">
                     Відкрити відео
@@ -3835,7 +3839,7 @@ function ViralBank({
             )}
             <div>
               <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
-              <h3>{previewReel.title}</h3>
+              <h3 data-i18n-content>{previewReel.title}</h3>
               {getSignalSourceUrl(previewReel) && (
                 <a className="video-preview-source" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">Відкрити оригінал</a>
               )}
@@ -3850,6 +3854,7 @@ function ViralBank({
 }
 
 function ApifySignalImportModal({ onClose, onImport, notify }) {
+  const { translateText } = useI18n();
   const [platform, setPlatform] = useState('instagram');
   const [inputType, setInputType] = useState('profile');
   const [inputValue, setInputValue] = useState('');
@@ -3859,7 +3864,7 @@ function ApifySignalImportModal({ onClose, onImport, notify }) {
   const submit = async () => {
     if (!inputValue.trim() || isSubmitting) return;
     if (!onImport) {
-      notify('Apify import is not connected yet.');
+      notify(translateText('Apify import is not connected yet.'));
       return;
     }
     setIsSubmitting(true);
@@ -3867,7 +3872,7 @@ function ApifySignalImportModal({ onClose, onImport, notify }) {
       const result = await onImport({ platform, inputType, inputValue: inputValue.trim(), limit, downloadVideo });
       if (result) onClose();
     } catch (error) {
-      notify(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`);
+      notify(translateText(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`));
     } finally {
       setIsSubmitting(false);
     }
@@ -3935,6 +3940,7 @@ function ApifySignalImportModal({ onClose, onImport, notify }) {
 }
 
 function BusinessPlaybooks({ notify, setPage, workspaceId }) {
+  const { translateText } = useI18n();
   const [selectedPlaybook, setSelectedPlaybook] = useState('');
   const [selectedFocus, setSelectedFocus] = useState('');
   const [saveStatus, setSaveStatus] = useState('idle');
@@ -3978,22 +3984,22 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
       });
       if (!response.ok) throw new Error(await readApiError(response, 'save_failed'));
       setSaveStatus('saved');
-      notify(`Playbook "${title}" збережено в Brand Brain`);
+      notify(translateText(`Playbook "${title}" збережено в Brand Brain`));
       window.setTimeout(() => {
         setSaveStatus('idle');
         setPage('assistant');
       }, 450);
     } catch {
       setSaveStatus('error');
-      notify('Не вдалося зберегти playbook. Перевір backend.');
+      notify(translateText('Не вдалося зберегти playbook. Перевір backend.'));
     }
   };
 
   return (
     <section className="page page-businesses">
       <PageTitle
-        title="Бізнеси"
-        actions={<button className="dark" onClick={() => { selectedPlaybook ? setPage('assistant') : setPage('settings'); notify(selectedPlaybook ? 'Відкрив Асистента з обраним playbook' : 'Відкрив профіль бізнесу для вибору ніші'); }}><BriefcaseBusiness size={16} />{selectedPlaybook ? 'До Асистента' : 'Обрати тип бізнесу'}</button>}
+        title={translateText('Бізнеси')}
+        actions={<button className="dark" onClick={() => { selectedPlaybook ? setPage('assistant') : setPage('settings'); notify(translateText(selectedPlaybook ? 'Відкрив Асистента з обраним playbook' : 'Відкрив профіль бізнесу для вибору ніші')); }}><BriefcaseBusiness size={16} />{selectedPlaybook ? 'До Асистента' : 'Обрати тип бізнесу'}</button>}
       />
       {selectedPlaybook && (
         <div className="business-selection-bar">
@@ -4042,6 +4048,7 @@ function BusinessPlaybooks({ notify, setPage, workspaceId }) {
 }
 
 function StrategyBrain({ notify, setPage }) {
+  const { translateText } = useI18n();
   const pillars = [
     ['Візуальний аудит', 'Профіль виглядає як експертний, але бракує повторюваної системи обкладинок і кольорової дисципліни.', '72%'],
     ['Профіль ЦА', 'Власники малого бізнесу, експерти, консультанти й команди, яким потрібен контент без великого продакшну.', 'готово'],
@@ -4061,9 +4068,9 @@ function StrategyBrain({ notify, setPage }) {
   return (
     <section className="page page-strategy">
       <PageTitle
-        title="Аудит та позиціонування"
-        subtitle="Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики."
-        actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для формування позиціонування'); }}><Sparkles size={16} />Сформувати позиціонування</button>}
+        title={translateText('Аудит та позиціонування')}
+        subtitle={translateText('Заміна ручного стратегічного аналізу: аудит профілю, ЦА, позиціонування, Tone of Voice і контент-рубрики.')}
+        actions={<button className="dark" onClick={() => { setPage('assistant'); notify(translateText('Відкрив Асистента для формування позиціонування')); }}><Sparkles size={16} />Сформувати позиціонування</button>}
       />
       <article className="strategy-health-card">
         <div>
@@ -4584,11 +4591,11 @@ function getReelPublishedLabel(reel) {
   }).format(date).replace(',', '');
 }
 
-function formatDiscoveryTimestamp(value) {
+function formatDiscoveryTimestamp(value, language = 'uk') {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('uk-UA', {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'uk-UA', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -4608,6 +4615,7 @@ function formatUsdAmount(value) {
 }
 
 function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
+  const { translateText } = useI18n();
   const [adaptingKey, setAdaptingKey] = useState('');
   const adaptReel = (reel) => {
     const key = reel.id || `${reel.handle}-${reel.title}`;
@@ -4641,13 +4649,13 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
               className={`thumb market-${reel.market}`}
               type="button"
               onClick={() => onOpenPreview(reel)}
-              aria-label={`Відкрити прев'ю ${reel.title}`}
+              aria-label={translateText(`Відкрити прев'ю ${reel.title}`)}
               style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${previewImage}")` } : undefined}
             >
               <span>{viewsLabel}</span>
               <i className="thumb-play" aria-hidden="true" />
             </button>
-            <div><strong>{reel.title}</strong><small>{metaLine}</small></div>
+            <div><strong data-i18n-content>{reel.title}</strong><small data-i18n-content>{metaLine}</small></div>
           </div>
           <Score value={reel.score} />
           <strong>{viewsLabel}</strong>
@@ -4690,6 +4698,7 @@ function SignalsReelsTable({
   onOpenAdvancedImport,
   onRefreshAutomation,
 }) {
+  const { language } = useI18n();
   if (reels.length === 0 && !hasActiveFilters) {
     const authoritativeEmptyState = deriveSignalsEmptyState({
       reelsCount: 0,
@@ -4699,6 +4708,7 @@ function SignalsReelsTable({
       canRunAutomation,
       isLoading,
       loadIssue,
+      language,
     });
 
     if (authoritativeEmptyState?.kind === 'loading') {
@@ -4794,16 +4804,17 @@ function SignalsReelsTable({
 }
 
 function Competitors({ competitors, openModal }) {
+  const { translateText } = useI18n();
   const [query, setQuery] = useState('');
   const filteredCompetitors = competitors.filter((row) => `${row.handle} ${row.niche} ${row.status}`.toLowerCase().includes(query.toLowerCase()));
 
   return (
     <section className="page">
-      <PageTitle title="База конкурентів" subtitle="Глобальний список акаунтів для аналізу: Україна, США, Європа та англомовний global." actions={<button className="dark" onClick={() => openModal('competitor')}><Plus size={16} />Додати конкурента</button>} />
+      <PageTitle title={translateText('База конкурентів')} subtitle={translateText('Глобальний список акаунтів для аналізу: Україна, США, Європа та англомовний global.')} actions={<button className="dark" onClick={() => openModal('competitor')}><Plus size={16} />Додати конкурента</button>} />
       <div className="competitor-toolbar">
         <label>
           <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Пошук конкурентів..." />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={translateText('Пошук конкурентів...')} />
         </label>
         <span>{filteredCompetitors.length} акаунтів у вибірці</span>
       </div>
@@ -4813,10 +4824,10 @@ function Competitors({ competitors, openModal }) {
           <div className="comp-row comp-grid" key={row.handle}>
             <div className="handle competitor-handle">
               <b>{row.handle[1].toUpperCase()}</b>
-              <a href={`https://instagram.com/${row.handle.slice(1)}`} target="_blank" rel="noreferrer">{row.handle}</a>
-              <small>{getCompetitorMeta(row)}</small>
+              <a data-i18n-content href={`https://instagram.com/${row.handle.slice(1)}`} target="_blank" rel="noreferrer">{row.handle}</a>
+              <small data-i18n-content>{getCompetitorMeta(row)}</small>
             </div>
-            <span className="niche-text">{row.niche}</span>
+            <span className="niche-text" data-i18n-content>{row.niche}</span>
             <strong>{row.reels}</strong>
             <div className="hit-stack"><i /><i /><i /></div>
             <Score value={row.score} compact />

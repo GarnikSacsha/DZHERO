@@ -1,3 +1,5 @@
+import { createTranslator, getLocaleTag, normalizeLanguage } from './i18nCore.mjs';
+
 function toInt(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
@@ -13,11 +15,11 @@ function pluralize(count, one, few, many) {
   return many;
 }
 
-function formatDiscoveryTimestamp(value) {
+function formatDiscoveryTimestamp(value, language = 'uk') {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('uk-UA', {
+  return new Intl.DateTimeFormat(getLocaleTag(language), {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -47,34 +49,49 @@ function getDiscoveryRunPlatformLabel(platform) {
   return String(platform || '').trim();
 }
 
-function getDiscoveryRunLaneLabel(lane) {
-  return {
-    accounts: 'акаунти',
-    keywords: 'ключові слова',
-    hashtags: 'хештеги',
-    trends: 'тренди',
-    winner: 'фінальне завантаження',
-  }[lane] || String(lane || '').trim();
+function getDiscoveryRunLaneLabel(lane, language = 'uk') {
+  const t = createTranslator(language);
+  const key = {
+    accounts: 'signals.discovery.lane.accounts',
+    keywords: 'signals.discovery.lane.keywords',
+    hashtags: 'signals.discovery.lane.hashtags',
+    trends: 'signals.discovery.lane.trends',
+    winner: 'signals.discovery.lane.winner',
+  }[lane];
+  return key ? t(key) : String(lane || '').trim();
 }
 
-function getDiscoveryRunErrorContext(run) {
+function getDiscoveryRunErrorContext(run, language = 'uk') {
+  const t = createTranslator(language);
   const [firstError] = getDiscoveryRunErrors(run);
   if (!firstError) return '';
 
   const locationParts = [];
   const platformLabel = getDiscoveryRunPlatformLabel(firstError.platform);
-  const laneLabel = getDiscoveryRunLaneLabel(firstError.lane);
+  const laneLabel = getDiscoveryRunLaneLabel(firstError.lane, language);
   if (platformLabel) locationParts.push(platformLabel);
   if (laneLabel) locationParts.push(laneLabel);
 
   const prefix = locationParts.length ? `${locationParts.join(' / ')}: ` : '';
-  const rawMessage = String(firstError.message || '').trim();
-  const message = isGenericDiscoveryErrorMessage(rawMessage)
-    ? String(firstError.error || firstError.code || firstError.status || rawMessage).trim()
-    : rawMessage;
+  const rawMessage = [firstError.message, firstError.error, firstError.code, firstError.status]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  const errorKey = /token|configur|credential/.test(rawMessage)
+    ? 'signals.discovery.error.configured'
+    : /budget|limit_reached|blocked_budget/.test(rawMessage)
+      ? 'signals.discovery.error.budget'
+      : /worker/.test(rawMessage)
+        ? 'signals.discovery.error.worker'
+        : /429|rate|provider|apify|network|timeout/.test(rawMessage)
+          ? 'signals.discovery.error.provider'
+          : 'signals.discovery.error.unknown';
+  const message = t(errorKey);
   const remainingErrors = Math.max(getDiscoveryRunErrorCount(run) - 1, 0);
   const extraText = remainingErrors > 0
-    ? ` Ще ${remainingErrors} ${pluralize(remainingErrors, 'помилка', 'помилки', 'помилок')}.`
+    ? ` ${t('signals.discovery.notice.extraErrors', {
+        count: formatLocalizedCount(remainingErrors, language, 'помилка', 'помилки', 'помилок', 'error', 'errors'),
+      })}`
     : '';
 
   if (!message) {
@@ -83,32 +100,43 @@ function getDiscoveryRunErrorContext(run) {
   return `${prefix}${message}${extraText}`.trim();
 }
 
-function isGenericDiscoveryErrorMessage(value = '') {
-  return /^(automatic_discovery_run_failed|automatic_discovery_failed)$/i.test(String(value || '').trim());
+function formatLocalizedCount(count, language, one, few, many, englishOne, englishMany) {
+  const normalizedLanguage = normalizeLanguage(language);
+  if (normalizedLanguage === 'en') {
+    return `${count} ${count === 1 ? englishOne : englishMany}`;
+  }
+  return `${count} ${pluralize(count, one, few, many)}`;
 }
 
-function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount) {
+function buildDiscoveryRunSuccessSummary(acceptedCount, updatedCount, language = 'uk') {
+  const t = createTranslator(language);
   const accepted = Math.max(toInt(acceptedCount), 0);
   const updated = Math.max(toInt(updatedCount), 0);
 
   if (accepted > 0 || updated > 0) {
     const acceptedText = accepted > 0
-      ? `${accepted} ${pluralize(accepted, 'сигнал', 'сигнали', 'сигналів')}`
+      ? formatLocalizedCount(accepted, language, 'сигнал', 'сигнали', 'сигналів', 'signal', 'signals')
       : '';
     const updatedText = updated > 0
-      ? `${updated} ${pluralize(updated, 'сигнал', 'сигнали', 'сигналів')}`
+      ? formatLocalizedCount(updated, language, 'сигнал', 'сигнали', 'сигналів', 'signal', 'signals')
       : '';
-    return `Автопошук ${accepted > 0 ? `додав ${acceptedText}` : ''}${accepted > 0 && updated > 0 ? ' і ' : ''}${updated > 0 ? `оновив ${updatedText}` : ''}.`;
+    if (accepted > 0 && updated > 0) {
+      return t('signals.discovery.notice.addedAndUpdated', { accepted: acceptedText, updated: updatedText });
+    }
+    return accepted > 0
+      ? t('signals.discovery.notice.added', { count: acceptedText })
+      : t('signals.discovery.notice.updated', { count: updatedText });
   }
 
-  return 'Автопошук завершився без нових сигналів.';
+  return t('signals.discovery.notice.noNew');
 }
 
-function buildDiscoveryRunFunnelSummary(run = {}) {
+function buildDiscoveryRunFunnelSummary(run = {}, language = 'uk') {
+  const t = createTranslator(language);
   if (!run || run.status !== 'completed') return '';
   const accepted = Math.max(toInt(run.acceptedCount), 0);
-  if (accepted > 0) return 'Останній запуск завершено. Нові релевантні сигнали вже у стрічці.';
-  return 'Останній запуск завершено. Стрічка Signals актуальна.';
+  if (accepted > 0) return t('signals.discovery.notice.funnelNew');
+  return t('signals.discovery.notice.funnelCurrent');
 }
 
 function isPartialDiscoveryRun(run) {
@@ -129,55 +157,60 @@ export function deriveDiscoveryRunNotice({
   run = null,
   acceptedSignalsCount = 0,
   updatedSignalsCount = 0,
+  language = 'uk',
 } = {}) {
+  const t = createTranslator(language);
   const accepted = getDiscoveryRunAcceptedCount(run, acceptedSignalsCount);
   const updated = Math.max(toInt(updatedSignalsCount), 0);
-  const errorContext = getDiscoveryRunErrorContext(run);
+  const errorContext = getDiscoveryRunErrorContext(run, language);
 
   if (run?.status === 'failed') {
     const parts = [];
     if (accepted > 0) {
-      parts.push(`${accepted} ${pluralize(accepted, 'сигнал', 'сигнали', 'сигналів')}`);
+      parts.push(formatLocalizedCount(accepted, language, 'сигнал', 'сигнали', 'сигналів', 'signal', 'signals'));
     }
     if (updated > 0) {
-      parts.push(`${updated} ${pluralize(updated, 'оновлення', 'оновлення', 'оновлень')}`);
+      parts.push(formatLocalizedCount(updated, language, 'оновлення', 'оновлення', 'оновлень', 'update', 'updates'));
     }
     if (parts.length) {
       return {
         tone: 'error',
-        message: `Автопошук завершився з помилкою після ${parts.join(' і ')}.`,
+        message: t('signals.discovery.notice.failedAfter', {
+          parts: parts.join(normalizeLanguage(language) === 'en' ? ' and ' : ' і '),
+        }),
       };
     }
     return {
       tone: 'error',
       message: errorContext
-        ? `Автопошук завершився з помилкою: ${errorContext}`
-        : 'Автопошук завершився з помилкою.',
+        ? t('signals.discovery.notice.failedWithContext', { context: errorContext })
+        : t('signals.discovery.notice.failed'),
     };
   }
 
   if (isPartialDiscoveryRun(run)) {
-    const successSummary = buildDiscoveryRunSuccessSummary(accepted, updated).replace(/\.$/, '');
+    const successSummary = buildDiscoveryRunSuccessSummary(accepted, updated, language).replace(/\.$/, '');
     return {
       tone: 'warning',
       message: errorContext
-        ? `${successSummary}, але частина джерел завершилась з помилками: ${errorContext}`
-        : `${successSummary}, але частина джерел завершилась з помилками.`,
+        ? t('signals.discovery.notice.partialWithContext', { summary: successSummary, context: errorContext })
+        : t('signals.discovery.notice.partial', { summary: successSummary }),
     };
   }
 
   return {
     tone: 'success',
-    message: buildDiscoveryRunSuccessSummary(accepted, updated),
+    message: buildDiscoveryRunSuccessSummary(accepted, updated, language),
   };
 }
 
-export function deriveDiscoveryToolbarStatus(discovery) {
+export function deriveDiscoveryToolbarStatus(discovery, { language = 'uk' } = {}) {
+  const t = createTranslator(language);
   if (!discovery) {
     return {
-      label: 'Завантаження',
+      label: t('signals.discovery.status.loading'),
       tone: 'scheduled',
-      detail: 'Завантажуємо статус автоматизації для Signals.',
+      detail: t('signals.discovery.status.loadingDetail'),
     };
   }
 
@@ -190,83 +223,86 @@ export function deriveDiscoveryToolbarStatus(discovery) {
     const attempted = Number(activeRun?.attemptedCallCount || 0);
     const accepted = Number(activeRun?.acceptedCount || 0);
     const progressParts = [
-      attempted ? 'перевіряємо джерела' : '',
-      accepted ? 'додаємо релевантні сигнали' : '',
+      attempted ? t('signals.discovery.status.runningSources') : '',
+      accepted ? t('signals.discovery.status.runningSignals') : '',
     ].filter(Boolean);
     return {
-      label: 'Виконується',
+      label: t('signals.discovery.status.running'),
       tone: 'running',
-      detail: progressParts.length ? `Зараз обробляємо ${progressParts.join(' · ')} для Signals.` : 'Автоматичний збір сигналів уже триває.',
+      detail: progressParts.length
+        ? t('signals.discovery.status.runningDetail', { progress: progressParts.join(' · ') })
+        : t('signals.discovery.status.runningFallback'),
     };
   }
 
   if (!status.tokenConfigured) {
     return {
-      label: 'Помилка',
+      label: t('signals.discovery.status.error'),
       tone: 'error',
-      detail: 'APIFY_TOKEN не налаштований у backend, тому автопошук зараз недоступний.',
+      detail: t('signals.discovery.status.tokenDetail'),
     };
   }
 
   if (settings.enabled === false || status.code === 'paused') {
     return {
-      label: 'На паузі',
+      label: t('signals.discovery.status.paused'),
       tone: 'paused',
-      detail: 'Автоматичний збір вимкнений. Можна лишити ручний імпорт або увімкнути розклад.',
+      detail: t('signals.discovery.status.pausedDetail'),
     };
   }
 
   if (status.workerEnabled === false && settings.enabled !== false) {
     return {
-      label: 'Помилка',
+      label: t('signals.discovery.status.error'),
       tone: 'error',
-      detail: 'Фоновий worker вимкнений, тож розклад не запуститься автоматично.',
+      detail: t('signals.discovery.status.workerDetail'),
     };
   }
 
   if (status.code === 'budget_reached') {
     return {
-      label: 'Ліміт вичерпано',
+      label: t('signals.discovery.status.budget'),
       tone: 'budget',
-      detail: 'Денний ліміт на метадані вичерпано до наступної UTC-доби.',
+      detail: t('signals.discovery.status.budgetDetail'),
     };
   }
 
   if (status.code === 'failed' || latestRun?.status === 'failed') {
     return {
-      label: 'Помилка',
+      label: t('signals.discovery.status.error'),
       tone: 'error',
-      detail: getDiscoveryRunErrorContext(latestRun) || 'Останній автоматичний запуск завершився з помилкою.',
+      detail: getDiscoveryRunErrorContext(latestRun, language) || t('signals.discovery.status.failedDetail'),
     };
   }
 
   if (status.code === 'partial' || isPartialDiscoveryRun(latestRun)) {
     return {
-      label: 'Частково',
+      label: t('signals.discovery.status.partial'),
       tone: 'warning',
       detail: deriveDiscoveryRunNotice({
         run: latestRun,
         acceptedSignalsCount: latestRun?.acceptedCount,
         updatedSignalsCount: latestRun?.updatedCount,
+        language,
       }).message,
     };
   }
 
-  const latestRunFunnel = buildDiscoveryRunFunnelSummary(latestRun);
+  const latestRunFunnel = buildDiscoveryRunFunnelSummary(latestRun, language);
   if (latestRunFunnel) {
     return {
-      label: 'За розкладом',
+      label: t('signals.discovery.status.scheduled'),
       tone: 'scheduled',
       detail: latestRunFunnel,
     };
   }
 
   return {
-    label: 'За розкладом',
+    label: t('signals.discovery.status.scheduled'),
     tone: 'scheduled',
     detail: status.nextRunAt
-      ? `Наступна автоматична перевірка ${formatDiscoveryTimestamp(status.nextRunAt)}.`
-      : 'Розклад увімкнений і чекає на наступне вікно запуску.',
+      ? t('signals.discovery.status.nextRun', { timestamp: formatDiscoveryTimestamp(status.nextRunAt, language) })
+      : t('signals.discovery.status.waiting'),
   };
 }
 
@@ -284,13 +320,14 @@ export function canRunDiscoveryNow(discovery, { busy = false } = {}) {
   return true;
 }
 
-export function deriveDiscoveryRunNowLabel(discovery, { busy = false } = {}) {
+export function deriveDiscoveryRunNowLabel(discovery, { busy = false, language = 'uk' } = {}) {
+  const t = createTranslator(language);
   const status = discovery?.status || {};
-  if (busy || status.running) return 'Виконується';
+  if (busy || status.running) return t('signals.actions.running');
   if (status.code === 'budget_reached' && !canRunDiscoveryNow(discovery)) {
-    return 'Ліміт вичерпано';
+    return t('signals.actions.budgetReached');
   }
-  return 'Запустити зараз';
+  return t('signals.actions.runNow');
 }
 
 export function deriveSignalsEmptyState({
@@ -304,13 +341,15 @@ export function deriveSignalsEmptyState({
   pastedReelUrl = '',
   isLoading = false,
   loadIssue = '',
+  language = 'uk',
 } = {}) {
+  const t = createTranslator(language);
   if (reelsCount === 0 && !hasActiveFilters) {
     if (isLoading) {
       return {
         kind: 'loading',
-        title: 'Завантажуємо Signals',
-        text: 'Підтягуємо статус, розклад і перші сигнали для цього workspace.',
+        title: t('signals.empty.loadingTitle'),
+        text: t('signals.empty.loadingText'),
         primaryAction: null,
         secondaryAction: null,
       };
@@ -319,40 +358,40 @@ export function deriveSignalsEmptyState({
     if (loadIssue) {
       return {
         kind: 'error',
-        title: 'Не вдалося оновити Signals',
-        text: loadIssue,
+        title: t('signals.empty.errorTitle'),
+        text: t('signals.discovery.status.failedDetail'),
         primaryAction: {
           kind: 'retry',
-          label: 'Спробувати ще раз',
+          label: t('signals.actions.retry'),
           disabled: false,
         },
         secondaryAction: {
           kind: 'advanced_import',
-          label: 'Розширений імпорт',
+          label: t('signals.actions.advancedImport'),
         },
       };
     }
 
     return {
       kind: 'authoritative',
-      title: 'Автозбір ще не заповнив банк сигналів',
-      text: 'Автоматичний збір сам підтягуватиме нові сигнали з підключених акаунтів і трендів. Запустіть його зараз або увімкніть автопошук, щоб банк поповнювався без ручної рутини.',
+      title: t('signals.empty.authoritativeTitle'),
+      text: t('signals.empty.authoritativeText'),
       primaryAction: !automationEnabled
         ? {
             kind: 'enable',
-            label: 'Увімкнути автозбір',
+            label: t('signals.actions.enableAutomation'),
             disabled: false,
           }
         : canRunAutomation
           ? {
               kind: 'run',
-              label: 'Запустити зараз',
+              label: t('signals.actions.runNow'),
               disabled: false,
             }
           : null,
       secondaryAction: {
         kind: 'advanced_import',
-        label: 'Розширений імпорт',
+        label: t('signals.actions.advancedImport'),
       },
     };
   }
@@ -361,8 +400,8 @@ export function deriveSignalsEmptyState({
     if (pastedReelUrl) {
       return {
         kind: 'filtered',
-        title: 'Посилання готове до імпорту',
-        text: 'Це схоже на зовнішній сигнал. Натисніть імпорт вище або Enter, і Дзеро спробує витягнути контекст у Studio.',
+        title: t('signals.empty.linkTitle'),
+        text: t('signals.empty.linkText'),
         primaryAction: null,
         secondaryAction: null,
       };
@@ -371,8 +410,8 @@ export function deriveSignalsEmptyState({
     if (query) {
       return {
         kind: 'filtered',
-        title: 'Нічого не знайшли',
-        text: 'Спробуйте інший запит або вставте посилання на TikTok, Reels, YouTube Shorts чи сайт.',
+        title: t('signals.empty.searchTitle'),
+        text: t('signals.empty.searchText'),
         primaryAction: null,
         secondaryAction: null,
       };
@@ -381,8 +420,8 @@ export function deriveSignalsEmptyState({
     if (sourceFilter !== 'all') {
       return {
         kind: 'filtered',
-        title: 'Тут ще немає сигналів',
-        text: 'Зараз ця вкладка порожня. Додайте сигнал вручну або запустіть автозбір, щоб вона наповнилася.',
+        title: t('signals.empty.sourceTitle'),
+        text: t('signals.empty.sourceText'),
         primaryAction: null,
         secondaryAction: null,
       };

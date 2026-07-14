@@ -190,13 +190,38 @@ assert.equal(deriveDiscoveryRunNowLabel({
   },
 }), 'Запустити зараз');
 
+const englishToolbar = deriveDiscoveryToolbarStatus(null, { language: 'en' });
+assert.equal(englishToolbar.label, 'Loading');
+assert.equal(englishToolbar.detail, 'Loading automation status for Signals.');
+
+const englishEmpty = deriveSignalsEmptyState({
+  reelsCount: 0,
+  filteredReelsCount: 0,
+  hasActiveFilters: false,
+  automationEnabled: true,
+  canRunAutomation: true,
+  language: 'en',
+});
+assert.equal(englishEmpty.title, 'Automatic discovery has not filled the signal bank yet');
+assert.equal(englishEmpty.primaryAction.label, 'Run now');
+assert.equal(englishEmpty.secondaryAction.label, 'Advanced import');
+
+const englishNotice = deriveDiscoveryRunNotice({
+  run: { status: 'completed', acceptedCount: 2, updatedCount: 1 },
+  language: 'en',
+});
+assert.match(englishNotice.message, /2 signals/);
+assert.doesNotMatch(englishNotice.message, /[А-Яа-яІіЇїЄєҐґ]/);
+
+assert.equal(deriveDiscoveryRunNowLabel(null, { language: 'en' }), 'Run now');
+
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const emptyStateIndex = mainSource.indexOf('const emptyState = deriveSignalsEmptyState({');
 const canRunAutomationIndex = mainSource.indexOf('const canRunAutomation = canRunDiscoveryNow(');
 const signalsTableIndex = mainSource.indexOf('isLoading={automation?.isLoading}');
 const signalsLoadIssueIndex = mainSource.indexOf('loadIssue={automation?.error}');
 const refreshWrapperIndex = mainSource.indexOf('onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })}');
-const toolbarHelperIndex = mainSource.indexOf('deriveDiscoveryToolbarStatus(discovery)');
+const toolbarHelperIndex = mainSource.indexOf('deriveDiscoveryToolbarStatus(discovery, { language })');
 const runHandlerStart = mainSource.indexOf('const runSignalDiscoveryNow = async () => {');
 const runHandlerEnd = mainSource.indexOf('const pushIdeaToPlan = (idea) => {');
 const requestContextHelperIndex = mainSource.indexOf('const createSignalsWorkspaceRequestContext =');
