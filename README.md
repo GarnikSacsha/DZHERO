@@ -15,7 +15,7 @@ Both modes enter the same bounded production workflow:
 
 `Trend Analyst → Gemini video evidence → Brand Strategist → Creative Producer → Critic → Content Planner → Jeryk Manager → human approval`
 
-OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. Gemini remains a narrow video-evidence specialist; observations, metadata, and user notes are stored as different evidence types. If video evidence is unavailable, the run pauses and asks the user for context instead of inventing scenes.
+OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. For Instagram and TikTok URLs, the backend first reuses the existing Apify signal provider to resolve a downloadable video, transfers that media into the Gemini Files API, waits for processing, and deletes the temporary Gemini file after analysis. YouTube URLs continue to use Gemini's native URL input. Observations, metadata, and user notes remain separate evidence types. If neither the source resolver nor Gemini can obtain the video, the run pauses instead of inventing scenes.
 
 The final package contains:
 
@@ -39,6 +39,7 @@ The following work was added on the isolated `hackathon/openai-build-week` branc
 - a bounded run state machine with context pause/resume, cancellation, one output repair, one Critic revision, interruption recovery, and idempotent approval;
 - OpenAI Agents SDK specialists using GPT-5.6;
 - Gemini video evidence with explicit provenance and honest `needs_context` degradation;
+- automatic Apify-to-Gemini media bridging for supported public Instagram and TikTok URLs;
 - authenticated workspace-scoped create, poll, context, cancel, hybrid, and approve APIs;
 - the separate English/Ukrainian Agent Studio Beta interface;
 - approval of one candidate into exactly seven existing Content Plan entries;
@@ -183,6 +184,7 @@ Run the focused Agent Studio suite:
 node scripts/test-agent-studio-schemas.cjs
 node scripts/test-agent-studio-run.cjs
 node scripts/test-agent-studio-orchestrator.cjs
+node scripts/test-agent-studio-source-resolver.cjs
 node scripts/test-agent-studio-video-tool.cjs
 node scripts/test-agent-studio-api.mjs
 npm run test:agent-studio-ui

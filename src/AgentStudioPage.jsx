@@ -280,6 +280,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [isHybridizing, setIsHybridizing] = useState(false);
+  const [isRetryingSource, setIsRetryingSource] = useState(false);
   const [contextNotes, setContextNotes] = useState('');
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const pollGenerationRef = useRef(0);
@@ -386,6 +387,24 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     }
   };
 
+  const retrySource = async () => {
+    setError('');
+    setIsRetryingSource(true);
+    try {
+      const payload = await readResponse(await fetcher(`${baseUrl}/runs/${encodeURIComponent(run.id)}/retry-source`, {
+        method: 'POST',
+      }));
+      setRun(payload.run);
+      notify?.(language === 'en'
+        ? 'Retrying the automatic Apify and Gemini video path.'
+        : 'Повторюємо автоматичний шлях через Apify та Gemini.');
+    } catch (nextError) {
+      setError(getAgentStudioErrorMessage(nextError, language));
+    } finally {
+      setIsRetryingSource(false);
+    }
+  };
+
   const cancelRun = async () => {
     setError('');
     try {
@@ -443,6 +462,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setContextNotes('');
     setSelectedCandidateId('');
     setIsHybridizing(false);
+    setIsRetryingSource(false);
   };
 
   if (configError && !config) {
@@ -481,7 +501,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
         <div className="agent-studio-provider-strip">
           <span><Bot size={15} /> Jeryk Manager</span>
           <span>OpenAI Agents SDK</span>
-          <span>Gemini video evidence</span>
+          <span>Apify source + Gemini evidence</span>
         </div>
         {run && ['completed', 'failed', 'cancelled'].includes(run.status) && <button className="ghost" type="button" onClick={resetRun}><RefreshCw size={15} /><span data-i18n-content>{copy.newRun}</span></button>}
       </header>
@@ -573,7 +593,13 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                   <h2 data-i18n-content>{copy.contextTitle}</h2>
                   <p data-i18n-content>{run.contextRequest?.message || copy.contextDescription}</p>
                   <textarea value={contextNotes} onChange={(event) => setContextNotes(event.target.value)} placeholder={copy.contextPlaceholder} rows={4} minLength={10} required />
-                  <button className="dark" type="submit"><Play size={16} /><span data-i18n-content>{copy.resume}</span></button>
+                  <div className="agent-studio-context-actions">
+                    <button type="button" onClick={retrySource} disabled={isRetryingSource}>
+                      {isRetryingSource ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
+                      <span data-i18n-content>{isRetryingSource ? copy.retryingSource : copy.retrySource}</span>
+                    </button>
+                    <button className="dark" type="submit"><Play size={16} /><span data-i18n-content>{copy.resume}</span></button>
+                  </div>
                 </div>
               </form>
             )}

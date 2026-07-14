@@ -732,6 +732,12 @@ button {
   margin: 15px 0 10px;
 }
 
+.agent-studio-context-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
 .agent-studio-orbit,
 .agent-studio-manager-avatar {
   position: relative;

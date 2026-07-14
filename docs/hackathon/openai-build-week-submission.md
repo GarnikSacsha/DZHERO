@@ -21,7 +21,7 @@ DZHERO Agent Studio offers two entry points:
 - **Find a trend for me:** select one suitable signal from DZHERO’s existing signal bank.
 - **Adapt a Reel:** start from a specific imported signal, public URL, or a clearly labelled user description.
 
-Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic, Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
+Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic; for Instagram and TikTok, the existing Apify source provider resolves and downloads public video before the backend transfers it into Gemini Files API. Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
 
 The owner can also select any two directions and ask **Hybrid Producer** to synthesize a stronger concept. This is a real additional OpenAI agent pass, not client-side text mixing: the hybrid is checked again by Critic, receives a fresh seven-day plan, and returns to Jeryk for human approval. If the hybrid pass fails, DZHERO restores the original package instead of losing useful work.
 
@@ -34,7 +34,8 @@ The user sees real backend stages, evidence references, and a safe public agent 
 - OpenAI Agents SDK with `gpt-5.6` for Trend Analyst, Brand Strategist, Creative Producer, Hybrid Producer, Critic, Content Planner, and Jeryk Manager.
 - Zod structured outputs between every specialist stage.
 - A deterministic server-side state machine with bounded turns, one malformed-output repair, and at most one Critic revision.
-- Gemini as a narrow video-evidence specialist, with explicit evidence types for video observation, audio observation, on-screen text, metadata, and user notes.
+- Apify as a narrow public-source resolver for Instagram and TikTok media already used by DZHERO Signals.
+- Gemini Files API plus Gemini video understanding as the evidence layer, with explicit evidence types for video observation, audio observation, on-screen text, metadata, and user notes.
 - Polling of persisted backend run state, not simulated frontend progress.
 - Idempotent human approval that adds exactly seven normalized posts to the existing DZHERO Content Plan.
 
@@ -52,6 +53,7 @@ Our backend keeps that separation real through strict schemas and permitted stat
 - Creative scenes cite evidence ids; product choices cite Brand Brain fields.
 - Metadata is never presented as something observed in the video.
 - Missing evidence triggers `needs_context`.
+- Temporary media uploaded to Gemini is deleted after the evidence request; private or login-only social content is never presented as successfully observed.
 - Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
 - Provider, quota, timeout, validation, and quality errors are classified rather than hidden behind generic content.
 - No content is written to the workspace before human approval.

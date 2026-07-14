@@ -331,6 +331,16 @@ try {
   const needsContext = await waitForRun(baseUrl, 'ws_1', contextCreate.body.run.id, headers, ['needs_context']);
   assert.equal(needsContext.contextRequest.question.includes('what happens'), true);
 
+  const retrySource = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${contextCreate.body.run.id}/retry-source`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({}),
+  });
+  assert.equal(retrySource.response.status, 202);
+  assert.equal(retrySource.body.run.status, 'analyzing_video');
+  const retriedNeedsContext = await waitForRun(baseUrl, 'ws_1', contextCreate.body.run.id, headers, ['needs_context']);
+  assert.equal(retriedNeedsContext.contextRequest.question.includes('what happens'), true);
+
   const context = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${contextCreate.body.run.id}/context`, {
     method: 'POST',
     headers,

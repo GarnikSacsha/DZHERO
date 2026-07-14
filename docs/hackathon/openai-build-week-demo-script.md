@@ -5,7 +5,7 @@
 - Language: English.
 - Workspace: a neighborhood Kyiv coffee shop with a completed Brand Brain.
 - Feature flag: `ENABLE_AGENT_STUDIO=true`.
-- Prepare one imported coffee/food Reel signal or a supported public Reel URL.
+- Prepare one public Instagram/TikTok Reel that Apify can resolve, or a public YouTube URL.
 - Keep the deterministic coffee-shop fixture available only as a clearly labelled recovery path.
 - Open the existing Content Plan in a second tab so the final write can be shown immediately.
 
@@ -45,7 +45,7 @@ Show the live stage rail:
 6. Content Planner;
 7. Jeryk review.
 
-**Say:** “Each OpenAI specialist returns a strict structured artifact. Gemini has one narrow job: video evidence. Observed frames, metadata, and user notes stay visibly separate.”
+**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, Apify resolves the public video and DZHERO transfers it into Gemini Files API. Gemini has one narrow job: evidence. Observed frames, metadata, and user notes stay visibly separate.”
 
 If the video cannot be accessed, show `needs_context`, add one or two factual sentences, and continue. Say explicitly that this is honest degradation, not an AI observation.
 

@@ -31,6 +31,14 @@ assert.equal(instagram.videoUrl, 'https://example.com/ig.mp4');
 assert.equal(instagram.views, 908912);
 assert.equal(getApifySignalKey(instagram.importedMetadata), 'instagram:dz-th_xmany');
 
+const instagramDownloaded = mapInstagramApifyItem({
+  inputUrl: 'https://www.instagram.com/reel/downloaded/',
+  shortCode: 'downloaded',
+  downloadedVideo: 'https://api.apify.com/v2/key-value-stores/store/records/downloaded.mp4',
+  videoUrl: 'https://scontent.example.com/expiring.mp4',
+});
+assert.equal(instagramDownloaded.videoUrl, 'https://api.apify.com/v2/key-value-stores/store/records/downloaded.mp4');
+
 const instagramWithViewCount = mapInstagramApifyItem({
   id: '3926661823774853593',
   shortCode: 'DYpScTiNI3_',
@@ -55,11 +63,11 @@ const instagramProfileActorRequest = buildApifyActorRequest({
 assert.equal(instagramProfileActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramProfileActorRequest.input, {
   username: ['maverickgpt'],
-  directUrls: ['https://www.instagram.com/maverickgpt/'],
   resultsLimit: 2,
   onlyPostsNewerThan: '3 months',
   skipPinnedPosts: true,
   skipTrialReels: false,
+  includeDownloadedVideo: false,
 });
 
 const tiktok = mapTikTokApifyItem({
@@ -92,12 +100,11 @@ const instagramActorRequest = buildApifyActorRequest({
 
 assert.equal(instagramActorRequest.actorId, 'apify/instagram-reel-scraper');
 assert.deepEqual(instagramActorRequest.input, {
-  username: [],
-  directUrls: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
+  username: ['https://www.instagram.com/reel/DZ-Th_XMAnY/'],
   resultsLimit: 30,
-  onlyPostsNewerThan: '3 months',
   skipPinnedPosts: true,
   skipTrialReels: false,
+  includeDownloadedVideo: false,
 });
 
 const instagramHashtagActorRequest = buildApifyActorRequest({
