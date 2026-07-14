@@ -7006,12 +7006,17 @@ nav button.active::before {
     border-right: 1px solid var(--border) !important;
     border-bottom: 0 !important;
     transform: translateX(-104%) !important;
-    transition: transform 0.24s ease, box-shadow 0.24s ease !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: transform 0.24s ease, box-shadow 0.24s ease, visibility 0s linear 0.24s !important;
     z-index: 1002 !important;
   }
 
   .sidebar.open {
     transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition-delay: 0s !important;
     box-shadow: 24px 0 80px rgba(0, 0, 0, 0.42) !important;
   }
 
@@ -14166,15 +14171,18 @@ nav button.active::before {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
   transform: translateX(calc(100% + 34px));
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   backdrop-filter: blur(18px) saturate(140%);
-  transition: transform 0.26s ease, opacity 0.2s ease;
+  transition: transform 0.26s ease, opacity 0.2s ease, visibility 0s linear 0.26s;
 }
 
 .jeryk-drawer.open {
   transform: translateX(0);
   opacity: 1;
+  visibility: visible;
   pointer-events: auto;
+  transition-delay: 0s;
 }
 
 .jeryk-head {
@@ -14402,15 +14410,15 @@ nav button.active::before {
   }
 
   .jeryk-idle-card {
-    right: 8px !important;
-    bottom: calc(var(--mobile-bottom-nav) + 18px) !important;
-    width: 98px !important;
-    height: 98px !important;
+    right: 12px !important;
+    bottom: calc(var(--mobile-bottom-nav) + 16px) !important;
+    width: 64px !important;
+    height: 64px !important;
   }
 
   .jeryk-idle-card .jeryk-producer {
-    width: 94px !important;
-    height: 94px !important;
+    width: 62px !important;
+    height: 62px !important;
   }
 
   .jeryk-drawer {
@@ -15251,13 +15259,18 @@ nav button.active::before {
     box-shadow: 22px 0 70px rgba(0, 0, 0, 0.36) !important;
     overflow: hidden !important;
     transform: translateX(-105%) !important;
-    transition: transform 0.22s ease !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: transform 0.22s ease, visibility 0s linear 0.22s !important;
     backdrop-filter: blur(18px) saturate(135%) !important;
     -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
   }
 
   .app:not(.auth-app) .sidebar.open {
     transform: translateX(0) !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    transition-delay: 0s !important;
   }
 
   .app:not(.auth-app) .mobile-menu-backdrop {
@@ -15351,16 +15364,16 @@ nav button.active::before {
   }
 
   .app:not(.auth-app) .jeryk-idle-card {
-    right: 10px !important;
-    bottom: calc(24px + env(safe-area-inset-bottom)) !important;
-    width: 98px !important;
-    height: 98px !important;
+    right: 12px !important;
+    bottom: calc(18px + env(safe-area-inset-bottom)) !important;
+    width: 64px !important;
+    height: 64px !important;
     background: transparent !important;
   }
 
   .app:not(.auth-app) .jeryk-idle-card .jeryk-producer {
-    width: 94px !important;
-    height: 94px !important;
+    width: 62px !important;
+    height: 62px !important;
   }
 
   .app:not(.auth-app) .jeryk-drawer {
