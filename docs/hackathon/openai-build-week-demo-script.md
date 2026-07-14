@@ -57,15 +57,21 @@ Open **Grounded evidence** and the public agent trace.
 
 Show Jeryk’s manager review, the full hero Reel with shot-by-shot scenes, and the two meaningfully different alternatives.
 
-### 2:10–2:35 — From one signal to one week
+### 2:10–2:35 — Human-directed hybrid
+
+Click **Combine two directions**, select the hero and one alternative, then click **Create hybrid from selected ideas**. Show Hybrid Producer and Critic entering the trace; in an edited demo, cut to the completed hybrid package.
+
+**Say:** “The owner is not forced to accept one AI answer. Two useful directions become a new production script through another bounded OpenAI pass, and Critic checks it again before Jeryk presents it.”
+
+### 2:35–2:50 — From one signal to one week
 
 Scroll to the seven-day plan.
 
 **Say:** “The output is not seven paraphrases of one Reel. One strategic mechanic becomes a connected week across Reels, Stories, and posts.”
 
-Select the preferred creative direction.
+Select the final hybrid direction.
 
-### 2:35–2:55 — Human approval and business value
+### 2:50–3:00 — Human approval and business value
 
 Click **Approve and add 7 days to Content Plan**, then open the existing Content Plan.
 

@@ -177,6 +177,7 @@ module.exports = {
     if (agentId === 'trend_analyst') return fixture.selectedTrend;
     if (agentId === 'brand_strategist') return fixture.brandStrategy;
     if (agentId === 'creative_producer') return fixture.creative;
+    if (agentId === 'hybrid_producer') return fixture.creative;
     if (agentId === 'content_planner') return fixture.contentPlan;
     if (agentId === 'jeryk_manager') return fixture.managerReview;
     if (agentId === 'critic') {
@@ -277,6 +278,27 @@ try {
   assert.equal(completed.artifacts.contentPlan.days.length, 7);
   assert.equal(completed.trace.some((entry) => entry.agent === 'Critic' && entry.status === 'revised'), true);
   assert.equal(JSON.stringify(completed).includes('test-openai-key'), false);
+
+  const hybrid = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/hybrid`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ candidateIds: ['hero_reset', 'alt_forecast'] }),
+  });
+  assert.equal(hybrid.response.status, 202);
+  assert.equal(hybrid.body.run.status, 'producing');
+  const hybridCompleted = await waitForRun(baseUrl, 'ws_1', create.body.run.id, headers, ['awaiting_approval', 'failed']);
+  assert.equal(hybridCompleted.status, 'awaiting_approval');
+  assert.deepEqual(hybridCompleted.artifacts.hybrid.sourceCandidateIds, ['hero_reset', 'alt_forecast']);
+  assert.equal(hybridCompleted.trace.some((entry) => entry.agent === 'Hybrid Producer' && entry.status === 'completed'), true);
+  const duplicateManagerCompletions = hybridCompleted.trace.filter((entry, index, trace) => (
+    index > 0
+    && entry.agent === 'Jeryk Manager'
+    && entry.status === 'completed'
+    && trace[index - 1].agent === entry.agent
+    && trace[index - 1].status === entry.status
+    && trace[index - 1].summary === entry.summary
+  ));
+  assert.equal(duplicateManagerCompletions.length, 0);
 
   const approve = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/approve`, {
     method: 'POST',

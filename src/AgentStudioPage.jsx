@@ -20,7 +20,9 @@ import {
   getAgentStudioCandidates,
   getAgentStudioCopy,
   getAgentStudioErrorMessage,
+  getAgentStudioGroundingPercent,
   getAgentStudioStageState,
+  getAgentStudioTraceEntries,
   shouldPollAgentStudioRun,
 } from './agentStudioUi.mjs';
 
@@ -61,6 +63,7 @@ function AgentStageRail({ run, copy }) {
 
 function AgentTrace({ trace, copy }) {
   if (!trace?.length) return null;
+  const visibleTrace = getAgentStudioTraceEntries(trace);
   return (
     <section className="agent-studio-trace agent-studio-panel">
       <div className="agent-studio-section-head">
@@ -68,10 +71,10 @@ function AgentTrace({ trace, copy }) {
           <small>TRANSPARENT ORCHESTRATION</small>
           <h3 data-i18n-content>{copy.trace}</h3>
         </div>
-        <span>{trace.length}</span>
+        <span>{visibleTrace.length}</span>
       </div>
       <div className="agent-studio-trace-list">
-        {[...trace].reverse().map((entry) => (
+        {[...visibleTrace].reverse().map((entry) => (
           <article key={entry.id}>
             <span className={`agent-studio-trace-dot ${entry.status}`} />
             <div>
@@ -117,14 +120,16 @@ function EvidencePanel({ evidence, copy }) {
   );
 }
 
-function CandidateCard({ candidate, selected, copy, onSelect }) {
-  const isHero = candidate.kind === 'hero';
+function CandidateCard({ candidate, selected, hybridSelected, hybridOrder, hybridMode, copy, onSelect }) {
+  const isHero = candidate.kind === 'hero' || candidate.kind === 'hybrid';
   return (
-    <button className={`agent-studio-candidate ${selected ? 'selected' : ''}`} type="button" onClick={onSelect}>
+    <button className={`agent-studio-candidate ${selected ? 'selected' : ''} ${hybridSelected ? 'hybrid-selected' : ''}`} type="button" onClick={onSelect}>
       <div className="agent-studio-candidate-top">
         <span>{isHero ? <Film size={16} /> : <Lightbulb size={16} />}</span>
-        <small data-i18n-content>{isHero ? copy.hero : copy.alternative}</small>
-        {selected && <CircleCheck size={18} />}
+        <small data-i18n-content>{candidate.kind === 'hybrid' ? copy.hybrid : isHero ? copy.hero : copy.alternative}</small>
+        {hybridMode && hybridSelected
+          ? <b className="agent-studio-hybrid-order">{hybridOrder}</b>
+          : selected && <CircleCheck size={18} />}
       </div>
       <h4 data-i18n-content>{candidate.title}</h4>
       <p data-i18n-content>{candidate.concept}</p>
@@ -134,12 +139,24 @@ function CandidateCard({ candidate, selected, copy, onSelect }) {
   );
 }
 
-function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy, onApprove, isApproving }) {
+function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy, onApprove, onHybrid, isApproving, isHybridizing }) {
   const { artifacts = {} } = run;
   const candidates = getAgentStudioCandidates(run);
   const selected = candidates.find((candidate) => candidate.id === selectedCandidateId) || candidates[0];
+  const [hybridMode, setHybridMode] = useState(false);
+  const [hybridCandidateIds, setHybridCandidateIds] = useState([]);
   if (!artifacts.creative || !selected) return null;
   const isApproved = run.status === 'completed' && Boolean(run.approval);
+  const groundingPercent = getAgentStudioGroundingPercent(artifacts.evaluation?.scores?.grounding);
+  const toggleHybridCandidate = (candidateId) => {
+    setHybridCandidateIds((current) => current.includes(candidateId)
+      ? current.filter((id) => id !== candidateId)
+      : current.length < 2 ? [...current, candidateId] : [current[1], candidateId]);
+  };
+  const closeHybridMode = () => {
+    setHybridMode(false);
+    setHybridCandidateIds([]);
+  };
 
   return (
     <div className="agent-studio-results">
@@ -161,7 +178,28 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
             <small>3 CREATIVE ROUTES</small>
             <h3 data-i18n-content>{copy.concepts}</h3>
           </div>
-          {artifacts.evaluation?.scores?.grounding && <span>{artifacts.evaluation.scores.grounding}% grounded</span>}
+          {groundingPercent !== null && <span>{groundingPercent}% grounded</span>}
+        </div>
+        <div className={`agent-studio-hybrid-controls ${hybridMode ? 'active' : ''}`}>
+          {!hybridMode ? (
+            <button type="button" onClick={() => setHybridMode(true)} disabled={isApproved}>
+              <Sparkles size={15} />
+              <span data-i18n-content>{copy.hybridMode}</span>
+            </button>
+          ) : (
+            <>
+              <p data-i18n-content>{copy.hybridHint}</p>
+              <div>
+                <button className="ghost" type="button" onClick={closeHybridMode} disabled={isHybridizing}>
+                  <span data-i18n-content>{copy.hybridCancel}</span>
+                </button>
+                <button className="dark" type="button" onClick={() => onHybrid(hybridCandidateIds)} disabled={hybridCandidateIds.length !== 2 || isHybridizing}>
+                  {isHybridizing ? <LoaderCircle className="spin" size={15} /> : <Sparkles size={15} />}
+                  <span data-i18n-content>{isHybridizing ? copy.hybridCreating : copy.hybridCreate}</span>
+                </button>
+              </div>
+            </>
+          )}
         </div>
         <div className="agent-studio-candidate-grid">
           {candidates.map((candidate) => (
@@ -169,8 +207,11 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
               candidate={candidate}
               copy={copy}
               key={candidate.id}
-              selected={selected.id === candidate.id}
-              onSelect={() => setSelectedCandidateId(candidate.id)}
+              selected={!hybridMode && selected.id === candidate.id}
+              hybridMode={hybridMode}
+              hybridSelected={hybridCandidateIds.includes(candidate.id)}
+              hybridOrder={hybridCandidateIds.indexOf(candidate.id) + 1}
+              onSelect={() => hybridMode ? toggleHybridCandidate(candidate.id) : setSelectedCandidateId(candidate.id)}
             />
           ))}
         </div>
@@ -238,6 +279,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
+  const [isHybridizing, setIsHybridizing] = useState(false);
   const [contextNotes, setContextNotes] = useState('');
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const pollGenerationRef = useRef(0);
@@ -373,12 +415,34 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     }
   };
 
+  const createHybrid = async (candidateIds) => {
+    setError('');
+    setIsHybridizing(true);
+    try {
+      const payload = await readResponse(await fetcher(`${baseUrl}/runs/${encodeURIComponent(run.id)}/hybrid`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidateIds }),
+      }));
+      setRun(payload.run);
+      setSelectedCandidateId('');
+      notify?.(language === 'en'
+        ? 'Hybrid Producer is combining and re-checking the two directions.'
+        : 'Hybrid Producer об’єднує та повторно перевіряє два напрями.');
+    } catch (nextError) {
+      setError(getAgentStudioErrorMessage(nextError, language));
+    } finally {
+      setIsHybridizing(false);
+    }
+  };
+
   const resetRun = () => {
     pollGenerationRef.current += 1;
     setRun(null);
     setError('');
     setContextNotes('');
     setSelectedCandidateId('');
+    setIsHybridizing(false);
   };
 
   if (configError && !config) {
@@ -498,6 +562,9 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
 
           <div className="agent-studio-run-main">
             {error && <div className="agent-studio-error" role="alert" data-i18n-content>{error}</div>}
+            {!error && run.status === 'awaiting_approval' && run.error && (
+              <div className="agent-studio-error" role="alert" data-i18n-content>{getAgentStudioErrorMessage(run.error, language)}</div>
+            )}
 
             {run.status === 'needs_context' && (
               <form className="agent-studio-context-card" onSubmit={submitContext}>
@@ -529,7 +596,9 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                 selectedCandidateId={selectedCandidateId}
                 setSelectedCandidateId={setSelectedCandidateId}
                 onApprove={approveRun}
+                onHybrid={createHybrid}
                 isApproving={isApproving}
+                isHybridizing={isHybridizing}
               />
             )}
 

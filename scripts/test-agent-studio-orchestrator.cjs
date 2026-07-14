@@ -7,6 +7,7 @@ const {
 const {
   createOpenAIAgentRunner,
   orchestrateAgentStudio,
+  orchestrateAgentStudioHybrid,
 } = require('../backend/services/agentStudioAgents.cjs');
 const fixture = require('./fixtures/agent-studio-coffee-shop.cjs');
 
@@ -30,6 +31,7 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
     trend_analyst: fixture.selectedTrend,
     brand_strategist: fixture.brandStrategy,
     creative_producer: fixture.creative,
+    hybrid_producer: fixture.creative,
     content_planner: fixture.contentPlan,
     jeryk_manager: fixture.managerReview,
   };
@@ -108,6 +110,29 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
   assert.equal(adaptResult.type, 'completed');
   assert.equal(adaptRunner.calls.some((call) => call.agentId === 'trend_analyst'), false);
   assert.equal(adaptResult.finalPackage.selectedTrend.signalId, 'signal_coffee_reveal');
+
+  const hybridRunner = createMockAgentRunner({ revise: true });
+  const hybridEvents = [];
+  const hybridResult = await orchestrateAgentStudioHybrid({
+    runId: 'run_hybrid',
+    input: { mode: 'adapt_reel', objective: 'Build a weekly coffee content system', signalId: 'signal_coffee_reveal' },
+    workspace,
+    finalPackage: adaptResult.finalPackage,
+    candidateIds: ['hero_reset', 'alt_forecast'],
+    runAgent: hybridRunner.runAgent,
+    emit: (event) => hybridEvents.push(event),
+  });
+  assert.equal(FinalPackageSchema.safeParse(hybridResult.finalPackage).success, true);
+  assert.deepEqual(hybridResult.finalPackage.hybrid.sourceCandidateIds, ['hero_reset', 'alt_forecast']);
+  assert.deepEqual(hybridRunner.calls.map((call) => call.agentId), [
+    'hybrid_producer',
+    'critic',
+    'hybrid_producer',
+    'critic',
+    'content_planner',
+    'jeryk_manager',
+  ]);
+  assert.equal(hybridEvents.some((event) => event.agent === 'Hybrid Producer' && event.status === 'completed'), true);
 
   const contextRunner = createMockAgentRunner();
   const contextResult = await orchestrateAgentStudio({

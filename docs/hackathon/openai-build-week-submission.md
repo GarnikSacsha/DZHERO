@@ -23,13 +23,15 @@ DZHERO Agent Studio offers two entry points:
 
 Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic, Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
 
+The owner can also select any two directions and ask **Hybrid Producer** to synthesize a stronger concept. This is a real additional OpenAI agent pass, not client-side text mixing: the hybrid is checked again by Critic, receives a fresh seven-day plan, and returns to Jeryk for human approval. If the hybrid pass fails, DZHERO restores the original package instead of losing useful work.
+
 The user sees real backend stages, evidence references, and a safe public agent trace. If video evidence is unavailable, DZHERO pauses for context rather than inventing what happened. The final workspace write remains behind explicit human approval.
 
 ## How we built it
 
 - React 19 and Vite for the existing DZHERO product surface.
 - Express with authenticated, workspace-scoped Agent Studio endpoints.
-- OpenAI Agents SDK with `gpt-5.6` for Trend Analyst, Brand Strategist, Creative Producer, Critic, Content Planner, and Jeryk Manager.
+- OpenAI Agents SDK with `gpt-5.6` for Trend Analyst, Brand Strategist, Creative Producer, Hybrid Producer, Critic, Content Planner, and Jeryk Manager.
 - Zod structured outputs between every specialist stage.
 - A deterministic server-side state machine with bounded turns, one malformed-output repair, and at most one Critic revision.
 - Gemini as a narrow video-evidence specialist, with explicit evidence types for video observation, audio observation, on-screen text, metadata, and user notes.
@@ -63,6 +65,7 @@ We also needed to add the hackathon experience without destabilizing a DZHERO bu
 ## Accomplishments
 
 - One real signal becomes one complete Reel, two alternatives, and exactly seven connected content days.
+- Two owner-selected directions can become a newly synthesized, re-criticized hybrid package.
 - The Critic can visibly catch and correct a meaningful unsupported claim.
 - Both entry modes converge on the same auditable workflow.
 - A context pause can resume without paying the Trend Analyst twice.

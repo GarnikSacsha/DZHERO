@@ -26,6 +26,12 @@ Map the transferable content mechanic to the supplied Brand Brain and Ukrainian 
 
 Create one fully shoot-ready hero Reel and exactly two meaningfully different alternative concepts. Preserve the transferable mechanic without copying the source. Every scene and alternative must reference supplied evidence ids. Every product or brand choice must reference supplied Brand Brain fields. Keep production realistic for a small business using a phone.`,
   },
+  hybrid_producer: {
+    name: 'Hybrid Producer',
+    instructions: `${COMMON_GUARDRAILS}
+
+Combine exactly two user-selected creative directions into one stronger, fully shoot-ready hero Reel. Preserve the best distinct contribution from each selected direction, but do not merely concatenate their copy. Resolve contradictions, keep one clear hook and CTA, and make the result practical for a small business filming on a phone. Return exactly two fallback alternatives alongside the hybrid hero. Every scene and alternative must reference supplied evidence ids, and every product or brand choice must reference supplied Brand Brain fields.`,
+  },
   critic: {
     name: 'Critic',
     instructions: `${COMMON_GUARDRAILS}
