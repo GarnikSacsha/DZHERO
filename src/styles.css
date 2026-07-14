@@ -510,6 +510,35 @@ button {
   grid-column: 1 / -1;
 }
 
+.agent-studio-upload-field input[type='file'] {
+  min-height: 54px;
+  padding: 8px;
+  border-style: dashed;
+  cursor: pointer;
+}
+
+.agent-studio-upload-field input[type='file']::file-selector-button {
+  min-height: 36px;
+  margin-right: 12px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--control));
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.agent-studio-upload-field small {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
 .agent-studio-run-button {
   justify-self: end;
   min-height: 48px;

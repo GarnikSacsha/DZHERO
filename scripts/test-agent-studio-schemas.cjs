@@ -134,6 +134,7 @@ const managerReview = {
 
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits' }).success, false);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits', signalId: 'sig_1' }).success, true);
+assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits', uploadId: 'upload_1' }).success, true);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'find_trend', objective: 'Drive visits' }).success, true);
 
 assert.deepEqual(

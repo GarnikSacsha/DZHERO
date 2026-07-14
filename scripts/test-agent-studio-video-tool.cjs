@@ -147,6 +147,42 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal(instagramBody.input[0].mime_type, 'video/mp4');
   assert.equal(instagramRequests.some(({ url, options }) => url.endsWith('/v1beta/files/source123') && options.method === 'DELETE'), true);
 
+  const uploadedRequests = [];
+  const uploaded = await analyzeAgentStudioVideo({
+    input: { mode: 'adapt_reel', objective: 'Adapt an uploaded video', uploadId: 'agent_upload_1' },
+    selectedTrend: { title: 'Uploaded source', rationale: 'The user supplied the original video file.' },
+    uploadedFile: {
+      name: 'files/uploaded-source',
+      uri: 'https://gemini.example/files/uploaded-source',
+      mimeType: 'video/mp4',
+      originalName: 'saved-instagram-reel.mp4',
+    },
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    fetchImpl: async (url, options = {}) => {
+      uploadedRequests.push({ url, options });
+      if (url.endsWith('/v1beta/interactions')) {
+        return response({
+          output_text: JSON.stringify({
+            accessible: true,
+            summary: 'Gemini inspected the user-provided original video.',
+            transferableMechanic: 'fast hook followed by a visual reveal',
+            observations: [{ sourceType: 'video_observation', text: 'A fast reaction opens the clip.', timestamp: '0:00-0:02', confidence: 0.96 }],
+            unknowns: [],
+          }),
+        });
+      }
+      if (url.endsWith('/v1beta/files/uploaded-source') && options.method === 'DELETE') return response({});
+      throw new Error(`Unexpected uploaded-file test URL: ${url}`);
+    },
+  });
+  assert.equal(uploaded.availability, 'reliable');
+  assert.equal(uploaded.source.kind, 'upload');
+  assert.equal(uploaded.source.title, 'saved-instagram-reel.mp4');
+  const uploadedInteraction = uploadedRequests.find(({ url }) => url.endsWith('/v1beta/interactions'));
+  assert.equal(JSON.parse(uploadedInteraction.options.body).input[0].uri, 'https://gemini.example/files/uploaded-source');
+  assert.equal(uploadedRequests.some(({ url, options }) => url.endsWith('/v1beta/files/uploaded-source') && options.method === 'DELETE'), true);
+
   const notesOnly = await analyzeAgentStudioVideo({
     input: {
       mode: 'adapt_reel',

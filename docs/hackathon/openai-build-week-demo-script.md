@@ -5,7 +5,7 @@
 - Language: English.
 - Workspace: a neighborhood Kyiv coffee shop with a completed Brand Brain.
 - Feature flag: `ENABLE_AGENT_STUDIO=true`.
-- Prepare one public Instagram/TikTok Reel that Apify can resolve, or a public YouTube URL.
+- Prepare one public Instagram/TikTok Reel that Apify can resolve, or a public YouTube URL, plus its saved video file for the universal-source fallback.
 - Keep the deterministic coffee-shop fixture available only as a clearly labelled recovery path.
 - Open the existing Content Plan in a second tab so the final write can be shown immediately.
 
@@ -25,7 +25,7 @@ Briefly select **Find a trend for me**, then switch to **Adapt a Reel** for the 
 
 ### 0:40–1:00 — Start the hybrid run
 
-Choose the existing Reel signal or paste its URL. Use this objective:
+Choose the existing Reel signal, paste its URL, or upload the original video file. Use this objective:
 
 > Bring more weekday morning visits to a neighborhood coffee shop with a low-budget Reel anyone can shoot.
 
@@ -45,9 +45,9 @@ Show the live stage rail:
 6. Content Planner;
 7. Jeryk review.
 
-**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, Apify resolves the public video and DZHERO transfers it into Gemini Files API. Gemini has one narrow job: evidence. Observed frames, metadata, and user notes stay visibly separate.”
+**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, Apify resolves the public video and DZHERO transfers it into Gemini Files API. If the platform blocks retrieval, the owner uploads the saved video and the same automatic path continues. Gemini has one narrow job: evidence. Observed frames and metadata stay visibly separate.”
 
-If the video cannot be accessed, show `needs_context`, add one or two factual sentences, and continue. Say explicitly that this is honest degradation, not an AI observation.
+If the video cannot be accessed, show `needs_context`, upload the saved video, and continue. Say explicitly that DZHERO requires real media instead of asking the owner to recreate the video as text.
 
 ### 1:35–2:10 — The differentiator
 
@@ -84,8 +84,8 @@ Finish on the populated calendar.
 If a provider is unavailable during judging:
 
 1. Show the classified provider/context error rather than hiding it.
-2. Explain the pause/continue behavior.
-3. Switch to the coffee-shop fixture and label it **deterministic demo recovery**.
+2. Upload the prepared source video and show the same run resume automatically.
+3. If both live providers are unavailable, switch to the coffee-shop fixture and label it **deterministic demo recovery**.
 4. Do not describe fixture output as a live provider result.
 
 ## Verified timing reference

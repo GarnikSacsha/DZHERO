@@ -19,9 +19,9 @@ We built DZHERO for the owner who sees hundreds of Reels but cannot reliably ans
 DZHERO Agent Studio offers two entry points:
 
 - **Find a trend for me:** select one suitable signal from DZHERO’s existing signal bank.
-- **Adapt a Reel:** start from a specific imported signal, public URL, or a clearly labelled user description.
+- **Adapt a Reel:** start from a specific imported signal, any public video URL, or an original video file from the user's device.
 
-Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic; for Instagram and TikTok, the existing Apify source provider resolves and downloads public video before the backend transfers it into Gemini Files API. Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
+Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic; for Instagram and TikTok, the existing Apify source provider resolves and downloads public video before the backend transfers it into Gemini Files API. When a platform blocks public retrieval, an authenticated upload sends the original file into the same evidence path without asking the owner to describe the clip. Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
 
 The owner can also select any two directions and ask **Hybrid Producer** to synthesize a stronger concept. This is a real additional OpenAI agent pass, not client-side text mixing: the hybrid is checked again by Critic, receives a fresh seven-day plan, and returns to Jeryk for human approval. If the hybrid pass fails, DZHERO restores the original package instead of losing useful work.
 
@@ -35,7 +35,8 @@ The user sees real backend stages, evidence references, and a safe public agent 
 - Zod structured outputs between every specialist stage.
 - A deterministic server-side state machine with bounded turns, one malformed-output repair, and at most one Critic revision.
 - Apify as a narrow public-source resolver for Instagram and TikTok media already used by DZHERO Signals.
-- Gemini Files API plus Gemini video understanding as the evidence layer, with explicit evidence types for video observation, audio observation, on-screen text, metadata, and user notes.
+- Gemini Files API plus Gemini video understanding as the evidence layer, with explicit evidence types for video observation, audio observation, on-screen text, and metadata.
+- Authenticated direct video upload for private, login-only, Telegram, local-gallery, and otherwise blocked sources.
 - Polling of persisted backend run state, not simulated frontend progress.
 - Idempotent human approval that adds exactly seven normalized posts to the existing DZHERO Content Plan.
 
@@ -84,7 +85,6 @@ We also learned that hybrid model architecture is strongest when each model has 
 ## What is next
 
 - Provider usage and cost telemetry per run.
-- Uploaded-video support for sources that cannot be fetched publicly.
 - A durable job queue and explicit retry after infrastructure interruption.
 - Team approval roles and version comparison.
 - Measured post-performance feedback into future trend selection, without rewriting Brand Brain automatically.
