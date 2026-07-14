@@ -66,7 +66,15 @@ try {
   const signalsCard = page.locator('.mvp-counter-card').filter({ hasText: /Сигнали/i });
   assert.equal((await signalsCard.locator('strong').textContent())?.trim(), '0');
 
-  console.log('google auth empty workspace home test passed');
+  await page.getByRole('button', { name: 'Студія' }).click();
+  await page.getByText('Спочатку додайте сигнал', { exact: true }).waitFor({ timeout: 5_000 });
+
+  const studioText = await page.locator('main.shell').innerText();
+  assert.match(studioText, /Спочатку додайте сигнал/);
+  assert.match(studioText, /Відкрити Сигнали/);
+  assert.deepEqual(runtimeErrors, []);
+
+  console.log('google auth empty workspace regression passed');
 } finally {
   await browser.close();
   await new Promise((resolve, reject) => {

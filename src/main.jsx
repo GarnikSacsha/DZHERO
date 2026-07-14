@@ -1218,7 +1218,11 @@ function App() {
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
-        {page === 'remix' && <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />}
+        {page === 'remix' && (
+          selectedReel
+            ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />
+            : <StudioEmptyState onOpenSignals={() => setMvpPage('viral')} />
+        )}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
         {page === 'settings' && (
           <DataSources
@@ -2984,6 +2988,27 @@ function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' })
         })}
       </div>
     </div>
+  );
+}
+
+function StudioEmptyState({ onOpenSignals }) {
+  return (
+    <section className="page">
+      <PageTitle
+        title="Студія"
+        subtitle="Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA."
+      />
+      <div className="table-card signals-empty-shell">
+        <div className="signals-empty-state signals-empty-state--authoritative">
+          <span className="signals-empty-state-kicker">Студія</span>
+          <strong>Спочатку додайте сигнал</strong>
+          <p>Відкрийте Signals, додайте ролик або джерело, а потім поверніться до адаптації.</p>
+          <div className="signals-empty-actions">
+            <button className="dark" type="button" onClick={onOpenSignals}>Відкрити Сигнали</button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
