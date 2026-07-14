@@ -72,9 +72,11 @@ import {
 } from './signalFeedUtils.mjs';
 import {
   buildCalendarPostSourceKey,
+  buildCalendarRemixScenario,
   buildEditableContentNote,
-  buildReelFromCalendarPost,
-  findReelForCalendarPost,
+  buildReelForCalendarPost,
+  buildStudioContentPlanDraft,
+  isDuplicateContentPlanPost,
   mergeEditableNotes,
   normalizeContentIdentity,
   updateEditableNote,
@@ -702,28 +704,37 @@ function App() {
     notify('Пост додано в контент-план');
   };
   const addReelToPlan = async (reel) => {
-    const sourcePlan = reel.scanPlan?.length ? reel.scanPlan : [['Пн', reel.scanExample?.title || reel.title || 'Brand Scan production draft']];
+    const studioDraft = buildStudioContentPlanDraft(reel);
+    const sourcePlan = studioDraft
+      ? [['AI', studioDraft.title]]
+      : reel.scanPlan?.length
+        ? reel.scanPlan
+        : [['Пн', reel.scanExample?.title || reel.title || 'Brand Scan production draft']];
     const todayDay = new Date().getDate();
     const daysInCurrentMonth = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
     const sourceKey = buildCalendarPostSourceKey(reel);
     const sourceUrl = reel.sourceUrl || reel.profileUrl || reel.importedMetadata?.url || '';
-    const sourceTitle = reel.scanExample?.title || reel.title || 'Brand Scan production draft';
+    const sourceTitle = studioDraft
+      ? reel.title || 'AI adaptation source'
+      : reel.scanExample?.title || reel.title || 'Brand Scan production draft';
     const planPosts = sourcePlan.slice(0, 7).map(([dayLabel, title], index) => {
       const text = String(title || reel.scanExample?.title || reel.title || 'Brand Scan production draft').trim();
       const lower = text.toLowerCase();
-      const format = lower.includes('stories') || lower.includes('story') ? 'Stories'
-        : lower.includes('shorts') || lower.includes('youtube') ? 'Shorts'
-          : lower.includes('tiktok') || lower.includes('tik tok') ? 'Tik - Tok'
-            : lower.includes('карус') || lower.includes('carousel') || lower.includes('post') ? 'Post'
-              : 'Reels';
+      const format = studioDraft ? 'Reels'
+        : lower.includes('stories') || lower.includes('story') ? 'Stories'
+          : lower.includes('shorts') || lower.includes('youtube') ? 'Shorts'
+            : lower.includes('tiktok') || lower.includes('tik tok') ? 'Tik - Tok'
+              : lower.includes('карус') || lower.includes('carousel') || lower.includes('post') ? 'Post'
+                : 'Reels';
       return {
-        id: `brand-scan-${Date.now()}-${index}`,
+        id: `${studioDraft ? 'studio-ai' : 'brand-scan'}-${Date.now()}-${index}`,
         day: Math.min(todayDay + index, daysInCurrentMonth),
         title: text,
+        body: studioDraft?.body || '',
         format,
         time: index % 2 === 0 ? '10:00' : '18:30',
         done: false,
-        source: 'brand_scan',
+        source: studioDraft ? 'studio_ai' : 'brand_scan',
         sourceKey,
         sourceReelId: reel.id || '',
         sourceTitle,
@@ -736,15 +747,12 @@ function App() {
       const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`);
       const payload = response.ok ? await response.json() : null;
       const currentPosts = Array.isArray(payload?.posts) ? payload.posts : [];
-      const hasSamePost = (candidate) => currentPosts.some((post) => {
-        const sameSource = post.sourceKey && post.sourceKey === candidate.sourceKey;
-        const sameTitle = normalizeContentIdentity(post.title) === normalizeContentIdentity(candidate.title);
-        const sameFormat = normalizeContentFormat(post.format, 'Post') === normalizeContentFormat(candidate.format, 'Post');
-        return sameSource || (sameTitle && sameFormat);
-      });
+      const hasSamePost = (candidate) => currentPosts.some((post) => (
+        isDuplicateContentPlanPost(post, candidate)
+      ));
       const uniquePosts = planPosts.filter((post) => !hasSamePost(post));
       if (!uniquePosts.length) {
-        notify('Цей Brand Scan вже є в контент-плані');
+        notify(studioDraft ? 'Цей AI-сценарій вже є в контент-плані' : 'Цей Brand Scan вже є в контент-плані');
         return true;
       }
       const nextPosts = [...currentPosts, ...uniquePosts];
@@ -755,7 +763,7 @@ function App() {
       });
       if (!saveResponse.ok) throw new Error(await readApiError(saveResponse, 'content_plan_save_failed'));
       setData((current) => ({ ...current, plans: [...uniquePosts.map((post) => [post.title, post.time, post.format]), ...current.plans] }));
-      notify(`Brand Scan draft додано в контент-план: ${uniquePosts.length} задачі`);
+      notify(studioDraft ? 'AI-сценарій додано в контент-план' : `Brand Scan draft додано в контент-план: ${uniquePosts.length} задачі`);
       return true;
     } catch (error) {
       notify(error?.message || 'Не вдалося додати draft у контент-план. Перевір backend.');
@@ -763,13 +771,13 @@ function App() {
     }
   };
   const openCalendarPostInStudio = (post) => {
-    const sourceReel = findReelForCalendarPost(post, [
+    const reelDraft = buildReelForCalendarPost(post, [
       ...workspaceScopedSignalsReels,
       ...(data?.reels || []),
     ]);
-    setRemixDraft(sourceReel || buildReelFromCalendarPost(post));
+    setRemixDraft(reelDraft);
     setMvpPage('remix');
-    notify(sourceReel ? 'Відкрито матеріал цієї події в Студії' : 'Відкрито draft цієї події в Студії');
+    notify('Відкрито сценарій цієї події в Студії');
   };
   const saveBrandScanToBrain = async (reel) => {
     if (!reel?.scanLabel && !reel?.scanExample && !reel?.importedMetadata) {
@@ -2143,7 +2151,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       googleButton: 'Увійти через Google',
       divider: 'або email',
       emailLabel: 'Ел. пошта',
-      emailButton: 'Продовжити з email',
+      emailButton: 'Демо-вхід з email',
       privacy: 'Без пароля. Без доступу до акаунта.',
       demoButton: 'Подивитись демо',
       ready: 'Preview готовий',
@@ -2917,7 +2925,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
         </button>
       </div>
       <div className="top-actions">
-        <button className="topbar-quick-action" type="button" onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
+        <button className="topbar-quick-action" type="button" aria-label={ctaLabel} title={ctaLabel} onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
           <Sparkles size={15} />
           <span>{ctaLabel}</span>
         </button>
@@ -4800,6 +4808,9 @@ function Competitors({ competitors, openModal }) {
 }
 
 function buildRemixScenario(reel, observedContext = '') {
+  const calendarScenario = buildCalendarRemixScenario(reel);
+  if (calendarScenario) return calendarScenario;
+
   if (reel.scanExample) {
     return {
       quality: ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(reel.sourceStatus)
@@ -5168,7 +5179,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
     return `${numberValue.toLocaleString('en-US')} ${label}`;
   };
   const addCurrentToPlan = async () => {
-    const ok = await onAddToPlan?.(reel);
+    const ok = await onAddToPlan?.(effectiveReel);
     if (ok !== false) setPage('plan');
   };
 
@@ -6074,7 +6085,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   const [modalDay, setModalDay] = useState(null);
   const [editingPostId, setEditingPostId] = useState('');
   const [isNotesOpen, setIsNotesOpen] = useState(true);
-  const [draft, setDraft] = useState({ title: '', format: 'Reels', time: '10:00' });
+  const [draft, setDraft] = useState({ title: '', body: '', format: 'Reels', time: '10:00' });
   const notesStorageKey = `dzhero-content-notes-${workspaceId || 'default'}`;
   const deletedNotesStorageKey = `dzhero-content-notes-deleted-${workspaceId || 'default'}`;
   const [noteDraft, setNoteDraft] = useState({ title: '', body: '' });
@@ -6171,13 +6182,19 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     setModalDay(Math.min(Math.max(day, 1), daysInMonth));
     setEditingPostId(post?.id || '');
     setDraft(post
-      ? { title: post.title || '', format: normalizeContentFormat(post.format, 'Post'), time: post.time || '10:00' }
-      : { title: '', format: 'Reels', time: '10:00' });
+      ? {
+        title: post.title || '',
+        body: post.body || post.title || '',
+        format: normalizeContentFormat(post.format, 'Post'),
+        time: post.time || '10:00',
+      }
+      : { title: '', body: '', format: 'Reels', time: '10:00' });
   };
   const savePost = () => {
     if (!draft.title.trim()) return;
     const cleanDraft = {
       title: draft.title.trim(),
+      body: draft.body.trim(),
       format: normalizeContentFormat(draft.format, 'Post'),
       time: draft.time,
     };
@@ -6512,8 +6529,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 ))}
               </div>
               <label className="wide">
-                <span>Текст / тема</span>
-                <textarea autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Перша строчка майбутнього поста" />
+                <span>Назва</span>
+                <input autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Коротка назва події" />
+              </label>
+              <label className="wide">
+                <span>Сценарій / текст</span>
+                <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} placeholder="Хук, кадри, озвучка та CTA" />
               </label>
             </div>
             {editingPostId && (

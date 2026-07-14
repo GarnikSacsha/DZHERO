@@ -22,6 +22,7 @@ const {
 } = require('./services/brandBrainPersistence.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
+const { normalizeContentPlanBody } = require('./services/contentPlanPostBody.cjs');
 const {
   getYouTubeShortsSearchQueries,
   shouldRetryPopularWithoutCategory,
@@ -1344,6 +1345,7 @@ function normalizeContentPlanPosts(posts) {
     id: String(post?.id || createId('post')).slice(0, 80),
     day: Math.min(31, Math.max(1, Number(post?.day || index + 1))),
     title: String(post?.title || '').trim().slice(0, 180) || 'Untitled post',
+    body: normalizeContentPlanBody(post?.body),
     format: normalizeContentFormat(post?.format),
     time: /^\d{2}:\d{2}$/.test(String(post?.time || '')) ? post.time : '10:00',
     done: Boolean(post?.done),
