@@ -8,6 +8,7 @@
     "test:i18n-provider": "node scripts/test-i18n-provider.mjs",
     "test:i18n-components": "node scripts/test-i18n-component-coverage.mjs",
     "test:i18n-render": "node scripts/test-render-i18n.mjs",
+    "test:i18n-rendered": "node scripts/test-i18n-rendered.js",
     "test:i18n-errors": "node scripts/test-interface-errors.mjs",
     "test:brand-brain": "node scripts/test-brand-brain.mjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
