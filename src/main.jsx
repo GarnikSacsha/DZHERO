@@ -61,6 +61,7 @@ import {
 } from './signalsUiState.mjs';
 import { I18nProvider, useI18n } from './i18nProvider.mjs';
 import { createLocalizedElement } from './renderI18n.mjs';
+import { extractInterfaceErrorCode, localizeInterfaceError } from './interfaceErrors.mjs';
 import {
   createWorkspaceRequestContext,
   isWorkspaceRequestCurrent,
@@ -166,33 +167,10 @@ function authFetch(url, options = {}) {
   });
 }
 
-async function readApiError(response, fallback = 'Request failed') {
+async function readApiError(response, fallback = 'unknown_error') {
   const payload = await response.json().catch(() => ({}));
-  const normalizeErrorValue = (value) => {
-    if (!value) return '';
-    if (typeof value === 'string') return value;
-    if (value.message && typeof value.message === 'string') return value.message;
-    if (value.error && typeof value.error === 'string') return value.error;
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  };
-  if (response.status === 402 && payload.error === 'plan_limit_reached') {
-    const labels = {
-      agentChat: 'AI-повідомлення',
-      reelImports: 'імпорти сигналів',
-      brandBrainSaves: 'збереження Brand Brain',
-      contentPlanPosts: 'пости в контент-плані',
-    };
-    const label = labels[payload.usageKey] || 'дію';
-    const limit = Number(payload.limit || 0);
-    return limit
-      ? `Ліміт тарифу: ${label} — до ${limit}. Видали зайве або перейди на вищий тариф.`
-      : `Ліміт тарифу для "${label}" вичерпано.`;
-  }
-  return normalizeErrorValue(payload.message) || normalizeErrorValue(payload.error) || normalizeErrorValue(payload) || fallback;
+  const fallbackCode = extractInterfaceErrorCode(fallback, 'unknown_error');
+  return extractInterfaceErrorCode(payload, fallbackCode);
 }
 
 function JerykLoading({ title = 'Джерик думає', text = 'Збираю контекст і готую відповідь.', compact = false, feature = false }) {
@@ -249,7 +227,7 @@ function getInitialAppPage() {
 }
 
 function PublicLegalPage({ page }) {
-  useI18n();
+  const { t } = useI18n();
   const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
   const [deletionResult, setDeletionResult] = useState(null);
   const [deletionStatus, setDeletionStatus] = useState('');
@@ -268,7 +246,7 @@ function PublicLegalPage({ page }) {
       setDeletionResult(payload);
       setDeletionStatus('ready');
     } catch (err) {
-      setDeletionResult({ error: err.message });
+      setDeletionResult({ error: localizeInterfaceError(err, t, 'errors.generic') });
       setDeletionStatus('error');
     }
   };
@@ -384,7 +362,7 @@ function MobilePreviewFrame({ src }) {
 }
 
 function App() {
-  const { language, setLanguage } = useI18n();
+  const { language, setLanguage, t } = useI18n();
   const [page, setPage] = useState(getInitialAppPage);
   const [market, setMarket] = useState('all');
   const [data, setData] = useState(null);
@@ -763,7 +741,7 @@ function App() {
       notify(studioDraft ? 'AI-сценарій додано в контент-план' : `Brand Scan draft додано в контент-план: ${uniquePosts.length} задачі`);
       return true;
     } catch (error) {
-      notify(error?.message || 'Не вдалося додати draft у контент-план. Перевір backend.');
+      notify(localizeInterfaceError(error, t, 'errors.contentPlanSave'));
       return false;
     }
   };
@@ -795,7 +773,7 @@ function App() {
       setMvpPage('settings');
       return true;
     } catch (error) {
-      notify(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
+      notify(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
       return false;
     }
   };
@@ -849,7 +827,7 @@ function App() {
         : 'Джерело дало мінімум даних, але базову UA-адаптацію підготовлено');
       return true;
     } catch (error) {
-      notify(`Автоімпорт не вдався: ${error?.message || 'невідома помилка'}. Відкриваю ручний режим.`);
+      notify(localizeInterfaceError(error, t, 'errors.signalImport'));
       setModal({ type: 'reel', url: cleanUrl });
       return false;
     }
@@ -920,7 +898,7 @@ function App() {
       return payload;
     } catch (error) {
       if (isSignalsWorkspaceRequestCurrent(requestContext, apifyImportRequestRef)) {
-        notify(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`);
+        notify(localizeInterfaceError(error, t, 'errors.apifyImport'));
       }
       return null;
     }
@@ -939,7 +917,7 @@ function App() {
       return payload;
     } catch (error) {
       if (isSignalsWorkspaceRequestCurrent(requestContext, discoveryRequestRef)) {
-        setSignalDiscoveryError(error?.message || 'Не вдалося завантажити статус автоматизації.');
+        setSignalDiscoveryError(localizeInterfaceError(error, t, 'errors.discoveryStatus'));
       }
       throw error;
     } finally {
@@ -981,7 +959,7 @@ function App() {
       };
     });
   };
-  const describeSignalsRefreshIssue = (error) => error?.message || 'Не вдалося оновити стрічку Signals.';
+  const describeSignalsRefreshIssue = (error) => localizeInterfaceError(error, t, 'errors.discoveryStatus');
   const refreshWorkspaceReels = async () => {
     const requestContext = createSignalsWorkspaceRequestContext(workspaceId, ++reelsRequestRef.current);
     const response = await authFetch(`${API_BASE}/workspaces/${requestContext.workspaceId}/reels`);
@@ -1008,7 +986,7 @@ function App() {
         const firstError = discoveryError || reelsError;
         if (isSignalsWorkspaceRequestCurrent(requestContext, signalsRefreshRequestRef)) {
           if (firstError) {
-            const errorMessage = firstError?.message || 'Не вдалося оновити Signals.';
+            const errorMessage = localizeInterfaceError(firstError, t, 'errors.discoveryStatus');
             setSignalDiscoveryError(errorMessage);
             if (!silent) {
               notify(`Не вдалося оновити Signals: ${errorMessage}`);
@@ -1066,8 +1044,9 @@ function App() {
       return payload;
     } catch (error) {
       if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryToggleRequestRef)) {
-        setSignalDiscoveryError(error?.message || 'Не вдалося змінити стан автоматизації.');
-        notify(`Не вдалося змінити автоматизацію: ${error?.message || 'невідома помилка'}`);
+        const localizedError = localizeInterfaceError(error, t, 'errors.discoveryToggle');
+        setSignalDiscoveryError(localizedError);
+        notify(localizedError);
       }
       return null;
     } finally {
@@ -1116,7 +1095,7 @@ function App() {
         return payload;
       }
       if (!response.ok) {
-        throw new Error(payload.message || payload.error || 'automatic_discovery_run_failed');
+        throw new Error(extractInterfaceErrorCode(payload, 'automatic_discovery_run_failed'));
       }
       const acceptedSignals = Number(payload.acceptedSignals || 0);
       const updatedSignals = Number(payload.updatedSignals || 0);
@@ -1153,8 +1132,9 @@ function App() {
       return payload;
     } catch (error) {
       if (isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) {
-        setSignalDiscoveryError(error?.message || 'Не вдалося запустити автоматичний збір.');
-        notify(`Не вдалося запустити автопошук: ${error?.message || 'невідома помилка'}`);
+        const localizedError = localizeInterfaceError(error, t, 'errors.discoveryRun');
+        setSignalDiscoveryError(localizedError);
+        notify(localizedError);
       }
       return null;
     } finally {
@@ -3547,7 +3527,7 @@ function ViralBank({
     try {
       await onPullYouTubePopular({ regionCode: youtubeRegion, categoryId: getYouTubeCategoryId(youtubeCategory) });
     } catch (error) {
-      notify(translateText(`Не вдалося підтягнути YouTube: ${error?.message || 'невідома помилка'}`));
+      notify(localizeInterfaceError(error, t, 'errors.youtubePopular'));
     } finally {
       setIsPullingYoutube(false);
     }
@@ -3854,7 +3834,7 @@ function ViralBank({
 }
 
 function ApifySignalImportModal({ onClose, onImport, notify }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [platform, setPlatform] = useState('instagram');
   const [inputType, setInputType] = useState('profile');
   const [inputValue, setInputValue] = useState('');
@@ -3872,7 +3852,7 @@ function ApifySignalImportModal({ onClose, onImport, notify }) {
       const result = await onImport({ platform, inputType, inputValue: inputValue.trim(), limit, downloadVideo });
       if (result) onClose();
     } catch (error) {
-      notify(translateText(`Apify імпорт не вдався: ${error?.message || 'невідома помилка'}`));
+      notify(localizeInterfaceError(error, t, 'errors.apifyImport'));
     } finally {
       setIsSubmitting(false);
     }
@@ -4182,6 +4162,7 @@ function Badge({ children, variant }) {
 }
 
 function useChecklistState(scope, initialLabels, notify, doneLabel = 'Затверджено', workspaceId = 'ws_demo_ua') {
+  const { t } = useI18n();
   const initialItems = useMemo(() => initialLabels.map((label, index) => ({
     id: `${scope}_${index + 1}`,
     label,
@@ -4219,7 +4200,7 @@ function useChecklistState(scope, initialLabels, notify, doneLabel = 'Затве
   const toggleItem = (id) => {
     setItems((current) => {
       const nextItems = current.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item));
-      saveItems(nextItems).catch((err) => notify?.(`Чеклист не збережено: ${err.message}`));
+      saveItems(nextItems).catch((err) => notify?.(localizeInterfaceError(err, t, 'errors.generic')));
       return nextItems;
     });
   };
@@ -4271,7 +4252,7 @@ function TypewriterText({ text, active }) {
 }
 
 function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace, language = 'uk' }) {
-  useI18n();
+  const { t } = useI18n();
   const isEnglishUi = language === 'en';
   const assistantName = isEnglishUi ? 'Jeryk' : 'Джерик';
   const drawerCopy = isEnglishUi
@@ -4390,7 +4371,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
       setAgentMeta({ provider: 'offline', model: 'fallback' });
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
-          ? ['assistant', drawerCopy.offline(error.message)]
+          ? ['assistant', localizeInterfaceError(error, t, 'errors.assistant')]
           : item
       )));
     } finally {
@@ -4425,7 +4406,7 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
           ? drawerCopy.madeVideo
           : drawerCopy.savedIdea);
     } catch (error) {
-      notify(drawerCopy.actionFailed(error.message));
+      notify(localizeInterfaceError(error, t, 'errors.generic'));
     } finally {
       setActionStatus('');
     }
@@ -5096,7 +5077,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
 }
 
 function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
   const [observedContext, setObservedContext] = useState('');
@@ -5147,7 +5128,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
       notify(translateText('Підготовлено 3 AI-варіанти адаптації'));
     } catch (error) {
       setAdaptationState('idle');
-      setAdaptationError(error?.message || 'Не вдалося згенерувати адаптацію');
+      setAdaptationError(localizeInterfaceError(error, t, 'errors.remixGeneration'));
       notify(translateText('AI-адаптація не пройшла. Залишив чернетку, можна спробувати ще раз.'));
     }
   };
@@ -5452,7 +5433,7 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
 }
 
 function BrandBrain({ notify, workspaceId, language = 'uk' }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [seed, setSeed] = useState('');
   const [brief, setBrief] = useState({
     businessType: '',
@@ -5559,7 +5540,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       window.setTimeout(() => setStatus('ready'), 1800);
     } catch (error) {
       setStatus('error');
-      notify?.(translateText(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.'));
+      notify?.(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
     }
   };
 
@@ -5645,7 +5626,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
 }
 
 function VideoTaskQueue({ notify, workspaceId }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [jobs, setJobs] = useState([]);
   const [status, setStatus] = useState('loading');
 
@@ -5684,7 +5665,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
       notify(translateText('Video task додано в чергу.'));
     } catch (err) {
       setStatus('error');
-      notify(translateText(`Не вдалося створити video task: ${err.message}`));
+      notify(localizeInterfaceError(err, t, 'errors.videoJob'));
     }
   };
 
@@ -5734,7 +5715,7 @@ function VideoTaskQueue({ notify, workspaceId }) {
 }
 
 function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, onAutoPromptUsed, language = 'uk' }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const prompts = [
     'Зроби 5 ідей для експерта з маркетингу на українську аудиторію',
     'Перетвори цей global-рілс у сценарій українською',
@@ -5804,7 +5785,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       setAgentMeta({ provider: 'offline', model: 'fallback' });
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
-          ? ['assistant', `Не зміг дістатися до AI-провайдера: ${agentError.message}. Але логіка готова: попроси адміністратора перевірити серверні змінні AI-провайдера і зробити redeploy.`]
+          ? ['assistant', localizeInterfaceError(agentError, t, 'errors.assistant')]
           : item
       )));
     } finally {
@@ -5904,7 +5885,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
       setLastIdeaId(payload.idea?.id || '');
       notify(translateText(labels[action] || 'Готово.'));
     } catch (err) {
-      notify(translateText(`Не вдалося виконати дію: ${err.message}`));
+      notify(localizeInterfaceError(err, t, 'errors.generic'));
     } finally {
       setActionStatus('');
     }
@@ -6121,7 +6102,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
 }
 
 function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId, onOpenPostInStudio }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const today = new Date();
   const formatSuggestions = CONTENT_FORMATS;
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -6214,7 +6195,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
         body: JSON.stringify({ posts: nextPosts }),
       });
     } catch (error) {
-      notify(translateText(`Не вдалося зберегти календар: ${error.message}`));
+      notify(localizeInterfaceError(error, t, 'errors.contentPlanSave'));
     }
   };
   const closePostModal = () => {
@@ -6736,7 +6717,7 @@ function SalesDirect({ notify, setPage }) {
 }
 
 function AnalysisSetup({ notify, workspaceId }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [brandInput, setBrandInput] = useState('');
   const [status, setStatus] = useState('idle');
 
@@ -6767,7 +6748,7 @@ function AnalysisSetup({ notify, workspaceId }) {
       window.setTimeout(() => setStatus('idle'), 1800);
     } catch (error) {
       setStatus('error');
-      notify(translateText(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.'));
+      notify(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
     }
   };
 
@@ -6797,7 +6778,7 @@ function AnalysisSetup({ notify, workspaceId }) {
 }
 
 function BillingSettings({ workspaceId, notify, language = 'uk' }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const [plans, setPlans] = useState([]);
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
@@ -6819,7 +6800,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       setStatus('ready');
     } catch (err) {
       setStatus('error');
-      notify(translateText(`Не вдалося завантажити тарифи: ${err.message}`));
+      notify(localizeInterfaceError(err, t, 'errors.generic'));
     }
   };
 
@@ -6859,7 +6840,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       await loadBilling();
     } catch (err) {
       paymentWindow?.close();
-      notify(translateText(`Не вдалося обрати тариф: ${err.message}`));
+      notify(localizeInterfaceError(err, t, 'errors.selectPlan'));
     }
   };
 
@@ -7120,7 +7101,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
 }
 
 function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
-  const { translateText } = useI18n();
+  const { t, translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
   const [sourceInput, setSourceInput] = useState('');
@@ -7174,9 +7155,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
       if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
       window.location.href = payload.authUrl;
     } catch (error) {
-      notify(translateText(error.message === 'meta_not_configured'
-        ? 'Підключення Instagram буде доступне після налаштування Instagram App на backend.'
-        : `Не вдалося відкрити Instagram Login: ${error.message}`));
+      notify(localizeInterfaceError(error, t, 'errors.instagramNotConfigured'));
     }
   };
 
