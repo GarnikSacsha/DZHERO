@@ -11,6 +11,8 @@
     "test:i18n-rendered": "node scripts/test-i18n-rendered.js",
     "test:i18n-errors": "node scripts/test-interface-errors.mjs",
     "test:brand-brain": "node scripts/test-brand-brain.mjs",
+    "test:agent-studio-ui": "node scripts/test-agent-studio-ui.mjs",
+    "smoke:agent-studio-openai": "node scripts/smoke-agent-studio-openai.cjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
     "check:calendar-overflow": "node scripts/check-calendar-overflow.js",
     "check:i18n-language": "node scripts/check-i18n-language.mjs",

@@ -48,6 +48,7 @@ import {
 import './styles.css';
 import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
+import AgentStudioPage from './AgentStudioPage.jsx';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
 import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
@@ -413,12 +414,12 @@ function App() {
     || availableWorkspaces[0]
     || DEMO_WORKSPACES[0];
   const setMvpPage = (nextPage) => {
-    const allowedPages = new Set(['home', 'viral', 'remix', 'plan', 'settings']);
+    const allowedPages = new Set(['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings']);
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
   };
 
   useEffect(() => {
-    if (!['home', 'viral', 'remix', 'plan', 'settings'].includes(page)) {
+    if (!['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(page)) {
       setPage('home');
     }
   }, [page]);
@@ -1223,6 +1224,16 @@ function App() {
           selectedReel
             ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />
             : <StudioEmptyState onOpenSignals={() => setMvpPage('viral')} />
+        )}
+        {page === 'agent-studio' && (
+          <AgentStudioPage
+            apiBase={API_BASE}
+            fetcher={authFetch}
+            workspaceId={workspaceId}
+            signals={workspaceScopedSignalsReels}
+            language={language}
+            notify={notify}
+          />
         )}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
         {page === 'settings' && (
@@ -2758,6 +2769,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     home: 'sidebar-home',
     viral: 'sidebar-transcript',
     remix: 'sidebar-remix',
+    'agent-studio': 'sidebar-agent-studio',
     plan: 'sidebar-calendar',
     settings: 'sidebar-settings',
   };
@@ -2766,6 +2778,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       home: 'Home',
       viral: 'Signals',
       remix: 'Studio',
+      'agent-studio': 'Agent Studio · Beta',
       plan: 'Content plan',
       settings: 'Settings',
     }
@@ -2773,6 +2786,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       home: 'Головна',
       viral: 'Сигнали',
       remix: 'Студія',
+      'agent-studio': 'Agent Studio · Beta',
       plan: 'Контент-план',
       settings: 'Налаштування',
     };
@@ -2780,6 +2794,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     ['home', Home],
     ['viral', Radio],
     ['remix', Wand2],
+    ['agent-studio', Bot],
     ['plan', CalendarDays],
     ['settings', Settings],
   ];
