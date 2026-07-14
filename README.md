@@ -27,6 +27,38 @@ The final package contains:
 
 Nothing is written to the existing Content Plan until the user explicitly approves a candidate.
 
+## Hackathon scope: prior product vs. Build Week work
+
+DZHERO existed before the OpenAI Build Week submission period. The pre-existing product already included authenticated workspaces, Signals, the Gemini-powered Studio, Brand Brain, the Jeryk assistant, billing limits, and Content Plan.
+
+The following work was added on the isolated `hackathon/openai-build-week` branch after the submission period opened:
+
+- strict Agent Studio input, evidence, creative, evaluation, plan, and public-trace contracts;
+- a bounded run state machine with context pause/resume, cancellation, one output repair, one Critic revision, interruption recovery, and idempotent approval;
+- OpenAI Agents SDK specialists using GPT-5.6;
+- Gemini video evidence with explicit provenance and honest `needs_context` degradation;
+- authenticated workspace-scoped create, poll, context, cancel, and approve APIs;
+- the separate English/Ukrainian Agent Studio Beta interface;
+- approval of one candidate into exactly seven existing Content Plan entries;
+- focused tests, a live bounded provider smoke check, demo script, and submission documentation.
+
+The dated commit history on this branch is the implementation record for the hackathon extension. Existing product behavior remains separate and regression-tested.
+
+## How we collaborated with Codex
+
+Codex was the development partner for the Build Week extension. It inspected the existing DZHERO architecture, isolated the work in a dedicated branch/worktree, translated the product idea into contracts and a state machine, implemented the backend and React interface, wrote focused tests, ran the provider smoke check, audited secrets and localization, and prepared the demo/submission material.
+
+The human product decisions remained explicit:
+
+- add Agent Studio as a feature-flagged surface instead of replacing the working Studio;
+- use a deterministic backend state machine instead of an open-ended autonomous loop;
+- keep OpenAI agents responsible for specialist reasoning and content production while Gemini remains a narrow video-evidence provider;
+- separate observations, metadata, and user notes rather than presenting every source as an AI observation;
+- allow only one Critic revision and require human approval before a workspace write;
+- use the coffee-shop story as a concrete demo while keeping the product generic.
+
+GPT-5.6 is used in two visible ways: Codex accelerated the engineering workflow, and the running product uses GPT-5.6 through the OpenAI Agents SDK for the Trend Analyst, Brand Strategist, Creative Producer, Critic, Content Planner, and Jeryk Manager. Their outputs are schema-validated before the next stage can run.
+
 ## Why DZHERO
 
 A blank AI chat still asks a business owner to act as the trend researcher, strategist, scriptwriter, critic, and planner. DZHERO separates those responsibilities and turns research into an accountable workflow with visible evidence, bounded decisions, and a final human approval step.
@@ -166,6 +198,7 @@ The repository also contains regression coverage for authentication, workspace i
 
 - [Sub-three-minute demo script](docs/hackathon/openai-build-week-demo-script.md)
 - [Devpost submission draft](docs/hackathon/openai-build-week-submission.md)
+- [Pre-submission compliance checklist](docs/hackathon/openai-build-week-submission-checklist.md)
 - [Agent Studio design](docs/superpowers/specs/2026-07-14-dzhero-agent-studio-build-week-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-07-14-dzhero-agent-studio-build-week.md)
 
