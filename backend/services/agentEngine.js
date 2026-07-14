@@ -198,7 +198,13 @@ function fallbackAgentReplyV2(message, context) {
   ].join('\n\n');
 }
 
-async function generateAgentReply({ message, history = [], workspace, snapshot }) {
+async function generateAgentReply({
+  message,
+  history = [],
+  workspace,
+  snapshot,
+  beforeProviderAttempt,
+}) {
   const context = buildBusinessContext(workspace, snapshot);
   const apiKey = process.env.GEMINI_API_KEY;
   const model = process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_TEXT_MODEL;
@@ -224,6 +230,9 @@ async function generateAgentReply({ message, history = [], workspace, snapshot }
   ].filter((item) => item.parts[0].text);
 
   async function requestGemini(requestContents) {
+    if (typeof beforeProviderAttempt === 'function') {
+      await beforeProviderAttempt({ provider: 'gemini', model, operation: 'agent_chat' });
+    }
     const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

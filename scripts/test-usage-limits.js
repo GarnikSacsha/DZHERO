@@ -25,4 +25,10 @@ assert.equal(
   'unlimited plans should keep the requested batch size',
 );
 
+assert.equal(
+  getAllowedBatchSize({ requested: 24, limit: 30, used: 0, unlimited: false, perRequestLimit: 5 }),
+  5,
+  'Tester Pro batch imports should be capped to five results per request',
+);
+
 console.log('usage limit tests passed');

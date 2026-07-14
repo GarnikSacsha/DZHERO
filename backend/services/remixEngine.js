@@ -149,7 +149,7 @@ function createRemixProviderError(provider, cause) {
   return error;
 }
 
-async function generateRemix(globalInsight, businessBrief) {
+async function generateRemix(globalInsight, businessBrief, options = {}) {
   const normalizedBrandBrain = normalizeBrandBrain(businessBrief);
   const enrichedBusinessBrief = {
     ...(businessBrief || {}),
@@ -193,6 +193,7 @@ async function generateRemix(globalInsight, businessBrief) {
         model: process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL,
         generate: (qualityFeedback = '') => generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
         globalInsight,
+        beforeProviderAttempt: options.beforeProviderAttempt,
       });
     } catch (err) {
       console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -205,6 +206,7 @@ async function generateRemix(globalInsight, businessBrief) {
         model: 'gpt-4o-mini',
         generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
         globalInsight,
+        beforeProviderAttempt: options.beforeProviderAttempt,
       });
     } catch (err) {
       console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -252,12 +254,21 @@ function parseGeminiResponse(payload) {
   return parseProviderJson(text);
 }
 
-async function generateValidatedProviderResult({ provider, model, generate, globalInsight }) {
+async function generateValidatedProviderResult({
+  provider,
+  model,
+  generate,
+  globalInsight,
+  beforeProviderAttempt,
+}) {
   let qualityFeedback = '';
   let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     let result;
     try {
+      if (typeof beforeProviderAttempt === 'function') {
+        await beforeProviderAttempt({ provider, model, operation: 'remix', attempt });
+      }
       result = await generate(qualityFeedback);
       lastError = null;
     } catch (error) {

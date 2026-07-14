@@ -43,6 +43,7 @@ const strong = {
 assert.equal(assessRemixQuality(strong, { globalInsight: source }).ok, true);
 
 let attempts = 0;
+const meteredAttempts = [];
 let retryFeedback = '';
 const retriedResult = await remixEngine.generateValidatedProviderResult({
   provider: 'test-provider',
@@ -53,8 +54,15 @@ const retriedResult = await remixEngine.generateValidatedProviderResult({
     retryFeedback = feedback;
     return attempts === 1 ? copied : structuredClone(strong);
   },
+  beforeProviderAttempt: async (attempt) => {
+    meteredAttempts.push(attempt);
+  },
 });
 assert.equal(attempts, 2);
+assert.deepEqual(meteredAttempts, [
+  { provider: 'test-provider', model: 'test-model', operation: 'remix', attempt: 1 },
+  { provider: 'test-provider', model: 'test-model', operation: 'remix', attempt: 2 },
+]);
 assert.match(retryFeedback, /source|copy|hashtag|variant/i);
 assert.deepEqual(retriedResult._generation, {
   provider: 'test-provider', model: 'test-model', attempts: 2, fallback: false,

@@ -47,6 +47,7 @@ import {
 } from 'lucide-react';
 import './styles.css';
 import logoImg from './logo-mark.svg';
+import TesterAccessPanel from './TesterAccessPanel.jsx';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
 import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
@@ -1094,6 +1095,20 @@ function App() {
         }
         return payload;
       }
+      if (response.status === 429 && payload.error === 'automatic_daily_run_limit_reached') {
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
+        const refreshResult = await refreshSignalsWorkspaceState({ silent: true });
+        if (!isSignalsWorkspaceRequestCurrent(requestContext, signalDiscoveryRunRequestRef)) return payload;
+        const message = 'Сьогоднішній автопошук до 10 нових сигналів уже запускався. Наступний — після початку нового UTC-дня.';
+        if (refreshResult.error) {
+          const refreshMessage = describeSignalsRefreshIssue(refreshResult.error);
+          setSignalDiscoveryError(refreshMessage);
+          notify(`${message} Але не вдалося оновити Signals: ${refreshMessage}`);
+        } else {
+          notify(message);
+        }
+        return payload;
+      }
       if (!response.ok) {
         throw new Error(extractInterfaceErrorCode(payload, 'automatic_discovery_run_failed'));
       }
@@ -1215,6 +1230,7 @@ function App() {
             sources={data.sources}
             notify={notify}
             workspaceId={workspaceId}
+            currentUser={currentUser}
             language={language}
             activeTab={sourcesTab}
             onTabChange={(nextTab) => {
@@ -2044,7 +2060,6 @@ function GoogleIcon() {
 function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, language, setLanguage }) {
   useI18n();
   const [scanInput, setScanInput] = useState('');
-  const [emailInput, setEmailInput] = useState('');
   const [scanResult, setScanResult] = useState(null);
   const [error, setError] = useState('');
   const [loginPrompt, setLoginPrompt] = useState('');
@@ -2061,10 +2076,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       buildButton: 'Build content plan',
       scanningButton: 'Scanning...',
       googleButton: 'Sign in with Google',
-      divider: 'or email',
-      emailLabel: 'Email address',
-      emailButton: 'Demo access by email',
-      privacy: 'No password. No account access.',
+      privacy: 'Secure sign-in through your Google account.',
       demoButton: 'View demo',
       ready: 'Preview ready',
       panelIntro: 'What you get in 30 seconds',
@@ -2098,12 +2110,9 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       emptyError: 'Paste a profile, website, or short business description.',
       demoError: 'Demo login did not work. Check the server connection.',
       serverError: 'The server is not responding. Check Railway deploy or local backend.',
+      previewDailyLimit: 'Daily public preview capacity is used. Sign in with Google to continue.',
       googleError: 'Google sign-in will be available after login setup is finished.',
       googleNotify: 'Google Login still needs Railway env setup.',
-      emailError: 'Enter an email to continue.',
-      emailSuccess: 'Trial workspace opened. You can continue from the preview.',
-      emailFail: 'Email login did not work. Check the backend or try Google.',
-      emailFailNotify: 'Email login is temporarily unavailable.',
       sourceRead: 'Dzhero read the source and built a production preview.',
       publicRead: 'Dzhero read the public account description.',
       previewBuilt: 'Dzhero built a preview plan without connecting the account.',
@@ -2132,10 +2141,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       buildButton: 'Побудувати контент-план',
       scanningButton: 'Скануємо...',
       googleButton: 'Увійти через Google',
-      divider: 'або email',
-      emailLabel: 'Ел. пошта',
-      emailButton: 'Демо-вхід з email',
-      privacy: 'Без пароля. Без доступу до акаунта.',
+      privacy: 'Безпечний вхід через твій Google-акаунт.',
       demoButton: 'Подивитись демо',
       ready: 'Preview готовий',
       panelIntro: 'Що отримаєш за 30 секунд',
@@ -2169,12 +2175,9 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       emptyError: 'Встав профіль, сайт або коротко опиши бізнес.',
       demoError: 'Демо-вхід не спрацював. Перевір підключення до сервера.',
       serverError: 'Сервер не відповідає. Перевір Railway deploy або локальний backend.',
+      previewDailyLimit: 'Денний ліміт публічних preview вичерпано. Увійди через Google, щоб продовжити.',
       googleError: 'Google-вхід буде доступний після завершення налаштування входу.',
       googleNotify: 'Google Login ще треба підключити в Railway env.',
-      emailError: 'Введи email, щоб продовжити.',
-      emailSuccess: 'Trial workspace відкрито. Можна продовжити з preview.',
-      emailFail: 'Email-вхід не спрацював. Перевір backend або спробуй Google.',
-      emailFailNotify: 'Email-вхід тимчасово не спрацював.',
       sourceRead: 'Джеро прочитав джерело і зібрав production preview.',
       publicRead: 'Джеро прочитав публічний опис акаунта.',
       previewBuilt: 'Джеро зібрав preview-план без підключення акаунта.',
@@ -2210,6 +2213,11 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
         body: JSON.stringify({ input: cleanInput }),
       });
       const payload = await response.json().catch(() => ({}));
+      if (response.status === 429 && payload.error === 'preview_global_daily_limit_reached') {
+        setError(scanCopy.previewDailyLimit);
+        notify(scanCopy.previewDailyLimit);
+        return;
+      }
       if (response.ok) {
         metadata = payload.metadata || null;
         capabilities = payload.capabilities || null;
@@ -2282,36 +2290,6 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     }
   };
 
-  const startEmailLogin = async () => {
-    const email = emailInput.trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      setError(scanCopy.emailError);
-      return;
-    }
-    setError('');
-    setIsLoading(true);
-    try {
-      if (scanResult) {
-        window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
-      }
-      const response = await fetch(`${API_BASE}/auth/email`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'email_auth_failed');
-      notify(scanCopy.emailSuccess);
-      onAuth(payload);
-    } catch {
-      setError(scanCopy.emailFail);
-      notify(scanCopy.emailFailNotify);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const startInstagramLogin = async () => {
     setError('');
     setIsLoading(true);
@@ -2366,23 +2344,6 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               <button className="google-auth-button" type="button" onClick={startGoogleLogin} disabled={isLoading}>
                 <GoogleIcon />
                 {scanCopy.googleButton}
-              </button>
-              <div className="auth-divider"><span>{scanCopy.divider}</span></div>
-              <label className="email-access-field">
-                <span>{scanCopy.emailLabel}</span>
-                <input
-                  type="email"
-                  value={emailInput}
-                  onChange={(event) => setEmailInput(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') startEmailLogin();
-                  }}
-                  placeholder="name@company.com"
-                  autoComplete="email"
-                />
-              </label>
-              <button className="email-auth-button" type="button" onClick={startEmailLogin} disabled={isLoading}>
-                {scanCopy.emailButton}
               </button>
             </div>
             <p className="auth-privacy-note">
@@ -3622,7 +3583,7 @@ function ViralBank({
             </span>
             <span className="signals-automation-toggle-copy">
               <strong>Автопошук сигналів</strong>
-              <small>Збережені джерела, акаунти й теми підтягуються в Signals за розкладом.</small>
+              <small>До 10 нових сигналів щодня зі збережених джерел, акаунтів і тем.</small>
             </span>
           </button>
           <div className="signals-automation-summary">
@@ -6878,6 +6839,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       trialButton: 'Trial after login',
       payButton: 'Pay for plan',
       usageRows: [
+        ['Paid AI operations', 'aiOperations'],
         ['AI messages', 'agentChat'],
         ['Reels imports', 'reelImports'],
         ['Brand Brain saves', 'brandBrainSaves'],
@@ -6885,6 +6847,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
         ['Instagram accounts', 'instagramAccounts'],
       ],
       limitRows: [
+        ['aiOperations', Bot, 'paid AI operations'],
         ['agentChat', MessageSquareText, 'AI messages'],
         ['reelImports', Video, 'Reels imports'],
         ['brandBrainSaves', Database, 'Brand Brain saves'],
@@ -6937,6 +6900,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       trialButton: 'Trial після логіну',
       payButton: 'Оплатити тариф',
       usageRows: [
+        ['Платні AI-операції', 'aiOperations'],
         ['AI повідомлення', 'agentChat'],
         ['Імпорти Reels', 'reelImports'],
         ['Збереження Brand Brain', 'brandBrainSaves'],
@@ -6944,6 +6908,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
         ['Instagram акаунти', 'instagramAccounts'],
       ],
       limitRows: [
+        ['aiOperations', Bot, 'платних AI-операцій'],
         ['agentChat', MessageSquareText, 'AI повідомлень'],
         ['reelImports', Video, 'імпортів Reels'],
         ['brandBrainSaves', Database, 'збережень Brand Brain'],
@@ -7104,7 +7069,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
+function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
   const { t, translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
@@ -7112,6 +7077,21 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
   const [sourcePreview, setSourcePreview] = useState(null);
   const [sourceError, setSourceError] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const settingsTabs = [
+    ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
+    ['profile', language === 'en' ? 'Brand memory' : 'Памʼять бренду'],
+    ['billing', language === 'en' ? 'Plan and limits' : 'Тариф і ліміти'],
+    ...(currentUser?.canManageTesters
+      ? [['testers', language === 'en' ? 'Testers' : 'Тестери']]
+      : []),
+  ];
+
+  useEffect(() => {
+    if (tab === 'testers' && !currentUser?.canManageTesters) {
+      setTab('sources');
+      window.localStorage.setItem(SOURCES_TAB_KEY, 'sources');
+    }
+  }, [tab, currentUser?.canManageTesters]);
   const sourceTypes = [
     ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
     ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
@@ -7172,11 +7152,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
       <Tabs
         active={tab}
         onChange={setTab}
-        items={[
-          ['sources', 'Sources Hub'],
-          ['profile', 'Памʼять бренда'],
-          ['billing', 'Тариф і ліміти'],
-        ]}
+        items={settingsTabs}
       />
       {tab === 'sources' && (
         <div className="sources-hub">
@@ -7286,6 +7262,9 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
       )}
       {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
+      {tab === 'testers' && currentUser?.canManageTesters && (
+        <TesterAccessPanel apiBase={API_BASE} authFetch={authFetch} language={language} notify={notify} />
+      )}
     </section>
   );
 }

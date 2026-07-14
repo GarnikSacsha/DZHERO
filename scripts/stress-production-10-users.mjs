@@ -161,8 +161,12 @@ async function prepareVirtualUser(browser, userIndex) {
       await sleep(AUTH_STAGGER_MS * (userIndex - 1));
     }
 
-    const auth = await checkedJson(page, 'post', '/api/auth/email', {
-      data: { email },
+    const auth = await checkedJson(page, 'post', '/api/auth/register', {
+      data: {
+        name: `Stress User ${userIndex}`,
+        email,
+        password: `stress-${RUN_ID}-${userIndex}`,
+      },
     });
     if (!auth?.user?.workspaceId) throw new Error('auth response did not include workspaceId');
     result.workspaceId = auth.user.workspaceId;
