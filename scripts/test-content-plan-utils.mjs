@@ -145,4 +145,14 @@ assert.equal(isDuplicateContentPlanPost(
   { ...firstAiPost, source: 'brand_scan', title: 'Інша задача' },
 ), true);
 
+const englishCalendarReel = buildReelForCalendarPost({
+  id: 'post_en',
+  title: '',
+  body: '',
+  format: 'Reels',
+}, [], { language: 'en' });
+assert.equal(englishCalendarReel.title, 'Content plan draft');
+assert.match(englishCalendarReel.quality, /Content plan/);
+assert.doesNotMatch(englishCalendarReel.quality, /[А-Яа-яІіЇїЄєҐґ]/);
+
 console.log('content plan utility tests passed');

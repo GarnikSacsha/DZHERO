@@ -87,4 +87,7 @@ export const en = Object.freeze({
   'signals.youtube.category.beauty': 'Beauty',
   'signals.youtube.category.food': 'Food',
   'signals.youtube.category.peopleBlogs': 'People & blogs',
+  'plan.fallbackDraft': 'Content plan draft',
+  'plan.quality.calendar': 'Content plan scenario',
+  'plan.status.contentPlan': 'Content plan',
 });
