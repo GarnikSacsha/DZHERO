@@ -118,6 +118,20 @@ const evaluation = {
   summary: 'The concept is grounded, distinct, and simple to shoot.',
 };
 
+const managerReview = {
+  headline: 'One trend, rebuilt into a week of coffee-shop content.',
+  whyItWorks: 'The package preserves the reveal mechanic while grounding every claim in the source and Brand Brain.',
+  agentContributions: [
+    { agent: 'Trend Analyst', summary: 'Matched the reveal mechanic to the visit objective.' },
+    { agent: 'Gemini Video Analyst', summary: 'Grounded the visible setup and interruption.' },
+    { agent: 'Brand Strategist', summary: 'Mapped the mechanic to a Kyiv morning ritual.' },
+    { agent: 'Creative Producer', summary: 'Built a shoot-ready hero Reel and two alternatives.' },
+    { agent: 'Critic', summary: 'Removed an unsupported superlative.' },
+    { agent: 'Content Planner', summary: 'Expanded the insight across seven non-repetitive days.' },
+  ],
+  approvalPrompt: 'Approve the hero Reel and add the seven-day package to Content Plan?',
+};
+
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits' }).success, false);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits', signalId: 'sig_1' }).success, true);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'find_trend', objective: 'Drive visits' }).success, true);
@@ -181,6 +195,7 @@ assert.equal(FinalPackageSchema.safeParse({
   creative: creativeBundle,
   evaluation,
   contentPlan: plan,
+  managerReview,
   selectedTrend: {
     title: 'Morning reveal',
     rationale: 'It matches the objective and is feasible for a coffee shop.',
@@ -199,6 +214,19 @@ assert.equal(FinalPackageSchema.safeParse({
       )),
     },
   },
+  evaluation,
+  contentPlan: plan,
+  managerReview,
+  selectedTrend: {
+    title: 'Morning reveal',
+    rationale: 'It matches the objective and is feasible for a coffee shop.',
+    signalId: 'reel_coffee_01',
+  },
+}).success, false);
+
+assert.equal(FinalPackageSchema.safeParse({
+  evidence,
+  creative: creativeBundle,
   evaluation,
   contentPlan: plan,
   selectedTrend: {

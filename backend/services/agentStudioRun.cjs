@@ -34,6 +34,7 @@ const PUBLIC_ARTIFACT_KEYS = new Set([
   'creative',
   'evaluation',
   'contentPlan',
+  'managerReview',
 ]);
 
 function defaultIdFactory(prefix) {
