@@ -203,10 +203,55 @@ async function generateRemix(globalInsight, businessBrief) {
   return fallback;
 }
 
+function parseProviderJson(text) {
+  const source = String(text || '').trim();
+  const unfenced = source
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  const start = unfenced.indexOf('{');
+  const end = unfenced.lastIndexOf('}');
+  const candidate = start >= 0 && end >= start ? unfenced.slice(start, end + 1) : unfenced;
+
+  try {
+    return JSON.parse(candidate);
+  } catch (cause) {
+    const error = new Error(`Invalid provider JSON: ${cause.message}`);
+    error.code = 'provider_invalid_json';
+    error.cause = cause;
+    throw error;
+  }
+}
+
+function parseGeminiResponse(payload) {
+  const text = (payload?.candidates?.[0]?.content?.parts || [])
+    .map((part) => typeof part?.text === 'string' ? part.text : '')
+    .join('')
+    .trim();
+
+  if (!text) {
+    const error = new Error('Empty response from Gemini API');
+    error.code = 'provider_empty_response';
+    throw error;
+  }
+
+  return parseProviderJson(text);
+}
+
 async function generateValidatedProviderResult({ provider, model, generate, globalInsight }) {
   let qualityFeedback = '';
+  let lastError = null;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
-    const result = await generate(qualityFeedback);
+    let result;
+    try {
+      result = await generate(qualityFeedback);
+      lastError = null;
+    } catch (error) {
+      lastError = error;
+      qualityFeedback = 'Previous response was not valid complete JSON. Return one complete JSON object only.';
+      console.warn(`[RemixEngine] ${provider}/${model} failed on attempt ${attempt}: ${error.message}`);
+      continue;
+    }
     const assessment = assessRemixQuality(result, { globalInsight });
     if (assessment.ok) {
       result._generation = { provider, model, attempts: attempt, fallback: false };
@@ -216,6 +261,7 @@ async function generateValidatedProviderResult({ provider, model, generate, glob
     qualityFeedback = assessment.reasons.join(' ');
     console.warn(`[RemixEngine] ${provider}/${model} rejected on attempt ${attempt}: ${qualityFeedback}`);
   }
+  if (lastError) throw lastError;
   const error = new Error(`Provider output failed quality validation: ${qualityFeedback}`);
   error.code = 'remix_quality_rejected';
   throw error;
@@ -279,12 +325,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
   }
 
   const jsonResult = await response.json();
-  const textResponse = jsonResult.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!textResponse) {
-    throw new Error("Empty response from Gemini API");
-  }
-
-  return JSON.parse(textResponse.trim());
+  return parseGeminiResponse(jsonResult);
 }
 
 /**
