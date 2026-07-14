@@ -597,10 +597,13 @@ function App() {
     }
   }, [currentUser, data, remixDraft]);
 
-  const handleAuthSuccess = (payload) => {
+  const handleAuthSuccess = (payload, destination = null) => {
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
     setSessionRevision((revision) => revision + 1);
     applyAuthPayload(payload);
+    if (['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(destination)) {
+      setPage(destination);
+    }
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
   };
@@ -2263,7 +2266,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
     notify(scanCopy.loginRequired);
   };
 
-  const enterDemo = async () => {
+  const enterDemo = async (destination = null) => {
     setError('');
     setIsLoading(true);
     try {
@@ -2273,7 +2276,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST', credentials: 'include' });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'demo_error');
-      onAuth(payload);
+      onAuth(payload, destination);
     } catch {
       setError(scanCopy.demoError);
       notify(scanCopy.serverError);
@@ -2356,10 +2359,23 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
                 <GoogleIcon />
                 {scanCopy.googleButton}
               </button>
+              <button
+                className="agent-studio-demo-button"
+                type="button"
+                onClick={() => enterDemo('agent-studio')}
+                disabled={isLoading}
+              >
+                <Bot size={17} />
+                {isLoading
+                  ? scanCopy.opening
+                  : language === 'en'
+                    ? 'Open Agent Studio demo'
+                    : 'Відкрити демо Agent Studio'}
+              </button>
             </div>
             <p className="auth-privacy-note">
               {scanCopy.privacy}
-              <button className="demo-link-inline" type="button" onClick={enterDemo} disabled={isLoading}>
+              <button className="demo-link-inline" type="button" onClick={() => enterDemo()} disabled={isLoading}>
                 {scanCopy.demoButton}
               </button>
             </p>
