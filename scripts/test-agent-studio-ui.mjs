@@ -6,7 +6,9 @@ import {
   getAgentStudioCandidates,
   getAgentStudioCopy,
   getAgentStudioErrorMessage,
+  getAgentStudioGroundingPercent,
   getAgentStudioStageState,
+  getAgentStudioTraceEntries,
   shouldPollAgentStudioRun,
 } from '../src/agentStudioUi.mjs';
 
@@ -52,6 +54,25 @@ assert.deepEqual(candidates.map(({ id, kind }) => ({ id, kind })), [
   { id: 'alt_2', kind: 'alternative' },
 ]);
 
+const hybridCandidates = getAgentStudioCandidates({
+  artifacts: {
+    hybrid: { sourceCandidateIds: ['hero', 'alt_1'] },
+    creative: {
+      heroReel: { id: 'hybrid_hero', title: 'Hybrid' },
+      alternatives: [{ id: 'alt_1' }, { id: 'alt_2' }],
+    },
+  },
+});
+assert.equal(hybridCandidates[0].kind, 'hybrid');
+assert.equal(getAgentStudioGroundingPercent(9.5), 95);
+assert.equal(getAgentStudioGroundingPercent(95), 95);
+assert.equal(getAgentStudioGroundingPercent(undefined), null);
+assert.equal(getAgentStudioTraceEntries([
+  { id: '1', agent: 'Jeryk Manager', status: 'completed', summary: 'Ready' },
+  { id: '2', agent: 'Jeryk Manager', status: 'completed', summary: 'Ready' },
+  { id: '3', agent: 'Critic', status: 'started', summary: 'Started' },
+]).length, 2);
+
 assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Find a trend for me');
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
@@ -62,6 +83,7 @@ const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'ut
 assert.match(pageSource, /\/agent-studio`/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/context/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/);
+assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
 assert.match(pageSource, /shouldPollAgentStudioRun/);
 assert.match(pageSource, /addToContentPlan: true/);
 assert.doesNotMatch(pageSource, /OPENAI_API_KEY|GEMINI_API_KEY/);

@@ -21,10 +21,10 @@ const ALLOWED_TRANSITIONS = {
   analyzing_video: new Set(['adapting_brand', 'needs_context', 'failed', 'cancelled']),
   needs_context: new Set(['analyzing_video', 'failed', 'cancelled']),
   adapting_brand: new Set(['producing', 'failed', 'cancelled']),
-  producing: new Set(['evaluating', 'failed', 'cancelled']),
+  producing: new Set(['evaluating', 'awaiting_approval', 'failed', 'cancelled']),
   evaluating: new Set(['producing', 'planning', 'failed', 'cancelled']),
   planning: new Set(['awaiting_approval', 'failed', 'cancelled']),
-  awaiting_approval: new Set(['completed', 'failed', 'cancelled']),
+  awaiting_approval: new Set(['producing', 'completed', 'failed', 'cancelled']),
 };
 
 const PUBLIC_ARTIFACT_KEYS = new Set([
@@ -35,6 +35,7 @@ const PUBLIC_ARTIFACT_KEYS = new Set([
   'evaluation',
   'contentPlan',
   'managerReview',
+  'hybrid',
 ]);
 
 function defaultIdFactory(prefix) {
@@ -161,18 +162,20 @@ function transitionAgentStudioRun(run, nextStatus, options = {}) {
     updatedAt: now,
     completedAt: terminal ? now : run.completedAt,
     error: options.error === undefined ? run.error : options.error,
-    trace: [
-      ...(run.trace || []),
-      createTraceEntry({
-        id: options.traceId,
-        agent: options.agent,
-        stage: nextStatus,
-        status: traceStatus,
-        summary: options.summary,
-        createdAt: now,
-        idFactory: options.idFactory,
-      }),
-    ],
+    trace: options.appendTrace === false
+      ? (run.trace || [])
+      : [
+        ...(run.trace || []),
+        createTraceEntry({
+          id: options.traceId,
+          agent: options.agent,
+          stage: nextStatus,
+          status: traceStatus,
+          summary: options.summary,
+          createdAt: now,
+          idFactory: options.idFactory,
+        }),
+      ],
   };
   return next;
 }

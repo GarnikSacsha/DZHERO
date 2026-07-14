@@ -213,6 +213,9 @@ const FinalPackageSchema = z.object({
   evaluation: EvaluationReportSchema,
   contentPlan: ContentPlanSchema,
   managerReview: ManagerReviewSchema,
+  hybrid: z.object({
+    sourceCandidateIds: z.array(Identifier).length(2),
+  }).strict().optional(),
 }).strict().superRefine((value, context) => {
   const evidenceIds = new Set(value.evidence.items.map((item) => item.id));
   const references = [

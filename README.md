@@ -27,6 +27,8 @@ The final package contains:
 
 Nothing is written to the existing Content Plan until the user explicitly approves a candidate.
 
+Before approval, the owner may select any two directions and run **Hybrid Producer**. This launches a real additional OpenAI synthesis pass, followed by a fresh Critic evaluation, seven-day plan, and Jeryk review. A provider failure restores the original creative package instead of discarding it.
+
 ## Hackathon scope: prior product vs. Build Week work
 
 DZHERO existed before the OpenAI Build Week submission period. The pre-existing product already included authenticated workspaces, Signals, the Gemini-powered Studio, Brand Brain, the Jeryk assistant, billing limits, and Content Plan.
@@ -37,7 +39,7 @@ The following work was added on the isolated `hackathon/openai-build-week` branc
 - a bounded run state machine with context pause/resume, cancellation, one output repair, one Critic revision, interruption recovery, and idempotent approval;
 - OpenAI Agents SDK specialists using GPT-5.6;
 - Gemini video evidence with explicit provenance and honest `needs_context` degradation;
-- authenticated workspace-scoped create, poll, context, cancel, and approve APIs;
+- authenticated workspace-scoped create, poll, context, cancel, hybrid, and approve APIs;
 - the separate English/Ukrainian Agent Studio Beta interface;
 - approval of one candidate into exactly seven existing Content Plan entries;
 - focused tests, a live bounded provider smoke check, demo script, and submission documentation.
@@ -57,7 +59,7 @@ The human product decisions remained explicit:
 - allow only one Critic revision and require human approval before a workspace write;
 - use the coffee-shop story as a concrete demo while keeping the product generic.
 
-GPT-5.6 is used in two visible ways: Codex accelerated the engineering workflow, and the running product uses GPT-5.6 through the OpenAI Agents SDK for the Trend Analyst, Brand Strategist, Creative Producer, Critic, Content Planner, and Jeryk Manager. Their outputs are schema-validated before the next stage can run.
+GPT-5.6 is used in two visible ways: Codex accelerated the engineering workflow, and the running product uses GPT-5.6 through the OpenAI Agents SDK for the Trend Analyst, Brand Strategist, Creative Producer, Hybrid Producer, Critic, Content Planner, and Jeryk Manager. Their outputs are schema-validated before the next stage can run.
 
 ## Why DZHERO
 
@@ -155,6 +157,7 @@ POST /api/workspaces/:workspaceId/agent-studio/runs
 GET  /api/workspaces/:workspaceId/agent-studio/runs/:runId
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/context
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/hybrid
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/approve
 ```
 

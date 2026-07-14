@@ -57,6 +57,12 @@ const COPY = {
     concepts: 'Choose the creative direction',
     hero: 'Full production script',
     alternative: 'Alternative concept',
+    hybrid: 'Hybrid production script',
+    hybridMode: 'Combine two directions',
+    hybridHint: 'Select exactly two concepts. A new OpenAI agent will synthesize and re-check them.',
+    hybridCreate: 'Create hybrid from selected ideas',
+    hybridCreating: 'Hybrid team is working...',
+    hybridCancel: 'Cancel hybrid selection',
     scenes: 'Shot-by-shot',
     plan: 'Seven-day content plan',
     trace: 'Agent activity',
@@ -115,6 +121,12 @@ const COPY = {
     concepts: 'Обери креативний напрям',
     hero: 'Повний сценарій продакшену',
     alternative: 'Альтернативний концепт',
+    hybrid: 'Гібридний продакшн-сценарій',
+    hybridMode: 'Об’єднати два напрями',
+    hybridHint: 'Обери рівно дві концепції. Новий OpenAI-агент об’єднає та повторно перевірить їх.',
+    hybridCreate: 'Створити гібрид з обраних ідей',
+    hybridCreating: 'Гібридна команда працює...',
+    hybridCancel: 'Скасувати вибір для гібрида',
     scenes: 'Покадровий план',
     plan: 'Контент-план на сім днів',
     trace: 'Робота агентів',
@@ -169,9 +181,25 @@ export function getAgentStudioCandidates(run) {
   const creative = run?.artifacts?.creative;
   if (!creative?.heroReel) return [];
   return [
-    { ...creative.heroReel, kind: 'hero' },
+    { ...creative.heroReel, kind: run?.artifacts?.hybrid ? 'hybrid' : 'hero' },
     ...(creative.alternatives || []).map((candidate) => ({ ...candidate, kind: 'alternative' })),
   ];
+}
+
+export function getAgentStudioGroundingPercent(score) {
+  const numeric = Number(score);
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return Math.round(Math.min(numeric <= 10 ? numeric * 10 : numeric, 100));
+}
+
+export function getAgentStudioTraceEntries(trace = []) {
+  return trace.filter((entry, index) => {
+    const previous = trace[index - 1];
+    return !previous
+      || previous.agent !== entry.agent
+      || previous.status !== entry.status
+      || previous.summary !== entry.summary;
+  });
 }
 
 export function buildAgentStudioCreatePayload(form, idempotencyKey) {
@@ -198,6 +226,7 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
       plan_limit_reached: 'Your plan limit is reached. Free space in Content Plan or change the plan.',
       rate_limit_exceeded: 'Too many requests. Wait a moment and try again.',
       invalid_agent_studio_input: 'Add an objective and a Reel source or description.',
+      agent_studio_hybrid_candidates_required: 'Select exactly two creative directions for the hybrid.',
     }
     : {
       agent_studio_disabled: 'Agent Studio Beta вимкнено в цьому середовищі.',
@@ -205,6 +234,7 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
       plan_limit_reached: 'Ліміт тарифу вичерпано. Звільни місце в контент-плані або зміни тариф.',
       rate_limit_exceeded: 'Забагато запитів. Зачекай трохи й спробуй знову.',
       invalid_agent_studio_input: 'Додай ціль і джерело рілса або його опис.',
+      agent_studio_hybrid_candidates_required: 'Обери рівно два креативні напрями для гібрида.',
     };
   return messages[code] || fallback || (language === 'en' ? 'Agent Studio could not complete this request.' : 'Agent Studio не зміг завершити цей запит.');
 }

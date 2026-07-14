@@ -18,6 +18,7 @@ const AGENT_STAGE = {
   trend_analyst: 'selecting_signal',
   brand_strategist: 'adapting_brand',
   creative_producer: 'producing',
+  hybrid_producer: 'producing',
   critic: 'evaluating',
   content_planner: 'planning',
   jeryk_manager: 'awaiting_approval',
@@ -27,6 +28,7 @@ const AGENT_OUTPUT_SCHEMAS = {
   trend_analyst: TrendBriefSchema,
   brand_strategist: BrandStrategySchema,
   creative_producer: CreativeBundleSchema,
+  hybrid_producer: CreativeBundleSchema,
   critic: EvaluationReportSchema,
   content_planner: ContentPlanSchema,
   jeryk_manager: ManagerReviewSchema,
@@ -135,6 +137,7 @@ function getOutputSummary(agentId, output) {
   if (agentId === 'trend_analyst') return output.rationale;
   if (agentId === 'brand_strategist') return output.brandAngle;
   if (agentId === 'creative_producer') return `Prepared “${output.heroReel.title}” and two alternative concepts.`;
+  if (agentId === 'hybrid_producer') return `Combined the selected directions into “${output.heroReel.title}”.`;
   if (agentId === 'critic') return output.summary;
   if (agentId === 'content_planner') return output.strategy;
   if (agentId === 'jeryk_manager') return output.headline;
@@ -319,6 +322,140 @@ async function orchestrateAgentStudio({
   return { type: 'completed', finalPackage };
 }
 
+function getCreativeCandidates(creative = {}) {
+  return [creative.heroReel, ...(creative.alternatives || [])].filter(Boolean);
+}
+
+async function orchestrateAgentStudioHybrid({
+  runId,
+  input: rawInput,
+  workspace,
+  finalPackage: rawFinalPackage,
+  candidateIds,
+  runAgent = createOpenAIAgentRunner(),
+  emit = () => {},
+}) {
+  const input = normalizeAgentStudioInput(rawInput);
+  const finalPackage = FinalPackageSchema.parse(rawFinalPackage);
+  const selectedIds = [...new Set((candidateIds || []).map((value) => String(value).trim()).filter(Boolean))];
+  if (selectedIds.length !== 2) throw new Error('agent_studio_hybrid_candidates_required');
+  const candidates = getCreativeCandidates(finalPackage.creative);
+  const selectedCandidates = selectedIds.map((candidateId) => candidates.find((candidate) => candidate.id === candidateId));
+  if (selectedCandidates.some((candidate) => !candidate)) throw new Error('agent_studio_candidate_not_found');
+
+  const brandBrain = workspace?.brief || {};
+  const runSpecialist = async (agentId, agentInput, options = {}) => {
+    const definition = AGENT_STUDIO_DEFINITIONS[agentId];
+    const stage = AGENT_STAGE[agentId];
+    emit({ agent: definition.name, agentId, stage, status: 'started', summary: options.startSummary || `Started ${definition.name}.` });
+    const output = await runAgent({
+      agentId,
+      input: agentInput,
+      outputSchema: AGENT_OUTPUT_SCHEMAS[agentId],
+      groupId: `${runId}:hybrid`,
+    });
+    const validated = AGENT_OUTPUT_SCHEMAS[agentId].parse(output);
+    emit({
+      agent: definition.name,
+      agentId,
+      stage,
+      status: 'completed',
+      summary: getOutputSummary(agentId, validated),
+    });
+    return validated;
+  };
+
+  let creative = await runSpecialist('hybrid_producer', {
+    objective: input.objective,
+    selectedTrend: finalPackage.selectedTrend,
+    evidence: finalPackage.evidence,
+    brandBrain,
+    brandStrategy: finalPackage.brandStrategy,
+    selectedCandidates,
+  });
+  let evaluation = await runSpecialist('critic', {
+    objective: input.objective,
+    selectedTrend: finalPackage.selectedTrend,
+    evidence: finalPackage.evidence,
+    brandBrain,
+    brandStrategy: finalPackage.brandStrategy,
+    creative,
+    revisionNumber: 0,
+    hybridSourceCandidateIds: selectedIds,
+  });
+
+  if (evaluation.decision === 'revise') {
+    emit({
+      agent: 'Critic',
+      agentId: 'critic',
+      stage: 'evaluating',
+      status: 'revised',
+      summary: evaluation.revisionInstructions.join(' '),
+    });
+    creative = await runSpecialist('hybrid_producer', {
+      objective: input.objective,
+      selectedTrend: finalPackage.selectedTrend,
+      evidence: finalPackage.evidence,
+      brandBrain,
+      brandStrategy: finalPackage.brandStrategy,
+      selectedCandidates,
+      previousCreative: creative,
+      revisionInstructions: evaluation.revisionInstructions,
+    }, { startSummary: 'Started the single permitted hybrid revision.' });
+    evaluation = await runSpecialist('critic', {
+      objective: input.objective,
+      selectedTrend: finalPackage.selectedTrend,
+      evidence: finalPackage.evidence,
+      brandBrain,
+      brandStrategy: finalPackage.brandStrategy,
+      creative,
+      revisionNumber: 1,
+      hybridSourceCandidateIds: selectedIds,
+    });
+  }
+  if (evaluation.decision !== 'accept') {
+    const error = new Error(evaluation.summary || 'The hybrid result did not pass the quality gate.');
+    error.code = 'quality_rejected';
+    error.evaluation = evaluation;
+    throw error;
+  }
+
+  const contentPlan = await runSpecialist('content_planner', {
+    objective: input.objective,
+    selectedTrend: finalPackage.selectedTrend,
+    evidence: finalPackage.evidence,
+    brandBrain,
+    brandStrategy: finalPackage.brandStrategy,
+    creative,
+    evaluation,
+    hybridSourceCandidateIds: selectedIds,
+  });
+  const managerReview = await runSpecialist('jeryk_manager', {
+    objective: input.objective,
+    selectedTrend: finalPackage.selectedTrend,
+    evidence: finalPackage.evidence,
+    brandStrategy: finalPackage.brandStrategy,
+    creative,
+    evaluation,
+    contentPlan,
+    hybridSourceCandidateIds: selectedIds,
+  });
+
+  return {
+    type: 'completed',
+    finalPackage: FinalPackageSchema.parse({
+      selectedTrend: finalPackage.selectedTrend,
+      evidence: finalPackage.evidence,
+      brandStrategy: finalPackage.brandStrategy,
+      creative,
+      evaluation,
+      contentPlan,
+      managerReview,
+      hybrid: { sourceCandidateIds: selectedIds },
+    }),
+  };
+}
+
 module.exports = {
   AGENT_STAGE,
   AGENT_OUTPUT_SCHEMAS,
@@ -326,4 +463,5 @@ module.exports = {
   createOpenAIAgentRunner,
   buildSelectedTrendFromInput,
   orchestrateAgentStudio,
+  orchestrateAgentStudioHybrid,
 };

@@ -28,6 +28,7 @@ const {
 const {
   createOpenAIAgentRunner,
   orchestrateAgentStudio,
+  orchestrateAgentStudioHybrid,
 } = require('./services/agentStudioAgents.cjs');
 const { analyzeAgentStudioVideo } = require('./services/agentStudioVideoTool.cjs');
 const {
@@ -3768,11 +3769,14 @@ async function finalizeAgentStudioResult(runId, result) {
           traceStatus: 'completed',
           summary: result.finalPackage?.managerReview?.headline || 'Final package is ready for human approval.',
           now,
+          appendTrace: false,
         })
         : run;
       nextRun = {
         ...nextRun,
         artifacts: result.finalPackage,
+        hybridRequest: null,
+        error: null,
         updatedAt: now,
       };
     }
@@ -3842,10 +3846,70 @@ async function executeAgentStudioRun(runId) {
   }
 }
 
+async function executeAgentStudioHybrid(runId) {
+  if (agentStudioRunsInFlight.has(runId)) return;
+  agentStudioRunsInFlight.add(runId);
+  let eventQueue = Promise.resolve();
+  try {
+    const db = await readDb();
+    const run = (db.agentStudioRuns || []).find((item) => item.id === runId);
+    if (!run || run.status !== 'producing' || !run.hybridRequest?.candidateIds) return;
+    const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
+    if (!workspace) throw new Error('workspace_not_found');
+    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
+    const result = await orchestrateAgentStudioHybrid({
+      runId,
+      input: run.input,
+      workspace,
+      finalPackage: run.artifacts,
+      candidateIds: run.hybridRequest.candidateIds,
+      runAgent,
+      emit(event) {
+        eventQueue = eventQueue.then(() => persistAgentStudioEvent(runId, event));
+      },
+    });
+    await eventQueue;
+    await finalizeAgentStudioResult(runId, result);
+  } catch (error) {
+    try {
+      await eventQueue;
+    } catch {
+      // The classified failure below is the authoritative terminal state.
+    }
+    await serializeBackgroundMutation(async () => {
+      const db = await readDb();
+      const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
+      if (index < 0) return;
+      const run = db.agentStudioRuns[index];
+      if (TERMINAL_AGENT_STUDIO_STATUSES.has(run.status)) return;
+      const classified = classifyAgentStudioError(error);
+      const restored = transitionAgentStudioRun(run, 'awaiting_approval', {
+        agent: 'Hybrid Producer',
+        traceStatus: 'failed',
+        summary: 'The hybrid pass failed, so the original creative package was restored.',
+        error: classified,
+        now: new Date().toISOString(),
+      });
+      db.agentStudioRuns[index] = { ...restored, hybridRequest: null };
+      await writeDb(db);
+    });
+  } finally {
+    agentStudioRunsInFlight.delete(runId);
+  }
+}
+
 function scheduleAgentStudioRun(runId) {
   setImmediate(() => {
     void executeAgentStudioRun(runId).catch((error) => {
       console.error('[AgentStudio]', runId, error);
+    });
+  });
+}
+
+function scheduleAgentStudioHybrid(runId) {
+  setImmediate(() => {
+    void executeAgentStudioHybrid(runId).catch((error) => {
+      console.error('[AgentStudioHybrid]', runId, error);
     });
   });
 }
@@ -5225,6 +5289,55 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel', async (
     db.agentStudioRuns[index] = cancelled;
     await writeDb(db);
     res.json({ run: toPublicAgentStudioRun(cancelled) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/hybrid', expensiveLimiter, async (req, res, next) => {
+  try {
+    const candidateIds = [...new Set((Array.isArray(req.body?.candidateIds) ? req.body.candidateIds : [])
+      .map((value) => String(value).trim())
+      .filter(Boolean))];
+    if (candidateIds.length !== 2) {
+      res.status(400).json({ error: 'agent_studio_hybrid_candidates_required' });
+      return;
+    }
+    const db = await readDb();
+    const workspace = requireWorkspace(db, req.params.workspaceId, res);
+    if (!workspace) return;
+    const index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === workspace.id
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    const run = db.agentStudioRuns[index];
+    if (run.status !== 'awaiting_approval') {
+      res.status(409).json({ error: 'agent_studio_not_awaiting_approval' });
+      return;
+    }
+    const candidates = [run.artifacts?.creative?.heroReel, ...(run.artifacts?.creative?.alternatives || [])].filter(Boolean);
+    if (candidateIds.some((candidateId) => !candidates.some((candidate) => candidate.id === candidateId))) {
+      res.status(400).json({ error: 'agent_studio_candidate_not_found' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const hybridizing = transitionAgentStudioRun(run, 'producing', {
+      agent: 'Jeryk Manager',
+      summary: 'The user selected two creative directions for a hybrid production pass.',
+      now,
+    });
+    db.agentStudioRuns[index] = {
+      ...hybridizing,
+      hybridRequest: { candidateIds, requestedAt: now },
+      criticRevisionCount: 0,
+      error: null,
+    };
+    await writeDb(db);
+    res.status(202).json({ run: toPublicAgentStudioRun(db.agentStudioRuns[index]) });
+    scheduleAgentStudioHybrid(run.id);
   } catch (error) {
     next(error);
   }
