@@ -1,25 +1,83 @@
-# Dzhero
+# DZHERO
 
-AI-продюсер для Instagram: прототип SaaS-платформы, которая помогает блогерам, SMM и локальным бизнесам находить рыночные сигналы, адоптировать рилсы под Украину и доводить контент до продаж.
+DZHERO is an AI content producer for small businesses, creators, SMM specialists, and multi-brand teams. It helps users discover market signals, adapt short-form video mechanics to their brand, turn ideas into shoot-ready scripts, and carry approved work into a practical content plan.
 
-## OpenAI Build Week: DZHERO Agent Studio Beta
+## OpenAI Build Week: Agent Studio Beta
 
-Agent Studio is an isolated multi-agent path that turns one real short-form signal into a brand-safe, shoot-ready Reel and a seven-day content package. It does not replace the existing Signals, Studio, Jeryk, Gemini remix, Brand Brain, or Content Plan flows.
+Agent Studio is an isolated multi-agent workflow that turns one real short-form signal into a grounded, brand-specific Reel and a seven-day content package. It does not replace the existing Signals, Studio, Jeryk assistant, Gemini remix, Brand Brain, or Content Plan flows.
 
 The user starts in one of two ways:
 
 - **Find a trend for me** — the Trend Analyst selects the best existing signal for the business objective.
 - **Adapt a Reel** — the user supplies an existing DZHERO signal, a public URL, or a labelled description of what happens in the Reel.
 
-The backend then runs a bounded workflow:
+Both modes enter the same bounded production workflow:
 
 `Trend Analyst → Gemini video evidence → Brand Strategist → Creative Producer → Critic → Content Planner → Jeryk Manager → human approval`
 
-OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. Gemini is retained as a narrow video-evidence specialist; observations, metadata, and user notes are kept as different evidence types. If video evidence is unavailable, the run pauses and asks the user for context instead of inventing scenes.
+OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. Gemini remains a narrow video-evidence specialist; observations, metadata, and user notes are stored as different evidence types. If video evidence is unavailable, the run pauses and asks the user for context instead of inventing scenes.
 
-The result contains one complete hero Reel, two distinct alternatives, a public-safe agent trace, an evaluation, and exactly seven content-plan days. Nothing is written to the existing Content Plan until the user approves a candidate.
+The final package contains:
 
-### Local Build Week setup
+- one complete hero Reel with a shot-by-shot script;
+- two meaningfully different alternative concepts;
+- a grounded evidence package and public-safe agent trace;
+- an independent Critic evaluation;
+- exactly seven connected content-plan days.
+
+Nothing is written to the existing Content Plan until the user explicitly approves a candidate.
+
+## Why DZHERO
+
+A blank AI chat still asks a business owner to act as the trend researcher, strategist, scriptwriter, critic, and planner. DZHERO separates those responsibilities and turns research into an accountable workflow with visible evidence, bounded decisions, and a final human approval step.
+
+The product starts from a business brief rather than a user's personal entertainment feed:
+
+1. business objective;
+2. business type and product;
+3. geography and audience;
+4. tone of voice;
+5. competitors and target markets;
+6. permitted data sources and calls to action.
+
+## Existing product surfaces
+
+- Home command center;
+- global and local Signals;
+- competitor and viral Reel banks;
+- existing Gemini-powered Studio;
+- Agent Studio Beta;
+- Brand Brain;
+- AI producer assistant;
+- ideas and launch workflows;
+- Content Plan;
+- AI Direct and sales tools;
+- analytics, sources, billing, and workspace settings.
+
+## Technology
+
+- React 19 and Vite;
+- Node.js and Express;
+- OpenAI Agents SDK with GPT-5.6;
+- Zod structured outputs;
+- Gemini video analysis;
+- workspace-scoped authenticated APIs;
+- JSON/Postgres state abstraction;
+- lucide-react and custom responsive CSS.
+
+## Local setup
+
+Requirements:
+
+- Node.js 22 or newer;
+- npm;
+- server-side OpenAI and Gemini API credentials for the live Agent Studio path.
+
+Install dependencies:
+
+```bash
+npm install
+```
 
 Create a server-only `.env` from `.env.example` and provide:
 
@@ -41,9 +99,50 @@ npm run dev:backend
 npm run dev
 ```
 
-Open DZHERO, enter the authenticated workspace, and choose **Agent Studio · Beta** in the sidebar.
+Open:
 
-Focused verification:
+```text
+http://127.0.0.1:5173/
+```
+
+The backend API is available at:
+
+```text
+http://127.0.0.1:3000/api
+```
+
+Enter an authenticated workspace and choose **Agent Studio · Beta** in the sidebar.
+
+## Agent Studio API
+
+The Build Week path is isolated under authenticated, workspace-scoped routes:
+
+```text
+GET  /api/workspaces/:workspaceId/agent-studio/config
+POST /api/workspaces/:workspaceId/agent-studio/runs
+GET  /api/workspaces/:workspaceId/agent-studio/runs/:runId
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/context
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/approve
+```
+
+Approval writes exactly seven normalized posts to the existing Content Plan once. Repeating the same approval does not duplicate the package.
+
+## Safety and honest degradation
+
+- Source pages, captions, transcripts, metadata, video frames, and user notes are untrusted data, never instructions.
+- Video observations, audio observations, on-screen text, metadata, and user notes remain separate evidence types.
+- Creative scenes reference evidence ids; product decisions reference Brand Brain fields.
+- Missing evidence moves the run to `needs_context`.
+- Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
+- Every agent output is schema-validated before the next stage begins.
+- One output repair and one Critic revision are permitted; the workflow cannot loop indefinitely.
+- Agents have no database, filesystem, shell, publishing, or arbitrary network access.
+- Workspace writes require explicit human approval.
+
+## Verification
+
+Run the focused Agent Studio suite:
 
 ```bash
 node scripts/test-agent-studio-schemas.cjs
@@ -55,140 +154,43 @@ npm run test:agent-studio-ui
 npm run build
 ```
 
-The following command makes one bounded live OpenAI request and therefore consumes API credits. It prints configuration status only, never the key:
+The following command makes one bounded live OpenAI request and therefore consumes API credits. It reports only safe configuration status and never prints the key:
 
 ```bash
 npm run smoke:agent-studio-openai
 ```
 
-Demo and submission material:
+The repository also contains regression coverage for authentication, workspace isolation, billing, remix quality, Gemini recovery, Content Plan behavior, and English/Ukrainian localization.
 
-- `docs/hackathon/openai-build-week-demo-script.md`
-- `docs/hackathon/openai-build-week-submission.md`
+## Demo and submission material
 
-## Что это
+- [Sub-three-minute demo script](docs/hackathon/openai-build-week-demo-script.md)
+- [Devpost submission draft](docs/hackathon/openai-build-week-submission.md)
+- [Agent Studio design](docs/superpowers/specs/2026-07-14-dzhero-agent-studio-build-week-design.md)
+- [Implementation plan](docs/superpowers/plans/2026-07-14-dzhero-agent-studio-build-week.md)
 
-Это рабочий MVP с React-интерфейсом и Express backend. Часть интеграций всё ещё работает в preview/demo-режиме, а основная продуктовая логика показывает:
+## Important files
 
-- выбор цели и типа бизнеса;
-- глобальный scouting рилсов без РФ;
-- база конкурентов;
-- банк вирусных рилсов;
-- ремикс-студия;
-- идеи;
-- AI-ассистент;
-- запуски;
-- контент-план;
-- AI Direct / продажи;
-- аналитика;
-- источники данных;
-- MVP / ТЗ экран;
-- юридический сейф, бюджет и команда как Phase 2 модули.
+- `src/AgentStudioPage.jsx` — isolated Build Week UI.
+- `src/agentStudioUi.mjs` — localized copy and pure UI state helpers.
+- `backend/services/agentStudioAgents.cjs` — OpenAI specialist execution and orchestration.
+- `backend/services/agentStudioRun.cjs` — bounded run state machine and safe serialization.
+- `backend/services/agentStudioSchemas.cjs` — strict structured-output contracts.
+- `backend/services/agentStudioVideoTool.cjs` — Gemini evidence extraction.
+- `backend/server.js` — authenticated API, persistence, approval, and Content Plan integration.
+- `.env.example` — configuration names and safe defaults only.
 
-## Для кого
+## Current limitations
 
-- блогер или эксперт, который продает услуги, консультации, курсы, клубы;
-- SMM кафе, салона, магазина одежды, e-commerce или локального бизнеса;
-- продюсер, который ведет несколько Instagram-аккаунтов;
-- команда, которая хочет заменить ручной ресерч, сценаристику и часть SMM-операционки.
+- Agent Studio uses polling rather than server-sent events.
+- Interrupted active runs become explicit retryable failures after a backend restart; automatic distributed resume is not part of the Build Week scope.
+- Public platforms may block video retrieval. DZHERO asks for labelled user context in that case.
+- Autonomous publishing and automatic Brand Brain changes are intentionally excluded.
 
-## Главная идея
+## Next steps
 
-Сервис не должен анализировать личную мемную ленту пользователя как основной источник. Анализ начинается с business brief:
-
-1. цель использования;
-2. тип бизнеса;
-3. география;
-4. ЦА;
-5. продукт;
-6. Tone of Voice;
-7. конкуренты;
-8. рынки для анализа;
-9. разрешенные источники данных.
-
-## Текущий стек
-
-- React
-- Vite
-- lucide-react
-- CSS без UI-фреймворка
-- Express и workspace-scoped API
-- OpenAI Agents SDK + Zod для Agent Studio
-- Gemini для анализа видео
-- JSON/Postgres state abstraction
-
-## Как запустить
-
-```bash
-npm install
-npm run dev -- --port 5173
-```
-
-Открыть:
-
-```text
-http://127.0.0.1:5173/
-```
-
-## Как запустить backend
-
-```bash
-npm run dev:backend
-```
-
-API:
-
-```text
-http://127.0.0.1:3000
-```
-
-Local MVP auth is available for testing:
-
-```text
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/demo
-GET  /api/auth/me
-POST /api/auth/logout
-GET  /api/auth/meta/start
-GET  /api/auth/meta/callback
-```
-
-Проверка API:
-
-```text
-GET http://127.0.0.1:3000/api/health
-```
-
-## Проверка
-
-```bash
-npm run build
-```
-
-## Важные файлы
-
-- `src/main.jsx` — вся логика экранов прототипа.
-- `src/styles.css` — весь дизайн.
-- `src/data/uaMarket.js` — моковые данные.
-- `docs/MVP_TZ.md` — подробное MVP / ТЗ.
-- `docs/BACKEND.md` — описание первого backend-скелета.
-- `docs/PRODUCT_FLOW.md` — наскрізний MVP-flow: від brief до контент-плану і Direct.
-- `docs/BACKEND_ROADMAP.md` — покроковий backend-план: моделі, API, Meta Login, sync jobs.
-- `backend/server.js` — Express API.
-- `backend/data/db.json` — временная JSON-база для MVP.
-- `CONTEXT.md` — продуктовый контекст.
-- `REQ.md` — требования к будущей разработке.
-- `STATUS.md` — текущее состояние.
-- `STATE.md` — техническое состояние и решения.
-
-## Что делать дальше
-
-Ближайший правильный шаг — превратить прототип в MVP с реальным хранением данных:
-
-1. заменить JSON storage на настоящую базу;
-2. разнести backend routes по модулям;
-3. подключить auth/workspaces;
-4. проверить Meta Login и реальные permissions;
-5. сделать первый sync одного Instagram Business/Creator аккаунта;
-6. добавить AI scoring и генерацию идей.
+- per-run token and cost telemetry;
+- uploaded-video support;
+- durable job queue and explicit retry;
+- team approval roles and version comparison;
+- post-performance feedback for future signal selection.
