@@ -4704,18 +4704,55 @@ app.post('/api/auth/demo', async (req, res) => {
     return;
   }
   const db = await readDb();
-  let user = db.users.find((item) => item.email === 'demo@dzhero.app');
+  const agentStudioExperience = ENABLE_AGENT_STUDIO && req.body?.experience === 'agent_studio';
+  const demoEmail = agentStudioExperience ? 'agent-studio-demo@dzhero.app' : 'demo@dzhero.app';
+  const demoWorkspaceId = agentStudioExperience ? 'ws_demo_agent_studio_coffee' : 'ws_demo_ua';
+  if (agentStudioExperience) {
+    const coffeeWorkspace = {
+      id: demoWorkspaceId,
+      name: 'Reset Coffee Kyiv',
+      owner: 'Coffee Demo User',
+      mode: 'own_business',
+      marketFocus: ['ua'],
+      createdAt: new Date().toISOString(),
+      brief: {
+        businessType: 'Independent neighborhood coffee shop',
+        product: 'Espresso drinks and fresh pastries',
+        location: 'Kyiv, Ukraine',
+        audience: 'Busy professionals walking to work on weekdays',
+        objective: 'Bring more weekday morning visits',
+        positioning: 'A warm five-minute morning reset before work',
+        toneOfVoice: 'Warm, concise, lightly playful',
+        cta: 'Visit before work',
+        constraints: ['Low-budget production', 'Shootable by one person', 'No unsupported best-in-city claims'],
+      },
+    };
+    const workspaceIndex = db.workspaces.findIndex((item) => item.id === demoWorkspaceId);
+    if (workspaceIndex >= 0) {
+      db.workspaces[workspaceIndex] = {
+        ...db.workspaces[workspaceIndex],
+        ...coffeeWorkspace,
+        createdAt: db.workspaces[workspaceIndex].createdAt || coffeeWorkspace.createdAt,
+      };
+    } else {
+      db.workspaces.unshift(coffeeWorkspace);
+    }
+  }
+  let user = db.users.find((item) => item.email === demoEmail);
   if (!user) {
     user = {
       id: createId('usr'),
-      name: 'Demo User',
-      email: 'demo@dzhero.app',
+      name: agentStudioExperience ? 'Coffee Demo User' : 'Demo User',
+      email: demoEmail,
       role: 'owner',
-      workspaceId: 'ws_demo_ua',
+      workspaceId: demoWorkspaceId,
       passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
       createdAt: new Date().toISOString(),
     };
     db.users.unshift(user);
+  } else if (agentStudioExperience) {
+    user.workspaceId = demoWorkspaceId;
+    user.name = 'Coffee Demo User';
   }
   ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
   const session = createSession(db, user.id);

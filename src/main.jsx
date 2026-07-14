@@ -2273,7 +2273,12 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       if (scanResult) {
         window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
       }
-      const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST', credentials: 'include' });
+      const response = await fetch(`${API_BASE}/auth/demo`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(destination === 'agent-studio' ? { experience: 'agent_studio' } : {}),
+      });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'demo_error');
       onAuth(payload, destination);

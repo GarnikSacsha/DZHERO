@@ -218,6 +218,20 @@ const headers = { authorization: 'Bearer session_1' };
 try {
   await waitForServer(baseUrl, child);
 
+  const agentStudioDemo = await requestJson(baseUrl, '/api/auth/demo', {
+    method: 'POST',
+    body: JSON.stringify({ experience: 'agent_studio' }),
+  });
+  assert.equal(agentStudioDemo.response.status, 200);
+  assert.equal(agentStudioDemo.body.user.email, 'agent-studio-demo@dzhero.app');
+  assert.equal(agentStudioDemo.body.user.workspaceId, 'ws_demo_agent_studio_coffee');
+  const agentStudioDemoBrief = await requestJson(baseUrl, '/api/workspaces/ws_demo_agent_studio_coffee/brief', {
+    headers: { authorization: `Bearer ${agentStudioDemo.body.token}` },
+  });
+  assert.equal(agentStudioDemoBrief.response.status, 200);
+  assert.equal(agentStudioDemoBrief.body.brief.businessType, 'Independent neighborhood coffee shop');
+  assert.equal(agentStudioDemoBrief.body.brief.objective, 'Bring more weekday morning visits');
+
   let result = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/config');
   assert.equal(result.response.status, 401);
 
