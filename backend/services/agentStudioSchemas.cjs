@@ -186,6 +186,16 @@ const ContentPlanSchema = z.object({
   }
 });
 
+const ManagerReviewSchema = z.object({
+  headline: ShortText,
+  whyItWorks: LongText,
+  agentContributions: z.array(z.object({
+    agent: ShortText,
+    summary: LongText,
+  }).strict()).min(4).max(8),
+  approvalPrompt: ShortText,
+}).strict();
+
 const PublicTraceEntrySchema = z.object({
   id: Identifier,
   agent: ShortText,
@@ -202,6 +212,7 @@ const FinalPackageSchema = z.object({
   creative: CreativeBundleSchema,
   evaluation: EvaluationReportSchema,
   contentPlan: ContentPlanSchema,
+  managerReview: ManagerReviewSchema,
 }).strict().superRefine((value, context) => {
   const evidenceIds = new Set(value.evidence.items.map((item) => item.id));
   const references = [
@@ -267,6 +278,7 @@ module.exports = {
   CreativeBundleSchema,
   EvaluationReportSchema,
   ContentPlanSchema,
+  ManagerReviewSchema,
   PublicTraceEntrySchema,
   FinalPackageSchema,
   normalizeAgentStudioInput,
