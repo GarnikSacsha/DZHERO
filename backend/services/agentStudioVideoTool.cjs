@@ -3,6 +3,8 @@ const { z } = require('zod');
 const { EvidencePackageSchema } = require('./agentStudioSchemas.cjs');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_UPLOAD_API = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
+const MAX_AGENT_STUDIO_VIDEO_BYTES = 100 * 1024 * 1024;
 
 const GeminiObservationSchema = z.object({
   sourceType: z.enum(['video_observation', 'audio_observation', 'on_screen_text']),
@@ -77,16 +79,123 @@ function normalizeGeminiVideoResult(value) {
   };
 }
 
-function getSourceUrl({ input = {}, selectedTrend = {}, signal = {} }) {
+function isYouTubeUrl(value = '') {
+  try {
+    const host = new URL(String(value)).hostname.toLowerCase().replace(/^www\./, '');
+    return host === 'youtube.com' || host.endsWith('.youtube.com') || host === 'youtu.be';
+  } catch {
+    return false;
+  }
+}
+
+function getPublicSourceUrl({ input = {}, selectedTrend = {}, signal = {} }) {
   return String(
     input.sourceUrl
     || selectedTrend.sourceUrl
-    || signal.sourceUrl
-    || signal.videoUrl
-    || signal.importedMetadata?.videoUrl
-    || signal.importedMetadata?.url
+    || signal?.sourceUrl
+    || signal?.importedMetadata?.url
     || '',
   ).trim();
+}
+
+function getSourceUrl({ input = {}, selectedTrend = {}, signal = {} }) {
+  return String(
+    signal?.videoUrl
+    || signal?.importedMetadata?.videoUrl
+    || signal?.importedMetadata?.mediaUrls?.[0]
+    || signal?.importedMetadata?.apify?.mediaUrls?.[0]
+    || input.sourceUrl
+    || selectedTrend.sourceUrl
+    || signal?.sourceUrl
+    || signal?.importedMetadata?.url
+    || '',
+  ).trim();
+}
+
+function getHeader(response, name) {
+  return response?.headers?.get?.(name) || response?.headers?.get?.(name.toLowerCase()) || '';
+}
+
+async function uploadGeminiVideoFromUrl({
+  sourceUrl,
+  apiKey,
+  fetchImpl = globalThis.fetch,
+  sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
+}) {
+  const download = await fetchImpl(sourceUrl, {
+    headers: { Accept: 'video/*,*/*;q=0.8' },
+    redirect: 'follow',
+  });
+  if (!download.ok) throw new Error(`video_download_failed_${download.status}`);
+  const declaredLength = Number(getHeader(download, 'content-length') || 0);
+  if (declaredLength > maxBytes) throw new Error('video_download_too_large');
+  const bytes = Buffer.from(await download.arrayBuffer());
+  if (!bytes.length) throw new Error('video_download_empty');
+  if (bytes.length > maxBytes) throw new Error('video_download_too_large');
+  const mimeType = String(getHeader(download, 'content-type') || 'video/mp4').split(';')[0].trim() || 'video/mp4';
+  if (!mimeType.startsWith('video/')) throw new Error('video_download_invalid_mime');
+
+  const start = await fetchImpl(GEMINI_UPLOAD_API, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+      'X-Goog-Upload-Protocol': 'resumable',
+      'X-Goog-Upload-Command': 'start',
+      'X-Goog-Upload-Header-Content-Length': String(bytes.length),
+      'X-Goog-Upload-Header-Content-Type': mimeType,
+    },
+    body: JSON.stringify({ file: { display_name: 'dzhero-agent-studio-reel' } }),
+  });
+  if (!start.ok) throw new Error(`gemini_upload_start_failed_${start.status}`);
+  const uploadUrl = getHeader(start, 'x-goog-upload-url');
+  if (!uploadUrl) throw new Error('gemini_upload_url_missing');
+
+  const upload = await fetchImpl(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Length': String(bytes.length),
+      'Content-Type': mimeType,
+      'X-Goog-Upload-Offset': '0',
+      'X-Goog-Upload-Command': 'upload, finalize',
+    },
+    body: bytes,
+  });
+  const uploadPayload = await upload.json().catch(() => ({}));
+  if (!upload.ok) throw new Error(uploadPayload?.error?.message || `gemini_upload_failed_${upload.status}`);
+  let file = uploadPayload.file || uploadPayload;
+  if (!file?.name || !file?.uri) throw new Error('gemini_uploaded_file_missing');
+
+  const deadline = Date.now() + 90000;
+  while (String(file.state || '').toUpperCase() !== 'ACTIVE') {
+    if (String(file.state || '').toUpperCase() === 'FAILED') throw new Error('gemini_video_processing_failed');
+    if (Date.now() > deadline) throw new Error('gemini_video_processing_timeout');
+    await sleepImpl(2000);
+    const status = await fetchImpl(`${GEMINI_API_BASE}/${file.name}`, {
+      headers: { 'x-goog-api-key': apiKey },
+    });
+    const statusPayload = await status.json().catch(() => ({}));
+    if (!status.ok) throw new Error(statusPayload?.error?.message || `gemini_file_status_failed_${status.status}`);
+    file = statusPayload.file || statusPayload;
+  }
+  return {
+    name: file.name,
+    uri: file.uri,
+    mimeType: file.mimeType || file.mime_type || mimeType,
+  };
+}
+
+async function deleteGeminiFile({ fileName, apiKey, fetchImpl = globalThis.fetch }) {
+  if (!fileName) return;
+  try {
+    await fetchImpl(`${GEMINI_API_BASE}/${fileName}`, {
+      method: 'DELETE',
+      headers: { 'x-goog-api-key': apiKey },
+    });
+  } catch {
+    // Gemini files expire automatically; cleanup is best-effort.
+  }
 }
 
 function buildSource({ input = {}, selectedTrend = {}, signal = {}, sourceUrl = '' }) {
@@ -169,9 +278,38 @@ async function analyzeAgentStudioVideo({
   apiKey = process.env.GEMINI_API_KEY || '',
   model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
   fetchImpl = globalThis.fetch,
+  resolveSource,
+  sleepImpl,
 }) {
-  const sourceUrl = getSourceUrl({ input, selectedTrend, signal });
-  const base = buildBaseEvidence({ input, selectedTrend, signal, sourceUrl });
+  const publicSourceUrl = getPublicSourceUrl({ input, selectedTrend, signal });
+  let resolvedSignal = signal || {};
+  const directSignalUrl = String(
+    resolvedSignal.videoUrl
+    || resolvedSignal.importedMetadata?.videoUrl
+    || resolvedSignal.importedMetadata?.mediaUrls?.[0]
+    || resolvedSignal.importedMetadata?.apify?.mediaUrls?.[0]
+    || '',
+  ).trim();
+  if (!directSignalUrl && publicSourceUrl && typeof resolveSource === 'function') {
+    try {
+      const resolved = await resolveSource({
+        sourceUrl: publicSourceUrl,
+        input,
+        selectedTrend,
+        signal: resolvedSignal,
+      });
+      if (resolved?.videoUrl) resolvedSignal = { ...resolvedSignal, ...resolved };
+    } catch {
+      // Direct Gemini analysis remains available if Apify cannot resolve the source.
+    }
+  }
+  const sourceUrl = getSourceUrl({ input, selectedTrend, signal: resolvedSignal });
+  const base = buildBaseEvidence({
+    input,
+    selectedTrend,
+    signal: resolvedSignal,
+    sourceUrl: publicSourceUrl || sourceUrl,
+  });
   if (!sourceUrl) {
     return buildUnavailableEvidence({
       ...base,
@@ -191,6 +329,32 @@ async function analyzeAgentStudioVideo({
     });
   }
 
+  let uploadedFile = null;
+  const resolvedVideoUrl = String(
+    resolvedSignal.videoUrl
+    || resolvedSignal.importedMetadata?.videoUrl
+    || resolvedSignal.importedMetadata?.mediaUrls?.[0]
+    || resolvedSignal.importedMetadata?.apify?.mediaUrls?.[0]
+    || '',
+  ).trim();
+  if (resolvedVideoUrl && !isYouTubeUrl(sourceUrl)) {
+    try {
+      uploadedFile = await uploadGeminiVideoFromUrl({
+        sourceUrl,
+        apiKey,
+        fetchImpl,
+        sleepImpl,
+      });
+    } catch {
+      // Fall back to the resolved public media URL if file transfer fails.
+    }
+  }
+
+  const videoInput = {
+    type: 'video',
+    uri: uploadedFile?.uri || sourceUrl,
+    ...(uploadedFile?.mimeType ? { mime_type: uploadedFile.mimeType } : {}),
+  };
   let payload;
   try {
     const response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
@@ -202,8 +366,8 @@ async function analyzeAgentStudioVideo({
       body: JSON.stringify({
         model,
         input: [
-          { type: 'video', uri: sourceUrl },
-          { type: 'text', text: buildGeminiPrompt({ input, selectedTrend, signal }) },
+          videoInput,
+          { type: 'text', text: buildGeminiPrompt({ input, selectedTrend, signal: resolvedSignal }) },
         ],
       }),
     });
@@ -219,6 +383,10 @@ async function analyzeAgentStudioVideo({
       ...base,
       reason: error?.message || 'Gemini video analysis failed.',
     });
+  } finally {
+    if (uploadedFile?.name) {
+      await deleteGeminiFile({ fileName: uploadedFile.name, apiKey, fetchImpl });
+    }
   }
 
   const parsedJson = normalizeGeminiVideoResult(parseJson(parseGeminiInteractionText(payload)));
@@ -288,6 +456,8 @@ module.exports = {
   GeminiVideoResultSchema,
   parseGeminiInteractionText,
   normalizeGeminiVideoResult,
+  uploadGeminiVideoFromUrl,
+  deleteGeminiFile,
   analyzeAgentStudioVideo,
   createGeminiVideoAnalysisTool,
 };

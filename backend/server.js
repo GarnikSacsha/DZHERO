@@ -31,6 +31,7 @@ const {
   orchestrateAgentStudioHybrid,
 } = require('./services/agentStudioAgents.cjs');
 const { analyzeAgentStudioVideo } = require('./services/agentStudioVideoTool.cjs');
+const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
 const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
@@ -3819,13 +3820,21 @@ async function executeAgentStudioRun(runId) {
     if (!workspace) throw new Error('workspace_not_found');
     const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
     const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
-    const analyzeVideo = agentStudioTestProvider?.analyzeVideo || analyzeAgentStudioVideo;
+    const analyzeVideo = agentStudioTestProvider?.analyzeVideo || ((args) => analyzeAgentStudioVideo({
+      ...args,
+      resolveSource: ({ sourceUrl }) => resolveAgentStudioVideoSource({
+        token: APIFY_TOKEN,
+        sourceUrl,
+        workspaceId: run.workspaceId,
+        market: workspace.market || 'global',
+      }),
+    }));
     const result = await orchestrateAgentStudio({
       runId,
       input: run.input,
       workspace,
       signals,
-      selectedTrend: run.contextHistory?.length ? run.artifacts?.selectedTrend : null,
+      selectedTrend: run.artifacts?.selectedTrend || null,
       runAgent,
       analyzeVideo,
       emit(event) {
@@ -5262,6 +5271,40 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/context', expens
     await writeDb(db);
     res.status(202).json({ run: toPublicAgentStudioRun(resumed) });
     scheduleAgentStudioRun(resumed.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/retry-source', expensiveLimiter, async (req, res, next) => {
+  try {
+    if (!requireAgentStudioEnabled(res)) return;
+    const db = await readDb();
+    const index = (db.agentStudioRuns || []).findIndex((run) => (
+      run.id === req.params.runId && run.workspaceId === req.params.workspaceId
+    ));
+    if (index < 0) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    const run = db.agentStudioRuns[index];
+    if (run.status !== 'needs_context') {
+      res.status(409).json({ error: 'agent_studio_context_not_requested' });
+      return;
+    }
+    const retried = transitionAgentStudioRun(run, 'analyzing_video', {
+      agent: 'Jeryk Manager',
+      summary: 'Retrying automatic source resolution through Apify and Gemini.',
+      now: new Date().toISOString(),
+    });
+    db.agentStudioRuns[index] = {
+      ...retried,
+      contextRequest: null,
+      error: null,
+    };
+    await writeDb(db);
+    res.status(202).json({ run: toPublicAgentStudioRun(db.agentStudioRuns[index]) });
+    scheduleAgentStudioRun(run.id);
   } catch (error) {
     next(error);
   }

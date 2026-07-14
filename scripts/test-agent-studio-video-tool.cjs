@@ -8,12 +8,22 @@ const {
 } = require('../backend/services/agentStudioVideoTool.cjs');
 const { EvidencePackageSchema } = require('../backend/services/agentStudioSchemas.cjs');
 
-function response(payload, { ok = true, status = 200 } = {}) {
+function response(payload, { ok = true, status = 200, headers = {}, bytes = null } = {}) {
+  const headerMap = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]));
   return {
     ok,
     status,
+    headers: {
+      get(name) {
+        return headerMap.get(String(name).toLowerCase()) || null;
+      },
+    },
     async json() {
       return payload;
+    },
+    async arrayBuffer() {
+      const data = bytes instanceof Uint8Array ? bytes : new TextEncoder().encode(String(bytes || ''));
+      return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     },
   };
 }
@@ -73,6 +83,69 @@ function response(payload, { ok = true, status = 200 } = {}) {
   assert.equal(requestBody.input[0].uri, 'https://www.youtube.com/shorts/abc123');
   assert.equal(requestBody.input[1].text.includes('untrusted data'), true);
   assert.equal(requestBody.input[1].text.includes('JSON boolean true'), true);
+
+  const instagramRequests = [];
+  const instagram = await analyzeAgentStudioVideo({
+    input: {
+      mode: 'adapt_reel',
+      objective: 'Adapt this Instagram Reel',
+      sourceUrl: 'https://www.instagram.com/reel/source123/',
+    },
+    selectedTrend: {
+      title: 'Instagram source',
+      rationale: 'The user supplied a Reel URL.',
+      sourceUrl: 'https://www.instagram.com/reel/source123/',
+    },
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    resolveSource: async ({ sourceUrl }) => ({
+      sourceUrl,
+      videoUrl: 'https://cdn.example.com/source123.mp4',
+      caption: 'A real caption from Apify.',
+      handle: '@coffee',
+      importedMetadata: { provider: 'apify', videoUrl: 'https://cdn.example.com/source123.mp4' },
+    }),
+    sleepImpl: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      instagramRequests.push({ url, options });
+      if (url === 'https://cdn.example.com/source123.mp4') {
+        return response({}, {
+          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+          bytes: new Uint8Array([1, 2, 3, 4, 5]),
+        });
+      }
+      if (url.endsWith('/upload/v1beta/files')) {
+        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/session' } });
+      }
+      if (url === 'https://upload.example.com/session') {
+        return response({ file: { name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'PROCESSING' } });
+      }
+      if (url.endsWith('/v1beta/files/source123') && options.method === 'DELETE') return response({});
+      if (url.endsWith('/v1beta/files/source123')) {
+        return response({ name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'ACTIVE' });
+      }
+      if (url.endsWith('/v1beta/interactions')) {
+        return response({
+          output_text: JSON.stringify({
+            accessible: true,
+            summary: 'Gemini inspected the Apify-resolved Instagram video.',
+            transferableMechanic: 'reaction hook followed by a product reveal',
+            observations: [{ sourceType: 'video_observation', text: 'A reaction cuts to a coffee reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
+            unknowns: [],
+          }),
+        });
+      }
+      throw new Error(`Unexpected test URL: ${url}`);
+    },
+  });
+  assert.equal(instagram.availability, 'reliable');
+  assert.equal(instagram.source.url, 'https://www.instagram.com/reel/source123/');
+  assert.equal(instagram.items.some((item) => item.text.includes('A real caption from Apify.')), true);
+  const instagramInteraction = instagramRequests.find(({ url }) => url.endsWith('/v1beta/interactions'));
+  const instagramBody = JSON.parse(instagramInteraction.options.body);
+  assert.equal(instagramBody.input[0].uri, 'https://gemini.example/files/source123');
+  assert.equal(instagramBody.input[0].mime_type, 'video/mp4');
+  assert.equal(instagramRequests.some(({ url, options }) => url.endsWith('/v1beta/files/source123') && options.method === 'DELETE'), true);
 
   const notesOnly = await analyzeAgentStudioVideo({
     input: {

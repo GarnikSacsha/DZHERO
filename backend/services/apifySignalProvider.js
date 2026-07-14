@@ -81,7 +81,7 @@ function mapInstagramApifyItem(item = {}, context = {}) {
   const title = compactText(item.caption || item.text || item.description || `Instagram Reel ${item.shortCode || item.code || item.id || ''}`, 180);
   const shortCode = item.shortCode || item.code || '';
   const url = item.url || item.inputUrl || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : '');
-  const videoUrl = item.videoUrl || item.video_url || item.mediaUrl || item.mediaUrls?.[0] || '';
+  const videoUrl = item.downloadedVideo || item.downloadedVideoUrl || item.videoUrl || item.video_url || item.mediaUrl || item.mediaUrls?.[0] || '';
   const publishedAt = item.timestamp || item.takenAtTimestamp || item.createdAt || item.date || '';
   const metadata = {
     provider: 'apify',
@@ -95,6 +95,7 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     handle,
     image: thumbnailUrl,
     videoUrl,
+    downloadedVideoUrl: item.downloadedVideo || item.downloadedVideoUrl || '',
     audioUrl: item.audioUrl || '',
     publishedAt,
     snapshotAt,
@@ -286,30 +287,26 @@ function attachActualCost(signals, actualCostUsd) {
   return signals;
 }
 
-function buildInstagramInput({ inputValue, inputType, limit }) {
+function buildInstagramInput({ inputValue, inputType, limit, downloadVideo }) {
   const rawValue = String(inputValue || '').trim();
   const isUrl = /^https?:\/\//i.test(rawValue) || /instagram\.com\//i.test(rawValue);
   const normalizedUrl = isUrl && /^https?:\/\//i.test(rawValue) ? rawValue : isUrl ? `https://${rawValue}` : '';
   const profileHandle = inputType === 'profile'
     ? getInstagramProfileHandle(rawValue)
     : '';
-  const directUrls = normalizedUrl
-    ? [normalizedUrl]
-    : profileHandle
-      ? [`https://www.instagram.com/${profileHandle}/`]
-      : [];
   const hashtagInput = cleanSocialToken(rawValue);
   if (inputType === 'profile' || inputType === 'url') {
+    const input = {
+      username: profileHandle ? [profileHandle] : normalizedUrl ? [normalizedUrl] : [],
+      resultsLimit: limit,
+      skipPinnedPosts: true,
+      skipTrialReels: false,
+      includeDownloadedVideo: Boolean(downloadVideo),
+    };
+    if (inputType === 'profile') input.onlyPostsNewerThan = '3 months';
     return {
       actorId: 'apify/instagram-reel-scraper',
-      input: {
-        username: profileHandle ? [profileHandle] : [],
-        directUrls,
-        resultsLimit: limit,
-        onlyPostsNewerThan: '3 months',
-        skipPinnedPosts: true,
-        skipTrialReels: false,
-      },
+      input,
     };
   }
   return {
@@ -349,7 +346,7 @@ function buildApifyActorRequest(options = {}) {
   const boundedLimit = Math.min(Math.max(Number(limit || 5), 1), 30);
 
   if (platform === 'instagram') {
-    return buildInstagramInput({ inputValue, inputType, limit: boundedLimit });
+    return buildInstagramInput({ inputValue, inputType, limit: boundedLimit, downloadVideo });
   }
 
   if (platform === 'tiktok') {
