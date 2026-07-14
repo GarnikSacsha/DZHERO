@@ -44,6 +44,18 @@ const renderTimeLocalized = [
   'BrandBrain',
   'VideoTaskQueue',
   'CreatorAssistant',
+  'LaunchRoadmap',
+  'ContentPlan',
+  'Analytics',
+  'SalesDirect',
+  'AnalysisSetup',
+  'BillingSettings',
+  'DataSources',
+  'LegalSafe',
+  'BudgetCalculator',
+  'TeamHub',
+  'QuickModal',
+  'ManualReelModal',
 ];
 
 for (const name of renderTimeLocalized) {

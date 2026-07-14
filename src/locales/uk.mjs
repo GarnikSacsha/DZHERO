@@ -87,4 +87,7 @@ export const uk = Object.freeze({
   'signals.youtube.category.beauty': 'Краса',
   'signals.youtube.category.food': 'Їжа',
   'signals.youtube.category.peopleBlogs': 'Люди й блоги',
+  'plan.fallbackDraft': 'Чернетка контент-плану',
+  'plan.quality.calendar': 'Сценарій із контент-плану',
+  'plan.status.contentPlan': 'Контент-план',
 });

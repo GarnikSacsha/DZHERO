@@ -771,7 +771,7 @@ function App() {
     const reelDraft = buildReelForCalendarPost(post, [
       ...workspaceScopedSignalsReels,
       ...(data?.reels || []),
-    ]);
+    ], { language });
     setRemixDraft(reelDraft);
     setMvpPage('remix');
     notify('Відкрито сценарій цієї події в Студії');
@@ -5992,6 +5992,7 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
 }
 
 function LaunchRoadmap({ notify, setPage, workspaceId }) {
+  const { translateText } = useI18n();
   const [activeStep, setActiveStep] = useState(null);
   const [generatedLaunch, setGeneratedLaunch] = useState([]);
   const stepRefs = useRef({});
@@ -6026,7 +6027,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
       note: text.split('. ')[0],
     }));
     setGeneratedLaunch(grid);
-    notify('Сітку прогріву сформовано на поточному екрані');
+    notify(translateText('Сітку прогріву сформовано на поточному екрані'));
   };
 
   useEffect(() => {
@@ -6061,9 +6062,9 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
   return (
     <section className="page">
       <PageTitle
-        title="Запуски"
-        subtitle="Конструктор прогріву на 11 кроків: конкретні сценарії для сторіс, Reels, постів, тригерів, CTA і дедлайнів."
-        actions={<><button onClick={() => { setActiveStep('9'); notify('Показав FOMO-тригери для 9-го етапу'); }}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={generateLaunch}><Rocket size={16} />Сформувати запуск</button></>}
+        title={translateText('Запуски')}
+        subtitle={translateText('Конструктор прогріву на 11 кроків: конкретні сценарії для сторіс, Reels, постів, тригерів, CTA і дедлайнів.')}
+        actions={<><button onClick={() => { setActiveStep('9'); notify(translateText('Показав FOMO-тригери для 9-го етапу')); }}><Sparkles size={16} />Сформувати тригери</button><button className="dark" onClick={generateLaunch}><Rocket size={16} />Сформувати запуск</button></>}
       />
       {generatedLaunch.length > 0 && (
         <div className="launch-generated-grid">
@@ -6120,6 +6121,7 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
 }
 
 function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId, onOpenPostInStudio }) {
+  const { translateText } = useI18n();
   const today = new Date();
   const formatSuggestions = CONTENT_FORMATS;
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
@@ -6212,7 +6214,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
         body: JSON.stringify({ posts: nextPosts }),
       });
     } catch (error) {
-      notify(`Не вдалося зберегти календар: ${error.message}`);
+      notify(translateText(`Не вдалося зберегти календар: ${error.message}`));
     }
   };
   const closePostModal = () => {
@@ -6250,7 +6252,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     setPosts(nextPosts);
     savePosts(nextPosts);
     closePostModal();
-    notify(editingPostId ? 'Подію оновлено в календарі' : 'Подію додано в календар');
+    notify(translateText(editingPostId ? 'Подію оновлено в календарі' : 'Подію додано в календар'));
   };
   const deletePost = () => {
     if (!editingPostId) return;
@@ -6258,13 +6260,13 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     setPosts(nextPosts);
     savePosts(nextPosts);
     closePostModal();
-    notify('Подію видалено з календаря');
+    notify(translateText('Подію видалено з календаря'));
   };
   const movePost = (postId, day) => {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, day } : post));
     setPosts(nextPosts);
     savePosts(nextPosts);
-    notify(`Пост перенесено на ${day} число`);
+    notify(translateText(`Пост перенесено на ${day} число`));
   };
   const toggleDone = (postId) => {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post));
@@ -6285,14 +6287,14 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     const nextPosts = [...postsRef.current, nextPost];
     setPosts(nextPosts);
     savePosts(nextPosts);
-    notify('Ідею додано в контент-план');
+    notify(translateText('Ідею додано в контент-план'));
   };
   const addManualNote = (event) => {
     event.preventDefault();
     const title = noteDraft.title.trim();
     const body = noteDraft.body.trim();
     if (!title && !body) {
-      notify('Напиши хоча б коротку note');
+      notify(translateText('Напиши хоча б коротку note'));
       return;
     }
     const note = {
@@ -6305,7 +6307,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     };
     setContentNotes((current) => [buildEditableContentNote(note), ...current]);
     setNoteDraft({ title: '', body: '' });
-    notify('Note збережено');
+    notify(translateText('Note збережено'));
   };
   const startEditNote = (note) => {
     setEditingNoteId(note.id);
@@ -6319,7 +6321,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     const title = noteEditDraft.title.trim();
     const body = noteEditDraft.body.trim();
     if (!title && !body) {
-      notify('Note не може бути порожнім');
+      notify(translateText('Note не може бути порожнім'));
       return;
     }
     const patch = {
@@ -6337,7 +6339,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     });
     setDeletedGeneratedNoteIds((current) => current.filter((id) => String(id) !== String(note.id)));
     cancelEditNote();
-    notify('Note оновлено');
+    notify(translateText('Note оновлено'));
   };
   const deleteContentNote = (note) => {
     setContentNotes((current) => current.filter((item) => String(item.id) !== String(note.id)));
@@ -6345,7 +6347,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       setDeletedGeneratedNoteIds((current) => (current.includes(String(note.id)) ? current : [...current, String(note.id)]));
     }
     if (editingNoteId === note.id) cancelEditNote();
-    notify('Note видалено');
+    notify(translateText('Note видалено'));
   };
   const postFormatClass = (format) => {
     const normalized = String(format || '').toLowerCase();
@@ -6360,7 +6362,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
 
   return (
     <section className="page page-content-plan">
-      <PageTitle title="Контент-план" subtitle="План, зйомки, публікації й результати в одному календарі." actions={<><button onClick={() => notify('Пакет сформовано з відібраних ідей')}>Сформувати пакет</button><button onClick={() => notify('Тижневий план сформовано')}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
+      <PageTitle title={translateText('Контент-план')} subtitle={translateText('План, зйомки, публікації й результати в одному календарі.')} actions={<><button onClick={() => notify(translateText('Пакет сформовано з відібраних ідей'))}>Сформувати пакет</button><button onClick={() => notify(translateText('Тижневий план сформовано'))}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
       <div className="stats">
         {[
           ['Усього', posts.length],
@@ -6407,7 +6409,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                         <i />
                         <em>{post.format}</em>
                       </div>
-                      <strong>{post.title}</strong>
+                      <strong data-i18n-content>{post.title}</strong>
                     </article>
                   ))}
                 </div>
@@ -6443,7 +6445,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 <span />
               </label>
               <div>
-                <strong>{post.title}</strong>
+                <strong data-i18n-content>{post.title}</strong>
                 <small>{post.day} · {post.time} · {post.format}</small>
               </div>
               <button type="button" onClick={() => onOpenPostInStudio?.(post)}>
@@ -6465,12 +6467,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               <input
                 value={noteDraft.title}
                 onChange={(event) => setNoteDraft((current) => ({ ...current, title: event.target.value }))}
-                placeholder="Назва note"
+                placeholder={translateText('Назва note')}
               />
               <textarea
                 value={noteDraft.body}
                 onChange={(event) => setNoteDraft((current) => ({ ...current, body: event.target.value }))}
-                placeholder="Ідея, інсайт, гіпотеза або короткий сценарій..."
+                placeholder={translateText('Ідея, інсайт, гіпотеза або короткий сценарій...')}
               />
               <button type="submit"><Plus size={15} />Додати note</button>
             </form>
@@ -6483,19 +6485,19 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                     <input
                       value={noteEditDraft.title}
                       onChange={(event) => setNoteEditDraft((current) => ({ ...current, title: event.target.value }))}
-                      placeholder="Назва note"
+                      placeholder={translateText('Назва note')}
                     />
                     <textarea
                       value={noteEditDraft.body}
                       onChange={(event) => setNoteEditDraft((current) => ({ ...current, body: event.target.value }))}
-                      placeholder="Текст note"
+                      placeholder={translateText('Текст note')}
                     />
                   </div>
                 ) : (
                   <div>
-                    <small>{idea.source || idea.status || 'generated'}</small>
-                    <strong>{idea.title || idea.hook}</strong>
-                    <p>{idea.hook || idea.angle || 'Ідея готова до сценарію або календаря.'}</p>
+                    <small data-i18n-content>{idea.source || idea.status || 'generated'}</small>
+                    <strong data-i18n-content>{idea.title || idea.hook}</strong>
+                    <p data-i18n-content>{idea.hook || idea.angle || 'Ідея готова до сценарію або календаря.'}</p>
                   </div>
                 )}
                 <div className="content-note-actions">
@@ -6506,10 +6508,10 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                     </>
                   ) : (
                     <>
-                      <button className="ghost icon" type="button" onClick={() => startEditNote(idea)} aria-label="Редагувати note">
+                      <button className="ghost icon" type="button" onClick={() => startEditNote(idea)} aria-label={translateText('Редагувати note')}>
                         <Pencil size={14} />
                       </button>
-                      <button className="ghost danger icon" type="button" onClick={() => deleteContentNote(idea)} aria-label="Видалити note">
+                      <button className="ghost danger icon" type="button" onClick={() => deleteContentNote(idea)} aria-label={translateText('Видалити note')}>
                         <X size={14} />
                       </button>
                       <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
@@ -6538,9 +6540,9 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
             <div className="calendar-post-modal-head">
               <div>
                 <small>{editingPostId ? 'Редагувати подію' : 'Нова подія'}</small>
-                <h2>{draft.title || 'Контент у календарі'}</h2>
+                <h2 data-i18n-content>{draft.title || 'Контент у календарі'}</h2>
               </div>
-              <button className="ghost icon" type="button" onClick={closePostModal} aria-label="Закрити">
+              <button className="ghost icon" type="button" onClick={closePostModal} aria-label={translateText('Закрити')}>
                 <X size={16} />
               </button>
             </div>
@@ -6571,11 +6573,11 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               </div>
               <label className="wide">
                 <span>Назва</span>
-                <input autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Коротка назва події" />
+                <input autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder={translateText('Коротка назва події')} />
               </label>
               <label className="wide">
                 <span>Сценарій / текст</span>
-                <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} placeholder="Хук, кадри, озвучка та CTA" />
+                <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} placeholder={translateText('Хук, кадри, озвучка та CTA')} />
               </label>
             </div>
             {editingPostId && (
@@ -6599,6 +6601,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
 }
 
 function Analytics() {
+  const { translateText } = useI18n();
   const conversionRows = [
     ['Рілс про дорогий CGI', '147.3K', '42', '18%', '89%'],
     ['Кейс AI для кафе', '82.1K', '31', '22%', '76%'],
@@ -6607,7 +6610,7 @@ function Analytics() {
 
   return (
     <section className="page">
-      <PageTitle title="Аналітика продюсера" subtitle="Контент, продажі й фінансові показники в одному місці: охоплення, кваліфіковані ліди, ROI, CAC і прогноз ефективності." />
+      <PageTitle title={translateText('Аналітика продюсера')} subtitle={translateText('Контент, продажі й фінансові показники в одному місці: охоплення, кваліфіковані ліди, ROI, CAC і прогноз ефективності.')} />
       <div className="analytics-grid">
         <div className="insight-card"><Gauge size={24} /><h2>82</h2><p>Середній скор відібраних рілсів</p></div>
         <div className="insight-card"><CircleCheck size={24} /><h2>312%</h2><p>ROI запуску з урахуванням продакшену й трафіку</p></div>
@@ -6642,6 +6645,7 @@ function Analytics() {
 }
 
 function SalesDirect({ notify, setPage }) {
+  const { translateText } = useI18n();
   const pipeline = [
     ['Нові ліди', 'New', [
       ['@olena_brand', 'теплий', 'консультація', 'потрібна консультація', '5m ago'],
@@ -6670,9 +6674,9 @@ function SalesDirect({ notify, setPage }) {
   return (
     <section className="page">
       <PageTitle
-        title="Продажі / AI Direct"
-        subtitle="Слой конверсії: авто-відповіді в коментарях і Direct, кваліфікація лідів, CRM-теги й передача людині."
-        actions={<button className="dark" onClick={() => { setPage('assistant'); notify('Відкрив Асистента для налаштування AI Direct'); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
+        title={translateText('Продажі / AI Direct')}
+        subtitle={translateText('Слой конверсії: авто-відповіді в коментарях і Direct, кваліфікація лідів, CRM-теги й передача людині.')}
+        actions={<button className="dark" onClick={() => { setPage('assistant'); notify(translateText('Відкрив Асистента для налаштування AI Direct')); }}><MessageSquareText size={16} />Увімкнути AI Direct</button>}
       />
       <div className="sales-layout">
         <div className="sales-stats">
@@ -6714,7 +6718,7 @@ function SalesDirect({ notify, setPage }) {
             <div className="panel-title"><strong>{title}</strong><span>{cards.length}</span></div>
             <small>{subtitle}</small>
             {cards.map(([handle, temp, intent, message, time]) => (
-              <button type="button" key={handle} onClick={() => notify(`${handle}: ${message}`)}>
+              <button type="button" key={handle} onClick={() => notify(translateText(`${handle}: ${message}`))}>
                 <div>
                   <strong>{handle}</strong>
                   <MoreHorizontal size={16} />
@@ -6732,13 +6736,14 @@ function SalesDirect({ notify, setPage }) {
 }
 
 function AnalysisSetup({ notify, workspaceId }) {
+  const { translateText } = useI18n();
   const [brandInput, setBrandInput] = useState('');
   const [status, setStatus] = useState('idle');
 
   const saveBrandInput = async () => {
     const clean = brandInput.trim();
     if (!clean) {
-      notify('Встав Instagram-профіль або коротко опиши бізнес.');
+      notify(translateText('Встав Instagram-профіль або коротко опиши бізнес.'));
       return;
     }
     setStatus('saving');
@@ -6758,11 +6763,11 @@ function AnalysisSetup({ notify, workspaceId }) {
       });
       if (!response.ok) throw new Error(await readApiError(response, 'brand_brain_save_failed'));
       setStatus('saved');
-      notify('Brand Brain оновлено. Джеро використає це в сценаріях.');
+      notify(translateText('Brand Brain оновлено. Джеро використає це в сценаріях.'));
       window.setTimeout(() => setStatus('idle'), 1800);
     } catch (error) {
       setStatus('error');
-      notify(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.');
+      notify(translateText(error?.message || 'Не вдалося зберегти Brand Brain. Перевір backend.'));
     }
   };
 
@@ -6778,7 +6783,7 @@ function AnalysisSetup({ notify, workspaceId }) {
           <textarea
             value={brandInput}
             onChange={(event) => setBrandInput(event.target.value)}
-            placeholder="https://instagram.com/your_brand або: кавʼярня у Львові, продаємо сніданки і каву, аудиторія 20-35..."
+            placeholder={translateText('https://instagram.com/your_brand або: кавʼярня у Львові, продаємо сніданки і каву, аудиторія 20-35...')}
             rows={5}
           />
           <button className="dark" type="button" onClick={saveBrandInput} disabled={status === 'saving'}>
@@ -6792,6 +6797,7 @@ function AnalysisSetup({ notify, workspaceId }) {
 }
 
 function BillingSettings({ workspaceId, notify, language = 'uk' }) {
+  const { translateText } = useI18n();
   const [plans, setPlans] = useState([]);
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
@@ -6813,7 +6819,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       setStatus('ready');
     } catch (err) {
       setStatus('error');
-      notify(`Не вдалося завантажити тарифи: ${err.message}`);
+      notify(translateText(`Не вдалося завантажити тарифи: ${err.message}`));
     }
   };
 
@@ -6839,7 +6845,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       const checkoutPayload = await checkoutResponse.json();
       if (!checkoutResponse.ok) throw new Error(checkoutPayload.message || checkoutPayload.error || 'checkout_failed');
       if (checkoutPayload.payment?.paymentUrl) {
-        notify('Переходимо до безпечної оплати Monobank.');
+        notify(translateText('Переходимо до безпечної оплати Monobank.'));
         if (paymentWindow) {
           paymentWindow.location.href = checkoutPayload.payment.paymentUrl;
         } else {
@@ -6849,17 +6855,17 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       }
       paymentWindow?.close();
       setCheckout(checkoutPayload);
-      notify('Тариф зарезервовано. Перевір реквізити оплати нижче.');
+      notify(translateText('Тариф зарезервовано. Перевір реквізити оплати нижче.'));
       await loadBilling();
     } catch (err) {
       paymentWindow?.close();
-      notify(`Не вдалося обрати тариф: ${err.message}`);
+      notify(translateText(`Не вдалося обрати тариф: ${err.message}`));
     }
   };
 
   const copyPaymentText = async (value, label) => {
     await navigator.clipboard?.writeText(value || '');
-    notify(`${label} скопійовано`);
+    notify(translateText(`${label} скопійовано`));
   };
 
   const currentPlanId = billing?.plan?.id;
@@ -7000,7 +7006,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       <section className="billing-current">
         <div>
           <small>{billingCopy.currentPlan}</small>
-          <h3>{billing?.plan?.name || (status === 'loading' ? billingCopy.loading : billingCopy.unknown)}</h3>
+          <h3 data-i18n-content>{billing?.plan?.name || (status === 'loading' ? billingCopy.loading : billingCopy.unknown)}</h3>
           <p>{subscriptionStatusLabel}</p>
         </div>
       </section>
@@ -7044,7 +7050,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
           return (
             <article className={isCurrent ? 'billing-plan active' : 'billing-plan'} key={plan.id}>
               <small>{plan.billingPeriod}</small>
-              <h3>{plan.name}</h3>
+              <h3 data-i18n-content>{plan.name}</h3>
               <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : (language === 'en' ? 'Free' : 'Безкоштовно')}</div>
               <ul>
                 {planLimitRows.map(([key, Icon, label]) => (
@@ -7081,14 +7087,14 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
           <div className="checkout-head">
             <div>
               <small>Поповнення картки</small>
-              <h3>{checkout.plan.name} · ₴{checkout.payment.amount}</h3>
+              <h3 data-i18n-content>{checkout.plan.name} · ₴{checkout.payment.amount}</h3>
               <p>Поповніть картку на суму тарифу. Після перевірки ми активуємо доступ вручну.</p>
             </div>
             <button type="button" onClick={() => setCheckout(null)}>Закрити</button>
           </div>
           <article className="checkout-card">
             <small>Номер картки для поповнення</small>
-            <strong>{checkout.payment.cardNumber || 'Реквізити скоро зʼявляться'}</strong>
+            <strong data-i18n-content>{checkout.payment.cardNumber || 'Реквізити скоро зʼявляться'}</strong>
             <button type="button" disabled={!checkout.payment.cardNumber} onClick={() => copyPaymentText(checkout.payment.cardNumber, 'Номер картки')}>
               <Copy size={16} />
               Скопіювати номер
@@ -7101,10 +7107,10 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
             </article>
             <article>
               <small>Коментар до платежу</small>
-              <strong>{checkout.payment.note}</strong>
+              <strong data-i18n-content>{checkout.payment.note}</strong>
             </article>
           </div>
-          <button className="checkout-paid-button" type="button" onClick={() => notify('Оплату треба перевірити вручну. Після підтвердження адміністратор активує тариф.')}>
+          <button className="checkout-paid-button" type="button" onClick={() => notify(translateText('Оплату треба перевірити вручну. Після підтвердження адміністратор активує тариф.'))}>
             Я оплатив
           </button>
         </section>
@@ -7114,6 +7120,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
 }
 
 function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
+  const { translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
   const [sourceInput, setSourceInput] = useState('');
@@ -7155,9 +7162,9 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
     }
     const result = composeBrandScanResult(cleanInput, metadata, capabilities);
     setSourcePreview(result);
-    notify(hasSourceMetadata(result.metadata)
+    notify(translateText(hasSourceMetadata(result.metadata)
       ? 'Джеро прочитав публічний профіль і зібрав production preview.'
-      : 'Джеро зібрав preview з опису.');
+      : 'Джеро зібрав preview з опису.'));
   };
 
   const connectInstagram = async () => {
@@ -7167,17 +7174,17 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
       if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
       window.location.href = payload.authUrl;
     } catch (error) {
-      notify(error.message === 'meta_not_configured'
+      notify(translateText(error.message === 'meta_not_configured'
         ? 'Підключення Instagram буде доступне після налаштування Instagram App на backend.'
-        : `Не вдалося відкрити Instagram Login: ${error.message}`);
+        : `Не вдалося відкрити Instagram Login: ${error.message}`));
     }
   };
 
   return (
     <section className="page">
       <PageTitle
-        title="Джерела"
-        subtitle="Додай профіль або короткий опис бізнесу. Джеро збере контекст і перетворить його на план."
+        title={translateText('Джерела')}
+        subtitle={translateText('Додай профіль або короткий опис бізнесу. Джеро збере контекст і перетворить його на план.')}
       />
       <Tabs
         active={tab}
@@ -7203,7 +7210,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
                 onKeyDown={(event) => {
                   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') buildSourcePreview();
                 }}
-                placeholder="https://www.instagram.com/wowbody_app/ або коротко: бʼюті-студія, манікюр, запис через Direct..."
+                placeholder={translateText('https://www.instagram.com/wowbody_app/ або коротко: бʼюті-студія, манікюр, запис через Direct...')}
                 rows={4}
               />
               <div>
@@ -7220,7 +7227,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
 
           {isScanning && !sourcePreview && (
             <JerykLoading
-              title="Джерик збирає Brand Scan preview"
+              title={translateText('Джерик збирає Brand Scan preview')}
               text="Перевіряю відкрите джерело і готую перший production preview."
             />
           )}
@@ -7242,7 +7249,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
               <div className="source-preview-head">
                 <div>
                   <small>Brand Scan</small>
-                  <h3>{sourcePreview.title}</h3>
+                  <h3 data-i18n-content>{sourcePreview.title}</h3>
                 </div>
                 <button className="dark" type="button" onClick={() => onOpenBrandScan?.(sourcePreview)}>
                   <Wand2 size={16} /> Відкрити в Studio
@@ -7250,36 +7257,36 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
               </div>
               <div className="scan-source">
                 <span>Джерело</span>
-                <strong>{sourcePreview.source}</strong>
-                <em data-source={sourcePreview.sourceTone}>{sourcePreview.sourceType}</em>
+                <strong data-i18n-content>{sourcePreview.source}</strong>
+                <em data-i18n-content data-source={sourcePreview.sourceTone}>{sourcePreview.sourceType}</em>
               </div>
               {hasSourceMetadata(sourcePreview.metadata) && (
                 <div className="scan-public-meta">
                   <span>Профіль</span>
-                  <strong>{sourcePreview.metadata.handle}</strong>
-                  <p>{sourcePreview.metadata.title || sourcePreview.metadata.description}</p>
+                  <strong data-i18n-content>{sourcePreview.metadata.handle}</strong>
+                  <p data-i18n-content>{sourcePreview.metadata.title || sourcePreview.metadata.description}</p>
                   <div>
                     {metadataStatChips(sourcePreview.metadata).map((chip) => <b key={chip}>{chip}</b>)}
                   </div>
                 </div>
               )}
               <div className="scan-niche-row">
-                <strong>{sourcePreview.label}</strong>
-                {sourcePreview.ideas.map((idea) => <span key={idea}>{idea}</span>)}
+                <strong data-i18n-content>{sourcePreview.label}</strong>
+                {sourcePreview.ideas.map((idea) => <span data-i18n-content key={idea}>{idea}</span>)}
               </div>
               {sourcePreview.example && (
                 <div className="scan-example-block">
                   <div className="scan-example-head">
                     <small>Перша генерація</small>
-                    <strong>{sourcePreview.example.title}</strong>
+                    <strong data-i18n-content>{sourcePreview.example.title}</strong>
                   </div>
                   <div className="scan-example-hook">
                     <span>Hook</span>
-                    <p>{sourcePreview.example.hook}</p>
+                    <p data-i18n-content>{sourcePreview.example.hook}</p>
                   </div>
                   <div className="scan-example-script">
                     {sourcePreview.example.script.map(([time, text]) => (
-                      <span key={time}><b>{time}</b>{text}</span>
+                      <span data-i18n-content key={time}><b>{time}</b>{text}</span>
                     ))}
                   </div>
                 </div>
@@ -7301,6 +7308,7 @@ function DataSources({ sources, notify, workspaceId, onOpenBrandScan, activeTab 
 }
 
 function LegalSafe({ notify }) {
+  const { translateText } = useI18n();
   const [editor, setEditor] = useState(null);
   const docs = [
     ['Партнерська угода', 'блогер + продюсер', 'частки, ролі, доступи, KPI, вихід із партнерства'],
@@ -7331,7 +7339,7 @@ function LegalSafe({ notify }) {
   };
   const copyTemplate = async () => {
     await navigator.clipboard?.writeText(editor.text);
-    notify('Шаблон скопійовано');
+    notify(translateText('Шаблон скопійовано'));
   };
   const downloadTemplate = () => {
     const blob = new Blob([editor.text], { type: 'application/msword;charset=utf-8' });
@@ -7343,14 +7351,14 @@ function LegalSafe({ notify }) {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    notify('Шаблон завантажено');
+    notify(translateText('Шаблон завантажено'));
   };
 
   return (
     <section className="page">
       <PageTitle
-        title="Юридичний сейф"
-        subtitle="Шаблони документів і правила безпеки для запусків, партнерств, підрядників та AI Direct."
+        title={translateText('Юридичний сейф')}
+        subtitle={translateText('Шаблони документів і правила безпеки для запусків, партнерств, підрядників та AI Direct.')}
         actions={<button className="dark" onClick={() => openTemplate(docs[0])}><ShieldCheck size={16} />Зібрати пакет</button>}
       />
       <div className="vault-grid">
@@ -7387,6 +7395,7 @@ function LegalSafe({ notify }) {
 }
 
 function BudgetCalculator({ notify }) {
+  const { translateText } = useI18n();
   const [inputs, setInputs] = useState({ profit: 300000, avgCheck: 8500, cac: 900, production: 18000 });
   const [model, setModel] = useState(() => calculateBudgetModel(inputs));
 
@@ -7409,8 +7418,8 @@ function BudgetCalculator({ notify }) {
   return (
     <section className="page">
       <PageTitle
-        title="Бюджетний калькулятор"
-        subtitle="Фінансова модель запуску: прибуток, CAC, трафік, продакшен, команда і точка окупності."
+        title={translateText('Бюджетний калькулятор')}
+        subtitle={translateText('Фінансова модель запуску: прибуток, CAC, трафік, продакшен, команда і точка окупності.')}
       />
       <div className="budget-layout">
         <article className="budget-hero">
@@ -7456,6 +7465,7 @@ function calculateBudgetModel(inputs) {
 }
 
 function TeamHub({ notify, workspaceId }) {
+  const { translateText } = useI18n();
   const team = [
     ['Продюсер', 'стратегія, офер, запуск', 'затверджує'],
     ['SMM', 'календар, сторіс, публікації', 'в роботі'],
@@ -7474,9 +7484,9 @@ function TeamHub({ notify, workspaceId }) {
   return (
     <section className="page">
       <PageTitle
-        title="Команда"
-        subtitle="Контроль підрядників, дедлайнів і якості контенту перед публікацією."
-        actions={<button className="dark" onClick={() => notify('Нову задачу для команди створено')}><Plus size={16} />Додати задачу</button>}
+        title={translateText('Команда')}
+        subtitle={translateText('Контроль підрядників, дедлайнів і якості контенту перед публікацією.')}
+        actions={<button className="dark" onClick={() => notify(translateText('Нову задачу для команди створено'))}><Plus size={16} />Додати задачу</button>}
       />
       <div className="team-board">
         {team.map(([role, work, status]) => (
@@ -7547,6 +7557,7 @@ function formatMetricDisplay(value) {
 }
 
 function QuickModal({ type, onClose, onSubmit }) {
+  useI18n();
   const labels = {
     competitor: ['Додати конкурента', 'Instagram handle, наприклад @brand.ua', '@'],
     idea: ['Нова ідея', 'Коротко опиши ідею або тему', ''],
@@ -7577,6 +7588,7 @@ function QuickModal({ type, onClose, onSubmit }) {
 }
 
 function ManualReelModal({ onClose, onSubmit, defaultMarket, initialUrl = '' }) {
+  const { translateText } = useI18n();
   const [form, setForm] = useState({
     url: initialUrl,
     handle: '@manual.source',
@@ -7624,15 +7636,15 @@ function ManualReelModal({ onClose, onSubmit, defaultMarket, initialUrl = '' }) 
           </label>
           <label className="wide">
             <span>Назва / хук</span>
-            <input value={form.title} onChange={(event) => update('title', event.target.value)} placeholder="Наприклад: AI workflow з одного фото товару" />
+            <input value={form.title} onChange={(event) => update('title', event.target.value)} placeholder={translateText('Наприклад: AI workflow з одного фото товару')} />
           </label>
           <label className="wide">
             <span>Caption або короткий опис</span>
-            <textarea value={form.caption} onChange={(event) => update('caption', event.target.value)} placeholder="Що було в рілсі, який перший кадр, яка обіцянка, який CTA..." />
+            <textarea value={form.caption} onChange={(event) => update('caption', event.target.value)} placeholder={translateText('Що було в рілсі, який перший кадр, яка обіцянка, який CTA...')} />
           </label>
           <label className="wide">
             <span>Транскрипт, якщо є</span>
-            <textarea value={form.transcript} onChange={(event) => update('transcript', event.target.value)} placeholder="Встав сюди текст з відео або свій приблизний переказ." />
+            <textarea value={form.transcript} onChange={(event) => update('transcript', event.target.value)} placeholder={translateText('Встав сюди текст з відео або свій приблизний переказ.')} />
           </label>
         </div>
         <div className="modal-actions">

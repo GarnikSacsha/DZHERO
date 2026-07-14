@@ -1,3 +1,5 @@
+import { createTranslator } from './i18nCore.mjs';
+
 export function normalizeContentIdentity(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -81,8 +83,9 @@ export function isDuplicateContentPlanPost(existing = {}, candidate = {}) {
     : Boolean(sameSource || (sameTitle && sameFormat));
 }
 
-export function buildReelFromCalendarPost(post = {}) {
-  const title = String(post.title || 'Контент-план draft').trim();
+export function buildReelFromCalendarPost(post = {}, { language = 'uk' } = {}) {
+  const t = createTranslator(language);
+  const title = String(post.title || t('plan.fallbackDraft')).trim();
   const body = String(post.body || '').trim();
   const sourceTitle = String(post.sourceTitle || '').trim();
   const sourceUrl = String(post.sourceUrl || '').trim();
@@ -99,8 +102,9 @@ export function buildReelFromCalendarPost(post = {}) {
     views: '-',
     likes: '-',
     comments: '-',
+    quality: t('plan.quality.calendar'),
     sourceUrl,
-    status: [post.format || 'Post', 'Контент-план'],
+    status: [post.format || 'Post', t('plan.status.contentPlan')],
     importedMetadata: {
       url: sourceUrl,
       source: { label: post.source || 'content-plan' },
@@ -108,8 +112,8 @@ export function buildReelFromCalendarPost(post = {}) {
   };
 }
 
-export function buildReelForCalendarPost(post = {}, reels = []) {
-  const calendarDraft = buildReelFromCalendarPost(post);
+export function buildReelForCalendarPost(post = {}, reels = [], { language = 'uk' } = {}) {
+  const calendarDraft = buildReelFromCalendarPost(post, { language });
   const sourceReel = findReelForCalendarPost(post, reels);
   if (!sourceReel) return calendarDraft;
 
