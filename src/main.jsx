@@ -60,6 +60,7 @@ import {
   deriveSignalsEmptyState,
 } from './signalsUiState.mjs';
 import { applyInterfaceLanguage } from './i18n';
+import { I18nProvider, useI18n } from './i18nProvider.mjs';
 import {
   createWorkspaceRequestContext,
   isWorkspaceRequestCurrent,
@@ -378,6 +379,7 @@ function MobilePreviewFrame({ src }) {
 }
 
 function App() {
+  const { language, setLanguage } = useI18n();
   const [page, setPage] = useState(getInitialAppPage);
   const [market, setMarket] = useState('all');
   const [data, setData] = useState(null);
@@ -388,7 +390,6 @@ function App() {
   const [themeMode, setThemeMode] = useState(getInitialThemeMode);
   const [autoTheme, setAutoTheme] = useState(getAutoTheme);
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
-  const [language, setLanguage] = useState(() => window.localStorage.getItem('insta-producer-language') || 'uk');
   const [sessionRevision, setSessionRevision] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
   const [authStatus, setAuthStatus] = useState('checking');
@@ -473,10 +474,6 @@ function App() {
       if (intervalId) window.clearInterval(intervalId);
     };
   }, [themeMode]);
-
-  useEffect(() => {
-    window.localStorage.setItem('insta-producer-language', language);
-  }, [language]);
 
   useEffect(() => {
     window.localStorage.setItem(WORKSPACE_KEY, workspaceId);
@@ -7603,4 +7600,8 @@ function ManualReelModal({ onClose, onSubmit, defaultMarket, initialUrl = '' }) 
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+createRoot(document.getElementById('root')).render(
+  <I18nProvider>
+    <App />
+  </I18nProvider>,
+);
