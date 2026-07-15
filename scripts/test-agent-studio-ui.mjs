@@ -9,6 +9,7 @@ import {
   getAgentStudioGroundingPercent,
   getAgentStudioStageState,
   getAgentStudioTraceEntries,
+  isProductionReadyAgentStudioCandidate,
   shouldPollAgentStudioRun,
 } from '../src/agentStudioUi.mjs';
 
@@ -64,6 +65,14 @@ const hybridCandidates = getAgentStudioCandidates({
   },
 });
 assert.equal(hybridCandidates[0].kind, 'hybrid');
+assert.equal(isProductionReadyAgentStudioCandidate({
+  scenes: [{ action: 'Setup' }, { action: 'Reveal' }],
+  productionNotes: ['Use a phone tripod'],
+}), true);
+assert.equal(isProductionReadyAgentStudioCandidate({
+  concept: 'Compact alternative only',
+  hook: 'An idea, not a script',
+}), false);
 assert.equal(getAgentStudioGroundingPercent(9.5), 95);
 assert.equal(getAgentStudioGroundingPercent(95), 95);
 assert.equal(getAgentStudioGroundingPercent(undefined), null);
@@ -76,6 +85,7 @@ assert.equal(getAgentStudioTraceEntries([
 assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Find a trend for me');
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
+assert.match(getAgentStudioErrorMessage({ error: 'agent_studio_candidate_not_production_ready' }, 'en'), /production-ready/i);
 assert.doesNotMatch(getAgentStudioErrorMessage({ error: 'agent_studio_disabled' }, 'en'), /[А-Яа-яІіЇїЄє]/);
 
 const pageSource = readFileSync(new URL('../src/AgentStudioPage.jsx', import.meta.url), 'utf8');
@@ -89,8 +99,13 @@ assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/)
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
 assert.match(pageSource, /shouldPollAgentStudioRun/);
 assert.match(pageSource, /addToContentPlan: true/);
+assert.match(pageSource, /isProductionReadyAgentStudioCandidate/);
+assert.match(pageSource, /copy\.alternativeApprovalHint/);
+assert.match(pageSource, /copy\.approvalSuccessTitle/);
+assert.match(pageSource, /onOpenContentPlan/);
 assert.doesNotMatch(pageSource, /OPENAI_API_KEY|GEMINI_API_KEY/);
 assert.match(mainSource, /page === 'agent-studio'/);
+assert.match(mainSource, /onOpenContentPlan=\{\(\) => setMvpPage\('plan'\)\}/);
 assert.match(mainSource, /'Agent Studio · Beta'/);
 
 console.log('agent studio UI helpers passed');

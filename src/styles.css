@@ -1088,6 +1088,40 @@ button {
   font-size: 10px;
 }
 
+.agent-studio-approval-warning,
+.agent-studio-approval-success {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 13px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.agent-studio-approval-success {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+
+.agent-studio-approval-success > svg {
+  color: var(--success);
+}
+
+.agent-studio-approval-warning > div,
+.agent-studio-approval-success > div {
+  display: grid;
+  gap: 4px;
+}
+
+.agent-studio-approval-warning small,
+.agent-studio-approval-success small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .agent-studio-trace-list {
   display: grid;
   gap: 0;
@@ -1149,6 +1183,10 @@ button {
   .agent-studio-manager-review { grid-template-columns: 1fr; }
   .agent-studio-approval-bar { align-items: stretch; flex-direction: column; }
   .agent-studio-approval-bar button { width: 100%; }
+  .agent-studio-approval-warning,
+  .agent-studio-approval-success { grid-template-columns: auto minmax(0, 1fr); }
+  .agent-studio-approval-warning button,
+  .agent-studio-approval-success button { grid-column: 1 / -1; width: 100%; }
   .agent-studio-hybrid-controls,
   .agent-studio-hybrid-controls.active { align-items: stretch; flex-direction: column; }
   .agent-studio-hybrid-controls > div { flex-direction: column; }

@@ -3734,6 +3734,44 @@ function findAgentStudioRun(db, workspaceId, runId) {
   )) || null;
 }
 
+function isAgentStudioProductionReadyCandidate(candidate) {
+  return Array.isArray(candidate?.scenes)
+    && candidate.scenes.length >= 2
+    && Array.isArray(candidate?.productionNotes)
+    && candidate.productionNotes.length > 0;
+}
+
+function buildAgentStudioHeroBody(candidate, day) {
+  const scenes = candidate.scenes.map((scene, index) => {
+    const direction = [
+      scene.action,
+      scene.onScreenText,
+      scene.voiceover,
+    ].filter(Boolean).join(' | ');
+    return `${index + 1}. ${scene.timeframe}: ${direction}`;
+  }).join('\n');
+  const productionNotes = candidate.productionNotes
+    .map((note) => `- ${note}`)
+    .join('\n');
+  return [
+    `🎬 ${candidate.concept}`,
+    `🪝 ${candidate.hook}`,
+    scenes,
+    productionNotes,
+    `🎯 ${day.objective}`,
+    `📣 ${day.hook}`,
+    `CTA: ${day.cta}`,
+  ].filter(Boolean).join('\n\n');
+}
+
+function buildAgentStudioPlanDayBody(day) {
+  return [
+    `🎯 ${day.objective}`,
+    `🪝 ${day.hook}`,
+    `CTA: ${day.cta}`,
+  ].join('\n\n');
+}
+
 function buildAgentStudioContentPlanPosts(run, candidateId) {
   const finalPackage = run.artifacts || {};
   const hero = finalPackage.creative?.heroReel;
@@ -3742,6 +3780,9 @@ function buildAgentStudioContentPlanPosts(run, candidateId) {
     ? hero
     : alternatives.find((item) => item.id === candidateId);
   if (!candidate) throw new Error('agent_studio_candidate_not_found');
+  if (!isAgentStudioProductionReadyCandidate(candidate)) {
+    throw new Error('agent_studio_candidate_not_production_ready');
+  }
   const days = finalPackage.contentPlan?.days || [];
   if (days.length !== 7) throw new Error('agent_studio_content_plan_missing');
   const sourceKey = `agent-studio:${run.id}`;
@@ -3751,9 +3792,9 @@ function buildAgentStudioContentPlanPosts(run, candidateId) {
     id: `agent-studio-${run.id}-${day.day}`,
     day: ((today.getDate() - 1 + index) % daysInMonth) + 1,
     title: day.title,
-    body: index === 0 && hero?.id === candidateId
-      ? [hero.concept, hero.hook, hero.cta].filter(Boolean).join('\n\n')
-      : [day.hook, day.cta].filter(Boolean).join('\n\n'),
+    body: index === 0
+      ? buildAgentStudioHeroBody(candidate, day)
+      : buildAgentStudioPlanDayBody(day),
     format: day.format,
     time: index % 2 === 0 ? '10:00' : '18:30',
     done: false,
@@ -5575,10 +5616,15 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/approve', async 
     }
     const run = db.agentStudioRuns[index];
     const hero = run.artifacts?.creative?.heroReel;
-    const candidateExists = hero?.id === candidateId
-      || (run.artifacts?.creative?.alternatives || []).some((item) => item.id === candidateId);
-    if (!candidateExists) {
+    const candidate = hero?.id === candidateId
+      ? hero
+      : (run.artifacts?.creative?.alternatives || []).find((item) => item.id === candidateId);
+    if (!candidate) {
       res.status(400).json({ error: 'agent_studio_candidate_not_found' });
+      return;
+    }
+    if (!isAgentStudioProductionReadyCandidate(candidate)) {
+      res.status(409).json({ error: 'agent_studio_candidate_not_production_ready' });
       return;
     }
     let addedPosts = 0;

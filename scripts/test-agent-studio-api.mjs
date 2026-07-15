@@ -306,6 +306,16 @@ try {
   assert.equal(duplicateUploadedCreate.response.status, 200);
   assert.equal(duplicateUploadedCreate.body.run.id, uploadedCreate.body.run.id);
 
+  const approveHeroWithoutWrite = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${uploadedCreate.body.run.id}/approve`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ candidateId: 'hero_reset', addToContentPlan: false }),
+  });
+  assert.equal(approveHeroWithoutWrite.response.status, 200);
+  assert.equal(approveHeroWithoutWrite.body.run.status, 'completed');
+  assert.equal(approveHeroWithoutWrite.body.run.approval.candidateId, 'hero_reset');
+  assert.equal(approveHeroWithoutWrite.body.addedPosts, 0);
+
   const create = await requestJson(baseUrl, '/api/workspaces/ws_1/agent-studio/runs', {
     method: 'POST',
     headers,
@@ -337,6 +347,14 @@ try {
   assert.equal(completed.trace.some((entry) => entry.agent === 'Critic' && entry.status === 'revised'), true);
   assert.equal(JSON.stringify(completed).includes('test-openai-key'), false);
 
+  const rejectCompactAlternative = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/approve`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ candidateId: 'alt_forecast', addToContentPlan: true }),
+  });
+  assert.equal(rejectCompactAlternative.response.status, 409);
+  assert.equal(rejectCompactAlternative.body.error, 'agent_studio_candidate_not_production_ready');
+
   const hybrid = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/hybrid`, {
     method: 'POST',
     headers,
@@ -366,6 +384,18 @@ try {
   assert.equal(approve.response.status, 200);
   assert.equal(approve.body.run.status, 'completed');
   assert.equal(approve.body.addedPosts, 7);
+
+  const contentPlanAfterApproval = await requestJson(baseUrl, '/api/workspaces/ws_1/content-plan', { headers });
+  assert.equal(contentPlanAfterApproval.response.status, 200);
+  assert.equal(contentPlanAfterApproval.body.posts.length, 7);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /🎬/u);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /🪝/u);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /1\. 0:00-0:0[23]:/);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /phone tripod/i);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /🎯/u);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /📣/u);
+  assert.match(contentPlanAfterApproval.body.posts[0].body, /CTA:/);
+  assert.match(contentPlanAfterApproval.body.posts[1].body, /^🎯[\s\S]+\n\n🪝[\s\S]+\n\nCTA:/u);
 
   const approveAgain = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/approve`, {
     method: 'POST',
