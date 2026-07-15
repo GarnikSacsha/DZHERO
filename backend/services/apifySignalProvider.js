@@ -81,7 +81,14 @@ function mapInstagramApifyItem(item = {}, context = {}) {
   const title = compactText(item.caption || item.text || item.description || `Instagram Reel ${item.shortCode || item.code || item.id || ''}`, 180);
   const shortCode = item.shortCode || item.code || '';
   const url = item.url || item.inputUrl || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : '');
-  const videoUrl = item.downloadedVideo || item.downloadedVideoUrl || item.videoUrl || item.video_url || item.mediaUrl || item.mediaUrls?.[0] || '';
+  const videoUrl = item.downloadedVideo
+    || item.downloadedVideoUrl
+    || item.videoUrl
+    || item.video_url
+    || item.mediaUrl
+    || item.mediaUrls?.[0]
+    || item.media_urls?.[0]
+    || '';
   const publishedAt = item.timestamp || item.takenAtTimestamp || item.createdAt || item.date || '';
   const metadata = {
     provider: 'apify',
@@ -410,4 +417,5 @@ module.exports = {
   mapInstagramApifyItem,
   mapTikTokApifyItem,
   parseTikTokVideoId,
+  runApifyActor,
 };

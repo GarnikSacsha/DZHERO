@@ -39,8 +39,8 @@ The following work was added on the isolated `hackathon/openai-build-week` branc
 - a bounded run state machine with context pause/resume, cancellation, one output repair, one Critic revision, interruption recovery, and idempotent approval;
 - OpenAI Agents SDK specialists using GPT-5.6;
 - Gemini video evidence with explicit provenance and honest `needs_context` degradation;
-- automatic Apify-to-Gemini media bridging for supported public Instagram and TikTok URLs;
-- authenticated original-video upload for private, login-only, and otherwise blocked sources;
+- automatic multi-Actor Apify-to-Gemini media resolution for public Instagram and TikTok URLs;
+- optional authenticated original-video upload for owners who already have the source file;
 - authenticated workspace-scoped create, poll, context, cancel, hybrid, and approve APIs;
 - the separate English/Ukrainian Agent Studio Beta interface;
 - approval of one candidate into exactly seven existing Content Plan entries;
@@ -170,7 +170,7 @@ Approval writes exactly seven normalized posts to the existing Content Plan once
 - Source pages, captions, transcripts, metadata, video frames, and user notes are untrusted data, never instructions.
 - Video observations, audio observations, on-screen text, metadata, and user notes remain separate evidence types.
 - Creative scenes reference evidence ids; product decisions reference Brand Brain fields.
-- Missing evidence moves the run to `needs_context`.
+- Missing evidence moves the run to `needs_context`; the primary recovery is another automatic resolution attempt or a different public URL, never a fabricated text description.
 - Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
 - Every agent output is schema-validated before the next stage begins.
 - One output repair and one Critic revision are permitted; the workflow cannot loop indefinitely.
