@@ -3,7 +3,6 @@ import {
   Bot,
   Check,
   CircleCheck,
-  FileVideo,
   Film,
   Lightbulb,
   LoaderCircle,
@@ -41,17 +40,6 @@ async function readResponse(response) {
     throw error;
   }
   return payload;
-}
-
-async function uploadVideoSource(fetcher, url, file) {
-  return readResponse(await fetcher(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': file.type || 'application/octet-stream',
-      'X-File-Name': encodeURIComponent(file.name || 'uploaded-video.mp4'),
-    },
-    body: file,
-  }));
 }
 
 function AgentStageRail({ run, copy }) {
@@ -293,11 +281,8 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [isApproving, setIsApproving] = useState(false);
   const [isHybridizing, setIsHybridizing] = useState(false);
   const [isRetryingSource, setIsRetryingSource] = useState(false);
-  const [isUploadingSource, setIsUploadingSource] = useState(false);
-  const [sourceFile, setSourceFile] = useState(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const pollGenerationRef = useRef(0);
-  const sourceFileRef = useRef(null);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
   const selectedSignal = useMemo(
@@ -363,21 +348,12 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
       setError(language === 'en' ? 'Add a clear objective first.' : 'Спочатку додай чітку ціль.');
       return;
     }
-    if (sourceFile && sourceFile.size > 100 * 1024 * 1024) {
-      setError(language === 'en' ? 'The video file must be 100 MB or smaller.' : 'Відеофайл має бути не більшим за 100 МБ.');
-      return;
-    }
-    if (effectiveForm.mode === 'adapt_reel' && !effectiveForm.signalId && !effectiveForm.sourceUrl.trim() && !sourceFile) {
-      setError(language === 'en' ? 'Choose a signal, paste a video URL, or upload the video.' : 'Обери сигнал, встав URL відео або завантаж файл.');
+    if (effectiveForm.mode === 'adapt_reel' && !effectiveForm.signalId && !effectiveForm.sourceUrl.trim()) {
+      setError(language === 'en' ? 'Choose a signal or paste a public video URL.' : 'Обери сигнал або встав публічний URL відео.');
       return;
     }
     setIsSubmitting(true);
     try {
-      if (sourceFile) {
-        setIsUploadingSource(true);
-        const upload = await uploadVideoSource(fetcher, `${baseUrl}/uploads`, sourceFile);
-        effectiveForm.uploadId = upload.uploadId;
-      }
       const payload = buildAgentStudioCreatePayload(effectiveForm, buildIdempotencyKey());
       const result = await readResponse(await fetcher(`${baseUrl}/runs`, {
         method: 'POST',
@@ -390,7 +366,6 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     } catch (nextError) {
       setError(getAgentStudioErrorMessage(nextError, language));
     } finally {
-      setIsUploadingSource(false);
       setIsSubmitting(false);
     }
   };
@@ -467,8 +442,6 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     pollGenerationRef.current += 1;
     setRun(null);
     setError('');
-    setSourceFile(null);
-    if (sourceFileRef.current) sourceFileRef.current.value = '';
     setSelectedCandidateId('');
     setIsHybridizing(false);
     setIsRetryingSource(false);
@@ -560,23 +533,13 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                   {signals.map((signal) => <option value={signal.id} key={signal.id}>{signal.title || signal.handle || signal.id}</option>)}
                 </select>
               </label>
-              <label className="agent-studio-field agent-studio-wide-field agent-studio-upload-field">
-                <span data-i18n-content>{copy.upload}</span>
-                <input
-                  ref={sourceFileRef}
-                  type="file"
-                  accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/3gpp,video/*"
-                  onChange={(event) => setSourceFile(event.target.files?.[0] || null)}
-                />
-                <small><FileVideo size={14} /> <span data-i18n-content>{sourceFile ? `${copy.uploadSelected}: ${sourceFile.name}` : copy.uploadHint}</span></small>
-              </label>
             </div>
           )}
 
           {error && <div className="agent-studio-error" role="alert" data-i18n-content>{error}</div>}
           <button className="agent-studio-run-button" type="submit" disabled={isSubmitting}>
             {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Play size={18} />}
-            <span data-i18n-content>{isUploadingSource ? copy.uploading : isSubmitting ? copy.running : copy.run}</span>
+            <span data-i18n-content>{isSubmitting ? copy.running : copy.run}</span>
           </button>
         </form>
       ) : (
