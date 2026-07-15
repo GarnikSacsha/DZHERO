@@ -132,13 +132,27 @@ const CreativeBundleSchema = z.object({
   }
 });
 
-const EvaluationScoresSchema = z.object({
+const LegacyEvaluationScoresShape = {
   grounding: z.number().min(0).max(100),
   brandFit: z.number().min(0).max(100),
   originality: z.number().min(0).max(100),
   feasibility: z.number().min(0).max(100),
   language: z.number().min(0).max(100),
   commercialFit: z.number().min(0).max(100),
+};
+
+const EvaluationScoresSchema = z.object({
+  ...LegacyEvaluationScoresShape,
+  hookStrength: z.number().min(0).max(100),
+  mechanicFidelity: z.number().min(0).max(100),
+  creativeBoldness: z.number().min(0).max(100),
+}).strict();
+
+const StoredEvaluationScoresSchema = z.object({
+  ...LegacyEvaluationScoresShape,
+  hookStrength: z.number().min(0).max(100).optional(),
+  mechanicFidelity: z.number().min(0).max(100).optional(),
+  creativeBoldness: z.number().min(0).max(100).optional(),
 }).strict();
 
 const EvaluationReportSchema = z.object({
@@ -163,6 +177,14 @@ const EvaluationReportSchema = z.object({
     });
   }
 });
+
+const StoredEvaluationReportSchema = z.object({
+  decision: z.enum(['accept', 'revise', 'reject']),
+  scores: StoredEvaluationScoresSchema,
+  blockingIssues: z.array(ShortText).max(20),
+  revisionInstructions: z.array(ShortText).max(20),
+  summary: LongText,
+}).strict();
 
 const ContentPlanDaySchema = z.object({
   day: z.number().int().min(1).max(7),
@@ -211,7 +233,7 @@ const FinalPackageSchema = z.object({
   selectedTrend: TrendBriefSchema,
   brandStrategy: BrandStrategySchema.optional(),
   creative: CreativeBundleSchema,
-  evaluation: EvaluationReportSchema,
+  evaluation: StoredEvaluationReportSchema,
   contentPlan: ContentPlanSchema,
   managerReview: ManagerReviewSchema,
   hybrid: z.object({

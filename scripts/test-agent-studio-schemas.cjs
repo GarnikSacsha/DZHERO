@@ -61,6 +61,13 @@ const heroReel = {
       voiceover: 'We can fix five minutes of it.',
       evidenceRefs: ['ev_2'],
     },
+    {
+      timeframe: '0:10-0:18',
+      action: 'Show the first sip by the window and the real shop entrance.',
+      onScreenText: 'Five warm minutes',
+      voiceover: 'Save this for tomorrow and stop by before work.',
+      evidenceRefs: ['ev_2'],
+    },
   ],
   cta: 'Save this for tomorrow morning and visit us before work.',
   productionNotes: ['Phone on a tripod', 'Capture real steam in window light'],
@@ -112,10 +119,25 @@ const evaluation = {
     feasibility: 95,
     language: 91,
     commercialFit: 86,
+    hookStrength: 90,
+    mechanicFidelity: 91,
+    creativeBoldness: 86,
   },
   blockingIssues: [],
   revisionInstructions: [],
   summary: 'The concept is grounded, distinct, and simple to shoot.',
+};
+
+const legacyEvaluation = {
+  ...evaluation,
+  scores: {
+    grounding: evaluation.scores.grounding,
+    brandFit: evaluation.scores.brandFit,
+    originality: evaluation.scores.originality,
+    feasibility: evaluation.scores.feasibility,
+    language: evaluation.scores.language,
+    commercialFit: evaluation.scores.commercialFit,
+  },
 };
 
 const managerReview = {
@@ -162,6 +184,18 @@ assert.equal(CreativeBundleSchema.safeParse(creativeBundle).success, true);
 assert.equal(CreativeBundleSchema.safeParse({ ...creativeBundle, alternatives: creativeBundle.alternatives.slice(0, 1) }).success, false);
 
 assert.equal(ContentPlanSchema.safeParse(plan).success, true);
+assert.equal(FinalPackageSchema.safeParse({
+  evidence,
+  creative: creativeBundle,
+  evaluation: legacyEvaluation,
+  contentPlan: plan,
+  managerReview,
+  selectedTrend: {
+    title: 'Morning reveal',
+    rationale: 'It matches the objective and is feasible for a coffee shop.',
+    signalId: 'reel_coffee_01',
+  },
+}).success, true);
 assert.equal(ContentPlanSchema.safeParse({ ...plan, days: plan.days.slice(0, 6) }).success, false);
 assert.equal(ContentPlanSchema.safeParse({
   ...plan,
