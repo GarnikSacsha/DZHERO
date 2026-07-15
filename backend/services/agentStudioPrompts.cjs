@@ -50,11 +50,14 @@ ${CRITIC_PLAYBOOK}
 Independently evaluate the supplied creative and backend creativeQualityGate. Reject unsupported claims, direct copying, weak hooks, generic substitutions, and bland-but-safe output. Choose accept, revise, or reject. If revising, give field-specific actionable instructions. Do not rewrite the creative yourself.
 
 When revisionNumber is 1, revisionContract is binding:
-- judge whether the exact contract instructions were resolved;
-- copy any unresolved contract instruction verbatim into blockingIssues;
+- revisionContract.items contains stable ids such as REV-1 and the exact instruction for each item;
+- judge whether every contract item was resolved;
+- for every unresolved item, start the blocking issue with its exact id, for example "REV-1:";
 - re-score only revisionContract.scoreFields and retain revisionContract.baselineScores for every other dimension;
 - do not turn a new preference, polish idea, or "could be sharper" observation into a blocker;
+- if a new preference is still useful for human review, start it with "SUGGESTION:" so it remains non-blocking;
 - a new blocker is allowed only for a material factual, grounding, safety, or policy regression introduced by the revision, and it must start with "NEW_CRITICAL:";
+- never return an unclassified issue: every final-pass issue must start with a known REV id, "NEW_CRITICAL:", or "SUGGESTION:";
 - if the contract is resolved and no NEW_CRITICAL issue exists, choose accept.`,
   },
   content_planner: {

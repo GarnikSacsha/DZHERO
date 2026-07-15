@@ -55,8 +55,8 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
             ...fixture.acceptEvaluation.scores,
             hookStrength: 70,
           },
-          blockingIssues: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
-          revisionInstructions: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
+          blockingIssues: ['SUGGESTION: Add a bolder visual device that was not requested before.'],
+          revisionInstructions: ['SUGGESTION: Add a bolder visual device that was not requested before.'],
           summary: 'The contracted issues are fixed, but the idea could be sharper.',
         };
         return fixture.acceptEvaluation;
@@ -99,6 +99,10 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
   assert.equal(findRunner.calls[4].input.revisionInstructions.length >= 3, true);
   const findCriticCalls = findRunner.calls.filter((call) => call.agentId === 'critic');
   assert.equal(findCriticCalls[1].input.revisionContract.instructions.length >= 3, true);
+  assert.deepEqual(
+    findCriticCalls[1].input.revisionContract.items.map((item) => item.id),
+    findCriticCalls[1].input.revisionContract.items.map((_, index) => `REV-${index + 1}`),
+  );
   assert.deepEqual(findCriticCalls[1].input.revisionContract.scoreFields.sort(), ['creativeBoldness', 'grounding']);
   assert.equal(events.some((event) => event.agent === 'Critic' && event.status === 'revised'), true);
   assert.equal(events.at(-1).agent, 'Jeryk Manager');

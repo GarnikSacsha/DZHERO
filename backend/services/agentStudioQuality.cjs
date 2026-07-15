@@ -176,24 +176,44 @@ function enforceAgentStudioEvaluation(evaluation = {}, quality = {}, { finalPass
 
 function createAgentStudioRevisionContract(evaluation = {}) {
   const scores = { ...(evaluation.scores || {}) };
+  const instructions = uniqueIssues(evaluation.revisionInstructions || [], evaluation.blockingIssues || []);
   const scoreFields = Object.keys(ACCEPT_THRESHOLDS).filter((field) => {
     const value = Number(scores[field]);
     return !Number.isFinite(value) || value < ACCEPT_THRESHOLDS[field];
   });
   return {
-    instructions: uniqueIssues(evaluation.revisionInstructions || [], evaluation.blockingIssues || []),
+    instructions,
+    items: instructions.map((instruction, index) => ({
+      id: `REV-${index + 1}`,
+      instruction,
+    })),
     scoreFields,
     baselineScores: scores,
   };
 }
 
-function normalizeIssue(issue) {
-  return String(issue || '').trim().toLowerCase().replace(/\s+/g, ' ');
+function getRevisionContractItems(revisionContract = {}) {
+  if (Array.isArray(revisionContract.items) && revisionContract.items.length > 0) {
+    return revisionContract.items
+      .map((item) => ({
+        id: String(item?.id || '').trim().toUpperCase(),
+        instruction: String(item?.instruction || '').trim(),
+      }))
+      .filter((item) => /^REV-\d+$/.test(item.id) && item.instruction);
+  }
+  return uniqueIssues(revisionContract.instructions || []).map((instruction, index) => ({
+    id: `REV-${index + 1}`,
+    instruction,
+  }));
+}
+
+function getIssueContractIds(issue) {
+  return String(issue || '').toUpperCase().match(/\bREV-\d+\b/g) || [];
 }
 
 function enforceAgentStudioFinalEvaluation(evaluation = {}, quality = {}, revisionContract = {}) {
-  const contractInstructions = uniqueIssues(revisionContract.instructions || []);
-  const normalizedContractInstructions = new Set(contractInstructions.map(normalizeIssue));
+  const contractItems = getRevisionContractItems(revisionContract);
+  const contractIds = new Set(contractItems.map((item) => item.id));
   const contractedScoreFields = new Set(
     (revisionContract.scoreFields || []).filter((field) => Object.hasOwn(ACCEPT_THRESHOLDS, field)),
   );
@@ -207,10 +227,19 @@ function enforceAgentStudioFinalEvaluation(evaluation = {}, quality = {}, revisi
   }));
 
   const reportedIssues = uniqueIssues(evaluation.blockingIssues || [], evaluation.revisionInstructions || []);
-  const unresolvedContractIssues = reportedIssues.filter((issue) => (
-    normalizedContractInstructions.has(normalizeIssue(issue))
-  ));
+  const suggestions = reportedIssues.filter((issue) => /^SUGGESTION:/i.test(issue));
   const newCriticalIssues = reportedIssues.filter((issue) => /^NEW_CRITICAL:/i.test(issue));
+  const unresolvedContractIssues = reportedIssues.filter((issue) => (
+    getIssueContractIds(issue).some((id) => contractIds.has(id))
+  ));
+  const unclassifiedIssues = reportedIssues.filter((issue) => (
+    !/^SUGGESTION:/i.test(issue)
+    && !/^NEW_CRITICAL:/i.test(issue)
+    && !getIssueContractIds(issue).some((id) => contractIds.has(id))
+  ));
+  if (evaluation.decision !== 'accept' && reportedIssues.length === 0) {
+    unclassifiedIssues.push('critic: Final Critic returned a blocking decision without a classified issue.');
+  }
   const gateIssues = Array.isArray(quality?.issues) ? quality.issues : [];
   const scoreIssues = getScoreIssues({ scores }, [...contractedScoreFields]);
   const blockingIssues = uniqueIssues(
@@ -218,6 +247,7 @@ function enforceAgentStudioFinalEvaluation(evaluation = {}, quality = {}, revisi
     scoreIssues,
     unresolvedContractIssues,
     newCriticalIssues,
+    unclassifiedIssues,
   );
 
   if (blockingIssues.length > 0) {
@@ -231,16 +261,13 @@ function enforceAgentStudioFinalEvaluation(evaluation = {}, quality = {}, revisi
     };
   }
 
-  const nonBlockingSuggestions = reportedIssues.filter((issue) => (
-    !normalizedContractInstructions.has(normalizeIssue(issue)) && !/^NEW_CRITICAL:/i.test(issue)
-  ));
   return {
     ...evaluation,
     decision: 'accept',
     scores,
     blockingIssues: [],
     revisionInstructions: [],
-    summary: nonBlockingSuggestions.length > 0
+    summary: suggestions.length > 0
       ? `${evaluation.summary} New creative suggestions were kept as non-blocking notes for human review.`
       : evaluation.summary,
   };
@@ -253,5 +280,6 @@ module.exports = {
   createAgentStudioRevisionContract,
   enforceAgentStudioEvaluation,
   enforceAgentStudioFinalEvaluation,
+  getRevisionContractItems,
   getFirstBeatEndSeconds,
 };
