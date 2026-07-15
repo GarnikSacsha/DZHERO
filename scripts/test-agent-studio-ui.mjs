@@ -82,7 +82,8 @@ const pageSource = readFileSync(new URL('../src/AgentStudioPage.jsx', import.met
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 assert.match(pageSource, /\/agent-studio`/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/retry-source/);
-assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/source-file/);
+assert.doesNotMatch(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/source-file/);
+assert.match(pageSource, /copy\.chooseAnotherSource/);
 assert.match(pageSource, /\$\{baseUrl\}\/uploads/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);

@@ -53,7 +53,7 @@ Our backend keeps that separation real through strict schemas and permitted stat
 - Source captions, pages, metadata, transcripts, video frames, and user notes are treated as untrusted data, never instructions.
 - Creative scenes cite evidence ids; product choices cite Brand Brain fields.
 - Metadata is never presented as something observed in the video.
-- Missing evidence triggers `needs_context`.
+- Missing evidence triggers `needs_context` with automatic retry or public-source replacement rather than invented evidence.
 - Temporary media uploaded to Gemini is deleted after the evidence request; private or login-only social content is never presented as successfully observed.
 - Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
 - Provider, quota, timeout, validation, and quality errors are classified rather than hidden behind generic content.

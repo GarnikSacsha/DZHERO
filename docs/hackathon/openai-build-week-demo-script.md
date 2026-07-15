@@ -45,9 +45,9 @@ Show the live stage rail:
 6. Content Planner;
 7. Jeryk review.
 
-**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, Apify resolves the public video and DZHERO transfers it into Gemini Files API. If the platform blocks retrieval, the owner uploads the saved video and the same automatic path continues. Gemini has one narrow job: evidence. Observed frames and metadata stay visibly separate.”
+**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, DZHERO tries a platform-specific Apify Actor and an Instagram fallback Actor before transferring the media into Gemini Files API. Gemini has one narrow job: evidence. Observed frames and metadata stay visibly separate.”
 
-If the video cannot be accessed, show `needs_context`, upload the saved video, and continue. Say explicitly that DZHERO requires real media instead of asking the owner to recreate the video as text.
+For the live demo, use a verified public URL. If a platform restricts that particular post, show the automatic retry and source-switch controls. Say explicitly that DZHERO will not ask the owner to recreate the video as text or record their screen.
 
 ### 1:35–2:10 — The differentiator
 

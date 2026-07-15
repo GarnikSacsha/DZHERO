@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Sparkles,
   Square,
-  Upload,
 } from 'lucide-react';
 
 import {
@@ -296,11 +295,9 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [isRetryingSource, setIsRetryingSource] = useState(false);
   const [isUploadingSource, setIsUploadingSource] = useState(false);
   const [sourceFile, setSourceFile] = useState(null);
-  const [contextFile, setContextFile] = useState(null);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const pollGenerationRef = useRef(0);
   const sourceFileRef = useRef(null);
-  const contextFileRef = useRef(null);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
   const selectedSignal = useMemo(
@@ -398,30 +395,6 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     }
   };
 
-  const uploadBlockedSource = async (event) => {
-    event.preventDefault();
-    setError('');
-    if (!contextFile) {
-      setError(language === 'en' ? 'Choose the video file first.' : 'Спочатку обери відеофайл.');
-      return;
-    }
-    if (contextFile.size > 100 * 1024 * 1024) {
-      setError(language === 'en' ? 'The video file must be 100 MB or smaller.' : 'Відеофайл має бути не більшим за 100 МБ.');
-      return;
-    }
-    setIsUploadingSource(true);
-    try {
-      const payload = await uploadVideoSource(fetcher, `${baseUrl}/runs/${encodeURIComponent(run.id)}/source-file`, contextFile);
-      setRun(payload.run);
-      setContextFile(null);
-      if (contextFileRef.current) contextFileRef.current.value = '';
-    } catch (nextError) {
-      setError(getAgentStudioErrorMessage(nextError, language));
-    } finally {
-      setIsUploadingSource(false);
-    }
-  };
-
   const retrySource = async () => {
     setError('');
     setIsRetryingSource(true);
@@ -495,9 +468,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setRun(null);
     setError('');
     setSourceFile(null);
-    setContextFile(null);
     if (sourceFileRef.current) sourceFileRef.current.value = '';
-    if (contextFileRef.current) contextFileRef.current.value = '';
     setSelectedCandidateId('');
     setIsHybridizing(false);
     setIsRetryingSource(false);
@@ -539,7 +510,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
         <div className="agent-studio-provider-strip">
           <span><Bot size={15} /> Jeryk Manager</span>
           <span>OpenAI Agents SDK</span>
-          <span>Any URL / upload + Gemini evidence</span>
+          <span>Automatic URL resolver + Gemini evidence</span>
         </div>
         {run && ['completed', 'failed', 'cancelled'].includes(run.status) && <button className="ghost" type="button" onClick={resetRun}><RefreshCw size={15} /><span data-i18n-content>{copy.newRun}</span></button>}
       </header>
@@ -631,34 +602,23 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
             )}
 
             {run.status === 'needs_context' && (
-              <form className="agent-studio-context-card" onSubmit={uploadBlockedSource}>
+              <section className="agent-studio-context-card">
                 <Film size={23} />
                 <div>
                   <h2 data-i18n-content>{copy.contextTitle}</h2>
                   <p data-i18n-content>{run.contextRequest?.message || copy.contextDescription}</p>
-                  <label className="agent-studio-field agent-studio-upload-field">
-                    <span data-i18n-content>{copy.upload}</span>
-                    <input
-                      ref={contextFileRef}
-                      type="file"
-                      accept="video/mp4,video/quicktime,video/webm,video/x-m4v,video/3gpp,video/*"
-                      onChange={(event) => setContextFile(event.target.files?.[0] || null)}
-                      required
-                    />
-                    <small><FileVideo size={14} /> <span data-i18n-content>{contextFile ? `${copy.uploadSelected}: ${contextFile.name}` : copy.uploadHint}</span></small>
-                  </label>
                   <div className="agent-studio-context-actions">
                     <button type="button" onClick={retrySource} disabled={isRetryingSource}>
                       {isRetryingSource ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}
                       <span data-i18n-content>{isRetryingSource ? copy.retryingSource : copy.retrySource}</span>
                     </button>
-                    <button className="dark" type="submit" disabled={isUploadingSource}>
-                      {isUploadingSource ? <LoaderCircle className="spin" size={16} /> : <Upload size={16} />}
-                      <span data-i18n-content>{isUploadingSource ? copy.uploading : copy.resume}</span>
+                    <button className="dark" type="button" onClick={resetRun}>
+                      <RefreshCw size={16} />
+                      <span data-i18n-content>{copy.chooseAnotherSource}</span>
                     </button>
                   </div>
                 </div>
-              </form>
+              </section>
             )}
 
             {shouldPollAgentStudioRun(run.status) && (
