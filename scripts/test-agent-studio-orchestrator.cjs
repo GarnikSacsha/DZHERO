@@ -211,6 +211,7 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
   );
 
   const sdkCalls = [];
+  const sdkUsage = [];
   class FakeAgent {
     constructor(config) {
       this.config = config;
@@ -225,7 +226,18 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
 
     async run(agent, prompt, options) {
       sdkCalls.push(['run', { agent, prompt, options }]);
-      return { finalOutput: fixture.selectedTrend };
+      return {
+        finalOutput: fixture.selectedTrend,
+        state: {
+          usage: {
+            requests: 1,
+            inputTokens: 120,
+            outputTokens: 30,
+            totalTokens: 150,
+            inputTokensDetails: [{ cached_tokens: 20 }],
+          },
+        },
+      };
     }
   }
   const sdkRunner = createOpenAIAgentRunner({
@@ -233,6 +245,9 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
     maxTurns: 7,
     sdkLoader: async () => ({ Agent: FakeAgent, Runner: FakeRunner }),
     requireApiKey: false,
+    phase: 'initial',
+    invocationId: 'invocation_sdk_success',
+    onUsage: async (entry) => sdkUsage.push(entry),
   });
   const sdkOutput = await sdkRunner({
     agentId: 'trend_analyst',
@@ -246,6 +261,44 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
   assert.equal(sdkCalls.find(([type]) => type === 'run')[1].options.maxTurns, 7);
   assert.equal(sdkCalls.find(([type]) => type === 'run')[1].prompt.includes('<dzhero_data>'), true);
   assert.equal(sdkCalls.find(([type]) => type === 'agent')[1].instructions.includes('DZHERO Agent Studio'), true);
+  assert.equal(sdkUsage.length, 1);
+  assert.equal(sdkUsage[0].status, 'completed');
+  assert.equal(sdkUsage[0].agentId, 'trend_analyst');
+  assert.equal(sdkUsage[0].usage.totalTokens, 150);
+  assert.equal(Object.hasOwn(sdkUsage[0], 'prompt'), false);
+
+  const failedUsage = [];
+  class FailingRunner {
+    async run() {
+      const error = new Error('provider failed after usage');
+      error.state = {
+        usage: {
+          requests: 1,
+          inputTokens: 75,
+          outputTokens: 0,
+          totalTokens: 75,
+        },
+      };
+      throw error;
+    }
+  }
+  const failingSdkRunner = createOpenAIAgentRunner({
+    model: 'gpt-5.6',
+    sdkLoader: async () => ({ Agent: FakeAgent, Runner: FailingRunner }),
+    requireApiKey: false,
+    phase: 'hybrid',
+    invocationId: 'invocation_sdk_failure',
+    onUsage: async (entry) => failedUsage.push(entry),
+  });
+  await assert.rejects(() => failingSdkRunner({
+    agentId: 'trend_analyst',
+    input: { objective: 'Drive visits', signals: [] },
+    outputSchema: TrendBriefSchema,
+    groupId: 'run_sdk_failure',
+  }), /provider failed/);
+  assert.equal(failedUsage.length, 1);
+  assert.equal(failedUsage[0].status, 'failed');
+  assert.equal(failedUsage[0].usage.inputTokens, 75);
 
   console.log('Agent Studio orchestrator checks passed.');
 })().catch((error) => {

@@ -12,18 +12,21 @@ const {
   assert.equal(detectAgentStudioSocialPlatform('https://www.youtube.com/watch?v=abc'), '');
 
   const calls = [];
+  const usage = [];
   const resolved = await resolveAgentStudioVideoSource({
     token: 'test-apify-token',
     sourceUrl: 'https://www.instagram.com/reel/abc/',
     workspaceId: 'ws_test',
     fetchSignals: async (options) => {
       calls.push(options);
-      return [{
+      return Object.assign([{
         sourceUrl: options.inputValue,
         videoUrl: 'https://cdn.example.com/abc.mp4',
         importedMetadata: { provider: 'apify' },
-      }];
+      }], { actualCostUsd: 0.0123 });
     },
+    invocationId: 'invocation-primary',
+    onUsage: async (entry) => usage.push(entry),
   });
   assert.equal(resolved.videoUrl, 'https://cdn.example.com/abc.mp4');
   assert.equal(resolved.resolvedBy, 'apify-platform-actor');
@@ -31,8 +34,12 @@ const {
   assert.equal(calls[0].inputType, 'url');
   assert.equal(calls[0].limit, 1);
   assert.equal(calls[0].downloadVideo, true);
+  assert.equal(usage.length, 1);
+  assert.equal(usage[0].usageTotalUsd, 0.0123);
+  assert.equal(usage[0].actor, 'apify/instagram-reel-scraper');
 
   const fallbackCalls = [];
+  const fallbackUsage = [];
   const fallbackResolved = await resolveAgentStudioVideoSource({
     token: 'test-apify-token',
     sourceUrl: 'https://www.instagram.com/reel/fallback/',
@@ -40,13 +47,21 @@ const {
     fetchSignals: async () => [],
     runActor: async (options) => {
       fallbackCalls.push(options);
-      return { items: [{ url: options.input.directUrls[0], videoUrl: 'https://cdn.example.com/fallback.mp4' }] };
+      return {
+        items: [{ url: options.input.directUrls[0], videoUrl: 'https://cdn.example.com/fallback.mp4' }],
+        actualCostUsd: 0.0456,
+      };
     },
+    invocationId: 'invocation-fallback',
+    onUsage: async (entry) => fallbackUsage.push(entry),
   });
   assert.equal(fallbackResolved.videoUrl, 'https://cdn.example.com/fallback.mp4');
   assert.equal(fallbackResolved.resolvedBy, 'apify-instagram-fallback');
   assert.equal(fallbackCalls[0].actorId, INSTAGRAM_FALLBACK_ACTOR);
   assert.deepEqual(fallbackCalls[0].input.directUrls, ['https://www.instagram.com/reel/fallback/']);
+  assert.equal(fallbackUsage.length, 2);
+  assert.equal(fallbackUsage[0].usageTotalUsd, undefined);
+  assert.equal(fallbackUsage[1].usageTotalUsd, 0.0456);
 
   const unresolved = await resolveAgentStudioVideoSource({
     token: 'test-apify-token',

@@ -14,6 +14,7 @@
     "test:brand-brain": "node scripts/test-brand-brain.mjs",
     "test:agent-studio-ui": "node scripts/test-agent-studio-ui.mjs",
     "test:agent-studio-quality": "node scripts/test-agent-studio-quality.cjs",
+    "test:agent-studio-usage": "node scripts/test-agent-studio-usage.cjs",
     "smoke:agent-studio-openai": "node scripts/smoke-agent-studio-openai.cjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
     "check:calendar-overflow": "node scripts/check-calendar-overflow.js",

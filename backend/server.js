@@ -36,6 +36,7 @@ const {
   deleteGeminiFile,
 } = require('./services/agentStudioVideoTool.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
+const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage.cjs');
 const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
@@ -3843,7 +3844,7 @@ async function persistAgentStudioEvent(runId, event) {
   });
 }
 
-async function finalizeAgentStudioResult(runId, result) {
+async function finalizeAgentStudioResult(runId, result, usage = null) {
   return serializeBackgroundMutation(async () => {
     const db = await readDb();
     const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
@@ -3860,6 +3861,7 @@ async function finalizeAgentStudioResult(runId, result) {
       nextRun = {
         ...nextRun,
         sourceUpload: null,
+        usage: usage || nextRun.usage,
         artifacts: {
           ...(nextRun.artifacts || {}),
           selectedTrend: result.selectedTrend,
@@ -3880,6 +3882,7 @@ async function finalizeAgentStudioResult(runId, result) {
       nextRun = {
         ...nextRun,
         sourceUpload: null,
+        usage: usage || nextRun.usage,
         artifacts: result.finalPackage,
         hybridRequest: null,
         error: null,
@@ -3892,7 +3895,7 @@ async function finalizeAgentStudioResult(runId, result) {
   });
 }
 
-async function failAgentStudioRun(runId, cause) {
+async function failAgentStudioRun(runId, cause, usage = null) {
   return serializeBackgroundMutation(async () => {
     const db = await readDb();
     const index = (db.agentStudioRuns || []).findIndex((run) => run.id === runId);
@@ -3907,7 +3910,7 @@ async function failAgentStudioRun(runId, cause) {
       error,
       now: new Date().toISOString(),
     });
-    db.agentStudioRuns[index] = { ...failed, sourceUpload: null };
+    db.agentStudioRuns[index] = { ...failed, sourceUpload: null, usage: usage || run.usage };
     await writeDb(db);
     return failed;
   });
@@ -3917,23 +3920,38 @@ async function executeAgentStudioRun(runId) {
   if (agentStudioRunsInFlight.has(runId)) return;
   agentStudioRunsInFlight.add(runId);
   let eventQueue = Promise.resolve();
+  let usageCollector = null;
   try {
     const db = await readDb();
     const run = (db.agentStudioRuns || []).find((item) => item.id === runId);
     if (!run || TERMINAL_AGENT_STUDIO_STATUSES.has(run.status) || run.status === 'needs_context') return;
+    const phase = Array.isArray(run.usage?.calls) && run.usage.calls.length > 0 ? 'resume' : 'initial';
+    const invocationId = `${run.id}:${phase}:${crypto.randomUUID()}`;
+    usageCollector = createAgentStudioUsageCollector({ initialUsage: run.usage });
     const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
     if (!workspace) throw new Error('workspace_not_found');
     const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
-    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
+    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({
+      model: OPENAI_AGENT_MODEL,
+      phase,
+      invocationId,
+      onUsage: (entry) => usageCollector.recordOpenAI(entry),
+    });
     const providerAnalyzeVideo = agentStudioTestProvider?.analyzeVideo || analyzeAgentStudioVideo;
     const analyzeVideo = (args) => providerAnalyzeVideo({
       ...args,
       uploadedFile: run.sourceUpload || null,
+      phase,
+      invocationId,
+      onUsage: (entry) => usageCollector.recordGemini(entry),
       resolveSource: ({ sourceUrl }) => resolveAgentStudioVideoSource({
         token: APIFY_TOKEN,
         sourceUrl,
         workspaceId: run.workspaceId,
         market: workspace.market || 'global',
+        phase,
+        invocationId,
+        onUsage: (entry) => usageCollector.recordApify(entry),
       }),
     });
     const result = await orchestrateAgentStudio({
@@ -3949,14 +3967,14 @@ async function executeAgentStudioRun(runId) {
       },
     });
     await eventQueue;
-    await finalizeAgentStudioResult(runId, result);
+    await finalizeAgentStudioResult(runId, result, usageCollector.snapshot());
   } catch (error) {
     try {
       await eventQueue;
     } catch {
       // The classified failure below is the authoritative terminal state.
     }
-    await failAgentStudioRun(runId, error);
+    await failAgentStudioRun(runId, error, usageCollector?.snapshot() || null);
   } finally {
     agentStudioRunsInFlight.delete(runId);
   }
@@ -3966,13 +3984,21 @@ async function executeAgentStudioHybrid(runId) {
   if (agentStudioRunsInFlight.has(runId)) return;
   agentStudioRunsInFlight.add(runId);
   let eventQueue = Promise.resolve();
+  let usageCollector = null;
   try {
     const db = await readDb();
     const run = (db.agentStudioRuns || []).find((item) => item.id === runId);
     if (!run || run.status !== 'producing' || !run.hybridRequest?.candidateIds) return;
+    const invocationId = `${run.id}:hybrid:${crypto.randomUUID()}`;
+    usageCollector = createAgentStudioUsageCollector({ initialUsage: run.usage });
     const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
     if (!workspace) throw new Error('workspace_not_found');
-    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({ model: OPENAI_AGENT_MODEL });
+    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({
+      model: OPENAI_AGENT_MODEL,
+      phase: 'hybrid',
+      invocationId,
+      onUsage: (entry) => usageCollector.recordOpenAI(entry),
+    });
     const result = await orchestrateAgentStudioHybrid({
       runId,
       input: run.input,
@@ -3985,7 +4011,7 @@ async function executeAgentStudioHybrid(runId) {
       },
     });
     await eventQueue;
-    await finalizeAgentStudioResult(runId, result);
+    await finalizeAgentStudioResult(runId, result, usageCollector.snapshot());
   } catch (error) {
     try {
       await eventQueue;
@@ -4006,7 +4032,11 @@ async function executeAgentStudioHybrid(runId) {
         error: classified,
         now: new Date().toISOString(),
       });
-      db.agentStudioRuns[index] = { ...restored, hybridRequest: null };
+      db.agentStudioRuns[index] = {
+        ...restored,
+        hybridRequest: null,
+        usage: usageCollector?.snapshot() || run.usage,
+      };
       await writeDb(db);
     });
   } finally {

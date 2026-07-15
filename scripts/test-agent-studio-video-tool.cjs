@@ -228,6 +228,7 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal(directUrlWithoutSignal.source.kind, 'url');
   assert.equal(directUrlWithoutSignal.requiresContext, true);
 
+  const malformedUsage = [];
   const malformed = await analyzeAgentStudioVideo({
     input: { mode: 'adapt_reel', objective: 'Drive visits', sourceUrl: 'https://example.com/reel' },
     selectedTrend: {
@@ -236,10 +237,26 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
       sourceUrl: 'https://example.com/reel',
     },
     apiKey: 'test-key',
-    fetchImpl: async () => response({ output_text: 'not json' }),
+    phase: 'resume',
+    invocationId: 'invocation_malformed',
+    onUsage: async (entry) => malformedUsage.push(entry),
+    fetchImpl: async () => response({
+      model: 'gemini-test',
+      output_text: 'not json',
+      usage: {
+        total_input_tokens: 321,
+        total_output_tokens: 12,
+        total_thought_tokens: 4,
+        total_tokens: 337,
+      },
+    }),
   });
   assert.equal(malformed.availability, 'unavailable');
   assert.equal(malformed.unknowns.some((item) => item.includes('structured')), true);
+  assert.equal(malformedUsage.length, 1);
+  assert.equal(malformedUsage[0].status, 'completed');
+  assert.equal(malformedUsage[0].usage.total_tokens, 337);
+  assert.equal(Object.hasOwn(malformedUsage[0], 'payload'), false);
 
   assert.equal(parseGeminiInteractionText({ output_text: '{"ok":true}' }), '{"ok":true}');
   assert.equal(parseGeminiInteractionText({

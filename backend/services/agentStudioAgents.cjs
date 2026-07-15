@@ -19,6 +19,7 @@ const {
   enforceAgentStudioEvaluation,
   enforceAgentStudioFinalEvaluation,
 } = require('./agentStudioQuality.cjs');
+const crypto = require('node:crypto');
 
 const AGENT_STAGE = {
   trend_analyst: 'selecting_signal',
@@ -75,6 +76,9 @@ function createOpenAIAgentRunner({
   timeoutMs = clampInteger(process.env.AGENT_STUDIO_TIMEOUT_MS, 90000, 5000, 180000),
   sdkLoader = () => import('@openai/agents'),
   requireApiKey = true,
+  onUsage = null,
+  phase = 'initial',
+  invocationId = '',
 } = {}) {
   return async function runOpenAIAgent({
     agentId,
@@ -109,13 +113,41 @@ function createOpenAIAgentRunner({
     });
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const callId = `${invocationId || groupId || 'agent-studio'}:${agentId}:${crypto.randomUUID()}`;
+    const startedAt = new Date().toISOString();
+    let result = null;
+    let usageReported = false;
+    const reportUsage = async (status, usage) => {
+      if (usageReported || typeof onUsage !== 'function') return;
+      usageReported = true;
+      try {
+        await onUsage({
+          callId,
+          invocationId,
+          phase,
+          agentId,
+          model,
+          status,
+          usage: usage || null,
+          startedAt,
+          completedAt: new Date().toISOString(),
+        });
+      } catch {
+        // Telemetry must never turn a successful provider response into a failed product run.
+      }
+    };
     try {
-      const result = await runner.run(
+      result = await runner.run(
         agent,
         buildAgentStudioPrompt(agentId, input),
         { maxTurns, signal: controller.signal },
       );
-      return parseStructuredOutput(result.finalOutput, outputSchema);
+      const output = parseStructuredOutput(result.finalOutput, outputSchema);
+      await reportUsage('completed', result.state?.usage || result.runContext?.usage);
+      return output;
+    } catch (error) {
+      await reportUsage('failed', result?.state?.usage || result?.runContext?.usage || error?.state?.usage);
+      throw error;
     } finally {
       clearTimeout(timer);
     }

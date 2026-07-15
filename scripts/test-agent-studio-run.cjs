@@ -177,6 +177,25 @@ const unsafe = {
     providerPayload: { secret: true },
     rawPrompt: 'private',
   },
+  usage: {
+    schemaVersion: 1,
+    calls: [{
+      callId: 'private-provider-call-id',
+      invocationId: 'private-invocation-id',
+      provider: 'openai',
+      requests: 1,
+      inputTokens: 100,
+      cachedInputTokens: 20,
+      outputTokens: 30,
+      thoughtTokens: 0,
+      totalTokens: 130,
+      usageKnown: true,
+      estimatedCostMicrousd: 1300,
+      providerReportedCostMicrousd: null,
+      apiKey: 'sk-usage-secret',
+      prompt: 'private usage prompt',
+    }],
+  },
 };
 const publicRun = toPublicAgentStudioRun(unsafe);
 const publicJson = JSON.stringify(publicRun);
@@ -185,5 +204,11 @@ assert.equal(publicJson.includes('private chain'), false);
 assert.equal(publicJson.includes('super-secret'), false);
 assert.equal(Object.hasOwn(publicRun, 'internal'), false);
 assert.equal(Object.hasOwn(publicRun.artifacts, 'providerPayload'), false);
+assert.equal(publicRun.usageSummary.providerCalls.openai, 1);
+assert.equal(publicRun.usageSummary.totalTokens, 130);
+assert.equal(publicRun.usageSummary.estimatedCostUsd, 0.0013);
+assert.equal(Object.hasOwn(publicRun.usageSummary, 'calls'), false);
+assert.equal(publicJson.includes('private-provider-call-id'), false);
+assert.equal(publicJson.includes('sk-usage-secret'), false);
 
 console.log('Agent Studio run state checks passed.');
