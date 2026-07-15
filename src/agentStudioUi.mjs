@@ -73,6 +73,12 @@ const COPY = {
     approve: 'Approve and add 7 days to Content Plan',
     approving: 'Adding to Content Plan...',
     approved: 'Approved · added to Content Plan',
+    alternativeApprovalTitle: 'Turn this direction into a production-ready script first',
+    alternativeApprovalHint: 'Choose Combine two directions and select exactly two ideas. Hybrid Producer will create and re-check a full script before approval.',
+    approvalSuccessTitle: 'Content package approved',
+    approvalSuccessDays: 'days were added to Content Plan.',
+    approvalSuccessDuplicate: 'This package was already added to Content Plan.',
+    openContentPlan: 'Open Content Plan',
     disabledTitle: 'Agent Studio Beta is switched off',
     disabledText: 'Set ENABLE_AGENT_STUDIO=true on the backend to show this Build Week experience.',
     missingTitle: 'Agent providers need configuration',
@@ -141,6 +147,12 @@ const COPY = {
     approve: 'Затвердити й додати 7 днів у контент-план',
     approving: 'Додаю в контент-план...',
     approved: 'Затверджено · додано в контент-план',
+    alternativeApprovalTitle: 'Спочатку перетвори цей напрям на готовий сценарій',
+    alternativeApprovalHint: 'Обери «Об’єднати два напрями» і відзнач рівно дві ідеї. Hybrid Producer створить і повторно перевірить повний сценарій.',
+    approvalSuccessTitle: 'Креативний пакет затверджено',
+    approvalSuccessDays: 'днів додано в контент-план.',
+    approvalSuccessDuplicate: 'Цей пакет уже додано в контент-план.',
+    openContentPlan: 'Відкрити контент-план',
     disabledTitle: 'Agent Studio Beta вимкнено',
     disabledText: 'Встанови ENABLE_AGENT_STUDIO=true на backend, щоб показати цей Build Week режим.',
     missingTitle: 'Потрібно налаштувати провайдерів агентів',
@@ -194,6 +206,13 @@ export function getAgentStudioCandidates(run) {
   ];
 }
 
+export function isProductionReadyAgentStudioCandidate(candidate) {
+  return Array.isArray(candidate?.scenes)
+    && candidate.scenes.length >= 2
+    && Array.isArray(candidate?.productionNotes)
+    && candidate.productionNotes.length > 0;
+}
+
 export function getAgentStudioGroundingPercent(score) {
   const numeric = Number(score);
   if (!Number.isFinite(numeric) || numeric < 0) return null;
@@ -239,6 +258,7 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
       agent_studio_video_file_required: 'Choose a video file first.',
       agent_studio_video_type_unsupported: 'Use an MP4, MOV, WebM, M4V, or 3GP video file.',
       agent_studio_hybrid_candidates_required: 'Select exactly two creative directions for the hybrid.',
+      agent_studio_candidate_not_production_ready: 'This is a compact direction, not a production-ready script. Combine two ideas into a full hybrid first.',
     }
     : {
       agent_studio_disabled: 'Agent Studio Beta вимкнено в цьому середовищі.',
@@ -250,6 +270,7 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
       agent_studio_video_file_required: 'Спочатку обери відеофайл.',
       agent_studio_video_type_unsupported: 'Використай відеофайл MP4, MOV, WebM, M4V або 3GP.',
       agent_studio_hybrid_candidates_required: 'Обери рівно два креативні напрями для гібрида.',
+      agent_studio_candidate_not_production_ready: 'Це короткий напрям, а не готовий продакшн-сценарій. Спочатку об’єднай дві ідеї в повний гібрид.',
     };
   return messages[code] || fallback || (language === 'en' ? 'Agent Studio could not complete this request.' : 'Agent Studio не зміг завершити цей запит.');
 }

@@ -23,6 +23,7 @@ import {
   getAgentStudioGroundingPercent,
   getAgentStudioStageState,
   getAgentStudioTraceEntries,
+  isProductionReadyAgentStudioCandidate,
   shouldPollAgentStudioRun,
 } from './agentStudioUi.mjs';
 
@@ -139,7 +140,7 @@ function CandidateCard({ candidate, selected, hybridSelected, hybridOrder, hybri
   );
 }
 
-function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy, onApprove, onHybrid, isApproving, isHybridizing }) {
+function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy, onApprove, onHybrid, onOpenContentPlan, approvalResult, isApproving, isHybridizing }) {
   const { artifacts = {} } = run;
   const candidates = getAgentStudioCandidates(run);
   const selected = candidates.find((candidate) => candidate.id === selectedCandidateId) || candidates[0];
@@ -147,6 +148,7 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
   const [hybridCandidateIds, setHybridCandidateIds] = useState([]);
   if (!artifacts.creative || !selected) return null;
   const isApproved = run.status === 'completed' && Boolean(run.approval);
+  const isSelectedProductionReady = isProductionReadyAgentStudioCandidate(selected);
   const groundingPercent = getAgentStudioGroundingPercent(artifacts.evaluation?.scores?.grounding);
   const toggleHybridCandidate = (candidateId) => {
     setHybridCandidateIds((current) => current.includes(candidateId)
@@ -256,21 +258,53 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
         </div>
       </section>
 
-      <div className="agent-studio-approval-bar">
-        <div>
-          <strong data-i18n-content>{selected.title}</strong>
-          <small data-i18n-content>{artifacts.managerReview?.approvalPrompt}</small>
+      {isApproved ? (
+        <div className="agent-studio-approval-success" role="status">
+          <CircleCheck size={24} />
+          <div>
+            <strong data-i18n-content>{copy.approvalSuccessTitle}</strong>
+            <small data-i18n-content>
+              {approvalResult?.addedPosts === 0
+                ? copy.approvalSuccessDuplicate
+                : `${approvalResult?.addedPosts ?? 7} ${copy.approvalSuccessDays}`}
+            </small>
+          </div>
+          <button className="dark" type="button" onClick={onOpenContentPlan}>
+            <span data-i18n-content>{copy.openContentPlan}</span>
+          </button>
         </div>
-        <button className="dark" type="button" onClick={() => onApprove(selected.id)} disabled={isApproving || isApproved}>
-          {isApproved ? <CircleCheck size={17} /> : isApproving ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}
-          <span data-i18n-content>{isApproved ? copy.approved : isApproving ? copy.approving : copy.approve}</span>
-        </button>
-      </div>
+      ) : !isSelectedProductionReady ? (
+        <div className="agent-studio-approval-warning" role="note">
+          <Lightbulb size={22} />
+          <div>
+            <strong data-i18n-content>{copy.alternativeApprovalTitle}</strong>
+            <small data-i18n-content>{copy.alternativeApprovalHint}</small>
+          </div>
+          <button type="button" onClick={() => {
+            setHybridCandidateIds([selected.id]);
+            setHybridMode(true);
+          }}>
+            <Sparkles size={16} />
+            <span data-i18n-content>{copy.hybridMode}</span>
+          </button>
+        </div>
+      ) : (
+        <div className="agent-studio-approval-bar">
+          <div>
+            <strong data-i18n-content>{selected.title}</strong>
+            <small data-i18n-content>{artifacts.managerReview?.approvalPrompt}</small>
+          </div>
+          <button className="dark" type="button" onClick={() => onApprove(selected.id)} disabled={isApproving}>
+            {isApproving ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}
+            <span data-i18n-content>{isApproving ? copy.approving : copy.approve}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals = [], language = 'uk', notify }) {
+export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals = [], language = 'uk', notify, onOpenContentPlan }) {
   const copy = getAgentStudioCopy(language);
   const [config, setConfig] = useState(null);
   const [configError, setConfigError] = useState('');
@@ -282,6 +316,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [isHybridizing, setIsHybridizing] = useState(false);
   const [isRetryingSource, setIsRetryingSource] = useState(false);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
+  const [approvalResult, setApprovalResult] = useState(null);
   const pollGenerationRef = useRef(0);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
@@ -303,6 +338,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   useEffect(() => {
     setRun(null);
     setSelectedCandidateId('');
+    setApprovalResult(null);
     setError('');
     void loadConfig();
   }, [workspaceId, language]);
@@ -362,6 +398,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
       }));
       setRun(result.run);
       setSelectedCandidateId('');
+      setApprovalResult(null);
       notify?.(language === 'en' ? 'Jeryk started the specialist agent team.' : 'Джерик запустив команду агентів.');
     } catch (nextError) {
       setError(getAgentStudioErrorMessage(nextError, language));
@@ -409,6 +446,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
         body: JSON.stringify({ candidateId, addToContentPlan: true }),
       }));
       setRun(payload.run);
+      setApprovalResult({ addedPosts: Number(payload.addedPosts) || 0 });
       notify?.(language === 'en' ? `${payload.addedPosts} days added to Content Plan.` : `${payload.addedPosts} днів додано в контент-план.`);
     } catch (nextError) {
       setError(getAgentStudioErrorMessage(nextError, language));
@@ -428,6 +466,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
       }));
       setRun(payload.run);
       setSelectedCandidateId('');
+      setApprovalResult(null);
       notify?.(language === 'en'
         ? 'Hybrid Producer is combining and re-checking the two directions.'
         : 'Hybrid Producer об’єднує та повторно перевіряє два напрями.');
@@ -443,6 +482,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setRun(null);
     setError('');
     setSelectedCandidateId('');
+    setApprovalResult(null);
     setIsHybridizing(false);
     setIsRetryingSource(false);
   };
@@ -603,6 +643,8 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                 setSelectedCandidateId={setSelectedCandidateId}
                 onApprove={approveRun}
                 onHybrid={createHybrid}
+                onOpenContentPlan={onOpenContentPlan}
+                approvalResult={approvalResult}
                 isApproving={isApproving}
                 isHybridizing={isHybridizing}
               />

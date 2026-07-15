@@ -1236,6 +1236,7 @@ function App() {
             signals={workspaceScopedSignalsReels}
             language={language}
             notify={notify}
+            onOpenContentPlan={() => setMvpPage('plan')}
           />
         )}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
