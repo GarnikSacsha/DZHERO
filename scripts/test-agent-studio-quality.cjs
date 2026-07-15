@@ -68,6 +68,8 @@ assert.equal(enforcedRevision.revisionInstructions.some((issue) => issue.include
 assert.equal(enforcedRevision.revisionInstructions.some((issue) => issue.includes('scores.creativeBoldness')), true);
 const revisionContract = createAgentStudioRevisionContract(enforcedRevision);
 assert.deepEqual(revisionContract.scoreFields.sort(), ['creativeBoldness', 'grounding']);
+assert.deepEqual(revisionContract.items.map((item) => item.id), revisionContract.items.map((_, index) => `REV-${index + 1}`));
+assert.equal(revisionContract.items[0].instruction, revisionContract.instructions[0]);
 
 const movingGoalpostsEvaluation = {
   ...fixture.acceptEvaluation,
@@ -76,8 +78,8 @@ const movingGoalpostsEvaluation = {
     ...fixture.acceptEvaluation.scores,
     hookStrength: 70,
   },
-  blockingIssues: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
-  revisionInstructions: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
+  blockingIssues: ['SUGGESTION: Add a bolder visual device that was not requested before.'],
+  revisionInstructions: ['SUGGESTION: Add a bolder visual device that was not requested before.'],
   summary: 'The contracted issues are fixed, but the idea could be sharper.',
 };
 const stableAcceptance = enforceAgentStudioFinalEvaluation(movingGoalpostsEvaluation, strong, revisionContract);
@@ -88,11 +90,29 @@ assert.equal(stableAcceptance.blockingIssues.length, 0);
 const unresolvedContract = enforceAgentStudioFinalEvaluation({
   ...fixture.acceptEvaluation,
   decision: 'revise',
-  blockingIssues: [revisionContract.instructions[0]],
-  revisionInstructions: [revisionContract.instructions[0]],
+  blockingIssues: [`${revisionContract.items[0].id}: The contracted issue remains after revision.`],
+  revisionInstructions: [`${revisionContract.items[0].id}: The contracted issue remains after revision.`],
 }, strong, revisionContract);
 assert.equal(unresolvedContract.decision, 'reject');
-assert.equal(unresolvedContract.blockingIssues.includes(revisionContract.instructions[0]), true);
+assert.equal(unresolvedContract.blockingIssues.some((issue) => issue.startsWith('REV-1:')), true);
+
+const paraphrasedUnresolvedContract = enforceAgentStudioFinalEvaluation({
+  ...fixture.acceptEvaluation,
+  decision: 'revise',
+  blockingIssues: ['The unsupported superlative is still present in different wording.'],
+  revisionInstructions: [],
+}, strong, revisionContract);
+assert.equal(paraphrasedUnresolvedContract.decision, 'reject');
+assert.equal(paraphrasedUnresolvedContract.blockingIssues.some((issue) => issue.includes('different wording')), true);
+
+const successfulFinalAccept = enforceAgentStudioFinalEvaluation({
+  ...fixture.acceptEvaluation,
+  decision: 'accept',
+  blockingIssues: [],
+  revisionInstructions: [],
+}, strong, revisionContract);
+assert.equal(successfulFinalAccept.decision, 'accept');
+assert.equal(successfulFinalAccept.blockingIssues.length, 0);
 
 const criticalRegression = enforceAgentStudioFinalEvaluation({
   ...fixture.acceptEvaluation,
@@ -132,6 +152,8 @@ assert.match(creativePrompt, /proof before CTA/i);
 assert.match(criticPrompt, /creativeBoldness/);
 assert.match(criticPrompt, /bland adaptation fails/i);
 assert.match(criticPrompt, /revisionContract is binding/);
+assert.match(criticPrompt, /REV-1/);
 assert.match(criticPrompt, /NEW_CRITICAL:/);
+assert.match(criticPrompt, /SUGGESTION:/);
 
 console.log('Agent Studio creative quality checks passed.');
