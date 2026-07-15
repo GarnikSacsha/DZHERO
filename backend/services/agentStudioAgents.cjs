@@ -13,6 +13,12 @@ const {
   AGENT_STUDIO_DEFINITIONS,
   buildAgentStudioPrompt,
 } = require('./agentStudioPrompts.cjs');
+const {
+  assessAgentStudioCreative,
+  createAgentStudioRevisionContract,
+  enforceAgentStudioEvaluation,
+  enforceAgentStudioFinalEvaluation,
+} = require('./agentStudioQuality.cjs');
 
 const AGENT_STAGE = {
   trend_analyst: 'selecting_signal',
@@ -244,6 +250,7 @@ async function orchestrateAgentStudio({
     brandBrain,
     brandStrategy,
   });
+  let creativeQuality = assessAgentStudioCreative(creative, { brandBrain });
 
   let evaluation = await runSpecialist('critic', {
     objective: input.objective,
@@ -252,10 +259,13 @@ async function orchestrateAgentStudio({
     brandBrain,
     brandStrategy,
     creative,
+    creativeQualityGate: creativeQuality,
     revisionNumber: 0,
   });
+  evaluation = enforceAgentStudioEvaluation(evaluation, creativeQuality);
 
   if (evaluation.decision === 'revise') {
+    const revisionContract = createAgentStudioRevisionContract(evaluation);
     emit({
       agent: 'Critic',
       agentId: 'critic',
@@ -271,7 +281,9 @@ async function orchestrateAgentStudio({
       brandStrategy,
       previousCreative: creative,
       revisionInstructions: evaluation.revisionInstructions,
+      revisionContract,
     }, { startSummary: 'Started the single permitted creative revision.' });
+    creativeQuality = assessAgentStudioCreative(creative, { brandBrain });
     evaluation = await runSpecialist('critic', {
       objective: input.objective,
       selectedTrend,
@@ -279,8 +291,11 @@ async function orchestrateAgentStudio({
       brandBrain,
       brandStrategy,
       creative,
+      creativeQualityGate: creativeQuality,
       revisionNumber: 1,
+      revisionContract,
     });
+    evaluation = enforceAgentStudioFinalEvaluation(evaluation, creativeQuality, revisionContract);
   }
 
   if (evaluation.decision !== 'accept') {
@@ -304,6 +319,7 @@ async function orchestrateAgentStudio({
     objective: input.objective,
     selectedTrend,
     evidence,
+    brandBrain,
     brandStrategy,
     creative,
     evaluation,
@@ -373,6 +389,7 @@ async function orchestrateAgentStudioHybrid({
     brandStrategy: finalPackage.brandStrategy,
     selectedCandidates,
   });
+  let creativeQuality = assessAgentStudioCreative(creative, { brandBrain });
   let evaluation = await runSpecialist('critic', {
     objective: input.objective,
     selectedTrend: finalPackage.selectedTrend,
@@ -380,11 +397,14 @@ async function orchestrateAgentStudioHybrid({
     brandBrain,
     brandStrategy: finalPackage.brandStrategy,
     creative,
+    creativeQualityGate: creativeQuality,
     revisionNumber: 0,
     hybridSourceCandidateIds: selectedIds,
   });
+  evaluation = enforceAgentStudioEvaluation(evaluation, creativeQuality);
 
   if (evaluation.decision === 'revise') {
+    const revisionContract = createAgentStudioRevisionContract(evaluation);
     emit({
       agent: 'Critic',
       agentId: 'critic',
@@ -401,7 +421,9 @@ async function orchestrateAgentStudioHybrid({
       selectedCandidates,
       previousCreative: creative,
       revisionInstructions: evaluation.revisionInstructions,
+      revisionContract,
     }, { startSummary: 'Started the single permitted hybrid revision.' });
+    creativeQuality = assessAgentStudioCreative(creative, { brandBrain });
     evaluation = await runSpecialist('critic', {
       objective: input.objective,
       selectedTrend: finalPackage.selectedTrend,
@@ -409,9 +431,12 @@ async function orchestrateAgentStudioHybrid({
       brandBrain,
       brandStrategy: finalPackage.brandStrategy,
       creative,
+      creativeQualityGate: creativeQuality,
       revisionNumber: 1,
       hybridSourceCandidateIds: selectedIds,
+      revisionContract,
     });
+    evaluation = enforceAgentStudioFinalEvaluation(evaluation, creativeQuality, revisionContract);
   }
   if (evaluation.decision !== 'accept') {
     const error = new Error(evaluation.summary || 'The hybrid result did not pass the quality gate.');
@@ -434,6 +459,7 @@ async function orchestrateAgentStudioHybrid({
     objective: input.objective,
     selectedTrend: finalPackage.selectedTrend,
     evidence: finalPackage.evidence,
+    brandBrain,
     brandStrategy: finalPackage.brandStrategy,
     creative,
     evaluation,

@@ -24,7 +24,7 @@ const workspace = {
   },
 };
 
-function createMockAgentRunner({ revise = false, reject = false } = {}) {
+function createMockAgentRunner({ revise = false, reject = false, movingGoalposts = false } = {}) {
   const calls = [];
   let criticCalls = 0;
   const outputs = {
@@ -47,7 +47,18 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
           blockingIssues: ['The result cannot be grounded in the available evidence.'],
           summary: 'The result failed the evidence gate.',
         };
-        if (revise && criticCalls === 1) return fixture.reviseEvaluation;
+        if ((revise || movingGoalposts) && criticCalls === 1) return fixture.reviseEvaluation;
+        if (movingGoalposts) return {
+          ...fixture.acceptEvaluation,
+          decision: 'revise',
+          scores: {
+            ...fixture.acceptEvaluation.scores,
+            hookStrength: 70,
+          },
+          blockingIssues: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
+          revisionInstructions: ['heroReel.hook: Add a bolder visual device that was not requested before.'],
+          summary: 'The contracted issues are fixed, but the idea could be sharper.',
+        };
         return fixture.acceptEvaluation;
       }
       return outputs[request.agentId];
@@ -85,10 +96,33 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
     'content_planner',
     'jeryk_manager',
   ]);
-  assert.equal(findRunner.calls[4].input.revisionInstructions.length, 1);
+  assert.equal(findRunner.calls[4].input.revisionInstructions.length >= 3, true);
+  const findCriticCalls = findRunner.calls.filter((call) => call.agentId === 'critic');
+  assert.equal(findCriticCalls[1].input.revisionContract.instructions.length >= 3, true);
+  assert.deepEqual(findCriticCalls[1].input.revisionContract.scoreFields.sort(), ['creativeBoldness', 'grounding']);
   assert.equal(events.some((event) => event.agent === 'Critic' && event.status === 'revised'), true);
   assert.equal(events.at(-1).agent, 'Jeryk Manager');
   assert.equal(events.at(-1).status, 'completed');
+
+  const movingGoalpostsRunner = createMockAgentRunner({ movingGoalposts: true });
+  const movingGoalpostsResult = await orchestrateAgentStudio({
+    runId: 'run_moving_goalposts',
+    input: { mode: 'find_trend', objective: 'Drive morning visits' },
+    workspace,
+    signals: [{
+      id: fixture.selectedTrend.signalId,
+      title: fixture.selectedTrend.title,
+      sourceUrl: fixture.selectedTrend.sourceUrl,
+    }],
+    runAgent: movingGoalpostsRunner.runAgent,
+    analyzeVideo: async () => fixture.evidence,
+  });
+  assert.equal(movingGoalpostsResult.type, 'completed');
+  assert.equal(movingGoalpostsResult.finalPackage.evaluation.decision, 'accept');
+  assert.equal(
+    movingGoalpostsResult.finalPackage.evaluation.scores.hookStrength,
+    fixture.reviseEvaluation.scores.hookStrength,
+  );
 
   const adaptRunner = createMockAgentRunner();
   const adaptResult = await orchestrateAgentStudio({
@@ -110,6 +144,9 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
   assert.equal(adaptResult.type, 'completed');
   assert.equal(adaptRunner.calls.some((call) => call.agentId === 'trend_analyst'), false);
   assert.equal(adaptResult.finalPackage.selectedTrend.signalId, 'signal_coffee_reveal');
+  const adaptCriticCall = adaptRunner.calls.find((call) => call.agentId === 'critic');
+  assert.equal(adaptCriticCall.input.creativeQualityGate.ok, true);
+  assert.equal(adaptRunner.calls.find((call) => call.agentId === 'jeryk_manager').input.brandBrain.location, 'Kyiv, Ukraine');
 
   const hybridRunner = createMockAgentRunner({ revise: true });
   const hybridEvents = [];
@@ -204,6 +241,7 @@ function createMockAgentRunner({ revise = false, reject = false } = {}) {
   assert.equal(sdkCalls.find(([type]) => type === 'runner')[1].traceIncludeSensitiveData, false);
   assert.equal(sdkCalls.find(([type]) => type === 'run')[1].options.maxTurns, 7);
   assert.equal(sdkCalls.find(([type]) => type === 'run')[1].prompt.includes('<dzhero_data>'), true);
+  assert.equal(sdkCalls.find(([type]) => type === 'agent')[1].instructions.includes('DZHERO Agent Studio'), true);
 
   console.log('Agent Studio orchestrator checks passed.');
 })().catch((error) => {
