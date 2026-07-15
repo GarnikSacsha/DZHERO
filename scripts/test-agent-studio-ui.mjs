@@ -84,7 +84,7 @@ assert.match(pageSource, /\/agent-studio`/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/retry-source/);
 assert.doesNotMatch(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/source-file/);
 assert.match(pageSource, /copy\.chooseAnotherSource/);
-assert.match(pageSource, /\$\{baseUrl\}\/uploads/);
+assert.doesNotMatch(pageSource, /\$\{baseUrl\}\/uploads/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
 assert.match(pageSource, /shouldPollAgentStudioRun/);
