@@ -1,5 +1,6 @@
 const { tool } = require('@openai/agents');
 const { z } = require('zod');
+const crypto = require('node:crypto');
 const { EvidencePackageSchema } = require('./agentStudioSchemas.cjs');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -302,6 +303,9 @@ async function analyzeAgentStudioVideo({
   resolveSource,
   sleepImpl,
   uploadedFile: providedUpload = null,
+  onUsage = null,
+  phase = 'initial',
+  invocationId = '',
 }) {
   const publicSourceUrl = getPublicSourceUrl({ input, selectedTrend, signal });
   let resolvedSignal = signal || {};
@@ -379,6 +383,27 @@ async function analyzeAgentStudioVideo({
     ...(uploadedFile?.mimeType ? { mime_type: uploadedFile.mimeType } : {}),
   };
   let payload;
+  const callId = `${invocationId || 'agent-studio'}:gemini-video:${crypto.randomUUID()}`;
+  const startedAt = new Date().toISOString();
+  let usageReported = false;
+  const reportUsage = async (status, usage, responseModel = model) => {
+    if (usageReported || typeof onUsage !== 'function') return;
+    usageReported = true;
+    try {
+      await onUsage({
+        callId,
+        invocationId,
+        phase,
+        model: responseModel || model,
+        status,
+        usage: usage || null,
+        startedAt,
+        completedAt: new Date().toISOString(),
+      });
+    } catch {
+      // Evidence generation should not fail because telemetry persistence failed.
+    }
+  };
   try {
     const response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
       method: 'POST',
@@ -395,6 +420,7 @@ async function analyzeAgentStudioVideo({
       }),
     });
     payload = await response.json().catch(() => ({}));
+    await reportUsage(response.ok ? 'completed' : 'failed', payload?.usage, payload?.model);
     if (!response.ok) {
       return buildUnavailableEvidence({
         ...base,
@@ -402,6 +428,7 @@ async function analyzeAgentStudioVideo({
       });
     }
   } catch (error) {
+    await reportUsage('failed', null);
     return buildUnavailableEvidence({
       ...base,
       reason: error?.message || 'Gemini video analysis failed.',

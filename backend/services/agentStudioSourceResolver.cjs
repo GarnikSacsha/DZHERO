@@ -3,6 +3,7 @@ const {
   mapInstagramApifyItem,
   runApifyActor,
 } = require('./apifySignalProvider');
+const crypto = require('node:crypto');
 
 const INSTAGRAM_FALLBACK_ACTOR = 'apify/instagram-scraper';
 
@@ -26,10 +27,30 @@ async function resolveAgentStudioVideoSource({
   fetchSignals = fetchApifySignals,
   runActor = runApifyActor,
   mapInstagramItem = mapInstagramApifyItem,
+  onUsage = null,
+  phase = 'initial',
+  invocationId = '',
 } = {}) {
   const platform = detectAgentStudioSocialPlatform(sourceUrl);
   if (!token || !platform || typeof fetchSignals !== 'function') return null;
   const attempts = [];
+  const reportUsage = async ({ actor, status, usageTotalUsd }) => {
+    if (typeof onUsage !== 'function') return;
+    try {
+      await onUsage({
+        callId: `${invocationId || 'agent-studio'}:apify:${crypto.randomUUID()}`,
+        invocationId,
+        phase,
+        actor,
+        status,
+        usageTotalUsd,
+        startedAt: null,
+        completedAt: new Date().toISOString(),
+      });
+    } catch {
+      // Source resolution remains usable when telemetry persistence is unavailable.
+    }
+  };
 
   try {
     const signals = await fetchSignals({
@@ -42,6 +63,11 @@ async function resolveAgentStudioVideoSource({
       workspaceId,
       market,
     });
+    await reportUsage({
+      actor: platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper',
+      status: 'completed',
+      usageTotalUsd: signals?.actualCostUsd,
+    });
     const resolved = (Array.isArray(signals) ? signals : []).find((signal) => String(signal?.videoUrl || '').trim());
     if (resolved) {
       return {
@@ -52,6 +78,11 @@ async function resolveAgentStudioVideoSource({
     }
     attempts.push({ actor: 'platform-default', outcome: 'empty' });
   } catch (error) {
+    await reportUsage({
+      actor: platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper',
+      status: 'failed',
+      usageTotalUsd: error?.run?.usageTotalUsd,
+    });
     attempts.push({ actor: 'platform-default', outcome: 'failed', error: error?.message || 'unknown' });
   }
 
@@ -65,6 +96,11 @@ async function resolveAgentStudioVideoSource({
           resultsType: 'reels',
           resultsLimit: 1,
         },
+      });
+      await reportUsage({
+        actor: INSTAGRAM_FALLBACK_ACTOR,
+        status: 'completed',
+        usageTotalUsd: result?.actualCostUsd,
       });
       const resolved = (Array.isArray(result?.items) ? result.items : [])
         .map((item) => mapInstagramItem(item, {
@@ -82,6 +118,11 @@ async function resolveAgentStudioVideoSource({
       }
       attempts.push({ actor: INSTAGRAM_FALLBACK_ACTOR, outcome: 'empty' });
     } catch (error) {
+      await reportUsage({
+        actor: INSTAGRAM_FALLBACK_ACTOR,
+        status: 'failed',
+        usageTotalUsd: error?.run?.usageTotalUsd,
+      });
       attempts.push({ actor: INSTAGRAM_FALLBACK_ACTOR, outcome: 'failed', error: error?.message || 'unknown' });
     }
   }

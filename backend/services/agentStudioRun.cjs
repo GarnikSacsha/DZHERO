@@ -3,6 +3,10 @@ const {
   redactTraceSummary,
   toPublicTraceEntry,
 } = require('./agentStudioSchemas.cjs');
+const {
+  createAgentStudioUsageCollector,
+  toPublicAgentStudioUsageSummary,
+} = require('./agentStudioUsage.cjs');
 
 const TERMINAL_AGENT_STUDIO_STATUSES = new Set(['completed', 'failed', 'cancelled']);
 const ACTIVE_AGENT_STUDIO_STATUSES = new Set([
@@ -89,6 +93,7 @@ function createAgentStudioRun({
     criticRevisionCount: 0,
     approval: null,
     error: null,
+    usage: createAgentStudioUsageCollector().snapshot(),
     createdAt: now,
     updatedAt: now,
     completedAt: null,
@@ -420,6 +425,7 @@ function toPublicAgentStudioRun(run = {}) {
     criticRevisionCount: run.criticRevisionCount || 0,
     approval: run.approval ? sanitizePublicValue(run.approval) : null,
     error: run.error ? sanitizePublicValue(run.error) : null,
+    usageSummary: toPublicAgentStudioUsageSummary(run.usage),
     createdAt: run.createdAt,
     updatedAt: run.updatedAt,
     completedAt: run.completedAt || null,

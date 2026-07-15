@@ -173,7 +173,22 @@ module.exports = {
     if (!bytes || !bytes.length) throw new Error('test upload missing bytes');
     return { name: 'files/test-upload', uri: 'https://gemini.example/files/test-upload', mimeType, originalName: displayName };
   },
-  async analyzeVideo({ input, uploadedFile }) {
+  async analyzeVideo({ input, uploadedFile, onUsage, phase, invocationId }) {
+    if (typeof onUsage === 'function') {
+      await onUsage({
+        callId: invocationId + ':gemini-test',
+        invocationId,
+        phase,
+        model: 'gemini-3.5-flash',
+        status: 'completed',
+        usage: {
+          total_input_tokens: 200,
+          total_output_tokens: 20,
+          total_thought_tokens: 5,
+          total_tokens: 225,
+        },
+      });
+    }
     if (uploadedFile?.uri) {
       return {
         ...fixture.evidence,
@@ -346,6 +361,9 @@ try {
   assert.equal(completed.artifacts.contentPlan.days.length, 7);
   assert.equal(completed.trace.some((entry) => entry.agent === 'Critic' && entry.status === 'revised'), true);
   assert.equal(JSON.stringify(completed).includes('test-openai-key'), false);
+  assert.equal(completed.usageSummary.providerCalls.gemini, 1);
+  assert.equal(completed.usageSummary.totalTokens, 225);
+  assert.equal(Object.hasOwn(completed.usageSummary, 'calls'), false);
 
   const rejectCompactAlternative = await requestJson(baseUrl, `/api/workspaces/ws_1/agent-studio/runs/${create.body.run.id}/approve`, {
     method: 'POST',
@@ -463,6 +481,10 @@ try {
   const workspace = persisted.workspaces.find((item) => item.id === 'ws_1');
   assert.equal(workspace.contentPlanPosts.filter((post) => post.source === 'agent_studio').length, 7);
   assert.equal(persisted.agentStudioRuns.filter((run) => run.workspaceId === 'ws_1').length, 5);
+  const meteredRun = persisted.agentStudioRuns.find((run) => run.id === create.body.run.id);
+  assert.equal(meteredRun.usage.schemaVersion, 1);
+  assert.equal(meteredRun.usage.calls.some((call) => call.provider === 'gemini'), true);
+  assert.equal(JSON.stringify(completed).includes('invocationId'), false);
 
   console.log('Agent Studio API checks passed.');
 } catch (error) {
