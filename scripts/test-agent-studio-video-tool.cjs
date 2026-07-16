@@ -147,6 +147,67 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal(instagramBody.input[0].mime_type, 'video/mp4');
   assert.equal(instagramRequests.some(({ url, options }) => url.endsWith('/v1beta/files/source123') && options.method === 'DELETE'), true);
 
+  const apifyMediaUrl = 'https://api.apify.com/v2/key-value-stores/store/records/tiktok.mp4';
+  const tiktokRequests = [];
+  const tiktok = await analyzeAgentStudioVideo({
+    input: {
+      mode: 'adapt_reel',
+      objective: 'Adapt this TikTok',
+      sourceUrl: 'https://www.tiktok.com/@creator/video/123',
+    },
+    selectedTrend: {
+      title: 'TikTok source',
+      rationale: 'The user supplied a TikTok URL.',
+      sourceUrl: 'https://www.tiktok.com/@creator/video/123',
+    },
+    apiKey: 'test-key',
+    mediaApiToken: 'test-apify-token',
+    model: 'gemini-test',
+    resolveSource: async ({ sourceUrl }) => ({
+      sourceUrl,
+      videoUrl: apifyMediaUrl,
+      importedMetadata: { provider: 'apify', videoUrl: apifyMediaUrl },
+    }),
+    sleepImpl: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      tiktokRequests.push({ url, options });
+      if (url === apifyMediaUrl) {
+        assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
+        return response({}, {
+          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+          bytes: new Uint8Array([1, 2, 3, 4, 5]),
+        });
+      }
+      if (url.endsWith('/upload/v1beta/files')) {
+        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/tiktok-session' } });
+      }
+      if (url === 'https://upload.example.com/tiktok-session') {
+        return response({ file: { name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'PROCESSING' } });
+      }
+      if (url.endsWith('/v1beta/files/tiktok123') && options.method === 'DELETE') return response({});
+      if (url.endsWith('/v1beta/files/tiktok123')) {
+        return response({ name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'ACTIVE' });
+      }
+      if (url.endsWith('/v1beta/interactions')) {
+        return response({
+          output_text: JSON.stringify({
+            accessible: true,
+            summary: 'Gemini inspected the authenticated Apify TikTok video.',
+            transferableMechanic: 'fast problem reveal followed by a product demonstration',
+            observations: [{ sourceType: 'video_observation', text: 'The creator demonstrates a before-and-after workflow.', timestamp: '0:00-0:05', confidence: 0.94 }],
+            unknowns: [],
+          }),
+        });
+      }
+      throw new Error(`Unexpected TikTok test URL: ${url}`);
+    },
+  });
+  assert.equal(tiktok.availability, 'reliable');
+  const tiktokInteraction = tiktokRequests.find(({ url }) => url.endsWith('/v1beta/interactions'));
+  const tiktokBody = JSON.parse(tiktokInteraction.options.body);
+  assert.equal(tiktokBody.input[0].uri, 'https://gemini.example/files/tiktok123');
+  assert.equal(tiktokBody.input[0].mime_type, 'video/mp4');
+
   const uploadedRequests = [];
   const uploaded = await analyzeAgentStudioVideo({
     input: { mode: 'adapt_reel', objective: 'Adapt an uploaded video', uploadId: 'agent_upload_1' },
