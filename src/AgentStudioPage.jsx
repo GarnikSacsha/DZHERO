@@ -610,6 +610,12 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const resetRun = () => {
     pollGenerationRef.current += 1;
     setRun(null);
+    setForm((current) => ({
+      ...current,
+      sourceUrl: '',
+      signalId: '',
+      userNotes: '',
+    }));
     setError('');
     setSelectedCandidateId('');
     setApprovalResult(null);
@@ -656,7 +662,12 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
           <span>OpenAI Agents SDK</span>
           <span>Automatic URL resolver + Gemini evidence</span>
         </div>
-        {run && ['completed', 'failed', 'cancelled'].includes(run.status) && <button className="ghost" type="button" onClick={resetRun}><RefreshCw size={15} /><span data-i18n-content>{copy.newRun}</span></button>}
+        {run && ['awaiting_approval', 'completed', 'failed', 'cancelled'].includes(run.status) && (
+          <button className="ghost" type="button" onClick={resetRun}>
+            <RefreshCw size={15} />
+            <span data-i18n-content>{copy.newRun}</span>
+          </button>
+        )}
       </header>
 
       {!run ? (
