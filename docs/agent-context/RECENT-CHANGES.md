@@ -30,7 +30,7 @@ The current documentation pass updates README, license, judge package, ownership
 ## Preserve these decisions
 
 - Existing DZHERO and Build Week work must remain clearly separated.
-- “Find a trend for me” currently searches existing Signals, not the entire internet.
+- “Find from my Signals” currently searches existing Signals, not the entire internet.
 - Compact alternatives are not directly approvable.
 - Hybrid is a real OpenAI generation and Critic pass.
 - Human approval is required before Content Plan writes.

@@ -20,7 +20,7 @@ The `hackathon/openai-build-week` branch contains a working Agent Studio MVP.
 
 Agent Studio supports:
 
-- **Find a trend for me** from existing workspace Signals;
+- **Find from my Signals** from existing workspace Signals;
 - **Adapt a Reel** from a saved signal or supported public URL;
 - OpenAI specialist orchestration;
 - Gemini video evidence;

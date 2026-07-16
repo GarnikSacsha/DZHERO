@@ -19,7 +19,7 @@ The extension is additive and feature-flagged. It does not replace the existing 
 
 The owner starts in one of two modes:
 
-- **Find a trend for me (from Signals)** — Trend Analyst chooses the best existing signal in the current workspace for the stated business objective. In the current MVP this mode does not claim to search the whole internet in real time.
+- **Find from my Signals** — Trend Analyst chooses the best existing signal in the current workspace for the stated business objective. In the current MVP this mode does not claim to search the whole internet in real time.
 - **Adapt a Reel** — the owner selects an existing DZHERO signal or pastes a public YouTube, Instagram, TikTok, or other supported video URL.
 
 Both modes enter the same bounded workflow:
@@ -270,6 +270,14 @@ node scripts/test-agent-studio-api.mjs
 ```
 
 The API test starts a temporary local backend with deterministic stub providers and spends no external API credits.
+
+With the local frontend and backend running, the reusable Playwright UI/UX audit clicks through every primary page at desktop, laptop, and mobile widths:
+
+```bash
+npm run audit:ui -- --theme light --output ./ui-audit-artifacts
+```
+
+Add `--viewport mobile`, `--theme dark`, or `--resume <run-id>` for focused visual regression checks. `--live` performs the real Agent Studio Hybrid and approval flow and can consume provider credits.
 
 The following smoke check makes a bounded live OpenAI call and consumes API credits:
 

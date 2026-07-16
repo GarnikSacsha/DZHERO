@@ -19,7 +19,7 @@ Open **Agent Studio · Beta** from the existing DZHERO sidebar.
 
 ### 0:18–0:35 — Two entry modes
 
-Point to **Find a trend for me** and **Adapt a Reel**.
+Point to **Find from my Signals** and **Adapt a Reel**.
 
 **Say:** “The first mode chooses a relevant item from the workspace’s existing Signals. The second adapts a specific saved signal or public video URL. The current MVP is honest about this boundary: it does not pretend to scan the entire internet in real time.”
 

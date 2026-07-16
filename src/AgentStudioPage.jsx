@@ -63,8 +63,11 @@ function AgentStageRail({ run, copy }) {
 }
 
 function AgentTrace({ trace, copy }) {
+  const [expanded, setExpanded] = useState(false);
   if (!trace?.length) return null;
   const visibleTrace = getAgentStudioTraceEntries(trace);
+  const newestFirst = [...visibleTrace].reverse();
+  const displayedTrace = expanded ? newestFirst : newestFirst.slice(0, 6);
   return (
     <section className="agent-studio-trace agent-studio-panel">
       <div className="agent-studio-section-head">
@@ -72,10 +75,17 @@ function AgentTrace({ trace, copy }) {
           <small>TRANSPARENT ORCHESTRATION</small>
           <h3 data-i18n-content>{copy.trace}</h3>
         </div>
-        <span>{visibleTrace.length}</span>
+        <div className="agent-studio-trace-actions">
+          <span>{visibleTrace.length}</span>
+          {visibleTrace.length > 6 && (
+            <button type="button" onClick={() => setExpanded((current) => !current)}>
+              <span data-i18n-content>{expanded ? copy.traceShowLess : copy.traceShowAll}</span>
+            </button>
+          )}
+        </div>
       </div>
       <div className="agent-studio-trace-list">
-        {[...visibleTrace].reverse().map((entry) => (
+        {displayedTrace.map((entry) => (
           <article key={entry.id}>
             <span className={`agent-studio-trace-dot ${entry.status}`} />
             <div>
@@ -116,6 +126,105 @@ function EvidencePanel({ evidence, copy }) {
             <p data-i18n-content>{item.text}</p>
           </article>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function normalizeQualityScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.round(numeric <= 10 ? numeric * 10 : numeric);
+}
+
+function formatUsdMicrousd(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const usd = numeric / 1_000_000;
+  return usd < 0.01 ? `$${usd.toFixed(4)}` : `$${usd.toFixed(2)}`;
+}
+
+function QualityPanel({ evaluation, copy }) {
+  if (!evaluation?.scores) return null;
+  const scores = Object.entries(evaluation.scores)
+    .map(([key, value]) => [key, normalizeQualityScore(value)])
+    .filter(([, value]) => value !== null);
+  if (!scores.length) return null;
+  const average = Math.round(scores.reduce((sum, [, value]) => sum + value, 0) / scores.length);
+  const passed = evaluation.decision === 'accept';
+  return (
+    <section className="agent-studio-panel agent-studio-quality">
+      <div className="agent-studio-section-head">
+        <div>
+          <small>INDEPENDENT CRITIC</small>
+          <h3 data-i18n-content>{copy.quality}</h3>
+        </div>
+        <span className={passed ? 'passed' : 'review'}>{passed ? copy.qualityPassed : copy.qualityReview}</span>
+      </div>
+      <div className="agent-studio-quality-summary">
+        <strong>{average}</strong>
+        <div>
+          <small data-i18n-content>{copy.qualitySummary}</small>
+          <p data-i18n-content>{evaluation.summary}</p>
+        </div>
+      </div>
+      <div className="agent-studio-score-grid">
+        {scores.map(([key, value]) => (
+          <div key={key}>
+            <span data-i18n-content>{copy.qualityLabels?.[key] || key.replaceAll(/([A-Z])/g, ' $1')}</span>
+            <strong>{value}</strong>
+            <i><b style={{ width: `${Math.max(0, Math.min(100, value))}%` }} /></i>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function UsagePanel({ usage, copy }) {
+  const totals = usage?.totals;
+  if (!totals) return null;
+  const providers = Object.entries(totals.providerCalls || {}).filter(([, count]) => Number(count) > 0);
+  const estimated = formatUsdMicrousd(totals.estimatedCostMicrousd);
+  const reported = formatUsdMicrousd(totals.providerReportedCostMicrousd);
+  return (
+    <section className="agent-studio-panel agent-studio-usage">
+      <div className="agent-studio-section-head">
+        <div>
+          <small>RUN TELEMETRY</small>
+          <h3 data-i18n-content>{copy.usage}</h3>
+        </div>
+        <span>{totals.completeness || 'partial'}</span>
+      </div>
+      <div className="agent-studio-usage-grid">
+        {providers.map(([provider, count]) => (
+          <article key={provider}>
+            <small>{provider}</small>
+            <strong>{count}</strong>
+            <span data-i18n-content>{copy.usageCalls}</span>
+          </article>
+        ))}
+        {Number(totals.totalTokens) > 0 && (
+          <article>
+            <small>MODEL</small>
+            <strong>{Number(totals.totalTokens).toLocaleString()}</strong>
+            <span data-i18n-content>{copy.usageTokens}</span>
+          </article>
+        )}
+        {estimated && (
+          <article>
+            <small data-i18n-content>{copy.usageEstimated}</small>
+            <strong>{estimated}</strong>
+            <span>USD</span>
+          </article>
+        )}
+        {reported && (
+          <article>
+            <small data-i18n-content>{copy.usageReported}</small>
+            <strong>{reported}</strong>
+            <span>USD</span>
+          </article>
+        )}
       </div>
     </section>
   );
@@ -173,6 +282,7 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
       </section>
 
       <EvidencePanel evidence={artifacts.evidence} copy={copy} />
+      <QualityPanel evaluation={artifacts.evaluation} copy={copy} />
 
       <section className="agent-studio-panel">
         <div className="agent-studio-section-head">
@@ -258,6 +368,8 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
         </div>
       </section>
 
+      <UsagePanel usage={run.usage} copy={copy} />
+
       {isApproved ? (
         <div className="agent-studio-approval-success" role="status">
           <CircleCheck size={24} />
@@ -320,10 +432,15 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const pollGenerationRef = useRef(0);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
+  const runStorageKey = `dzhero-agent-studio-run:${workspaceId}`;
   const selectedSignal = useMemo(
     () => signals.find((signal) => signal.id === form.signalId),
     [signals, form.signalId],
   );
+  const hasObjective = form.objective.trim().length >= 3;
+  const hasAdaptSource = Boolean(form.signalId || form.sourceUrl.trim());
+  const hasFindSource = signals.length > 0;
+  const canStart = hasObjective && (form.mode === 'adapt_reel' ? hasAdaptSource : hasFindSource);
 
   const loadConfig = async () => {
     setConfigError('');
@@ -341,6 +458,18 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setApprovalResult(null);
     setError('');
     void loadConfig();
+    const storedRunId = globalThis.localStorage?.getItem(runStorageKey);
+    if (storedRunId) {
+      const restoreRun = async () => {
+        try {
+          const payload = await readResponse(await fetcher(`${baseUrl}/runs/${encodeURIComponent(storedRunId)}`));
+          setRun(payload.run);
+        } catch {
+          globalThis.localStorage?.removeItem(runStorageKey);
+        }
+      };
+      void restoreRun();
+    }
   }, [workspaceId, language]);
 
   useEffect(() => {
@@ -397,6 +526,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
         body: JSON.stringify(payload),
       }));
       setRun(result.run);
+      globalThis.localStorage?.setItem(runStorageKey, result.run.id);
       setSelectedCandidateId('');
       setApprovalResult(null);
       notify?.(language === 'en' ? 'Jeryk started the specialist agent team.' : 'Джерик запустив команду агентів.');
@@ -485,6 +615,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setApprovalResult(null);
     setIsHybridizing(false);
     setIsRetryingSource(false);
+    globalThis.localStorage?.removeItem(runStorageKey);
   };
 
   if (configError && !config) {
@@ -576,8 +707,11 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
             </div>
           )}
 
+          {form.mode === 'find_trend' && signals.length === 0 && (
+            <div className="agent-studio-inline-note" role="note" data-i18n-content>{copy.noSignalsAvailable}</div>
+          )}
           {error && <div className="agent-studio-error" role="alert" data-i18n-content>{error}</div>}
-          <button className="agent-studio-run-button" type="submit" disabled={isSubmitting}>
+          <button className="agent-studio-run-button" type="submit" disabled={isSubmitting || !canStart}>
             {isSubmitting ? <LoaderCircle className="spin" size={18} /> : <Play size={18} />}
             <span data-i18n-content>{isSubmitting ? copy.running : copy.run}</span>
           </button>
