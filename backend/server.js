@@ -4925,17 +4925,21 @@ app.post('/api/auth/login', async (req, res) => {
   res.json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
-app.post('/api/auth/demo', async (req, res) => {
-  if (!ALLOW_DEMO_LOGIN) {
-    res.status(403).json({ error: 'demo_login_disabled' });
-    return;
-  }
-  const db = await readDb();
-  const agentStudioExperience = ENABLE_AGENT_STUDIO && req.body?.experience === 'agent_studio';
-  const demoEmail = agentStudioExperience ? 'agent-studio-demo@dzhero.app' : 'demo@dzhero.app';
-  const demoWorkspaceId = agentStudioExperience ? 'ws_demo_agent_studio_coffee' : 'ws_demo_ua';
-  if (agentStudioExperience) {
-    const coffeeWorkspace = {
+app.post('/api/auth/demo', async (req, res, next) => {
+  let stage = 'validate';
+  try {
+    if (!ALLOW_DEMO_LOGIN) {
+      res.status(403).json({ error: 'demo_login_disabled' });
+      return;
+    }
+    stage = 'read';
+    const db = await readDb();
+    const agentStudioExperience = ENABLE_AGENT_STUDIO && req.body?.experience === 'agent_studio';
+    const demoEmail = agentStudioExperience ? 'agent-studio-demo@dzhero.app' : 'demo@dzhero.app';
+    const demoWorkspaceId = agentStudioExperience ? 'ws_demo_agent_studio_coffee' : 'ws_demo_ua';
+    stage = 'seed';
+    if (agentStudioExperience) {
+      const coffeeWorkspace = {
       id: demoWorkspaceId,
       name: 'Reset Coffee Kyiv',
       owner: 'Coffee Demo User',
@@ -4954,38 +4958,51 @@ app.post('/api/auth/demo', async (req, res) => {
         constraints: ['Low-budget production', 'Shootable by one person', 'No unsupported best-in-city claims'],
       },
     };
-    const workspaceIndex = db.workspaces.findIndex((item) => item.id === demoWorkspaceId);
-    if (workspaceIndex >= 0) {
-      db.workspaces[workspaceIndex] = {
-        ...db.workspaces[workspaceIndex],
-        ...coffeeWorkspace,
-        createdAt: db.workspaces[workspaceIndex].createdAt || coffeeWorkspace.createdAt,
-      };
-    } else {
-      db.workspaces.unshift(coffeeWorkspace);
+      const workspaceIndex = db.workspaces.findIndex((item) => item.id === demoWorkspaceId);
+      if (workspaceIndex >= 0) {
+        db.workspaces[workspaceIndex] = {
+          ...db.workspaces[workspaceIndex],
+          ...coffeeWorkspace,
+          createdAt: db.workspaces[workspaceIndex].createdAt || coffeeWorkspace.createdAt,
+        };
+      } else {
+        db.workspaces.unshift(coffeeWorkspace);
+      }
     }
-  }
-  let user = db.users.find((item) => item.email === demoEmail);
-  if (!user) {
-    user = {
-      id: createId('usr'),
-      name: agentStudioExperience ? 'Coffee Demo User' : 'Demo User',
-      email: demoEmail,
-      role: 'owner',
-      workspaceId: demoWorkspaceId,
-      passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
-      createdAt: new Date().toISOString(),
+    let user = db.users.find((item) => item.email === demoEmail);
+    if (!user) {
+      user = {
+        id: createId('usr'),
+        name: agentStudioExperience ? 'Coffee Demo User' : 'Demo User',
+        email: demoEmail,
+        role: 'owner',
+        workspaceId: demoWorkspaceId,
+        passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
+        createdAt: new Date().toISOString(),
+      };
+      db.users.unshift(user);
+    } else if (agentStudioExperience) {
+      user.workspaceId = demoWorkspaceId;
+      user.name = 'Coffee Demo User';
+    }
+    stage = 'subscription';
+    ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
+    stage = 'session';
+    const session = createSession(db, user.id);
+    stage = 'write';
+    await writeDb(db);
+    stage = 'response';
+    setSessionCookie(res, session.token);
+    res.json({ ...buildAuthPayload(db, user), token: session.token });
+  } catch (error) {
+    error.status = Number(error.status || 500);
+    error.payload = {
+      error: 'demo_login_failed',
+      stage,
+      providerCode: String(error.code || '').slice(0, 40) || undefined,
     };
-    db.users.unshift(user);
-  } else if (agentStudioExperience) {
-    user.workspaceId = demoWorkspaceId;
-    user.name = 'Coffee Demo User';
+    next(error);
   }
-  ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
-  const session = createSession(db, user.id);
-  await writeDb(db);
-  setSessionCookie(res, session.token);
-  res.json({ ...buildAuthPayload(db, user), token: session.token });
 });
 
 app.get('/api/auth/me', async (req, res) => {
