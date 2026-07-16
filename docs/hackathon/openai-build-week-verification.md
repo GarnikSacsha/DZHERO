@@ -14,6 +14,7 @@ npm run build
 Last local result on **2026-07-16**:
 
 - `npm run test:agent-studio` — passed;
+- automatic discovery policy, regression, storage, UI-state, and API smoke tests — passed;
 - `npm run build` — passed;
 - Vite emitted a non-blocking chunk-size warning for the main application bundle.
 
@@ -85,7 +86,7 @@ Fill these fields immediately before submission:
 | Branch | `hackathon/openai-build-week` |
 | Final commit | pending |
 | Public repository/judge access | pending |
-| Deployed demo | pending |
+| Deployed demo | `https://openaibuildweek.up.railway.app` |
 | Demo account instructions | pending |
 | Public YouTube video | pending |
 | Codex `/feedback` Session ID | pending |

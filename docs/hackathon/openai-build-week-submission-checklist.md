@@ -18,6 +18,7 @@ This checklist separates repository readiness from actions that can only be comp
 - [x] Demo script, submission copy, judge guide, ownership statement, and verification record exist.
 - [x] Source-available evaluation license is included.
 - [x] No legal-name-to-GitHub-handle match is asserted or required by repository documentation.
+- [x] Signals includes a separately labelled, budget-bounded fresh-signal discovery flow.
 
 ## Final local verification
 
@@ -39,8 +40,9 @@ This checklist separates repository readiness from actions that can only be comp
 
 ## Demo and deployment
 
-- [ ] Deploy a judge-accessible frontend and backend.
-- [ ] Create and test a dedicated demo workspace/account.
+- [x] Deploy a judge-accessible frontend and backend.
+- [x] Create and test a dedicated demo workspace/account.
+- [ ] Deploy the final fresh-signal commit and enable the Railway background discovery worker.
 - [ ] Ensure the demo does not expose personal billing, private customer data, or API keys.
 - [ ] Record a public YouTube demo shorter than three minutes.
 - [ ] Include spoken or captioned explanation of Codex collaboration and GPT-5.6 runtime use.

@@ -3,8 +3,8 @@
 ## Required before Build Week submission
 
 - Repeat the English coffee-shop provider-backed judge flow.
-- Deploy a stable frontend and backend.
-- Create and test a judge demo workspace/account.
+- Deploy the fresh-signal discovery update and enable `AUTOMATIC_DISCOVERY_ENABLED=true` in Railway.
+- Re-test the public demo workspace after that deployment.
 - Make the repository public or grant the judge access requested by Devpost.
 - Record a public YouTube demo shorter than three minutes.
 - Run Codex `/feedback` and save the Session ID.
@@ -14,7 +14,6 @@
 
 - Restore the latest persisted Agent Studio run automatically after a full page refresh.
 - Move active work to a durable background queue.
-- Add a separately labelled fresh-signal discovery pass; do not overload the current Signals selector.
 - Add team approvals and version comparison.
 - Feed measured content performance into future signal selection.
 - Use accumulated per-agent telemetry to evaluate model routing.
@@ -33,3 +32,10 @@
 - JSON storage is acceptable for the MVP but not the final multi-instance deployment architecture.
 - Keep Ukrainian and English copy complete and unmixed.
 - The production build currently reports a non-blocking main-bundle size warning; consider route-level code splitting after submission unless load performance becomes a judge-demo problem.
+
+## Completed on 2026-07-16
+
+- Deployed frontend/backend with Postgres-backed state and a public Railway domain.
+- Added a separately labelled **Find fresh signals** action inside Signals.
+- Balanced manual and scheduled discovery across accounts, keywords, hashtags, trends, Instagram, and TikTok.
+- Capped discovery planning and winner downloads so a run stays inside the configured daily budget.

@@ -3674,8 +3674,8 @@ function ViralBank({
               <span className="signals-automation-toggle-thumb" />
             </span>
             <span className="signals-automation-toggle-copy">
-              <strong>Автопошук сигналів</strong>
-              <small>До 10 нових сигналів щодня зі збережених джерел, акаунтів і тем.</small>
+              <strong>{t('signals.discovery.title')}</strong>
+              <small>{t('signals.discovery.description')}</small>
             </span>
           </button>
           <div className="signals-automation-summary">
