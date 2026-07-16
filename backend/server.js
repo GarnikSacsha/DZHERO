@@ -477,32 +477,37 @@ function getPgPool() {
 }
 
 function normalizeDbShape(db = {}) {
-  db.users ||= [];
-  db.sessions ||= [];
-  db.workspaces ||= [];
-  db.competitors ||= [];
-  db.reels ||= [];
-  db.ideas ||= [];
-  db.leads ||= [];
-  db.syncJobs ||= [];
-  db.discoveryRuns ||= [];
-  db.sources ||= [];
-  db.metaStates ||= [];
-  db.instagramAccounts ||= [];
-  db.tiktokAccounts ||= [];
-  db.aiMemory ||= [];
-  db.aiJobs ||= [];
-  db.remixes ||= [];
-  db.contentPlanItems ||= [];
-  db.videoJobs ||= [];
-  db.dataDeletionRequests ||= [];
-  db.plans ||= PLAN_CATALOG;
-  db.subscriptions ||= [];
-  db.usageCounters ||= [];
-  db.testerAccessGrants ||= [];
-  db.demoSessions ||= [];
-  db.agentStudioRuns ||= [];
-  db.agentStudioUploads ||= [];
+  const collectionKeys = [
+    'users',
+    'sessions',
+    'workspaces',
+    'competitors',
+    'reels',
+    'ideas',
+    'leads',
+    'syncJobs',
+    'discoveryRuns',
+    'sources',
+    'metaStates',
+    'instagramAccounts',
+    'tiktokAccounts',
+    'aiMemory',
+    'aiJobs',
+    'remixes',
+    'contentPlanItems',
+    'videoJobs',
+    'dataDeletionRequests',
+    'subscriptions',
+    'usageCounters',
+    'testerAccessGrants',
+    'demoSessions',
+    'agentStudioRuns',
+    'agentStudioUploads',
+  ];
+  for (const key of collectionKeys) {
+    if (!Array.isArray(db[key])) db[key] = [];
+  }
+  if (!Array.isArray(db.plans) || !db.plans.length) db.plans = PLAN_CATALOG;
   return db;
 }
 
