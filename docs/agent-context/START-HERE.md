@@ -18,11 +18,18 @@ Main workspace:
 C:\Users\Денис\Desktop\Всякое вайбкодинг\insta-producer-redesign-work
 ```
 
-Branch is normally `main`. The user usually wants practical fixes, commits, and pushes when a production-ready change is done.
+The current hackathon worktree is:
+
+```text
+C:\Users\Денис\Desktop\Всякое вайбкодинг\insta-producer-redesign-work\.worktrees\openai-build-week
+```
+
+Current branch: `hackathon/openai-build-week`.
 
 ## Ground rules for this repo
 
 - Do not commit `backend/data/db.json` unless the user explicitly asks. It often contains local runtime/demo data.
+- For Build Week submission context, read `docs/hackathon/README.md`.
 - Prefer small focused fixes over large rewrites. The app is still a compact MVP/prototype with a large `src/main.jsx`.
 - Keep UI copy clean in Ukrainian and English. The user is very sensitive to mixed-language screens.
 - After behavior changes, run the smallest relevant checks, then `npm.cmd run build` when feasible.
@@ -32,6 +39,7 @@ Branch is normally `main`. The user usually wants practical fixes, commits, and 
 
 ```powershell
 npm.cmd run build
+npm.cmd run test:agent-studio
 node scripts/test-source-context.js
 node scripts/test-usage-limits.js
 node scripts/test-youtube-popular-fallback.js

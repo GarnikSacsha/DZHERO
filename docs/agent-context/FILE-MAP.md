@@ -10,7 +10,8 @@
 
 ## Existing root docs
 
-- `README.md` - legacy overview and commands. Some text may be mojibake.
+- `README.md` - current product, Agent Studio architecture, setup, API, verification, and limitations.
+- `LICENSE` - source-available evaluation and judging terms.
 - `CONTEXT.md` - product context.
 - `REQ.md` - functional and non-functional requirements.
 - `STATUS.md` - status snapshot.
@@ -24,9 +25,21 @@
 - `docs/BACKEND_ROADMAP.md` - backend milestones and module plan.
 - `docs/POSTGRES_STORAGE.md` - Postgres storage notes.
 
+## Build Week package
+
+- `docs/hackathon/README.md` - judge package index.
+- `docs/hackathon/openai-build-week-judge-guide.md` - evaluation and local runbook.
+- `docs/hackathon/openai-build-week-demo-script.md` - sub-three-minute demo.
+- `docs/hackathon/openai-build-week-submission.md` - Devpost copy.
+- `docs/hackathon/openai-build-week-verification.md` - measured evidence and final fields.
+- `docs/hackathon/openai-build-week-ownership.md` - entrant and rights statement.
+- `docs/hackathon/openai-build-week-submission-checklist.md` - final operations.
+
 ## Important frontend files
 
 - `src/main.jsx` - main app UI and most screen logic.
+- `src/AgentStudioPage.jsx` - Agent Studio UI and API integration.
+- `src/agentStudioUi.mjs` - pure Agent Studio UI-state helpers.
 - `src/styles.css` - app styling.
 - `src/sourceContext.cjs` - source context cleanup and adaptation input handling.
 - `src/data/uaMarket.js` - local/demo market data.
@@ -39,6 +52,7 @@
 - `backend/services/scoringEngine.js` - signal scoring.
 - `backend/services/usageLimits.cjs` - plan and usage limit checks.
 - `backend/services/youtubePopularFallback.cjs` - YouTube category fallback logic.
+- `backend/services/agentStudio*.cjs` - Agent Studio contracts, orchestration, video/source tools, quality, and usage.
 - `backend/data/db.json` - local runtime DB. Do not commit casually.
 
 ## Tests and checks
@@ -55,5 +69,6 @@ node scripts/test-source-context.js
 node scripts/test-usage-limits.js
 node scripts/test-youtube-popular-fallback.js
 npm.cmd run build
+npm.cmd run test:agent-studio
 ```
 

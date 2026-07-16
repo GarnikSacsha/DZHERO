@@ -1,31 +1,35 @@
 # Open Issues
 
-## High priority
+## Required before Build Week submission
 
-- YouTube Shorts captions are often unavailable. Keep improving Gemini video analysis and fallback context quality.
-- Validate that Gemini is truly receiving and analyzing video input, not only title/thumbnail metadata.
-- Keep AI adaptation from feeling instant/fake. The frontend should show real loading tied to backend generation.
-- Fix any remaining mixed-language UI in both Ukrainian and English modes.
-- Avoid broken YouTube iframe previews. If embedding is blocked, show thumbnail and original-link action.
+- Repeat the English coffee-shop provider-backed judge flow.
+- Deploy a stable frontend and backend.
+- Create and test a judge demo workspace/account.
+- Make the repository public or grant the judge access requested by Devpost.
+- Record a public YouTube demo shorter than three minutes.
+- Run Codex `/feedback` and save the Session ID.
+- Complete and submit the Devpost entry before the deadline.
 
-## Product quality
+## Product improvements after the MVP
 
-- Studio should produce specific localized scripts, not generic "problem -> solution -> CTA" filler.
-- If context is weak, ask for short user notes and regenerate.
-- User-facing copy should be short and product-like, not internal debug text.
-- Existing docs/README have some mojibake. New docs in `docs/agent-context` should be treated as the clean source for future agents.
+- Restore the latest persisted Agent Studio run automatically after a full page refresh.
+- Move active work to a durable background queue.
+- Add a separately labelled fresh-signal discovery pass; do not overload the current Signals selector.
+- Add team approvals and version comparison.
+- Feed measured content performance into future signal selection.
+- Use accumulated per-agent telemetry to evaluate model routing.
 
-## Technical debt
+## Provider and evidence risks
 
-- `src/main.jsx` is very large. Refactor only when it helps a concrete task.
-- Backend routes are still concentrated in `backend/server.js`.
-- JSON DB is acceptable for MVP but not final production storage.
-- Re-check Postgres/RLS/security policy story if Supabase or user-owned database access is introduced.
+- Public YouTube, Instagram, and TikTok media can become unavailable or blocked.
+- Continue distinguishing observed video evidence from metadata and user notes.
+- Keep source errors classified and user-facing.
+- Do not reintroduce manual upload as the primary judge flow without intentional UX work.
 
-## Deployment/checklist risks
+## Repository hygiene
 
-- Confirm required env vars are present before testing AI/YouTube flows.
-- Confirm no secrets are exposed in frontend env or build output.
-- Confirm `backend/data/db.json` is not accidentally committed.
-- Run relevant script tests plus `npm.cmd run build` before production pushes when time allows.
-
+- `backend/data/db.json` is local runtime state and must not be committed accidentally.
+- `src/main.jsx` and `backend/server.js` remain large; refactor only for a concrete need.
+- JSON storage is acceptable for the MVP but not the final multi-instance deployment architecture.
+- Keep Ukrainian and English copy complete and unmixed.
+- The production build currently reports a non-blocking main-bundle size warning; consider route-level code splitting after submission unless load performance becomes a judge-demo problem.

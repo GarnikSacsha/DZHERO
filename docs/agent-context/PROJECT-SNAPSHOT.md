@@ -2,135 +2,106 @@
 
 ## Product
 
-Dzhero is an AI producer/workspace for short-form content research and adaptation. The core job is to find market signals from short videos, websites, and competitor mechanics, then turn them into scripts and content plans for Ukrainian businesses.
+DZHERO is an AI producer and workspace for short-form content research, adaptation, and planning. It helps Ukrainian businesses and content teams turn real market signals into brand-specific scripts and actionable content plans.
 
-Primary users:
+Core product surfaces:
 
-- Local businesses, ecommerce, cafes, salons, creators, experts, SMMs, producers.
-- People who need repeatable content mechanics, not just a blank AI chat.
+- Signals;
+- Gemini Studio;
+- Agent Studio Beta;
+- Brand Brain;
+- Content Plan;
+- Jeryk assistant;
+- Settings, sources, billing, and auth.
 
-Current product surfaces:
+## Build Week status
 
-- Signals: one feed of imported/manual signals, source tabs, search/paste input, market/category filters, YouTube popular pulls.
-- Studio: opens a signal, extracts the mechanic, adapts it into a Ukrainian-brand script, and can add it to the content plan.
-- Content plan: calendar and production queue.
-- Brand Brain: saved brand context and insights.
-- Settings / billing / sources: account, plan, connected sources.
-- Assistant / Jeryk: helper entry point.
+The `hackathon/openai-build-week` branch contains a working Agent Studio MVP.
+
+Agent Studio supports:
+
+- **Find a trend for me** from existing workspace Signals;
+- **Adapt a Reel** from a saved signal or supported public URL;
+- OpenAI specialist orchestration;
+- Gemini video evidence;
+- one full hero, two compact directions, and optional Hybrid;
+- Critic quality gate with one bounded revision;
+- seven-day planning;
+- human approval into Content Plan;
+- safe agent trace and provider usage telemetry.
+
+A real provider-backed coffee-shop run completed Hybrid, approval, and seven Content Plan writes. See `docs/hackathon/openai-build-week-verification.md`.
 
 ## Stack
 
 - Frontend: React 19, Vite 8, lucide-react, custom CSS.
-- Backend: Express 5, helmet, cors, express-rate-limit.
-- Storage: local JSON DB for MVP, optional Postgres via `pg`.
-- AI/video: Gemini API for video understanding and remix generation.
+- Backend: Node.js, Express 5, helmet, cors, express-rate-limit.
+- Agent runtime: OpenAI Agents SDK, GPT-5.6, Zod structured contracts.
+- Video evidence: Gemini.
+- Social source resolution: Apify-backed services where required.
+- Storage: local JSON DB for MVP, optional Postgres.
 
 ## Commands
 
+Install and verify:
+
 ```powershell
 npm install
-npm.cmd run dev -- --port 5173
-npm.cmd run dev:backend
-npm.cmd run build
+npm run test:agent-studio
+npm run build
 ```
 
-Local URLs:
+Standard development profile:
 
 ```text
 Frontend: http://127.0.0.1:5173/
-Backend:  http://127.0.0.1:3000
-Health:   http://127.0.0.1:3000/api/health
+Backend:  http://127.0.0.1:3000/
 ```
 
-## Backend notes
+Isolated Build Week profile:
 
-Important route families:
+```dotenv
+VITE_API_URL=http://127.0.0.1:3100/api
+PORT=3100
+CLIENT_URL=http://127.0.0.1:5180
+```
 
-- `/api/auth/*` for local auth, demo auth, OAuth callbacks, logout, current user.
-- `/api/workspaces/*` for workspace state, signals, remix generation, sources, usage.
-- `/api/legal/*` / static legal pages for terms, privacy, and data deletion support.
-- YouTube popular/import logic lives in backend services and server routes.
-
-Important backend behaviors:
-
-- Session is cookie-based (`HttpOnly`, `SameSite`) where configured.
-- Rate limits protect auth and expensive/AI routes.
-- CORS is restricted by configured allowed origins.
-- Security headers use `helmet`.
-- Write requests are checked against trusted origins/referers where applicable.
-
-## AI and YouTube state
-
-YouTube captions are unreliable. The current direction is:
-
-- Do not depend on captions as the only source.
-- Use Gemini video understanding when possible.
-- Fall back to title, description, thumbnail/metadata, and user notes.
-- Keep the UI honest when the app needs manual context.
-
-Gemini video understanding currently uses the Interactions API shape:
+```powershell
+npm run dev:backend
+npm run dev:build-week
+```
 
 ```text
-POST /v1beta/interactions
-header: x-goog-api-key
-input:
-  - { type: "video", uri: videoUrl }
-  - { type: "text", text: prompt }
+Frontend: http://127.0.0.1:5180/
+Backend:  http://127.0.0.1:3100/
 ```
 
-Expected analysis fields include:
+## Architecture rules
 
-- `videoSummary`
-- `spokenText`
-- `onScreenText`
-- `hook`
-- `twist`
-- `sceneBeats`
-- `contentMechanic`
-- `ukrainianAdaptation`
-- `shotList`
-- `ctaIdeas`
-- `guardrails`
+- Agent Studio remains additive and feature-flagged.
+- OpenAI agents own reasoning and production; Gemini owns video observation.
+- The backend owns state, schemas, retries, limits, persistence, errors, telemetry, and writes.
+- Compact alternatives are Hybrid inputs, not directly approvable scripts.
+- Only a full hero or Hybrid can write exactly seven Content Plan items.
+- Missing evidence must pause or fail honestly.
+- Raw prompts, hidden reasoning, secrets, and provider payloads never enter the public trace.
 
-## TikTok developer context
+## Current limitations
 
-TikTok Developer review previously rejected changes and asked to update:
+- Polling rather than server-sent events.
+- No automatic latest-run restoration after a full refresh.
+- No durable distributed queue.
+- Public social media can block retrieval.
+- No autonomous publishing.
 
-- App name
-- Redirect domain
-- Terms of Service
-- Privacy Policy
-- Website URL
+## Submission package
 
-Current intended setup:
+Start at `docs/hackathon/README.md`. Deployment, demo account, public video, repository access, `/feedback`, and Devpost submission remain final-stage operations.
 
-- App name: `Dzhero`
-- Website: `https://dzhero.com.ua`
-- Terms: `https://dzhero.com.ua/terms/`
-- Privacy: `https://dzhero.com.ua/privacy/`
-- Login Kit redirect: `https://dzhero.com.ua/api/auth/tiktok/callback`
-- Login Kit scopes: `user.info.basic`, `user.info.profile`, `user.info.stats`
+## Security
 
-Demo video for review is a screen recording of the product flow, not a marketing video.
-
-## Security state
-
-Already addressed in earlier passes:
-
-- Terms/privacy/data deletion support.
-- Security headers via helmet.
-- CORS limited to known domains/config.
-- Rate limits for auth and expensive routes.
-- Cookie session hardening.
-- Backend-side validation for important API flows.
-- More neutral user-facing errors in several places.
-- Plan/usage limits for paid/expensive operations.
-- Avoid exposing server secrets to frontend.
-
-Still verify before major production pushes:
-
-- No secret values in frontend bundles.
-- No sensitive data returned from broad API responses.
-- No raw internal exceptions in UI toasts.
-- RLS/Postgres policy status if Supabase or managed Postgres auth is introduced.
-
+- Never commit `.env` or secret values.
+- Keep provider keys server-side.
+- Do not stage `backend/data/db.json`; it contains local runtime state.
+- Keep Agent Studio routes authenticated and workspace-scoped.
+- Verify the production bundle and public API responses before deployment.

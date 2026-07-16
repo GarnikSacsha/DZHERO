@@ -1,60 +1,45 @@
 # Working Memory
 
-This captures recent conversation context so the user does not need to re-explain the product in every new chat.
+## Current user assessment
 
-## Recent user priorities
+The user considers the core Agent Studio MVP strong: adaptation quality, shot-by-shot production, Hybrid generation, and the seven-day package are all working well. The immediate priority is repository/documentation readiness before deployment.
 
-- Make TikTok Developer app review pass with correct app name, redirect URL, website, terms, and privacy.
-- Make YouTube API / Shorts import useful enough for production.
-- Avoid fake-feeling adaptation. If AI is adapting, it should visibly do real work and produce a strong localized script.
-- Keep Ukrainian and English UI clean. No Ukrainian strings in English mode and no English helper/debug copy in Ukrainian mode.
-- Make previews/playback honest. YouTube Shorts embeds can be blocked, so do not show a broken iframe as if it is the product's fault.
-- Keep pushing production-ready commits when requested.
+## Current priorities
 
-## Key product decisions
+1. Keep the repository understandable to judges and future maintainers.
+2. Document exactly what existed before Build Week and what was added.
+3. Keep the demo honest about source acquisition and provider fallbacks.
+4. Finish deployment, judge account, public video, `/feedback`, and Devpost only after the repo package is stable.
 
-- Dzhero is not a generic dashboard. It should feel like an AI producer that finds mechanics and rewrites them for a brand.
-- Signals are the raw feed; Studio is where a signal becomes an adapted script.
-- Popular YouTube pulls are allowed, but they must respect plan limits unless the plan is unlimited.
-- When YouTube does not provide captions, Dzhero should use Gemini video analysis or ask for 1-2 notes from the user instead of pretending it has a transcript.
-- For the preview modal, prefer thumbnail + original link over a broken embedded player.
+## Product decisions
 
-## Recent fixes worth preserving
+- DZHERO is an AI producer, not a generic dashboard or blank chat.
+- Agent Studio is an additive beta inside the existing workspace.
+- “Find a trend for me” selects from existing workspace Signals in the MVP.
+- “Adapt a Reel” is the primary complete judge story.
+- Gemini is the video-evidence specialist; OpenAI agents reason, produce, critique, plan, and manage.
+- The first two seconds, concrete scenes, and production notes are mandatory quality elements.
+- Two compact alternatives become useful through Hybrid; they are not fake full scripts.
+- Only a full hero or Hybrid can be approved.
+- Approval must write exactly seven distinct content items once.
+- Provider usage should be visible but private payloads must remain hidden.
 
-- Logout now clears local app state and does not immediately re-add demo accounts/workspaces after logout.
-- YouTube popular category 404 fallback retries without category when YouTube says `Requested entity was not found`.
-- Unlimited plan should not be blocked by regular usage caps.
-- YouTube imported duration should come from metadata, not a hardcoded `52s`.
-- Studio regeneration calls the real backend AI remix route, not only a frontend fallback.
-- Source context filters mojibake and hashtag-heavy captions before using them for adaptation.
-- Studio/video helper copy was changed from technical/debug wording to user-facing Ukrainian copy.
+## Submission and ownership decisions
 
-## UI copy sensitivity
+- Entrant: Denis Efimenko.
+- GitHub usernames and no-reply emails are technical handles and need not match a legal name.
+- Use a direct ownership/authorization statement instead of speculative identity matching.
+- Keep the repository source-available for evaluation and judging; do not accidentally grant an MIT-style unrestricted license.
 
-The user has repeatedly flagged:
+## Verified reference run
 
-- Dark select dropdown option text needs readable black text on white dropdowns.
-- English mode must translate dynamic sections too, not just static nav.
-- Ukrainian mode should not show English labels such as `Video notes`, `YouTube intelligence`, `Add what happens in the video`, or long English explanations.
-- User-facing copy should explain the benefit, not internal implementation details.
+- Run: `agent_run_mrn6q619_dtjfy1`
+- Completed and approved Hybrid.
+- Seven Content Plan items written.
+- Quality scores: 85–93.
+- Usage: 11 OpenAI, 1 Gemini, 1 Apify call.
+- Estimated provider cost: approximately USD 0.492015.
 
-## YouTube/Gemini lessons
+## Git hygiene
 
-Problem seen:
-
-- Captions were missing on nearly every Shorts video.
-- The first Gemini approach looked like it did not actually watch video: same durations, generic scripts, repeated structure.
-- Some data looked mojibake/corrupted.
-
-Better direction:
-
-- Use real video URL + Gemini video input when possible.
-- Include title, description, thumbnails, stats, and user notes as fallback context.
-- Ask Gemini for scene beats, twist, hook, and adaptation guardrails, not just a generic 15-second script.
-- Show a real loading state while backend AI works.
-- If there is no reliable context, ask the user for 1-2 sentences and rebuild from that.
-
-## Current git hygiene
-
-`backend/data/db.json` often remains modified locally. It should stay out of commits unless specifically requested.
-
+`backend/data/db.json` often changes during local runs and must not be staged unless explicitly requested.
