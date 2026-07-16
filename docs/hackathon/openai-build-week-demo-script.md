@@ -1,95 +1,95 @@
-# DZHERO Agent Studio — sub-three-minute demo
+# DZHERO Agent Studio — demo script under three minutes
 
-## Demo setup
+## Before recording
 
-- Language: English.
-- Workspace: a neighborhood Kyiv coffee shop with a completed Brand Brain.
-- Feature flag: `ENABLE_AGENT_STUDIO=true`.
-- Prepare one public Instagram/TikTok Reel that Apify can resolve, or a public YouTube URL, plus its saved video file for the universal-source fallback.
-- Keep the deterministic coffee-shop fixture available only as a clearly labelled recovery path.
-- Open the existing Content Plan in a second tab so the final write can be shown immediately.
+- Use English UI and a coffee-shop demo workspace with a completed Brand Brain.
+- Start the Build Week profile on frontend `5180` and backend `3100`.
+- Prepare one verified public YouTube, Instagram, or TikTok URL.
+- Keep Content Plan ready to open after approval.
+- Run one complete provider-backed rehearsal and keep the successful run available.
+- Do not present a deterministic fixture or saved output as a fresh live provider run.
 
 ## Narration and clicks
 
-### 0:00–0:20 — Problem
+### 0:00–0:18 — The problem
 
-**Say:** “A small business owner does not need another blank AI chat. They need to know what to post, why it is grounded, and what to shoot next.”
+Open **Agent Studio · Beta** from the existing DZHERO sidebar.
 
-Show the normal DZHERO sidebar and open **Agent Studio · Beta**. Point out that the existing Signals and Studio are still present; this is an additive workflow.
+**Say:** “A small business owner does not need another blank AI chat. They need a grounded decision: what to shoot, why it fits the brand, and what the team should publish next.”
 
-### 0:20–0:40 — Two ways in
+### 0:18–0:35 — Two entry modes
 
-**Say:** “DZHERO can find a trend from our signal bank, or adapt a Reel the owner already found. Both paths converge on the same accountable production team.”
+Point to **Find a trend for me** and **Adapt a Reel**.
 
-Briefly select **Find a trend for me**, then switch to **Adapt a Reel** for the full hybrid coffee-shop story.
+**Say:** “The first mode chooses a relevant item from the workspace’s existing Signals. The second adapts a specific saved signal or public video URL. The current MVP is honest about this boundary: it does not pretend to scan the entire internet in real time.”
 
-### 0:40–1:00 — Start the hybrid run
+Use **Adapt a Reel** for the complete story.
 
-Choose the existing Reel signal, paste its URL, or upload the original video file. Use this objective:
+### 0:35–0:55 — Start a real run
 
-> Bring more weekday morning visits to a neighborhood coffee shop with a low-budget Reel anyone can shoot.
+Choose a saved signal or paste the verified public URL. Use:
+
+> Bring more weekday morning visits to a neighborhood coffee shop with a low-budget Reel one person can shoot.
 
 Click **Start agent team**.
 
-**Say:** “Jeryk is the manager. The backend, not a cosmetic timer, moves the run through a bounded state machine.”
+**Say:** “Jeryk manages a bounded backend workflow. The progress rail reflects persisted server stages, not a cosmetic timer.”
 
-### 1:00–1:35 — Real orchestration and evidence
+### 0:55–1:25 — Orchestration and evidence
 
-Show the live stage rail:
+Show the specialists:
 
 1. Trend Analyst;
-2. Gemini video evidence;
+2. Gemini Video Analyst;
 3. Brand Strategist;
 4. Creative Producer;
 5. Critic;
 6. Content Planner;
-7. Jeryk review.
+7. Jeryk Manager.
 
-**Say:** “Each OpenAI specialist returns a strict structured artifact. For social URLs, DZHERO tries a platform-specific Apify Actor and an Instagram fallback Actor before transferring the media into Gemini Files API. Gemini has one narrow job: evidence. Observed frames and metadata stay visibly separate.”
+**Say:** “OpenAI agents own selection, strategy, production, critique, planning, and management. Gemini has one narrow job: inspect the video. Social URLs are resolved through the appropriate source provider, and observed video evidence stays separate from metadata and user notes.”
 
-For the live demo, use a verified public URL. If a platform restricts that particular post, show the automatic retry and source-switch controls. Say explicitly that DZHERO will not ask the owner to recreate the video as text or record their screen.
+Open **Grounded evidence** and the safe agent trace.
 
-### 1:35–2:10 — The differentiator
+### 1:25–1:58 — Production quality
 
-Open **Grounded evidence** and the public agent trace.
+Show the full hero Reel, its shot-by-shot scenes, production notes, evidence references, and two alternative directions.
 
-**Say:** “The creative must cite evidence. The Critic gets one revision and can stop the run. In this demo it removes an unsupported ‘best coffee in Kyiv’ claim before anything reaches the owner.”
+**Say:** “The output must be shoot-ready: a first-two-second hook, concrete scenes, tension, proof, CTA, and production notes. Critic uses stable revision requirements and gets one bounded correction pass. If quality still fails, the run stops honestly.”
 
-Show Jeryk’s manager review, the full hero Reel with shot-by-shot scenes, and the two meaningfully different alternatives.
+### 1:58–2:25 — Human-directed Hybrid
 
-### 2:10–2:35 — Human-directed hybrid
+Select two directions and click **Combine two directions**, then **Create hybrid from selected ideas**. Cut to the completed Hybrid result if provider latency would exceed the video limit.
 
-Click **Combine two directions**, select the hero and one alternative, then click **Create hybrid from selected ideas**. Show Hybrid Producer and Critic entering the trace; in an edited demo, cut to the completed hybrid package.
+**Say:** “Compact alternatives are directions, not fake finished scripts. The owner combines two useful ideas through a real additional OpenAI pass. Critic checks the new script again, and Content Planner rebuilds the week around it.”
 
-**Say:** “The owner is not forced to accept one AI answer. Two useful directions become a new production script through another bounded OpenAI pass, and Critic checks it again before Jeryk presents it.”
+### 2:25–2:45 — One signal to one week
 
-### 2:35–2:50 — From one signal to one week
+Scroll through the seven-day plan.
 
-Scroll to the seven-day plan.
+**Say:** “This is not seven paraphrases of one Reel. The approved mechanic becomes a connected week across Reels, Stories, and posts, each with a distinct objective, hook, and CTA.”
 
-**Say:** “The output is not seven paraphrases of one Reel. One strategic mechanic becomes a connected week across Reels, Stories, and posts.”
+### 2:45–3:00 — Approval and business value
 
-Select the final hybrid direction.
+Click **Approve and add 7 days to Content Plan**, then open Content Plan.
 
-### 2:50–3:00 — Human approval and business value
+**Say:** “Agents can research, adapt, produce, and critique. Only the human approves the workspace write. One grounded signal is now seven actionable content days inside the product the business already uses.”
 
-Click **Approve and add 7 days to Content Plan**, then open the existing Content Plan.
+Finish on the populated plan and briefly show the run usage summary.
 
-**Say:** “Agents can research, adapt, produce, and critique. Only the human can approve the workspace write. One verified signal is now seven shootable days, inside the workflow the business already uses.”
+## Live-demo recovery
 
-Finish on the populated calendar.
+If a public platform blocks the selected URL:
 
-## Recovery path
+1. Show the classified source error or context request.
+2. Switch to the prepared verified URL or a saved workspace signal.
+3. If providers are unavailable, show a previously completed run and state clearly that it is a saved rehearsal result.
+4. Never describe a fixture, cached result, or metadata-only response as a fresh video observation.
 
-If a provider is unavailable during judging:
+## Recording checklist
 
-1. Show the classified provider/context error rather than hiding it.
-2. Upload the prepared source video and show the same run resume automatically.
-3. If both live providers are unavailable, switch to the coffee-shop fixture and label it **deterministic demo recovery**.
-4. Do not describe fixture output as a live provider result.
-
-## Verified timing reference
-
-- Bounded live OpenAI structured-output smoke call on `gpt-5.6`: about 10 seconds in the local verification run.
-- Complete deterministic API journey, including Critic revision and approval of seven posts: about 2–3 seconds locally.
-- Provider latency for the complete live multi-agent run varies, so the UI reports real stages and never promises a fake fixed duration.
+- The video is public on YouTube and shorter than three minutes.
+- Voiceover names both Codex collaboration and GPT-5.6/OpenAI agent runtime use.
+- The browser contains no API keys, personal billing data, or private customer data.
+- The final approval and Content Plan write are visible.
+- Captions are enabled or burned in.

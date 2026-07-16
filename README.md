@@ -1,105 +1,175 @@
 # DZHERO
 
-DZHERO is an AI content producer for small businesses, creators, SMM specialists, and multi-brand teams. It helps users discover market signals, adapt short-form video mechanics to their brand, turn ideas into shoot-ready scripts, and carry approved work into a practical content plan.
+DZHERO is an AI producer for small businesses, creators, SMM specialists, and multi-brand teams. It turns real short-form content signals into brand-specific scripts, production instructions, and an actionable content plan.
 
 ## OpenAI Build Week: Agent Studio Beta
 
-Agent Studio is an isolated multi-agent workflow that turns one real short-form signal into a grounded, brand-specific Reel and a seven-day content package. It does not replace the existing Signals, Studio, Jeryk assistant, Gemini remix, Brand Brain, or Content Plan flows.
+Agent Studio is the Build Week extension inside the existing DZHERO product. It is an accountable multi-agent workflow that turns one real signal into:
 
-The user starts in one of two ways:
+- one complete, shoot-ready Reel;
+- two meaningfully different creative directions;
+- grounded video evidence;
+- an independent quality evaluation;
+- a connected seven-day content plan;
+- an explicit human approval before any workspace write.
 
-- **Find a trend for me** — the Trend Analyst selects the best existing signal for the business objective.
-- **Adapt a Reel** — the user supplies an existing DZHERO signal, any public video URL, or the original MP4/MOV/WebM/M4V file from their device.
+The extension is additive and feature-flagged. It does not replace the existing Signals, Gemini Studio, Brand Brain, Jeryk assistant, billing, or Content Plan.
 
-Both modes enter the same bounded production workflow:
+## Product flow
 
-`Trend Analyst → Gemini video evidence → Brand Strategist → Creative Producer → Critic → Content Planner → Jeryk Manager → human approval`
+The owner starts in one of two modes:
 
-OpenAI Agents SDK runs the manager and specialist agents with strict Zod outputs. A deterministic backend state machine limits turns, output repair, and Critic revision. For Instagram and TikTok URLs, the backend first reuses the existing Apify signal provider to resolve a downloadable video, transfers that media into the Gemini Files API, waits for processing, and deletes the temporary Gemini file after analysis. YouTube URLs continue to use Gemini's native URL input. If a platform blocks public retrieval, the user uploads the original video instead of manually describing it; the same grounded Gemini evidence pipeline then resumes automatically. Observations and metadata remain separate evidence types. If no playable source is available, the run pauses instead of inventing scenes.
+- **Find a trend for me (from Signals)** — Trend Analyst chooses the best existing signal in the current workspace for the stated business objective. In the current MVP this mode does not claim to search the whole internet in real time.
+- **Adapt a Reel** — the owner selects an existing DZHERO signal or pastes a public YouTube, Instagram, TikTok, or other supported video URL.
 
-The final package contains:
+Both modes enter the same bounded workflow:
 
-- one complete hero Reel with a shot-by-shot script;
-- two meaningfully different alternative concepts;
-- a grounded evidence package and public-safe agent trace;
-- an independent Critic evaluation;
-- exactly seven connected content-plan days.
+```text
+Trend Analyst
+→ Gemini Video Analyst
+→ Brand Strategist
+→ Creative Producer
+→ Critic
+→ optional single revision
+→ Content Planner
+→ Jeryk Manager
+→ human approval
+```
 
-Nothing is written to the existing Content Plan until the user explicitly approves a candidate.
+Before approval, the owner can select exactly two creative directions and run **Hybrid Producer**. This is a real additional OpenAI agent pass followed by another Critic check, a fresh seven-day plan, and a new Jeryk review.
 
-Before approval, the owner may select any two directions and run **Hybrid Producer**. This launches a real additional OpenAI synthesis pass, followed by a fresh Critic evaluation, seven-day plan, and Jeryk review. A provider failure restores the original creative package instead of discarding it.
+Compact alternatives are intentionally not treated as finished production scripts. They must be combined through Hybrid Producer before they can be approved. Only a full hero or hybrid package can be added to Content Plan.
 
-## Hackathon scope: prior product vs. Build Week work
+## Why the architecture is multi-agent
 
-DZHERO existed before the OpenAI Build Week submission period. The pre-existing product already included authenticated workspaces, Signals, the Gemini-powered Studio, Brand Brain, the Jeryk assistant, billing limits, and Content Plan.
+The roles have different failure modes and should not approve their own work:
 
-The following work was added on the isolated `hackathon/openai-build-week` branch after the submission period opened:
+| Role | Responsibility |
+| --- | --- |
+| Trend Analyst | Selects the source mechanic that best fits the objective |
+| Gemini Video Analyst | Extracts observed frames, audio, on-screen text, and uncertainty |
+| Brand Strategist | Maps the transferable mechanic to Brand Brain and the local market |
+| Creative Producer | Creates one complete hero Reel and two distinct alternatives |
+| Hybrid Producer | Combines two owner-selected directions into a stronger full script |
+| Critic | Enforces grounding, originality, brand fit, feasibility, language, and creative quality |
+| Content Planner | Expands the accepted strategy into seven connected days |
+| Jeryk Manager | Presents the final package and asks the human to approve it |
 
-- strict Agent Studio input, evidence, creative, evaluation, plan, and public-trace contracts;
-- a bounded run state machine with context pause/resume, cancellation, one output repair, one Critic revision, interruption recovery, and idempotent approval;
-- OpenAI Agents SDK specialists using GPT-5.6;
-- Gemini video evidence with explicit provenance and honest `needs_context` degradation;
-- automatic multi-Actor Apify-to-Gemini media resolution for public Instagram and TikTok URLs;
-- optional authenticated original-video upload for owners who already have the source file;
-- authenticated workspace-scoped create, poll, context, cancel, hybrid, and approve APIs;
-- the separate English/Ukrainian Agent Studio Beta interface;
-- approval of one candidate into exactly seven existing Content Plan entries;
-- focused tests, a live bounded provider smoke check, demo script, and submission documentation.
+Every OpenAI specialist returns a strict Zod-validated artifact. The backend owns the state machine, limits, persistence, error classification, and workspace writes.
 
-The dated commit history on this branch is the implementation record for the hackathon extension. Existing product behavior remains separate and regression-tested.
+## Grounding and source handling
 
-## How we collaborated with Codex
+- YouTube URLs are passed to Gemini as native video input.
+- Instagram and TikTok URLs are resolved through narrow Apify actors.
+- Resolved media is uploaded temporarily to Gemini Files API for evidence extraction and deleted after analysis.
+- The backend still supports authenticated source-file recovery for blocked media, but the main Build Week UI is URL-first and does not expose manual upload as the primary flow.
+- Metadata, user notes, and observed video evidence remain separate source types.
+- If reliable evidence is unavailable, the run enters `needs_context` instead of inventing scenes.
 
-Codex was the development partner for the Build Week extension. It inspected the existing DZHERO architecture, isolated the work in a dedicated branch/worktree, translated the product idea into contracts and a state machine, implemented the backend and React interface, wrote focused tests, ran the provider smoke check, audited secrets and localization, and prepared the demo/submission material.
+Source pages, captions, transcripts, video frames, and metadata are treated as untrusted data, never as instructions.
 
-The human product decisions remained explicit:
+## Creative quality system
 
-- add Agent Studio as a feature-flagged surface instead of replacing the working Studio;
-- use a deterministic backend state machine instead of an open-ended autonomous loop;
-- keep OpenAI agents responsible for specialist reasoning and content production while Gemini remains a narrow video-evidence provider;
-- separate observations, metadata, and user notes rather than presenting every source as an AI observation;
-- allow only one Critic revision and require human approval before a workspace write;
-- use the coffee-shop story as a concrete demo while keeping the product generic.
+Agent Studio includes a DZHERO Creative Playbook and a deterministic server-side quality gate.
 
-GPT-5.6 is used in two visible ways: Codex accelerated the engineering workflow, and the running product uses GPT-5.6 through the OpenAI Agents SDK for the Trend Analyst, Brand Strategist, Creative Producer, Hybrid Producer, Critic, Content Planner, and Jeryk Manager. Their outputs are schema-validated before the next stage can run.
+The system requires:
 
-## Why DZHERO
+- a visible pattern interrupt in the first two seconds;
+- hook → tension → development → proof/reveal → CTA;
+- at least three concrete shot-by-shot beats;
+- specific framing, objects, actions, on-screen text, and voice-over;
+- evidence references and Brand Brain references;
+- one complete hero Reel and two mechanically different alternatives;
+- production notes realistic for one person filming on a phone;
+- no generic AI/agency copy or unsupported commercial claims.
 
-A blank AI chat still asks a business owner to act as the trend researcher, strategist, scriptwriter, critic, and planner. DZHERO separates those responsibilities and turns research into an accountable workflow with visible evidence, bounded decisions, and a final human approval step.
+Critic scores grounding, brand fit, originality, feasibility, language, commercial fit, hook strength, mechanic fidelity, and creative boldness.
 
-The product starts from a business brief rather than a user's personal entertainment feed:
+A revision contract assigns stable `REV-*` identifiers to blocking issues. On the final pass, Critic must classify every remaining issue as:
 
-1. business objective;
-2. business type and product;
-3. geography and audience;
-4. tone of voice;
-5. competitors and target markets;
-6. permitted data sources and calls to action.
+- unresolved `REV-*`;
+- `NEW_CRITICAL:` regression;
+- non-blocking `SUGGESTION:`.
 
-## Existing product surfaces
+This prevents the evaluator from moving the goalposts or accepting a paraphrased unresolved blocker.
 
-- Home command center;
-- global and local Signals;
-- competitor and viral Reel banks;
-- existing Gemini-powered Studio;
-- Agent Studio Beta;
-- Brand Brain;
-- AI producer assistant;
-- ideas and launch workflows;
-- Content Plan;
-- AI Direct and sales tools;
-- analytics, sources, billing, and workspace settings.
+## Human approval and Content Plan
+
+Approval is idempotent and accepts only production-ready hero or hybrid candidates.
+
+After approval:
+
+- exactly seven normalized posts are written once;
+- day one includes the concept, hero hook, scenes, and production notes;
+- every day includes its objective, hook, and CTA;
+- Agent Studio displays a success state and an **Open Content Plan** action.
+
+Agents cannot publish content or write to the workspace without this explicit human action.
+
+## Provider usage telemetry
+
+Each run records a bounded, deduplicated usage envelope for:
+
+- OpenAI agent requests and token counts;
+- Gemini video-analysis token counts;
+- Apify provider-reported cost.
+
+The public API exposes only a safe aggregate:
+
+- provider call counts;
+- input, cached input, output, thought, and total tokens;
+- estimated OpenAI/Gemini cost;
+- provider-reported Apify cost;
+- telemetry completeness.
+
+Raw provider payloads, prompts, API keys, response IDs, invocation IDs, and hidden reasoning are never exposed.
+
+## Build Week extension versus the existing product
+
+DZHERO existed before OpenAI Build Week. The product already included authenticated workspaces, Signals, Brand Brain, Gemini-powered adaptation, Jeryk, billing/usage controls, and Content Plan.
+
+The isolated `hackathon/openai-build-week` branch adds:
+
+- the Agent Studio state machine and workspace-scoped API;
+- OpenAI Agents SDK specialists running on GPT-5.6;
+- strict structured-output contracts;
+- the Creative Playbook and deterministic quality gate;
+- stable revision contracts;
+- Gemini evidence and Apify source resolution;
+- Hybrid Producer;
+- honest production-ready approval rules;
+- safe public orchestration trace;
+- per-run provider usage telemetry;
+- a separate English/Ukrainian Agent Studio interface;
+- focused unit, integration, regression, and build verification;
+- the judge, demo, and submission documentation package.
+
+The dated branch history is the implementation record for the Build Week extension.
+
+## How Codex contributed
+
+Codex was the engineering partner for the Build Week extension. It:
+
+- inspected the existing DZHERO architecture and isolated the work in a dedicated worktree;
+- translated the product concept into schemas, state transitions, bounded agent roles, and tests;
+- implemented the backend orchestration and React interface;
+- diagnosed real provider, quality-gate, CORS, approval, and persistence failures;
+- coordinated focused review agents for repository, UX, and telemetry audits;
+- ran local and integration verification;
+- prepared the documentation and submission package.
+
+Human product decisions remained explicit: keep Agent Studio additive, use a deterministic state machine, separate OpenAI reasoning from Gemini evidence, allow only one automatic revision, preserve source honesty, and require human approval.
 
 ## Technology
 
-- React 19 and Vite;
-- Node.js and Express;
+- React 19 and Vite 8;
+- Node.js and Express 5;
 - OpenAI Agents SDK with GPT-5.6;
 - Zod structured outputs;
-- Gemini video analysis;
-- workspace-scoped authenticated APIs;
+- Gemini video understanding;
+- Apify public-source resolution;
 - JSON/Postgres state abstraction;
-- lucide-react and custom responsive CSS.
+- workspace-scoped authentication and usage controls.
 
 ## Local setup
 
@@ -107,20 +177,22 @@ Requirements:
 
 - Node.js 22 or newer;
 - npm;
-- server-side OpenAI and Gemini API credentials for the live Agent Studio path.
+- server-side OpenAI and Gemini credentials;
+- Apify token for Instagram/TikTok URL resolution.
 
-Install dependencies:
+Install:
 
 ```bash
 npm install
 ```
 
-Create a server-only `.env` from `.env.example` and provide:
+Copy `.env.example` to `.env` and configure at minimum:
 
 ```text
 OPENAI_API_KEY=...
-GEMINI_API_KEY=...
 OPENAI_AGENT_MODEL=gpt-5.6
+GEMINI_API_KEY=...
+APIFY_TOKEN=...
 ENABLE_AGENT_STUDIO=true
 AGENT_STUDIO_MAX_TURNS=12
 AGENT_STUDIO_TIMEOUT_MS=90000
@@ -128,107 +200,130 @@ AGENT_STUDIO_TIMEOUT_MS=90000
 
 Never use a `VITE_` prefix for provider keys and never commit `.env`.
 
-Run the backend and frontend in separate terminals:
+### Standard local profile
+
+```text
+Frontend: http://127.0.0.1:5173/
+Backend:  http://127.0.0.1:3000/
+API:      http://127.0.0.1:3000/api
+```
 
 ```bash
 npm run dev:backend
 npm run dev
 ```
 
-Open:
+### Isolated Build Week profile
+
+The local judge/demo profile used during Build Week keeps the branch separate from other DZHERO processes:
 
 ```text
-http://127.0.0.1:5173/
+VITE_API_URL=http://127.0.0.1:3100/api
+PORT=3100
+CLIENT_URL=http://127.0.0.1:5180
 ```
 
-The backend API is available at:
+Start the backend, then the strict frontend port:
 
-```text
-http://127.0.0.1:3000/api
+```bash
+npm run dev:backend
+npm run dev:build-week
 ```
 
-Enter an authenticated workspace and choose **Agent Studio · Beta** in the sidebar.
+Open `http://127.0.0.1:5180/` and choose **Open Agent Studio demo** or enter an authenticated workspace.
 
 ## Agent Studio API
 
-The Build Week path is isolated under authenticated, workspace-scoped routes:
+Authenticated, workspace-scoped routes:
 
 ```text
 GET  /api/workspaces/:workspaceId/agent-studio/config
+POST /api/workspaces/:workspaceId/agent-studio/uploads
 POST /api/workspaces/:workspaceId/agent-studio/runs
 GET  /api/workspaces/:workspaceId/agent-studio/runs/:runId
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/retry-source
+POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/source-file
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/context
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/hybrid
 POST /api/workspaces/:workspaceId/agent-studio/runs/:runId/approve
 ```
 
-Approval writes exactly seven normalized posts to the existing Content Plan once. Repeating the same approval does not duplicate the package.
-
-## Safety and honest degradation
-
-- Source pages, captions, transcripts, metadata, video frames, and user notes are untrusted data, never instructions.
-- Video observations, audio observations, on-screen text, metadata, and user notes remain separate evidence types.
-- Creative scenes reference evidence ids; product decisions reference Brand Brain fields.
-- Missing evidence moves the run to `needs_context`; the primary recovery is another automatic resolution attempt or a different public URL, never a fabricated text description.
-- Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
-- Every agent output is schema-validated before the next stage begins.
-- One output repair and one Critic revision are permitted; the workflow cannot loop indefinitely.
-- Agents have no database, filesystem, shell, publishing, or arbitrary network access.
-- Workspace writes require explicit human approval.
+Upload routes are authenticated recovery primitives. The main Agent Studio UI remains URL-first.
 
 ## Verification
 
-Run the focused Agent Studio suite:
+Run the complete Agent Studio suite:
 
 ```bash
-node scripts/test-agent-studio-schemas.cjs
-node scripts/test-agent-studio-run.cjs
-node scripts/test-agent-studio-orchestrator.cjs
-node scripts/test-agent-studio-source-resolver.cjs
-node scripts/test-agent-studio-video-tool.cjs
-node scripts/test-agent-studio-api.mjs
-npm run test:agent-studio-ui
+npm run test:agent-studio
 npm run build
 ```
 
-The following command makes one bounded live OpenAI request and therefore consumes API credits. It reports only safe configuration status and never prints the key:
+Focused commands:
+
+```bash
+npm run test:agent-studio-quality
+npm run test:agent-studio-usage
+npm run test:agent-studio-ui
+node scripts/test-agent-studio-api.mjs
+```
+
+The API test starts a temporary local backend with deterministic stub providers and spends no external API credits.
+
+The following smoke check makes a bounded live OpenAI call and consumes API credits:
 
 ```bash
 npm run smoke:agent-studio-openai
 ```
 
-The repository also contains regression coverage for authentication, workspace isolation, billing, remix quality, Gemini recovery, Content Plan behavior, and English/Ukrainian localization.
+## Verified reference run
 
-## Demo and submission material
+On July 16, 2026, a real local coffee-shop run completed the full flow:
 
-- [Sub-three-minute demo script](docs/hackathon/openai-build-week-demo-script.md)
-- [Devpost submission draft](docs/hackathon/openai-build-week-submission.md)
-- [Pre-submission compliance checklist](docs/hackathon/openai-build-week-submission-checklist.md)
-- [Agent Studio design](docs/superpowers/specs/2026-07-14-dzhero-agent-studio-build-week-design.md)
-- [Implementation plan](docs/superpowers/plans/2026-07-14-dzhero-agent-studio-build-week.md)
+- status: `completed`;
+- approved candidate: full hybrid;
+- Critic decision: `accept`;
+- seven Content Plan days written;
+- 11 OpenAI calls, 1 Gemini call, and 1 Apify call;
+- 51,627 input tokens and 8,626 output tokens;
+- estimated OpenAI/Gemini cost: approximately `$0.492`;
+- provider-reported Apify cost: approximately `$0.001`.
 
-## Important files
+Provider latency and cost vary by source, model output, revisions, and Hybrid usage. These numbers are a verified reference, not a promise.
 
-- `src/AgentStudioPage.jsx` — isolated Build Week UI.
-- `src/agentStudioUi.mjs` — localized copy and pure UI state helpers.
-- `backend/services/agentStudioAgents.cjs` — OpenAI specialist execution and orchestration.
-- `backend/services/agentStudioRun.cjs` — bounded run state machine and safe serialization.
-- `backend/services/agentStudioSchemas.cjs` — strict structured-output contracts.
-- `backend/services/agentStudioVideoTool.cjs` — Gemini evidence extraction.
-- `backend/server.js` — authenticated API, persistence, approval, and Content Plan integration.
-- `.env.example` — configuration names and safe defaults only.
+## Judge and submission documentation
+
+Start with [docs/hackathon/README.md](docs/hackathon/README.md).
+
+The package includes:
+
+- judge runbook;
+- sub-three-minute demo script;
+- Devpost submission copy;
+- verification evidence;
+- ownership and licensing statement;
+- final pre-submission checklist;
+- architecture and implementation record.
 
 ## Current limitations
 
-- Agent Studio uses polling rather than server-sent events.
-- Interrupted active runs become explicit retryable failures after a backend restart; automatic distributed resume is not part of the Build Week scope.
-- Public platforms may block video retrieval. DZHERO requests the original video file in that case and never presents an inaccessible page as observed evidence.
+- Active runs use polling rather than server-sent events.
+- The backend persists runs, but the UI does not yet restore the latest run automatically after a full page refresh.
+- A backend restart converts an interrupted active run into an explicit retryable failure; there is no distributed job queue.
+- Public platforms can block media retrieval.
+- OpenAI/Gemini USD amounts are rate-card estimates; Apify cost is provider-reported.
 - Autonomous publishing and automatic Brand Brain changes are intentionally excluded.
 
-## Next steps
+## Post-hackathon roadmap
 
-- per-run token and cost telemetry;
-- durable job queue and explicit retry;
-- team approval roles and version comparison;
-- post-performance feedback for future signal selection.
+- restore the latest run automatically in the UI;
+- add an explicit **Find fresh signals** acquisition pass;
+- compare model routing only after collecting more real per-agent telemetry;
+- add team approval roles and version comparison;
+- feed measured post performance back into future signal selection;
+- move long-running work to a durable job queue.
+
+## License
+
+The repository is source-available for evaluation and judging. It is not open-sourced for unrestricted reuse. See [LICENSE](LICENSE).

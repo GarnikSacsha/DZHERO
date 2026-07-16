@@ -1,155 +1,122 @@
-# DZHERO Agent Studio Beta — Implementation Plan
+# DZHERO Agent Studio Beta — implementation record
 
-**Goal:** Add an isolated, judge-ready multi-agent experience without changing the existing Studio/remix behavior.
+**Original plan date:** 2026-07-14
 
-**Architecture:** A new backend service owns a bounded `AgentStudioRun` state machine. OpenAI Agents SDK agents return Zod-validated artifacts; Gemini remains a function tool for video evidence. New workspace-scoped routes create, poll, continue, cancel, and approve runs. A new `agent-studio` React page renders two entry modes, real progress, a safe trace, the creative package, and approval to the existing Content Plan.
+**Updated:** 2026-07-16
 
-**Stack:** Node.js/CommonJS, Express, `@openai/agents`, Zod 4, React 19, Vite, existing JSON/Postgres state abstraction.
+**Status:** Core MVP implemented; submission operations remain
 
-## Task 1: SDK, configuration, and contracts
+## Completed work
 
-**Files:**
+### Contracts and bounded run state
 
-- Modify: `package.json`
-- Modify: `package-lock.json`
-- Modify: `.env.example`
-- Create: `backend/services/agentStudioSchemas.cjs`
-- Create: `scripts/test-agent-studio-schemas.cjs`
+- Added strict schemas for evidence, strategy, creative bundle, Critic report, plan, manager package, public trace, and usage.
+- Added safe public serialization.
+- Added explicit state transitions, cancellation, context pause, interruption recovery, repair limits, and idempotent approval.
 
-**Steps:**
+### OpenAI specialist orchestration
 
-1. Write failing contract tests for input normalization, evidence source labels, creative bundle cardinality, public trace redaction, and final package validation.
-2. Install `@openai/agents` and Zod 4.
-3. Implement strict Zod schemas and safe parse helpers.
-4. Document only variable names/defaults in `.env.example`; never add secrets.
-5. Run `node scripts/test-agent-studio-schemas.cjs` and `node --check` on new CommonJS files.
-6. Commit: `feat: add agent studio contracts`.
+- Added Trend Analyst, Brand Strategist, Creative Producer, Critic, Content Planner, Hybrid Producer, and Jeryk Manager.
+- Kept calls dependency-injectable for deterministic tests.
+- Used bounded structured outputs and a configurable `OPENAI_AGENT_MODEL`.
 
-## Task 2: Pure orchestration state machine
+### Grounded video evidence
 
-**Files:**
+- Added Gemini evidence extraction with separate observations, metadata, notes, timestamps, confidence, and evidence ids.
+- Added YouTube native handling and Instagram/TikTok public media resolution.
+- Added retry/source recovery behavior and temporary-file cleanup.
+- Removed manual upload from the primary UI while retaining authenticated backend recovery primitives.
 
-- Create: `backend/services/agentStudioRun.cjs`
-- Create: `scripts/test-agent-studio-run.cjs`
+### Agent Studio UI
 
-**Steps:**
+- Added an isolated feature-flagged page and sidebar entry.
+- Added both source modes, real progress polling, activity trace, evidence, result cards, quality state, source recovery, cancellation, Hybrid selection, approval, and usage display.
+- Added English and Ukrainian copy through the product localization approach.
 
-1. Write failing tests for valid transitions, forbidden skips, context pause/resume, cancellation, one repair, one critic revision, classified errors, idempotent approval, and safe public serialization.
-2. Implement run creation, transitions, trace appends, artifact assignment, failure classification, interruption recovery, and approval markers as pure functions.
-3. Ensure public serialization excludes prompts, secrets, provider payloads, and hidden reasoning.
-4. Run both Agent Studio test scripts.
-5. Commit: `feat: add bounded agent studio run state`.
+### Creative quality
 
-## Task 3: OpenAI manager and specialists
+- Enforced a first-two-second pattern interrupt and full narrative spine.
+- Required concrete scenes, evidence references, and production notes.
+- Added generic-output rejection and stronger production-specific validation.
+- Added stable revision requirement ids and explicit final issue classifications.
 
-**Files:**
+### Honest approval
 
-- Create: `backend/services/agentStudioAgents.cjs`
-- Create: `backend/services/agentStudioPrompts.cjs`
-- Create: `scripts/fixtures/agent-studio-coffee-shop.cjs`
-- Create: `scripts/test-agent-studio-orchestrator.cjs`
+- Limited approval to complete hero or Hybrid packages.
+- Required exactly seven normalized days.
+- Included the selected full script and production notes in the handoff.
+- Added a clear success state and Content Plan navigation.
+- Preserved idempotency.
 
-**Steps:**
+### Provider telemetry
 
-1. Write mocked orchestration tests for both input modes, specialist ordering, structured outputs, critic revision, and a final seven-day plan.
-2. Load `@openai/agents` through dynamic import so the CommonJS backend remains unchanged.
-3. Define Jeryk as manager and specialists as bounded tools: Trend Analyst, Brand Strategist, Creative Producer, Critic, and Content Planner.
-4. Use `OPENAI_AGENT_MODEL`, defaulting to `gpt-5.6`, and Zod output types.
-5. Expose dependency injection for all provider calls so tests never spend credits.
-6. Add a deterministic coffee-shop fixture for UI/dev/demo recovery, clearly marked as fixture data.
-7. Run mocked orchestration tests.
-8. Commit: `feat: orchestrate dzhero specialist agents`.
+- Added bounded and deduplicated OpenAI, Gemini, and Apify call aggregation.
+- Exposed safe per-run counts, tokens/units, and estimated/provider-reported cost.
+- Added focused usage contract and UI tests.
 
-## Task 4: Gemini video evidence tool
+## Verification assets
 
-**Files:**
+The repository includes focused tests for:
 
-- Create: `backend/services/agentStudioVideoTool.cjs`
-- Create: `scripts/test-agent-studio-video-tool.cjs`
-- Reuse: Gemini helpers and source metadata patterns in `backend/server.js` and `backend/services/remixEngine.js`
+- schemas;
+- creative quality;
+- state transitions;
+- orchestration and revision;
+- Gemini video tool;
+- public source resolver;
+- provider usage;
+- UI state;
+- authenticated API and approval.
 
-**Steps:**
+Primary commands:
 
-1. Write tests for a reliable analysis, metadata-only analysis, unavailable video, malformed provider output, and user-note evidence.
-2. Implement Gemini evidence extraction with explicit source types and confidence.
-3. Return `needs_context` when evidence is insufficient; do not generate a silent fallback.
-4. Wrap the video analysis function as an Agents SDK function tool available to Jeryk.
-5. Run video tool and orchestration tests.
-6. Commit: `feat: ground agent studio with video evidence`.
+```powershell
+npm run test:agent-studio
+npm run build
+```
 
-## Task 5: Workspace persistence and isolated API
+## Final implementation commits before documentation
 
-**Files:**
+```text
+eee9cf6 feat: enforce Agent Studio creative quality
+c43de1e fix: harden Agent Studio revision contracts
+fc6cb47 fix: make Agent Studio approval handoff honest
+9d13e02 feat: track Agent Studio provider usage
+```
 
-- Modify: `backend/server.js`
-- Create: `scripts/test-agent-studio-api.cjs`
+Earlier branch commits implement the isolated agents, video bridge, public-source resolution, UI, and primary workflow.
 
-**Steps:**
+## Provider-backed acceptance
 
-1. Write API tests for feature/config status, authenticated workspace access, create, poll, context, cancel, approve, cross-workspace denial, and idempotent Content Plan writes.
-2. Add `agentStudioRuns` to the normalized DB shape.
-3. Add the expensive limiter for run creation/context.
-4. Add isolated routes under `/api/workspaces/:workspaceId/agent-studio`.
-5. Start orchestration asynchronously after the initial run is persisted; persist only safe validated artifacts.
-6. On startup/read, mark stale active runs as retryable interruption failures rather than pretending to resume.
-7. Map approval into normalized existing Content Plan posts and store the approval write id.
-8. Run API tests plus existing auth/workspace/content-plan tests.
-9. Commit: `feat: expose isolated agent studio api`.
+A real coffee-shop run completed:
 
-## Task 6: English-first Agent Studio UI
+- the full specialist pipeline;
+- one accepted Hybrid;
+- human approval;
+- exactly seven Content Plan writes;
+- quality scores between 85 and 93;
+- 11 OpenAI calls, 1 Gemini call, and 1 Apify call;
+- an estimated total provider cost of approximately USD 0.492015.
 
-**Files:**
+See `docs/hackathon/openai-build-week-verification.md`.
 
-- Create: `src/AgentStudioPage.jsx`
-- Create: `src/agentStudioUi.mjs`
-- Create: `scripts/test-agent-studio-ui.mjs`
-- Modify: `src/main.jsx`
-- Modify: `src/styles.css`
+## Remaining submission operations
 
-**Steps:**
+These are not core product implementation:
 
-1. Write pure UI-state tests for stage labels, terminal states, polling decisions, context requests, and safe result mapping.
-2. Add `agent-studio` to the allowed app pages and sidebar with a `Beta` marker, without replacing `Studio`.
-3. Build the two entry cards: `Find a trend for me` and `Adapt a Reel`.
-4. Implement create/poll/context/cancel/approve calls with abort-safe effects and workspace-change guards.
-5. Render real stage progress, specialist cards, safe trace, evidence, one hero Reel, two alternatives, the seven-day plan, and error recovery.
-6. Keep all beta copy in the existing localization path; provide complete English and Ukrainian strings.
-7. Add focused responsive styles.
-8. Run UI-state tests, i18n checks, and Vite build.
-9. Commit: `feat: add agent studio beta experience`.
+1. Run final local verification after the documentation commit.
+2. Deploy a stable judge-accessible frontend and backend.
+3. Prepare and test a demo account/workspace.
+4. Record and publish the sub-three-minute YouTube demo.
+5. Make the repository public or grant the required judge access.
+6. Run Codex `/feedback` and save the Session ID.
+7. Submit the final Devpost entry and archive confirmation evidence.
 
-## Task 7: Live provider smoke test and budget guard
+## Deferred product improvements
 
-**Files:**
-
-- Create: `scripts/smoke-agent-studio-openai.cjs`
-- Modify: `.env.example`
-- Modify: `README.md`
-
-**Steps:**
-
-1. Add a smoke script that validates configuration, runs the cheapest bounded structured agent call needed to prove credentials/model access, and prints no secret.
-2. Add timeout, max-turn, and per-run attempt limits before any live call.
-3. Run the smoke test once with the personal Build Week project.
-4. If the API reports quota/model access issues, surface the exact safe category and keep mocked/local work unblocked.
-5. Document local setup, architecture, Gemini/OpenAI roles, and how to run the demo.
-6. Commit: `docs: add build week agent studio runbook`.
-
-## Task 8: Full verification and demo package
-
-**Files:**
-
-- Modify: `README.md`
-- Create: `docs/hackathon/openai-build-week-demo-script.md`
-- Create: `docs/hackathon/openai-build-week-submission.md`
-
-**Steps:**
-
-1. Run all new Agent Studio tests.
-2. Run existing auth, workspace, remix, Gemini, content-plan, i18n, and billing regression scripts.
-3. Run `node --check backend/server.js` and `npm.cmd run build`.
-4. Run the complete coffee-shop journey locally in English and capture actual timings.
-5. Write a sub-three-minute demo script that shows both entry modes but fully executes one hybrid coffee-shop story.
-6. Document honest fallback behavior and distinguish live results from fixture recovery.
-7. Review Git diff for secrets and confirm `.env`/`backend/data/db.json` remain ignored.
-8. Commit: `docs: prepare OpenAI Build Week submission`.
+- automatic latest-run restoration after refresh;
+- durable background queue;
+- separately labelled fresh-signal acquisition;
+- team approval roles and version comparison;
+- performance feedback loop;
+- telemetry-informed model routing.

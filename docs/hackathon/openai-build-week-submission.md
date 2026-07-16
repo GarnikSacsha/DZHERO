@@ -2,97 +2,125 @@
 
 ## Project title
 
-**DZHERO — From one verified signal to one week of content**
+**DZHERO — From one grounded signal to one week of content**
 
 ## One-line description
 
-DZHERO is an accountable multi-agent AI producer that turns a real short-form trend or Reel into a grounded, brand-specific production script and a seven-day content plan for small businesses.
+DZHERO is an accountable multi-agent AI producer that turns a real short-form signal into a brand-specific, shoot-ready Reel and a seven-day content plan for small businesses.
+
+## Track
+
+**Work and Productivity**
 
 ## Inspiration
 
-Small business owners rarely suffer from a total lack of AI tools. They suffer from a lack of decisions. A blank chatbot still asks the owner to become the strategist, trend researcher, scriptwriter, critic, and content planner.
+Small business owners do not lack AI tools; they lack confident decisions. A blank chatbot still asks the owner to become the trend researcher, strategist, scriptwriter, critic, and planner.
 
-We built DZHERO for the owner who sees hundreds of Reels but cannot reliably answer three questions: which mechanic is worth adapting, how should it fit the brand, and what should the team shoot this week?
+DZHERO starts where the owner actually gets stuck: deciding which content mechanic is worth adapting, how it should fit the brand, and what can realistically be shot this week.
 
 ## What it does
 
-DZHERO Agent Studio offers two entry points:
+Agent Studio has two entry modes:
 
-- **Find a trend for me:** select one suitable signal from DZHERO’s existing signal bank.
-- **Adapt a Reel:** start from a specific imported signal, any public video URL, or an original video file from the user's device.
+- **Find a trend for me** selects a relevant item from the current workspace’s existing Signals.
+- **Adapt a Reel** starts from a saved signal or a supported public video URL.
 
-Both modes enter the same bounded pipeline. A Trend Analyst selects the mechanic; for Instagram and TikTok, the existing Apify source provider resolves and downloads public video before the backend transfers it into Gemini Files API. When a platform blocks public retrieval, an authenticated upload sends the original file into the same evidence path without asking the owner to describe the clip. Gemini extracts video evidence, a Brand Strategist maps it to Brand Brain, a Creative Producer writes one complete Reel and two alternatives, a Critic checks quality and grounding, a Content Planner expands the accepted strategy into seven distinct days, and Jeryk presents the final manager review.
+Both enter the same bounded workflow. Trend Analyst selects the transferable mechanic. Gemini Video Analyst extracts grounded evidence. Brand Strategist maps the mechanic to Brand Brain. Creative Producer creates a complete Reel and two distinct directions. Critic evaluates grounding and production quality with at most one revision. Content Planner turns the accepted strategy into seven distinct days. Jeryk Manager presents the package for explicit human approval.
 
-The owner can also select any two directions and ask **Hybrid Producer** to synthesize a stronger concept. This is a real additional OpenAI agent pass, not client-side text mixing: the hybrid is checked again by Critic, receives a fresh seven-day plan, and returns to Jeryk for human approval. If the hybrid pass fails, DZHERO restores the original package instead of losing useful work.
+The owner can select two directions and run **Hybrid Producer**. This is a real additional OpenAI pass, not client-side text mixing. The resulting full script is evaluated again, receives a new seven-day plan, and returns to Jeryk.
 
-The user sees real backend stages, evidence references, and a safe public agent trace. If video evidence is unavailable, DZHERO pauses for context rather than inventing what happened. The final workspace write remains behind explicit human approval.
+Compact alternatives cannot be approved as if they were finished production scripts. The owner must approve a full hero or Hybrid package. Approval idempotently adds exactly seven normalized items to the existing DZHERO Content Plan.
+
+## Grounding and honest failure
+
+- YouTube can be analyzed from its native public URL.
+- Instagram and TikTok media use a narrow source-resolution layer before temporary Gemini Files analysis.
+- Evidence distinguishes video observations, audio observations, on-screen text, metadata, and user notes.
+- Temporary Gemini files are deleted after analysis.
+- If reliable evidence is missing, the run enters `needs_context` or reports a classified source error instead of inventing scenes.
+- The primary Build Week UI is URL-first. Authenticated backend source-file recovery exists for controlled recovery and tests, but is not presented as the main judge flow.
+
+## Production quality
+
+The producer is required to deliver:
+
+- a pattern interrupt in the first two seconds;
+- a clear hook, tension, development, proof, and CTA;
+- at least three concrete, shootable scenes;
+- evidence and Brand Brain references;
+- practical production notes;
+- language and claims that survive Critic review.
+
+Critic issues use stable requirement identifiers so a revision cannot silently drop unresolved problems. Final issues are classified as unresolved requirements, newly discovered critical issues, or non-blocking suggestions.
 
 ## How we built it
 
-- React 19 and Vite for the existing DZHERO product surface.
-- Express with authenticated, workspace-scoped Agent Studio endpoints.
-- OpenAI Agents SDK with `gpt-5.6` for Trend Analyst, Brand Strategist, Creative Producer, Hybrid Producer, Critic, Content Planner, and Jeryk Manager.
-- Zod structured outputs between every specialist stage.
-- A deterministic server-side state machine with bounded turns, one malformed-output repair, and at most one Critic revision.
-- Apify as a narrow public-source resolver for Instagram and TikTok media already used by DZHERO Signals.
-- Gemini Files API plus Gemini video understanding as the evidence layer, with explicit evidence types for video observation, audio observation, on-screen text, and metadata.
-- Authenticated direct video upload for private, login-only, Telegram, local-gallery, and otherwise blocked sources.
-- Polling of persisted backend run state, not simulated frontend progress.
-- Idempotent human approval that adds exactly seven normalized posts to the existing DZHERO Content Plan.
+- React 19 and Vite for the DZHERO product surface.
+- Express with authenticated, workspace-scoped Agent Studio APIs.
+- OpenAI Agents SDK and GPT-5.6 for reasoning, creative production, critique, planning, Hybrid production, and manager review.
+- Zod structured-output contracts between specialist stages.
+- Gemini video understanding as a dedicated evidence tool.
+- Apify-backed public social source resolution where required.
+- A persisted, bounded server-side state machine with explicit terminal states.
+- A safe public trace that excludes prompts, chain-of-thought, tokens, credentials, and raw provider payloads.
+- Idempotent approval into the existing Content Plan.
+- Deduplicated per-run provider usage and estimated cost telemetry for OpenAI, Gemini, and Apify.
 
-The Agent Studio path is additive and feature-flagged. It does not replace the existing Gemini-powered Studio, Signals, Jeryk assistant, Brand Brain, or Content Plan.
+## Why multi-agent
 
-## Why multi-agent here
+The roles have different failure modes. A creative writer should not approve its own unsupported commercial claim, and a planner should not expand an idea that has not passed critique. Separate schemas and state transitions make those responsibilities enforceable rather than decorative.
 
-The roles have different failure modes and deliverables. A trend researcher should not silently approve its own creative claims; a creative writer should not decide whether its unsupported commercial claim is acceptable; a planner should only expand a concept after it passes critique.
+Agents have no direct shell, database, publishing, or arbitrary network access. The backend owns tools, limits, persistence, policy, and workspace writes.
 
-Our backend keeps that separation real through strict schemas and permitted state transitions. The agents do not receive database, shell, publishing, or arbitrary network access.
+## What was built during Build Week
 
-## Responsible AI and safety
+DZHERO existed before the event with Signals, Gemini Studio, Brand Brain, Jeryk, Content Plan, authentication, billing, and localization.
 
-- Source captions, pages, metadata, transcripts, video frames, and user notes are treated as untrusted data, never instructions.
-- Creative scenes cite evidence ids; product choices cite Brand Brain fields.
-- Metadata is never presented as something observed in the video.
-- Missing evidence triggers `needs_context` with automatic retry or public-source replacement rather than invented evidence.
-- Temporary media uploaded to Gemini is deleted after the evidence request; private or login-only social content is never presented as successfully observed.
-- Raw prompts, hidden reasoning, credentials, tokens, and provider payloads are excluded from the public trace.
-- Provider, quota, timeout, validation, and quality errors are classified rather than hidden behind generic content.
-- No content is written to the workspace before human approval.
+The Build Week extension adds:
 
-## Challenges
+- the isolated Agent Studio Beta surface;
+- OpenAI multi-agent orchestration and structured contracts;
+- grounded video-evidence handoff;
+- the quality playbook and bounded Critic revision;
+- Hybrid Producer;
+- explicit approval rules and seven-item Content Plan handoff;
+- safe agent activity trace;
+- provider usage telemetry;
+- focused contract, orchestration, UI, source, usage, and API verification.
 
-The hardest part was not creating more agents. It was preventing the system from becoming an expensive, opaque loop. We had to make every transition bounded, validate every artifact before the next stage, keep evidence provenance intact, and preserve honest behavior when a public video could not be fetched.
+## Codex collaboration
 
-We also needed to add the hackathon experience without destabilizing a DZHERO build that was already ready for user testing. Agent Studio therefore lives behind an isolated feature flag, API namespace, persistence model, and UI page.
+Codex was used to inspect the existing architecture, implement and review the isolated workflow, run focused verification, diagnose provider and approval failures, strengthen quality contracts, and prepare the repository and judge documentation.
+
+The human owner made the product decisions: target user, coffee-shop demo story, visual direction, role boundaries, acceptable quality, approval policy, business positioning, and final submission choices.
 
 ## Accomplishments
 
-- One real signal becomes one complete Reel, two alternatives, and exactly seven connected content days.
-- Two owner-selected directions can become a newly synthesized, re-criticized hybrid package.
-- The Critic can visibly catch and correct a meaningful unsupported claim.
-- Both entry modes converge on the same auditable workflow.
-- A context pause can resume without paying the Trend Analyst twice.
-- Approval is idempotent and writes to the product’s existing Content Plan exactly once.
-- The live personal OpenAI Build Week project successfully returned a validated structured output through the Agents SDK using `gpt-5.6`.
-- Existing auth, workspace isolation, billing, remix, content-plan, and localization paths remain regression-tested.
+- A real provider-backed run completed the full workflow, Hybrid pass, approval, and seven-day write.
+- The accepted run scored 85 or higher across all recorded quality dimensions.
+- Provider telemetry captured 11 OpenAI calls, 1 Gemini call, and 1 Apify call without exposing sensitive payloads.
+- Hybrid failure is recoverable without losing the original useful package.
+- Existing DZHERO surfaces remain separate from the feature-flagged beta.
 
-## What we learned
+## Challenges and lessons
 
-Multi-agent UX becomes useful when users can see responsibility, evidence, and decision boundaries—not just animated agent names. Structured outputs are not only an implementation convenience; they are the contract that makes critique, recovery, persistence, and human approval dependable.
+The difficult part was not adding more agents. It was keeping the workflow bounded, evidence-aware, recoverable, and honest about source access. Structured outputs became the product contract that makes critique, revision, persistence, approval, and observability dependable.
 
-We also learned that hybrid model architecture is strongest when each model has a narrow accountable role. OpenAI agents own reasoning and production stages; Gemini supplies grounded video evidence; the backend owns policy, state, limits, and writes.
+We also learned that the strongest hybrid-model architecture gives each provider one accountable role: OpenAI agents reason and produce, Gemini observes video, source providers resolve public media, and the backend enforces policy.
 
 ## What is next
 
-- Provider usage and cost telemetry per run.
-- A durable job queue and explicit retry after infrastructure interruption.
-- Team approval roles and version comparison.
-- Measured post-performance feedback into future trend selection, without rewriting Brand Brain automatically.
+- Automatically restore the latest run after a full page refresh.
+- Add a separately labelled fresh-signal acquisition pass.
+- Move long-running work to a durable queue.
+- Add team approval roles and version comparison.
+- Use post-performance feedback to improve future signal selection.
+- Tune model routing after collecting more real per-agent telemetry.
 
 ## Demo story
 
-A Kyiv coffee shop wants more weekday morning visits. DZHERO adapts a calm-setup/fast-reveal Reel mechanic, grounds the observed beats, maps it to a realistic five-minute morning reset, removes an unsupported “best coffee in Kyiv” claim, produces three creative directions, expands the accepted idea into seven varied days, and adds the package to Content Plan only after the owner approves it.
+A Kyiv coffee shop wants more weekday morning visits. DZHERO adapts a real short-form mechanic into a low-budget morning-reset story, grounds it in observed evidence, produces three creative directions, combines two through Hybrid Producer, expands the result into a varied seven-day plan, and writes it to Content Plan only after the owner approves.
 
 ## Built with
 
-OpenAI Agents SDK, GPT-5.6, Zod, Gemini video analysis, React, Vite, Node.js, Express, and the existing DZHERO workspace/content-plan infrastructure.
+OpenAI Agents SDK, GPT-5.6, Codex, Zod, Gemini video analysis, Apify, React, Vite, Node.js, Express, and the existing DZHERO workspace infrastructure.
