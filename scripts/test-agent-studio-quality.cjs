@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 
 const {
   AGENT_STUDIO_DEFINITIONS,
+  buildAgentStudioPrompt,
 } = require('../backend/services/agentStudioPrompts.cjs');
 const {
   ACCEPT_THRESHOLDS,
@@ -12,6 +13,15 @@ const {
   getFirstBeatEndSeconds,
 } = require('../backend/services/agentStudioQuality.cjs');
 const fixture = require('./fixtures/agent-studio-coffee-shop.cjs');
+
+const englishPrompt = buildAgentStudioPrompt('creative_producer', {
+  objective: 'Drive visits',
+  outputLanguage: 'en',
+});
+assert.match(englishPrompt, /natural, polished English/);
+assert.match(englishPrompt, /Original quote:/);
+const legacyPrompt = buildAgentStudioPrompt('creative_producer', { objective: 'Drive visits' });
+assert.match(legacyPrompt, /natural, polished Ukrainian/);
 
 const brandBrain = {
   businessType: 'Independent coffee shop',

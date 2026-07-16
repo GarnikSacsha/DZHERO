@@ -9,6 +9,7 @@ const OptionalUrl = z.string().trim().url().max(2048).optional();
 const AgentStudioInputSchema = z.object({
   mode: z.enum(['find_trend', 'adapt_reel']),
   objective: ShortText,
+  outputLanguage: z.enum(['en', 'uk']).default('uk'),
   signalId: Identifier.optional(),
   sourceUrl: OptionalUrl,
   uploadId: Identifier.optional(),
@@ -264,6 +265,7 @@ function normalizeAgentStudioInput(input = {}) {
   const candidate = {
     mode: cleanOptional(input.mode),
     objective: cleanOptional(input.objective),
+    outputLanguage: cleanOptional(input.outputLanguage),
     signalId: cleanOptional(input.signalId),
     sourceUrl: cleanOptional(input.sourceUrl),
     uploadId: cleanOptional(input.uploadId),

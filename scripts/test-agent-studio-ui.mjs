@@ -32,10 +32,11 @@ const payload = buildAgentStudioCreatePayload({
   signalId: 'signal_1',
   sourceUrl: '',
   userNotes: '  Quiet setup, then coffee reveal.  ',
-}, 'ui_test_1');
+}, 'ui_test_1', 'en');
 assert.deepEqual(payload, {
   mode: 'adapt_reel',
   objective: 'Bring morning visits',
+  outputLanguage: 'en',
   idempotencyKey: 'ui_test_1',
   signalId: 'signal_1',
   userNotes: 'Quiet setup, then coffee reveal.',
@@ -82,7 +83,7 @@ assert.equal(getAgentStudioTraceEntries([
   { id: '3', agent: 'Critic', status: 'started', summary: 'Started' },
 ]).length, 2);
 
-assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Find from my Signals');
+assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Choose from my Signals');
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
 assert.match(getAgentStudioErrorMessage({ error: 'agent_studio_candidate_not_production_ready' }, 'en'), /production-ready/i);

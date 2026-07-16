@@ -519,7 +519,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     }
     setIsSubmitting(true);
     try {
-      const payload = buildAgentStudioCreatePayload(effectiveForm, buildIdempotencyKey());
+      const payload = buildAgentStudioCreatePayload(effectiveForm, buildIdempotencyKey(), language);
       const result = await readResponse(await fetcher(`${baseUrl}/runs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

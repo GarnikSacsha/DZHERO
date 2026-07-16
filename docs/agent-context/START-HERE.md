@@ -30,7 +30,7 @@ Current branch: `hackathon/openai-build-week`.
 
 - Do not commit `backend/data/db.json` unless the user explicitly asks. It often contains local runtime/demo data.
 - For Build Week submission context, read `docs/hackathon/README.md`.
-- Prefer small focused fixes over large rewrites. The app is still a compact MVP/prototype with a large `src/main.jsx`.
+- Prefer small focused fixes over large rewrites. The app is a deployed full-stack MVP with a large `src/main.jsx`.
 - Keep UI copy clean in Ukrainian and English. The user is very sensitive to mixed-language screens.
 - After behavior changes, run the smallest relevant checks, then `npm.cmd run build` when feasible.
 - If a YouTube/Gemini flow looks instant, fake, duplicated, or generic, verify that the frontend is calling the backend AI route and not only rendering fallback data.

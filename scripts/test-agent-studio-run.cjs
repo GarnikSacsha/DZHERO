@@ -37,6 +37,8 @@ assert.equal(queued.status, 'queued');
 assert.equal(queued.currentStage, 'queued');
 assert.equal(queued.criticRevisionCount, 0);
 assert.equal(queued.outputRepairCount, 0);
+assert.equal(queued.input.outputLanguage, 'uk');
+assert.equal(toPublicAgentStudioRun(queued).input.outputLanguage, 'uk');
 assert.equal(queued.trace.length, 1);
 
 const analyzing = transitionAgentStudioRun(queued, 'analyzing_video', {

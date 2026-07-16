@@ -51,6 +51,7 @@ import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
 import ContentCalendar, {
   fromLocalDateKey,
+  resolveInitialCalendarView,
   resolveContentPostDate,
   toLocalDateKey,
 } from './ContentCalendar.jsx';
@@ -110,7 +111,7 @@ const JERYK_LOADING_MESSAGE = '__JERYK_LOADING__';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
-const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'Tik - Tok', 'Video', 'Stories'];
+const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'TikTok', 'Video', 'Stories'];
 const CONTENT_FORMAT_ALIASES = {
   'short-form': 'Video',
   shortform: 'Video',
@@ -118,10 +119,10 @@ const CONTENT_FORMAT_ALIASES = {
   reels: 'Reels',
   story: 'Stories',
   stories: 'Stories',
-  tiktok: 'Tik - Tok',
-  'tik tok': 'Tik - Tok',
-  'tik-tok': 'Tik - Tok',
-  'tik - tok': 'Tik - Tok',
+  tiktok: 'TikTok',
+  'tik tok': 'TikTok',
+  'tik-tok': 'TikTok',
+  'tik - tok': 'TikTok',
   shorts: 'Shorts',
   'youtube shorts': 'Shorts',
   youtube: 'Shorts',
@@ -1730,7 +1731,7 @@ function LegacyProductTour({ page, setPage, currentUser, dataReady, language, on
   return null;
 }
 
-function buildBrandScanPreview(input, publicMetadata = null) {
+function buildBrandScanPreview(input, publicMetadata = null, language = 'uk') {
   const metadataText = [
     publicMetadata?.title,
     publicMetadata?.description,
@@ -1844,10 +1845,36 @@ function buildBrandScanPreview(input, publicMetadata = null) {
     ],
     ideas: ['довіра', 'продукт', 'користь', 'заявка'],
   };
-  return profiles.find((profile) => profile.matches.some((word) => value.includes(word))) || fallback;
+  const selected = profiles.find((profile) => profile.matches.some((word) => value.includes(word))) || fallback;
+  if (language !== 'en') return selected;
+  const labelMap = {
+    'Фітнес / wellness': 'Fitness / wellness',
+    'Кафе / їжа': 'Café / food',
+    'Бʼюті / сервіс': 'Beauty / service',
+    'Магазин одягу': 'Clothing store',
+    'Магазин / товар': 'Retail / product',
+    'Експерт / послуга': 'Expert / service',
+    'Локальний бізнес': 'Local business',
+  };
+  const label = labelMap[selected.label] || 'Local business';
+  return {
+    ...selected,
+    label,
+    cards: [
+      ['Brand profile', `${label} content should make the offer, audience need, and reason to trust the brand immediately clear.`],
+      ['Content DNA', 'Open with a specific customer problem, show the product or process, add proof, and finish with one clear CTA.'],
+      ['First focus', 'Produce three practical short-form videos: a customer problem, a product or process demonstration, and a proof-led result.'],
+    ],
+    plan: [
+      ['Mon', 'Short-form: customer problem and solution'],
+      ['Wed', 'Post: practical tips or common mistakes'],
+      ['Fri', 'Short-form: proof and a clear CTA'],
+    ],
+    ideas: ['customer problem', 'product proof', 'behind the scenes', 'clear CTA'],
+  };
 }
 
-function detectBrandScanSource(input) {
+function detectBrandScanSource(input, language = 'uk') {
   const value = input.trim().toLowerCase();
   if (/youtube\.com\/shorts|youtu\.be|youtube\.com/i.test(value)) {
     return { label: 'YouTube Shorts', tone: 'shorts' };
@@ -1861,7 +1888,7 @@ function detectBrandScanSource(input) {
   if (/https?:\/\/|www\./i.test(value)) {
     return { label: 'Website', tone: 'website' };
   }
-  return { label: 'Опис бізнесу', tone: 'text' };
+  return { label: language === 'en' ? 'Business description' : 'Опис бізнесу', tone: 'text' };
 }
 
 function cleanPublicProfileTitle(value, handle = '') {
@@ -1917,7 +1944,7 @@ function metadataStatChips(metadata) {
   ].filter(Boolean);
 }
 
-function buildPublicMetadataCards(preview, metadata) {
+function buildPublicMetadataCards(preview, metadata, language = 'uk') {
   if (!hasSourceMetadata(metadata)) return preview.cards;
   const visibleStats = metadataStatChips(metadata).slice(0, 3).join(' · ');
   const publicTitle = cleanPublicProfileTitle(metadata.title, metadata.handle);
@@ -1927,24 +1954,41 @@ function buildPublicMetadataCards(preview, metadata) {
   const profileLine = [normalizedHandle, publicTitle].filter(Boolean).join(' — ');
   const signalLine = [
     visibleStats,
-    preview.label && `ніша: ${preview.label}`,
+    preview.label && `${language === 'en' ? 'niche' : 'ніша'}: ${preview.label}`,
   ].filter(Boolean).join('. ');
   return [
     [
-      'Профіль',
-      profileLine || 'Джеро знайшов відкриту сторінку і використав її meta-опис як контекст.',
+      language === 'en' ? 'Profile' : 'Профіль',
+      profileLine || (language === 'en'
+        ? 'Dzhero found a public page and used its metadata as source context.'
+        : 'Джеро знайшов відкриту сторінку і використав її meta-опис як контекст.'),
     ],
     [
-      'Сигнали бренду',
-      signalLine || 'Є базовий контекст для першої генерації.',
+      language === 'en' ? 'Brand signals' : 'Сигнали бренду',
+      signalLine || (language === 'en' ? 'There is enough source context for the first draft.' : 'Є базовий контекст для першої генерації.'),
     ],
-    preview.cards?.[2] || ['Перший фокус', 'Зібрати три ролики, які ведуть до заявки або покупки.'],
+    preview.cards?.[2] || (language === 'en'
+      ? ['First focus', 'Produce three videos that lead to an inquiry or purchase.']
+      : ['Перший фокус', 'Зібрати три ролики, які ведуть до заявки або покупки.']),
   ];
 }
 
-function buildBrandScanExample(scan) {
+function buildBrandScanExample(scan, language = 'uk') {
   const label = scan?.label || 'Локальний бізнес';
   const planTitle = scan?.plan?.[0]?.[1] || 'Short-form: проблема + рішення';
+  if (language === 'en') {
+    return {
+      title: `Generation example: ${planTitle}`,
+      hook: 'Show one real customer problem and offer a simple next step.',
+      script: [
+        ['0–2s', 'Open with the customer problem or desired outcome.'],
+        ['3–8s', 'Show the product, process, or a real-life example.'],
+        ['9–15s', 'Add proof: a number, review, detail, or mini case.'],
+        ['16–20s', 'CTA: ask viewers to send one keyword in a DM.'],
+      ],
+      caption: 'One practical step instead of scattered content. Send “PLAN” and I will help you start.',
+    };
+  }
   if (/фітнес|wellness/i.test(label)) {
     return {
       title: 'Приклад генерації: відео на 20 секунд',
@@ -2020,49 +2064,55 @@ function buildBrandBrainFromScanReel(reel, language = 'uk') {
   const productLooksLikeClothing = /майк|футбол|бод[іи]|лонгслів|лонгслив|сукн|комбінез|топ|одяг|clothes|fashion/i.test(productLine);
   const businessType = productLooksLikeClothing
     ? (language === 'en' ? 'Clothing store' : 'Магазин одягу')
-    : draft.businessType || reel?.scanLabel || reel?.status?.[0] || 'Локальний бізнес';
+    : draft.businessType || reel?.scanLabel || reel?.status?.[0] || (language === 'en' ? 'Local business' : 'Локальний бізнес');
   const proofParts = [
     draft.proof,
-    cardText['Сигнали бренду'],
+    cardText[language === 'en' ? 'Brand signals' : 'Сигнали бренду'],
   ].filter(Boolean);
   return {
     businessType,
     product: productLine,
-    audience: draft.audience || cardText['Портрет бренду'] || cardText['Публічний профіль'] || cardText['Профіль'] || '',
-    location: 'онлайн / Україна',
-    toneOfVoice: 'коротко, конкретно, дружньо, без перебільшень',
+    audience: draft.audience
+      || cardText[language === 'en' ? 'Brand profile' : 'Портрет бренду']
+      || cardText[language === 'en' ? 'Public profile' : 'Публічний профіль']
+      || cardText[language === 'en' ? 'Profile' : 'Профіль']
+      || '',
+    location: language === 'en' ? 'Online / Ukraine' : 'онлайн / Україна',
+    toneOfVoice: language === 'en' ? 'concise, specific, friendly, and evidence-led' : 'коротко, конкретно, дружньо, без перебільшень',
     offer: draft.offer || productLine || reel?.scanPlan?.[0]?.[1] || '',
-    cta: draft.cta || 'вести в Direct через просте ключове слово',
+    cta: draft.cta || (language === 'en' ? 'lead to a DM with one simple keyword' : 'вести в Direct через просте ключове слово'),
     proof: proofParts.join(' · '),
-    stopTopics: ['не вигадувати цифри', 'не копіювати чужий контент дослівно', 'не обіцяти результат без доказу'],
+    stopTopics: language === 'en'
+      ? ['do not invent numbers', 'do not copy source content verbatim', 'do not promise results without evidence']
+      : ['не вигадувати цифри', 'не копіювати чужий контент дослівно', 'не обіцяти результат без доказу'],
     sourceUrl: reel?.sourceUrl || '',
     sourceStatus: reel?.sourceStatus || 'preview',
   };
 }
 
-function composeBrandScanResult(cleanInput, metadata = null, capabilities = null) {
-  const source = detectBrandScanSource(cleanInput);
-  const preview = buildBrandScanPreview(cleanInput, metadata);
+function composeBrandScanResult(cleanInput, metadata = null, capabilities = null, language = 'uk') {
+  const source = detectBrandScanSource(cleanInput, language);
+  const preview = buildBrandScanPreview(cleanInput, metadata, language);
   const resolvedSource = metadata?.source || source;
-  const example = buildBrandScanExample(preview);
+  const example = buildBrandScanExample(preview, language);
   return {
     source: cleanInput,
     sourceType: resolvedSource.label,
     sourceTone: resolvedSource.tone,
     ...preview,
-    cards: buildPublicMetadataCards(preview, metadata),
+    cards: buildPublicMetadataCards(preview, metadata, language),
     studioInsight: preview.cards?.[1]?.[1],
     example,
     metadata,
     capabilities,
     sourceStatus: metadata?.sourceStatus || (source.tone === 'text' ? 'manual_text' : 'url_only'),
     title: source.tone === 'text'
-      ? 'Preview по опису бізнесу готовий'
+      ? (language === 'en' ? 'Business description preview is ready' : 'Preview по опису бізнесу готовий')
       : ['youtube_api', 'youtube_oembed'].includes(metadata?.sourceStatus)
-        ? 'YouTube джерело проаналізовано'
+        ? (language === 'en' ? 'YouTube source analyzed' : 'YouTube джерело проаналізовано')
       : ['public_metadata', 'instagram_web_profile'].includes(metadata?.sourceStatus)
-        ? 'Публічний профіль проаналізовано'
-        : 'Preview по джерелу готовий',
+        ? (language === 'en' ? 'Public profile analyzed' : 'Публічний профіль проаналізовано')
+        : (language === 'en' ? 'Source preview is ready' : 'Preview по джерелу готовий'),
   };
 }
 
@@ -2253,7 +2303,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       notify(scanCopy.insufficientSourceNotice);
       return;
     }
-    const result = composeBrandScanResult(cleanInput, metadata, capabilities);
+    const result = composeBrandScanResult(cleanInput, metadata, capabilities, language);
     setError('');
     setScanResult(result);
     setLoginPrompt('');
@@ -3081,6 +3131,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
     instagramConnected: false,
     brandReady: false,
   });
+  const [contentPlanCount, setContentPlanCount] = useState(data.plans.length);
 
   useEffect(() => {
     let isMounted = true;
@@ -3099,6 +3150,21 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
       isMounted = false;
     };
   }, [workspaceId]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setContentPlanCount(data.plans.length);
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!isMounted || !Array.isArray(payload?.posts)) return;
+        setContentPlanCount(payload.posts.length);
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [workspaceId, data.plans.length]);
 
   const onboardingSteps = [
     ['01', 'Підключити Instagram', 'Вхід, права доступу, профіль бізнесу.', onboarding.instagramConnected, 'settings'],
@@ -3135,7 +3201,7 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
   );
   const availableIdeas = data.ideas.filter((idea) => !plannedIdeaTitles.has(normalizeContentIdentity(idea.title)));
   const previewIdeas = availableIdeas.slice(0, 4);
-  const plannedIdeasCount = Math.max(0, data.ideas.length - availableIdeas.length);
+  const plannedIdeasCount = contentPlanCount;
   const hiddenIdeasCount = Math.max(0, availableIdeas.length - previewIdeas.length);
 
   return (
@@ -3542,10 +3608,37 @@ function ViralBank({
   const [youtubeCategory, setYoutubeCategory] = useState('');
   const [isPullingYoutube, setIsPullingYoutube] = useState(false);
   const [apifyModalOpen, setApifyModalOpen] = useState(false);
+  const signalsCopy = language === 'en'
+    ? {
+      all: 'All',
+      searching: 'Searching...',
+      findVideos: 'Find videos',
+      importing: 'Preparing...',
+      importAutomatically: 'Adapt automatically',
+      linkReadyTitle: 'Link ready to import',
+      linkReadyText: 'This looks like an external signal. Use the import action above or press Enter, and Dzhero will pull its context into Studio.',
+      noResultsTitle: 'No results found',
+      noResultsText: 'Try another query or paste a TikTok, Reels, or YouTube Shorts link.',
+      noSourceTitle: 'No signals from this source yet',
+      noSourceText: 'Paste a link or add a signal manually. It will appear on this tab after import.',
+    }
+    : {
+      all: 'Всі',
+      searching: 'Шукаємо...',
+      findVideos: 'Знайти ролики',
+      importing: 'Адаптуємо...',
+      importAutomatically: 'Адаптувати автоматично',
+      linkReadyTitle: 'Посилання готове до імпорту',
+      linkReadyText: 'Це схоже на зовнішній сигнал. Натисни імпорт вище або Enter, і Джеро спробує витягнути контекст у Studio.',
+      noResultsTitle: 'Нічого не знайшли',
+      noResultsText: 'Спробуй інший запит або встав посилання на TikTok, Reels чи YouTube Shorts.',
+      noSourceTitle: 'Тут ще немає сигналів',
+      noSourceText: 'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.',
+    };
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
   const sourceTabs = [
-    ['all', 'Всі'],
+    ['all', signalsCopy.all],
     ['youtube', 'YouTube'],
     ['instagram', 'Instagram'],
     ['tiktok', 'TikTok'],
@@ -3763,7 +3856,7 @@ function ViralBank({
             </select>
           </label>
           <button className="dark" type="button" onClick={pullYoutubePopular} disabled={isPullingYoutube}>
-            <RefreshCw size={16} />{isPullingYoutube ? 'Шукаємо...' : 'Знайти ролики'}
+            <RefreshCw size={16} />{isPullingYoutube ? signalsCopy.searching : signalsCopy.findVideos}
           </button>
         </div>
       )}
@@ -3774,7 +3867,7 @@ function ViralBank({
             <span>Джеро спробує витягнути публічний контекст із джерела і одразу підготує UA-адаптацію. Якщо платформа нічого не віддасть, відкриється запасний ручний режим.</span>
           </div>
           <button className="dark" type="button" onClick={importPastedReel} disabled={isImportingUrl}>
-            <Wand2 size={16} />{isImportingUrl ? 'Адаптуємо...' : 'Адаптувати автоматично'}
+            <Wand2 size={16} />{isImportingUrl ? signalsCopy.importing : signalsCopy.importAutomatically}
           </button>
         </div>
       )}
@@ -3799,18 +3892,18 @@ function ViralBank({
             onOpenAdvancedImport={() => setApifyModalOpen(true)}
             emptyState={pastedReelUrl
               ? {
-                  title: 'Посилання готове до імпорту',
-                  text: 'Це схоже на зовнішній сигнал. Натисни імпорт вище або Enter, і Джеро спробує витягнути контекст у Studio.',
+                  title: signalsCopy.linkReadyTitle,
+                  text: signalsCopy.linkReadyText,
                 }
                 : trimmedQuery
                 ? {
-                    title: 'Нічого не знайшли',
-                    text: 'Try another query or paste a TikTok, Reels, or YouTube Shorts link.',
+                    title: signalsCopy.noResultsTitle,
+                    text: signalsCopy.noResultsText,
                   }
                 : sourceFilter !== 'all'
                   ? {
-                      title: 'Тут ще немає сигналів',
-                      text: 'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.',
+                      title: signalsCopy.noSourceTitle,
+                      text: signalsCopy.noSourceText,
                     }
                 : null}
           />
@@ -3834,7 +3927,7 @@ function ViralBank({
                 <b>?</b>
                 <div>
                   <strong>No active sources yet</strong>
-                  <span>Run Apify import to populate this list.</span>
+                  <span>Run fresh discovery or open Advanced import to populate this list.</span>
                 </div>
               </article>
             )}
@@ -4151,22 +4244,34 @@ function StrategyBrain({ notify, setPage }) {
   );
 }
 
-function compactStatusLabel(status) {
+function compactStatusLabel(status, language = 'uk') {
   const normalized = String(status || '').toLowerCase();
-  const map = {
-    youtube_api: 'YouTube',
-    youtube_oembed: 'YouTube',
-    youtube_popular: 'Популярне',
-    public_metadata: 'Контекст',
-    metadata_fetch_failed: 'Обмежено',
-    ready_to_adapt: 'Готово',
-    ua_remix_ready: 'UA-адаптація',
-    manual_text: 'Brief',
-    url_only: 'URL',
-  };
+  const map = language === 'en'
+    ? {
+      youtube_api: 'YouTube',
+      youtube_oembed: 'YouTube',
+      youtube_popular: 'Popular',
+      public_metadata: 'Context',
+      metadata_fetch_failed: 'Limited',
+      ready_to_adapt: 'Ready',
+      ua_remix_ready: 'UA adaptation',
+      manual_text: 'Brief',
+      url_only: 'URL',
+    }
+    : {
+      youtube_api: 'YouTube',
+      youtube_oembed: 'YouTube',
+      youtube_popular: 'Популярне',
+      public_metadata: 'Контекст',
+      metadata_fetch_failed: 'Обмежено',
+      ready_to_adapt: 'Готово',
+      ua_remix_ready: 'UA-адаптація',
+      manual_text: 'Brief',
+      url_only: 'URL',
+    };
   if (map[normalized]) return map[normalized];
-  if (normalized.includes('api')) return normalized.includes('youtube') ? 'YouTube' : 'Джерело';
-  if (normalized.includes('ready')) return 'Готово';
+  if (normalized.includes('api')) return normalized.includes('youtube') ? 'YouTube' : (language === 'en' ? 'Source' : 'Джерело');
+  if (normalized.includes('ready')) return language === 'en' ? 'Ready' : 'Готово';
   if (normalized.includes('проход')) return 'Gate';
   if (normalized.includes('us')) return 'US';
   if (normalized.includes('eu')) return 'EU';
@@ -4594,7 +4699,7 @@ function getSignalSourceUrl(reel) {
   return reel?.sourceUrl || reel?.importedMetadata?.url || '';
 }
 
-function formatYouTubeDuration(value) {
+function formatYouTubeDuration(value, language = 'uk') {
   const raw = String(value || '').trim();
   if (!raw) return '';
   const match = raw.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
@@ -4604,27 +4709,28 @@ function formatYouTubeDuration(value) {
   const seconds = Number(match[3] || 0);
   const totalSeconds = (hours * 3600) + (minutes * 60) + seconds;
   if (!totalSeconds) return '';
-  if (totalSeconds < 60) return `${totalSeconds}с`;
+  if (totalSeconds < 60) return `${totalSeconds}${language === 'en' ? 's' : 'с'}`;
   const totalMinutes = Math.floor(totalSeconds / 60);
   const remainingSeconds = totalSeconds % 60;
   return `${totalMinutes}:${String(remainingSeconds).padStart(2, '0')}`;
 }
 
-function getReelDurationLabel(reel) {
+function getReelDurationLabel(reel, language = 'uk') {
   return formatYouTubeDuration(
     reel?.duration
       || reel?.importedMetadata?.duration
       || reel?.importedMetadata?.youtube?.duration
       || reel?.importedMetadata?.videoIntelligence?.facts?.duration,
+    language,
   );
 }
 
-function getReelPublishedLabel(reel) {
+function getReelPublishedLabel(reel, language = 'uk') {
   const rawDate = reel?.publishedAt || reel?.createdAt || reel?.importedMetadata?.publishedAt || reel?.importedMetadata?.videoIntelligence?.facts?.publishedAt;
   if (!rawDate) return '';
   const date = new Date(rawDate);
   if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat('uk-UA', {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'uk-UA', {
     day: '2-digit',
     month: 'short',
     hour: '2-digit',
@@ -4656,7 +4762,10 @@ function formatUsdAmount(value) {
 }
 
 function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
-  const { translateText } = useI18n();
+  const { language, translateText } = useI18n();
+  const tableCopy = language === 'en'
+    ? { signal: 'Signal', score: 'Score', views: 'Views', likes: 'Likes', market: 'Market', tags: 'Tags', opening: 'Opening...', adapt: 'Adapt' }
+    : { signal: 'Сигнал', score: 'Оцінка', views: 'Перегляди', likes: 'Лайки', market: 'Ринок', tags: 'Теги', opening: 'Відкриваємо...', adapt: 'Адаптувати' };
   const [adaptingKey, setAdaptingKey] = useState('');
   const adaptReel = (reel) => {
     const key = reel.id || `${reel.handle}-${reel.title}`;
@@ -4667,12 +4776,12 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
     <div className="table-card trend-analytics-table">
       <div className="table-head trend-grid signals-grid">
         <span>#</span>
-        <span>Сигнал</span>
-        <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>Оцінка <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
-        <button className={`score-sort-button metric-sort-button ${sort === 'views' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('views')}>Перегляди <span>{sort === 'views' ? '↓' : ''}</span></button>
-        <button className={`score-sort-button metric-sort-button ${sort === 'likes' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('likes')}>Лайки <span>{sort === 'likes' ? '↓' : ''}</span></button>
-        <span>Ринок</span>
-        <span>Теги</span>
+        <span>{tableCopy.signal}</span>
+        <button className="score-sort-button" type="button" onClick={onToggleScoreSort}>{tableCopy.score} <span>{scoreSortDirection === 'desc' ? '↓' : '↑'}</span></button>
+        <button className={`score-sort-button metric-sort-button ${sort === 'views' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('views')}>{tableCopy.views} <span>{sort === 'views' ? '↓' : ''}</span></button>
+        <button className={`score-sort-button metric-sort-button ${sort === 'likes' ? 'active' : ''}`} type="button" onClick={() => onSortChange?.('likes')}>{tableCopy.likes} <span>{sort === 'likes' ? '↓' : ''}</span></button>
+        <span>{tableCopy.market}</span>
+        <span>{tableCopy.tags}</span>
         <span></span>
       </div>
       {reels.map((reel, index) => {
@@ -4681,7 +4790,7 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
         const previewImage = getReelPreviewImage(reel);
         const viewsLabel = formatMetricDisplay(reel.views);
         const likesLabel = formatMetricDisplay(reel.likes);
-        const metaLine = [marketLabel(reel.market), getReelDurationLabel(reel), getReelPublishedLabel(reel)].filter(Boolean).join(' · ');
+        const metaLine = [marketLabel(reel.market, language), getReelDurationLabel(reel, language), getReelPublishedLabel(reel, language)].filter(Boolean).join(' · ');
         return (
         <div className={`reel-row trend-grid signals-grid ${isAdapting ? 'is-adapting' : ''}`} key={rowKey}>
           <span className="trend-rank">{String(index + 1).padStart(2, '0')}</span>
@@ -4702,11 +4811,11 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
           <Score value={reel.score} />
           <strong>{viewsLabel}</strong>
           <span>{likesLabel}</span>
-          <span>{marketLabel(reel.market)}</span>
-          <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s)} key={s}>{compactStatusLabel(s)}</em>)}</div>
+          <span>{marketLabel(reel.market, language)}</span>
+          <div className="status-list status-badges">{reel.status.map((s) => <em title={compactStatusLabel(s, language)} key={s}>{compactStatusLabel(s, language)}</em>)}</div>
           <button className="signal-adapt-button" type="button" onClick={() => adaptReel(reel)} disabled={isAdapting}>
             {isAdapting ? <RefreshCw className="is-spinning" size={14} /> : <Wand2 size={14} />}
-            {isAdapting ? 'Відкриваємо...' : 'Адаптувати'}
+            {isAdapting ? tableCopy.opening : tableCopy.adapt}
           </button>
         </div>
         );
@@ -5552,7 +5661,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         notify?.(translateText('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.'));
         return;
       }
-      const scan = composeBrandScanResult(cleanSeed, metadata, payload.capabilities || null);
+      const scan = composeBrandScanResult(cleanSeed, metadata, payload.capabilities || null, language);
       const structuredDraft = payload.brandBrainDraft && typeof payload.brandBrainDraft === 'object'
         ? payload.brandBrainDraft
         : null;
@@ -6173,7 +6282,8 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   const [selectedDate, setSelectedDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [calendarView, setCalendarView] = useState(() => {
     const storedView = isBrowser ? window.localStorage.getItem('dzhero-content-calendar-view') : '';
-    return ['month', 'week', 'schedule'].includes(storedView) ? storedView : 'month';
+    const viewportWidth = isBrowser ? window.innerWidth : Number.POSITIVE_INFINITY;
+    return resolveInitialCalendarView(storedView, viewportWidth);
   });
   const [visibleFormats, setVisibleFormats] = useState(() => [...CONTENT_FORMATS]);
   const [modalDateKey, setModalDateKey] = useState('');
@@ -6464,13 +6574,20 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
         )}
       />
       <div className="stats">
-        {[
-          ['Усього', posts.length],
-          ['Готово в batch', posts.length],
-          ['Знято', doneCount],
-          ['Опубліковано', doneCount],
-          ['Потрібен розбір', posts.length - doneCount],
-        ].map(([label, value]) => <div key={label}><span>{translateText(label)}</span><strong>{value}</strong></div>)}
+        {(language === 'en'
+          ? [
+            ['Total', posts.length],
+            ['Scheduled', pendingPosts.length],
+            ['Completed', doneCount],
+            ['Needs review', pendingPosts.length],
+          ]
+          : [
+            ['Усього', posts.length],
+            ['Заплановано', pendingPosts.length],
+            ['Завершено', doneCount],
+            ['Потрібен розбір', pendingPosts.length],
+          ]
+        ).map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
       </div>
       <ContentCalendar
         language={language}
@@ -6505,10 +6622,10 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
             ))}
           </div>
           <label className="direct-background-toggle">
-            <input type="checkbox" />
+            <input type="checkbox" disabled />
             <span>
               <strong>{translateText('Автовідповідь в Direct')}</strong>
-              <small>{translateText('Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.')}</small>
+              <small>{language === 'en' ? 'Coming soon — not active in this demo.' : 'Незабаром — у цьому демо функція неактивна.'}</small>
             </span>
           </label>
         </aside>
@@ -6644,7 +6761,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               <label>
                 <span>{language === 'en' ? 'Format' : 'Формат'}</span>
                 <select value={draft.format} onChange={(event) => setDraft((current) => ({ ...current, format: event.target.value }))}>
-                  {formatSuggestions.map((format) => <option key={format} value={format} />)}
+                  {formatSuggestions.map((format) => <option key={format} value={format}>{format}</option>)}
                 </select>
               </label>
               <div className="calendar-format-memory wide">
@@ -7218,6 +7335,39 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
   const [sourcePreview, setSourcePreview] = useState(null);
   const [sourceError, setSourceError] = useState('');
   const [isScanning, setIsScanning] = useState(false);
+  const sourceCopy = language === 'en'
+    ? {
+      required: 'Paste an Instagram, TikTok, or YouTube Shorts link, or briefly describe the business.',
+      previewFromSource: 'Dzhero read the public profile and prepared a production preview.',
+      previewFromDescription: 'Dzhero prepared a preview from the business description.',
+      heading: 'Add Instagram, TikTok, Shorts, or a brief',
+      intro: 'Dzhero will read the available public context, identify the niche, prepare the first draft, and open it in Studio.',
+      scanning: 'Scanning...',
+      analyze: 'Analyze source',
+      connectInstagram: 'Connect Instagram',
+      loadingTitle: 'Jeryk is preparing the Brand Scan preview',
+      loadingText: 'Checking the public source and preparing the first production preview.',
+      openStudio: 'Open in Studio',
+      source: 'Source',
+      profile: 'Profile',
+      firstDraft: 'First generation',
+    }
+    : {
+      required: 'Встав Instagram, TikTok, YouTube Shorts або короткий опис бізнесу.',
+      previewFromSource: 'Джеро прочитав публічний профіль і зібрав production preview.',
+      previewFromDescription: 'Джеро зібрав preview з опису.',
+      heading: 'Додай Instagram, TikTok, Shorts або brief',
+      intro: 'Джеро спробує прочитати відкритий контекст, визначить нішу, збере першу генерацію і відкриє це в Studio.',
+      scanning: 'Скануємо...',
+      analyze: 'Проаналізувати джерело',
+      connectInstagram: 'Підключити Instagram',
+      loadingTitle: 'Джерик збирає Brand Scan preview',
+      loadingText: 'Перевіряю відкрите джерело і готую перший production preview.',
+      openStudio: 'Відкрити в Studio',
+      source: 'Джерело',
+      profile: 'Профіль',
+      firstDraft: 'Перша генерація',
+    };
   const settingsTabs = [
     ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
     ['profile', language === 'en' ? 'Brand memory' : 'Памʼять бренду'],
@@ -7233,17 +7383,24 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       window.localStorage.setItem(SOURCES_TAB_KEY, 'sources');
     }
   }, [tab, currentUser?.canManageTesters, currentUser?.isDemo]);
-  const sourceTypes = [
-    ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
-    ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
-    ['YouTube Shorts', 'Можна додати', 'Встав Shorts або канал, щоб зібрати контекст для контент-плану.', 'shorts'],
-    ['Manual brief', 'Завжди доступно', 'Короткого опису бізнесу достатньо, якщо бренд тільки запускається.', 'text'],
-  ];
+  const sourceTypes = language === 'en'
+    ? [
+      ['Instagram', 'Available', 'Paste a profile so Dzhero can understand the niche, brand language, and first topics.', 'instagram'],
+      ['TikTok', 'Available', 'Paste a video, profile, or short description when the brand primarily uses TikTok.', 'tiktok'],
+      ['YouTube Shorts', 'Available', 'Paste a Short or channel to collect context for the content plan.', 'shorts'],
+      ['Manual brief', 'Always available', 'A short business description is enough when the brand is just getting started.', 'text'],
+    ]
+    : [
+      ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
+      ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
+      ['YouTube Shorts', 'Можна додати', 'Встав Shorts або канал, щоб зібрати контекст для контент-плану.', 'shorts'],
+      ['Manual brief', 'Завжди доступно', 'Короткого опису бізнесу достатньо, якщо бренд тільки запускається.', 'text'],
+    ];
 
   const buildSourcePreview = async () => {
     const cleanInput = sourceInput.trim();
     if (!cleanInput) {
-      setSourceError('Встав Instagram, TikTok, YouTube Shorts або короткий опис бізнесу.');
+      setSourceError(sourceCopy.required);
       return;
     }
     setIsScanning(true);
@@ -7266,11 +7423,9 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
     } finally {
       setIsScanning(false);
     }
-    const result = composeBrandScanResult(cleanInput, metadata, capabilities);
+    const result = composeBrandScanResult(cleanInput, metadata, capabilities, language);
     setSourcePreview(result);
-    notify(translateText(hasSourceMetadata(result.metadata)
-      ? 'Джеро прочитав публічний профіль і зібрав production preview.'
-      : 'Джеро зібрав preview з опису.'));
+    notify(hasSourceMetadata(result.metadata) ? sourceCopy.previewFromSource : sourceCopy.previewFromDescription);
   };
 
   const connectInstagram = async () => {
@@ -7302,8 +7457,8 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
           <div className="sources-command">
             <div>
               <small>Quick source scan</small>
-              <h2>Додай Instagram, TikTok, Shorts або brief</h2>
-              <p>Джеро спробує прочитати відкритий контекст, визначить нішу, збере першу генерацію і відкриє це в Studio.</p>
+              <h2>{sourceCopy.heading}</h2>
+              <p>{sourceCopy.intro}</p>
             </div>
             <div className="source-scan-form">
               <textarea
@@ -7317,10 +7472,10 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
               />
               <div>
                 <button className="dark" type="button" onClick={buildSourcePreview} disabled={isScanning}>
-                  <Sparkles size={16} /> {isScanning ? 'Скануємо...' : 'Проаналізувати джерело'}
+                  <Sparkles size={16} /> {isScanning ? sourceCopy.scanning : sourceCopy.analyze}
                 </button>
                 <button className="dark source-connect-inline" type="button" onClick={connectInstagram}>
-                  <Link2 size={16} /> Підключити Instagram
+                  <Link2 size={16} /> {sourceCopy.connectInstagram}
                 </button>
                 {sourceError && <span>{sourceError}</span>}
               </div>
@@ -7329,8 +7484,8 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
 
           {isScanning && !sourcePreview && (
             <JerykLoading
-              title={translateText('Джерик збирає Brand Scan preview')}
-              text="Перевіряю відкрите джерело і готую перший production preview."
+              title={sourceCopy.loadingTitle}
+              text={sourceCopy.loadingText}
             />
           )}
 
@@ -7354,17 +7509,17 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
                   <h3 data-i18n-content>{sourcePreview.title}</h3>
                 </div>
                 <button className="dark" type="button" onClick={() => onOpenBrandScan?.(sourcePreview)}>
-                  <Wand2 size={16} /> Відкрити в Studio
+                  <Wand2 size={16} /> {sourceCopy.openStudio}
                 </button>
               </div>
               <div className="scan-source">
-                <span>Джерело</span>
+                <span>{sourceCopy.source}</span>
                 <strong data-i18n-content>{sourcePreview.source}</strong>
                 <em data-i18n-content data-source={sourcePreview.sourceTone}>{sourcePreview.sourceType}</em>
               </div>
               {hasSourceMetadata(sourcePreview.metadata) && (
                 <div className="scan-public-meta">
-                  <span>Профіль</span>
+                  <span>{sourceCopy.profile}</span>
                   <strong data-i18n-content>{sourcePreview.metadata.handle}</strong>
                   <p data-i18n-content>{sourcePreview.metadata.title || sourcePreview.metadata.description}</p>
                   <div>
@@ -7379,7 +7534,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
               {sourcePreview.example && (
                 <div className="scan-example-block">
                   <div className="scan-example-head">
-                    <small>Перша генерація</small>
+                    <small>{sourceCopy.firstDraft}</small>
                     <strong data-i18n-content>{sourcePreview.example.title}</strong>
                   </div>
                   <div className="scan-example-hook">
@@ -7398,7 +7553,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
 
           <div className="sources-instagram-only">
             <button className="dark source-connect-button" type="button" onClick={connectInstagram}>
-              <Link2 size={16} /> Підключити Instagram
+              <Link2 size={16} /> {sourceCopy.connectInstagram}
             </button>
           </div>
         </div>
@@ -7635,16 +7790,18 @@ function Tabs({ items, active, onChange }) {
 }
 
 function Score({ value, compact }) {
-  return <div className={compact ? 'score compact' : 'score'}><strong>{value}</strong>{!compact && <small>{Number(value) > 84 ? 'Відмінно' : 'Добре'}</small>}</div>;
+  const { language } = useI18n();
+  const qualityLabel = Number(value) > 84
+    ? (language === 'en' ? 'Excellent' : 'Відмінно')
+    : (language === 'en' ? 'Good' : 'Добре');
+  return <div className={compact ? 'score compact' : 'score'}><strong>{value}</strong>{!compact && <small>{qualityLabel}</small>}</div>;
 }
 
-function marketLabel(market) {
-  return {
-    ua: 'Україна',
-    us: 'США',
-    eu: 'Європа',
-    global: 'Global',
-  }[market] ?? 'Усі ринки';
+function marketLabel(market, language = 'uk') {
+  const labels = language === 'en'
+    ? { ua: 'Ukraine', us: 'USA', eu: 'Europe', global: 'Global' }
+    : { ua: 'Україна', us: 'США', eu: 'Європа', global: 'Global' };
+  return labels[market] ?? (language === 'en' ? 'All markets' : 'Усі ринки');
 }
 
 function filterByMarket(items, market) {

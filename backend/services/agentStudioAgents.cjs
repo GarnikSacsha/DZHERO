@@ -161,11 +161,16 @@ function findSignal(signals, signalId) {
 
 function buildSelectedTrendFromInput(input, signals = []) {
   const signal = findSignal(signals, input.signalId);
+  const isEnglish = input.outputLanguage === 'en';
   return TrendBriefSchema.parse({
-    title: signal?.title || signal?.caption || 'Reel selected for adaptation',
+    title: signal?.title || signal?.caption || (isEnglish ? 'Reel selected for adaptation' : 'Reel, обраний для адаптації'),
     rationale: signal
-      ? 'The user selected this existing DZHERO signal for brand adaptation.'
-      : 'The user supplied this source directly for brand adaptation.',
+      ? (isEnglish
+        ? 'The user selected this existing DZHERO signal for brand adaptation.'
+        : 'Користувач обрав цей наявний сигнал DZHERO для адаптації під бренд.')
+      : (isEnglish
+        ? 'The user supplied this source directly for brand adaptation.'
+        : 'Користувач надав це джерело безпосередньо для адаптації під бренд.'),
     signalId: input.signalId || signal?.id || undefined,
     sourceUrl: input.sourceUrl || signal?.sourceUrl || signal?.videoUrl || signal?.importedMetadata?.url || undefined,
   });
@@ -202,7 +207,7 @@ async function orchestrateAgentStudio({
     emit({ agent: definition.name, agentId, stage, status: 'started', summary: options.startSummary || `Started ${definition.name}.` });
     const output = await runAgent({
       agentId,
-      input: agentInput,
+      input: { ...agentInput, outputLanguage: input.outputLanguage },
       outputSchema: AGENT_OUTPUT_SCHEMAS[agentId],
       groupId: runId,
     });
@@ -398,7 +403,7 @@ async function orchestrateAgentStudioHybrid({
     emit({ agent: definition.name, agentId, stage, status: 'started', summary: options.startSummary || `Started ${definition.name}.` });
     const output = await runAgent({
       agentId,
-      input: agentInput,
+      input: { ...agentInput, outputLanguage: input.outputLanguage },
       outputSchema: AGENT_OUTPUT_SCHEMAS[agentId],
       groupId: `${runId}:hybrid`,
     });

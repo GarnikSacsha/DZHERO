@@ -1,6 +1,8 @@
 # DZHERO Agent Studio — verification record
 
-Update this file after the final pre-submission run. Do not replace measured results with expected results.
+Last updated: **2026-07-17**
+
+Update the final-evidence table after the last production rehearsal. Do not replace measured results with expected results.
 
 ## Automated verification
 
@@ -11,30 +13,28 @@ npm run test:agent-studio
 npm run build
 ```
 
-Last local result on **2026-07-16**:
+Last recorded result after implementation baseline `3529d80` on **2026-07-17**:
 
 - `npm run test:agent-studio` — passed;
-- automatic discovery policy, regression, storage, UI-state, and API smoke tests — passed;
+- Agent Studio schemas, quality, state machine, orchestration, video tool, source resolver, usage, UI state, and authenticated API journey — passed;
+- authenticated Apify TikTok media-transfer regression — passed;
 - `npm run build` — passed;
-- Vite emitted a non-blocking chunk-size warning for the main application bundle.
+- Vite emitted a non-blocking main-bundle size warning.
 
-`test:agent-studio` covers:
+The API journey uses deterministic stub providers and spends no external API credits. Additional focused scripts are available under `scripts/test-agent-studio-*`.
 
-- schemas and public serialization;
-- creative quality contracts;
-- bounded state transitions;
-- mocked orchestration and revision behavior;
-- Gemini video-tool behavior;
-- public source resolution;
-- provider usage aggregation;
-- UI state mapping;
-- authenticated API journey and idempotent approval.
+Final UI/documentation integration verification on **2026-07-17**:
 
-Additional focused scripts remain available under `scripts/test-agent-studio-*`.
+- `npm run test:agent-studio` — passed all nine suites;
+- `npm run build` — passed with the same non-blocking bundle-size warning;
+- the complete localization audit suite — passed;
+- light and dark UI audits across Home, Signals, Studio, Agent Studio, Content Plan, Settings, and the open assistant at desktop, laptop, and mobile viewports — zero overflow, clipping, undersized controls, page errors, or request failures.
+
+The signed-out shell still logs the expected unauthenticated `/api/auth/me` HTTP 401 while deciding which entry screen to show; this does not fail navigation or API requests. Record the final commit below after creating it.
 
 ## Provider-backed reference run
 
-Recorded before the documentation pass:
+Recorded on 2026-07-16:
 
 | Field | Value |
 | --- | --- |
@@ -63,7 +63,33 @@ Recorded quality scores:
 | Mechanic fidelity | 89 |
 | Creative boldness | 85 |
 
-This is a reference result, not a guarantee that every public source will have identical latency, cost, or scores.
+This is a measured reference result, not a guarantee that every public source will have identical latency, cost, or scores.
+
+## Source-path verification
+
+On 2026-07-17, the owner manually confirmed that both YouTube and TikTok inputs completed through Agent Studio. The TikTok verification followed commit `3529d80`, which authenticates the server-side download of protected Apify media before temporary Gemini Files analysis.
+
+| Source | Result | Notes |
+| --- | --- | --- |
+| YouTube public URL | passed | Native public URL path into Gemini evidence |
+| TikTok public URL | passed | Apify resolution, authenticated media transfer, Gemini Files evidence |
+
+Instagram remains supported by the same source-resolution architecture but is not claimed as part of this 2026-07-17 manual verification.
+
+## Deployment verification
+
+Checked on **2026-07-17**:
+
+| Check | Result |
+| --- | --- |
+| Public homepage | HTTP 200 |
+| `GET /api/health` | HTTP 200 |
+| Service | `dzhero-api` |
+| Storage | `postgres` |
+| Fresh-signal discovery | deployed |
+| Scheduled discovery worker | enabled |
+
+Production URL: `https://openaibuildweek.up.railway.app`
 
 ## Manual acceptance
 
@@ -73,9 +99,10 @@ This is a reference result, not a guarantee that every public source will have i
 - [x] Human approval completed.
 - [x] Exactly seven Content Plan items were written.
 - [x] OpenAI, Gemini, and Apify usage was recorded.
-- [ ] Repeat the final English judge story after the documentation commit.
-- [ ] Verify a fresh demo account/workspace.
-- [ ] Verify the deployed environment from a signed-out browser.
+- [x] YouTube and TikTok source paths were manually verified.
+- [ ] Repeat the final English judge story after the final UI/documentation commit.
+- [ ] Verify the final demo workspace in a signed-out browser.
+- [ ] Confirm the exact final commit deployed by Railway.
 
 ## Final submission evidence
 
@@ -84,18 +111,23 @@ Fill these fields immediately before submission:
 | Evidence | Value |
 | --- | --- |
 | Branch | `hackathon/openai-build-week` |
-| Final commit | pending |
-| Public repository/judge access | pending |
+| Implementation baseline | `3529d80` |
+| Final submission commit | **FILL AFTER FINAL UI/DOCS COMMIT** |
+| Final Railway deployment status | **FILL AFTER FINAL DEPLOY** |
+| Repository URL / judge access | **FILL BEFORE SUBMISSION** |
 | Deployed demo | `https://openaibuildweek.up.railway.app` |
-| Demo account instructions | pending |
-| Public YouTube video | pending |
-| Codex `/feedback` Session ID | pending |
-| Devpost submission URL | pending |
+| Demo account instructions | **PROVIDE PRIVATELY IF REQUIRED** |
+| Public YouTube video | **FILL BEFORE SUBMISSION** |
+| Codex `/feedback` Session ID | **FILL BEFORE SUBMISSION** |
+| Devpost submission URL | **FILL AFTER SUBMISSION** |
+
+If the repository remains private, confirm access for both `testing@devpost.com` and `build-week-event@openai.com`.
 
 ## Security checks
 
 - [x] No `.env` file is tracked.
-- [x] No common API key or access-token pattern appears in the documentation/config diff.
+- [x] No common API-key or access-token pattern appears in the documentation/config diff.
 - [x] `backend/data/db.json` is excluded from the documentation commit.
-- [ ] Public API responses contain only safe aggregate usage.
-- [ ] Demo data contains no private customer information.
+- [x] Agent Studio public serialization tests reject raw provider payloads and secrets.
+- [ ] Final demo workspace contains no private customer information.
+- [ ] Final recording contains no keys, personal billing details, or reusable passwords.

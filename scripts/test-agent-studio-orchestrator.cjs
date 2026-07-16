@@ -71,7 +71,7 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
   const findRunner = createMockAgentRunner({ revise: true });
   const findResult = await orchestrateAgentStudio({
     runId: 'run_find',
-    input: { mode: 'find_trend', objective: 'Drive morning visits' },
+    input: { mode: 'find_trend', objective: 'Drive morning visits', outputLanguage: 'en' },
     workspace,
     signals: [{
       id: fixture.selectedTrend.signalId,
@@ -85,6 +85,7 @@ function createMockAgentRunner({ revise = false, reject = false, movingGoalposts
   });
 
   assert.equal(findResult.type, 'completed');
+  assert.equal(findRunner.calls.every((call) => call.input.outputLanguage === 'en'), true);
   assert.equal(FinalPackageSchema.safeParse(findResult.finalPackage).success, true);
   assert.deepEqual(findRunner.calls.map((call) => call.agentId), [
     'trend_analyst',

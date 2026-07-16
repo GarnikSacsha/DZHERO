@@ -15,11 +15,13 @@ Agent Studio is the Build Week extension inside the existing DZHERO product. It 
 
 The extension is additive and feature-flagged. It does not replace the existing Signals, Gemini Studio, Brand Brain, Jeryk assistant, billing, or Content Plan.
 
+**Current Build Week state (2026-07-17):** the full-stack application is deployed on Railway at [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app), production state is backed by PostgreSQL, fresh-signal discovery and its background worker are enabled, and the owner has manually verified both YouTube and TikTok Agent Studio source flows. The exact final submission commit will be recorded after the last UI/documentation pass.
+
 ## Product flow
 
 The owner starts in one of two modes:
 
-- **Find from my Signals** — Trend Analyst chooses the best existing signal in the current workspace for the stated business objective. In the current MVP this mode does not claim to search the whole internet in real time.
+- **Choose from my Signals** — Trend Analyst chooses the best existing signal in the current workspace for the stated business objective. In the current MVP this mode does not claim to search the whole internet in real time.
 - **Adapt a Reel** — the owner selects an existing DZHERO signal or pastes a public YouTube, Instagram, TikTok, or other supported video URL.
 
 Both modes enter the same bounded workflow:
@@ -61,7 +63,7 @@ Every OpenAI specialist returns a strict Zod-validated artifact. The backend own
 
 - YouTube URLs are passed to Gemini as native video input.
 - Instagram and TikTok URLs are resolved through narrow Apify actors.
-- Resolved media is uploaded temporarily to Gemini Files API for evidence extraction and deleted after analysis.
+- Resolved media is downloaded server-side with provider authentication when required, uploaded temporarily to Gemini Files API for evidence extraction, and deleted after analysis.
 - The backend still supports authenticated source-file recovery for blocked media, but the main Build Week UI is URL-first and does not expose manual upload as the primary flow.
 - Metadata, user notes, and observed video evidence remain separate source types.
 - If reliable evidence is unavailable, the run enters `needs_context` instead of inventing scenes.
@@ -300,6 +302,8 @@ On July 16, 2026, a real local coffee-shop run completed the full flow:
 
 Provider latency and cost vary by source, model output, revisions, and Hybrid usage. These numbers are a verified reference, not a promise.
 
+On July 17, 2026, the owner also manually verified public YouTube and TikTok inputs through the Agent Studio workflow after the authenticated Apify media-transfer fix in `3529d80`. The public deployment health endpoint returned `ok: true` and `storage: postgres`. A final signed-out production rehearsal is still required before submission.
+
 ## Judge and submission documentation
 
 Start with [docs/hackathon/README.md](docs/hackathon/README.md).
@@ -317,7 +321,7 @@ The package includes:
 ## Current limitations
 
 - Active runs use polling rather than server-sent events.
-- The backend persists runs, but the UI does not yet restore the latest run automatically after a full page refresh.
+- The current browser restores its remembered Agent Studio run after refresh, but there is no cross-device latest-run discovery.
 - A backend restart converts an interrupted active run into an explicit retryable failure; there is no distributed job queue.
 - Public platforms can block media retrieval.
 - OpenAI/Gemini USD amounts are rate-card estimates; Apify cost is provider-reported.
@@ -325,7 +329,7 @@ The package includes:
 
 ## Post-hackathon roadmap
 
-- restore the latest run automatically in the UI;
+- discover and restore the latest workspace run across browsers and devices;
 - compare model routing only after collecting more real per-agent telemetry;
 - add team approval roles and version comparison;
 - feed measured post performance back into future signal selection;

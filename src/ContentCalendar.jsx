@@ -37,6 +37,11 @@ export function addCalendarDays(date, amount) {
   return next;
 }
 
+export function resolveInitialCalendarView(storedView, viewportWidth = Number.POSITIVE_INFINITY) {
+  if (['month', 'week', 'schedule'].includes(storedView)) return storedView;
+  return viewportWidth <= 620 ? 'schedule' : 'month';
+}
+
 export function startOfCalendarWeek(date, weekStartsOn = 1) {
   const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const offset = (next.getDay() - weekStartsOn + 7) % 7;
@@ -297,6 +302,19 @@ export default function ContentCalendar({
             ))}
           </div>
         </header>
+
+        {view !== 'schedule' && (
+          <div className="gcal-mobile-view-note" role="note">
+            <span>
+              {language === 'en'
+                ? 'Swipe horizontally to see every day.'
+                : 'Гортай горизонтально, щоб побачити всі дні.'}
+            </span>
+            <button type="button" onClick={() => onViewChange('schedule')}>
+              {language === 'en' ? 'Open Schedule' : 'Відкрити розклад'}
+            </button>
+          </div>
+        )}
 
         {view === 'month' && (
           <div className="gcal-month-scroll">

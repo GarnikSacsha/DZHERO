@@ -158,6 +158,8 @@ assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: '
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits', signalId: 'sig_1' }).success, true);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'adapt_reel', objective: 'Drive visits', uploadId: 'upload_1' }).success, true);
 assert.equal(AgentStudioInputSchema.safeParse({ mode: 'find_trend', objective: 'Drive visits' }).success, true);
+assert.equal(AgentStudioInputSchema.parse({ mode: 'find_trend', objective: 'Drive visits' }).outputLanguage, 'uk');
+assert.equal(AgentStudioInputSchema.parse({ mode: 'find_trend', objective: 'Drive visits', outputLanguage: 'en' }).outputLanguage, 'en');
 
 assert.deepEqual(
   normalizeAgentStudioInput({
@@ -169,6 +171,7 @@ assert.deepEqual(
   {
     mode: 'adapt_reel',
     objective: 'Drive morning visits',
+    outputLanguage: 'uk',
     sourceUrl: 'https://example.com/reel/coffee',
     userNotes: 'The reveal is a croissant.',
   },
