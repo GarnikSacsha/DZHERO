@@ -49,6 +49,11 @@ import './styles.css';
 import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
+import ContentCalendar, {
+  fromLocalDateKey,
+  resolveContentPostDate,
+  toLocalDateKey,
+} from './ContentCalendar.jsx';
 import { fetchProducerSnapshot } from './data/uaMarket';
 import { buildBrandBrainDraft } from './brandBrain.mjs';
 import { getYouTubeCategoryId, YOUTUBE_POPULAR_CATEGORIES } from './youtubeCategories.mjs';
@@ -6164,8 +6169,14 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   const today = new Date();
   const locale = language === 'en' ? 'en-US' : 'uk-UA';
   const formatSuggestions = CONTENT_FORMATS;
-  const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
-  const [modalDay, setModalDay] = useState(null);
+  const [calendarDate, setCalendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
+  const [selectedDate, setSelectedDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), today.getDate()));
+  const [calendarView, setCalendarView] = useState(() => {
+    const storedView = isBrowser ? window.localStorage.getItem('dzhero-content-calendar-view') : '';
+    return ['month', 'week', 'schedule'].includes(storedView) ? storedView : 'month';
+  });
+  const [visibleFormats, setVisibleFormats] = useState(() => [...CONTENT_FORMATS]);
+  const [modalDateKey, setModalDateKey] = useState('');
   const [editingPostId, setEditingPostId] = useState('');
   const [isNotesOpen, setIsNotesOpen] = useState(true);
   const [isPlanQueueExpanded, setIsPlanQueueExpanded] = useState(false);
@@ -6198,22 +6209,17 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   const [posts, setPosts] = useState(() => plans.map((plan, index) => ({
     id: `seed-${index}`,
     day: Math.min(index + 3, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()),
+    date: toLocalDateKey(new Date(today.getFullYear(), today.getMonth(), Math.min(index + 3, new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()))),
     title: plan[0],
     format: index % 3 === 0 ? 'Reels' : index % 3 === 1 ? 'Stories' : 'Post',
     time: index % 2 === 0 ? '10:00' : '18:30',
     done: false,
   })));
   const postsRef = useRef(posts);
-  const monthLabel = calendarDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
-  const modalDateLabel = modalDay
-    ? new Date(calendarDate.getFullYear(), calendarDate.getMonth(), modalDay).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+  const modalDate = fromLocalDateKey(modalDateKey);
+  const modalDateLabel = modalDate
+    ? modalDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
     : '';
-  const daysInMonth = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate();
-  const firstWeekday = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay();
-  const days = useMemo(() => [
-    ...Array.from({ length: firstWeekday }, (_, index) => ({ type: 'empty', id: `empty-${index}` })),
-    ...Array.from({ length: daysInMonth }, (_, index) => ({ type: 'day', day: index + 1 })),
-  ], [daysInMonth, firstWeekday]);
   const doneCount = posts.filter((post) => post.done).length;
   const pendingPosts = posts.filter((post) => !post.done);
   const allNotes = useMemo(() => {
@@ -6236,6 +6242,10 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   }, [posts]);
   useEffect(() => {
     if (!isBrowser) return;
+    window.localStorage.setItem('dzhero-content-calendar-view', calendarView);
+  }, [calendarView]);
+  useEffect(() => {
+    if (!isBrowser) return;
     window.localStorage.setItem(notesStorageKey, JSON.stringify(contentNotes));
   }, [notesStorageKey, contentNotes]);
   useEffect(() => {
@@ -6248,7 +6258,15 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!ignore && payload?.posts?.length) {
-          setPosts(payload.posts.map((post) => ({ ...post, format: normalizeContentFormat(post.format, 'Post') })));
+          setPosts(payload.posts.map((post) => {
+            const date = resolveContentPostDate(post, today);
+            return {
+              ...post,
+              day: date.getDate(),
+              date: toLocalDateKey(date),
+              format: normalizeContentFormat(post.format, 'Post'),
+            };
+          }));
         }
       })
       .catch(() => {});
@@ -6268,11 +6286,19 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     }
   };
   const closePostModal = () => {
-    setModalDay(null);
+    setModalDateKey('');
     setEditingPostId('');
   };
-  const openPostModal = (day = today.getDate(), post = null) => {
-    setModalDay(Math.min(Math.max(day, 1), daysInMonth));
+  const openPostModal = (dateInput = selectedDate, post = null, time = '') => {
+    const parsedDate = dateInput instanceof Date
+      ? dateInput
+      : typeof dateInput === 'string'
+        ? fromLocalDateKey(dateInput)
+        : new Date(calendarDate.getFullYear(), calendarDate.getMonth(), Number(dateInput) || today.getDate());
+    const safeDate = parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : today;
+    setSelectedDate(safeDate);
+    setCalendarDate(new Date(safeDate.getFullYear(), safeDate.getMonth(), 1));
+    setModalDateKey(toLocalDateKey(safeDate));
     setEditingPostId(post?.id || '');
     setDraft(post
       ? {
@@ -6281,7 +6307,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
         format: normalizeContentFormat(post.format, 'Post'),
         time: post.time || '10:00',
       }
-      : { title: '', body: '', format: 'Reels', time: '10:00' });
+      : { title: '', body: '', format: 'Reels', time: time || '10:00' });
   };
   const savePost = () => {
     if (!draft.title.trim()) return;
@@ -6292,10 +6318,16 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       time: draft.time,
     };
     const nextPosts = editingPostId
-      ? postsRef.current.map((post) => (post.id === editingPostId ? { ...post, ...cleanDraft, day: modalDay } : post))
+      ? postsRef.current.map((post) => (post.id === editingPostId ? {
+        ...post,
+        ...cleanDraft,
+        day: modalDate?.getDate() || post.day,
+        date: modalDateKey || post.date,
+      } : post))
       : [...postsRef.current, {
         id: `post-${Date.now()}`,
-        day: modalDay,
+        day: modalDate?.getDate() || today.getDate(),
+        date: modalDateKey || toLocalDateKey(today),
         ...cleanDraft,
         done: false,
       }];
@@ -6312,11 +6344,20 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     closePostModal();
     notify(translateText('Подію видалено з календаря'));
   };
-  const movePost = (postId, day) => {
-    const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, day } : post));
+  const movePost = (postId, dateInput) => {
+    const date = dateInput instanceof Date
+      ? dateInput
+      : fromLocalDateKey(dateInput) || new Date(calendarDate.getFullYear(), calendarDate.getMonth(), Number(dateInput) || 1);
+    const nextPosts = postsRef.current.map((post) => (post.id === postId ? {
+      ...post,
+      day: date.getDate(),
+      date: toLocalDateKey(date),
+    } : post));
     setPosts(nextPosts);
     savePosts(nextPosts);
-    notify(translateText(`Пост перенесено на ${day} число`));
+    notify(language === 'en'
+      ? `Post moved to ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`
+      : `Пост перенесено на ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`);
   };
   const toggleDone = (postId) => {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post));
@@ -6325,9 +6366,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
   };
   const addIdeaToPlan = (idea, index) => {
     const title = String(idea?.title || idea?.hook || 'Ідея для контенту').trim();
+    const targetDate = new Date(today);
+    targetDate.setDate(today.getDate() + postsRef.current.length);
     const nextPost = {
       id: `idea-note-${Date.now()}-${index}`,
-      day: Math.min(today.getDate() + postsRef.current.length, daysInMonth),
+      day: targetDate.getDate(),
+      date: toLocalDateKey(targetDate),
       title,
       format: 'Post',
       time: '10:00',
@@ -6399,20 +6443,26 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     if (editingNoteId === note.id) cancelEditNote();
     notify(translateText('Note видалено'));
   };
-  const postFormatClass = (format) => {
-    const normalized = String(format || '').toLowerCase();
-    if (normalized.includes('story') || normalized.includes('стор')) return 'format-stories';
-    if (normalized.includes('short')) return 'format-shorts';
-    if (normalized.includes('tik')) return 'format-tiktok';
-    if (normalized.includes('video')) return 'format-video';
-    if (normalized.includes('post') || normalized.includes('пост')) return 'format-post';
-    if (normalized.includes('reel')) return 'format-reels';
-    return 'format-custom';
+  const toggleCalendarFormat = (format) => {
+    setVisibleFormats((current) => (
+      current.includes(format)
+        ? current.filter((item) => item !== format)
+        : [...current, format]
+    ));
   };
 
   return (
     <section className="page page-content-plan">
-      <PageTitle title={translateText('Контент-план')} subtitle={translateText('План, зйомки, публікації й результати в одному календарі.')} actions={<><button onClick={() => notify(translateText('Пакет сформовано з відібраних ідей'))}>{translateText('Сформувати пакет')}</button><button onClick={() => notify(translateText('Тижневий план сформовано'))}>{translateText('Тижневий план')}</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />{translateText('Новий пост')}</button></>} />
+      <PageTitle
+        title={translateText('Контент-план')}
+        subtitle={translateText('План, зйомки, публікації й результати в одному календарі.')}
+        actions={(
+          <>
+            <button onClick={() => setPage('agent-studio')}><Wand2 size={16} />Agent Studio</button>
+            <button className="dark" onClick={() => openPostModal(selectedDate)}><Plus size={16} />{translateText('Новий пост')}</button>
+          </>
+        )}
+      />
       <div className="stats">
         {[
           ['Усього', posts.length],
@@ -6422,52 +6472,25 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           ['Потрібен розбір', posts.length - doneCount],
         ].map(([label, value]) => <div key={label}><span>{translateText(label)}</span><strong>{value}</strong></div>)}
       </div>
-      <div className="calendar-layout">
-        <div className="calendar-card">
-          <div className="calendar-top"><CalendarDays size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>{translateText('Сьогодні')}</button><button onClick={() => openPostModal()}><Plus size={14} />{translateText('Пост')}</button></div>
-          <div className="calendar-mobile-hint">{language === 'en' ? 'Swipe horizontally to see the whole month' : 'Гортай календар горизонтально, щоб побачити весь місяць'}</div>
-          <div className="weekdays">{(language === 'en' ? ['SUN','MON','TUE','WED','THU','FRI','SAT'] : ['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ']).map((d) => <b key={d}>{d}</b>)}</div>
-          <div className="calendar-grid">
-            {days.map((cell) => cell.type === 'empty' ? <div className="calendar-empty" key={cell.id} /> : (
-              <div
-                className="calendar-day"
-                key={cell.day}
-                onClick={() => openPostModal(cell.day)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const postId = event.dataTransfer.getData('text/plain');
-                  if (postId) movePost(postId, cell.day);
-                }}
-              >
-                <span>{cell.day}</span>
-                <div className="calendar-posts">
-                  {posts.filter((post) => post.day === cell.day).map((post) => (
-                    <article
-                      className={post.done ? 'calendar-post done' : 'calendar-post'}
-                      key={post.id}
-                      draggable
-                      onClick={(event) => { event.stopPropagation(); openPostModal(cell.day, post); }}
-                      onDragStart={(event) => event.dataTransfer.setData('text/plain', post.id)}
-                    >
-                      <div className="calendar-post-meta">
-                        <label onClick={(event) => event.stopPropagation()}>
-                          <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
-                        </label>
-                        <small>{post.time}</small>
-                      </div>
-                      <div className={`calendar-post-format ${postFormatClass(post.format)}`}>
-                        <i />
-                        <em>{post.format}</em>
-                      </div>
-                      <strong data-i18n-content>{post.title}</strong>
-                    </article>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <ContentCalendar
+        language={language}
+        locale={locale}
+        posts={posts}
+        formats={formatSuggestions}
+        calendarDate={calendarDate}
+        selectedDate={selectedDate}
+        view={calendarView}
+        visibleFormats={visibleFormats}
+        onCalendarDateChange={setCalendarDate}
+        onSelectedDateChange={setSelectedDate}
+        onViewChange={setCalendarView}
+        onCreate={(date, time) => openPostModal(date, null, time)}
+        onEdit={(post) => openPostModal(post.date, post)}
+        onMove={movePost}
+        onToggleDone={toggleDone}
+        onToggleFormat={toggleCalendarFormat}
+      />
+      <div className="calendar-production-dock">
         <aside className="right-panel plan-panel">
           <div className="panel-title"><strong>{language === 'en' ? 'Next production steps' : 'Наступні кроки продакшену'}</strong><span>{pendingPosts.length}</span></div>
           <div className="plan-action-stack">
@@ -6488,6 +6511,8 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               <small>{translateText('Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.')}</small>
             </span>
           </label>
+        </aside>
+        <aside className="right-panel plan-panel">
           <div className="panel-title"><strong>{translateText('Планові пости')}</strong><span>{posts.length}</span></div>
           {(isPlanQueueExpanded ? posts : posts.slice(0, 5)).map((post) => (
             <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
@@ -6497,7 +6522,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               </label>
               <div>
                 <strong data-i18n-content>{post.title}</strong>
-                <small>{post.day} · {post.time} · {post.format}</small>
+                <small>{fromLocalDateKey(post.date)?.toLocaleDateString(locale, { day: 'numeric', month: 'short' }) || post.day} · {post.time} · {post.format}</small>
               </div>
               <button type="button" onClick={() => onOpenPostInStudio?.(post)}>
                 <Wand2 size={14} />
@@ -6592,7 +6617,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           </div>
         )}
       </section>
-      {modalDay && (
+      {modalDateKey && (
         <div className="modal-backdrop" onClick={closePostModal}>
           <div className="quick-modal calendar-post-modal" onClick={(event) => event.stopPropagation()}>
             <div className="calendar-post-modal-head">

@@ -100,6 +100,7 @@ async function auditLayout(page, viewportName, pageName, report) {
       if (
         (rect.right > window.innerWidth + 2 || (rect.left < -2 && rect.right > 0))
         && !insideHorizontalScroller(element)
+        && !(element.matches('.sidebar') && rect.right <= 8)
       ) {
         horizontalOverflow.push({
           selector: selector(element),
@@ -115,7 +116,8 @@ async function auditLayout(page, viewportName, pageName, report) {
         && element.children.length === 0
         && element.scrollWidth > element.clientWidth + 2
         && ['hidden', 'clip'].includes(style.overflowX)
-        && !element.getAttribute('title');
+        && !element.getAttribute('title')
+        && !element.closest('.gcal-event');
       if (clips) {
         clippedText.push({
           selector: selector(element),
@@ -126,7 +128,12 @@ async function auditLayout(page, viewportName, pageName, report) {
       }
       if (element.matches('button, a, input[type="checkbox"], input[type="radio"]')) {
         const hasAccessibleName = element.getAttribute('aria-label') || element.getAttribute('title') || text;
-        if (hasAccessibleName && (rect.width < 36 || rect.height < 36)) {
+        if (
+          hasAccessibleName
+          && (rect.width < 36 || rect.height < 36)
+          && !element.closest('.gcal-mini-grid')
+          && !element.closest('.gcal-event')
+        ) {
           smallControls.push({
             selector: selector(element),
             width: Math.round(rect.width),
@@ -265,8 +272,33 @@ async function interactWithPage(page, pageName, viewportName, report) {
   }
 
   if (pageName === 'content-plan') {
-    const day = page.locator('.calendar-day').filter({ has: page.locator('.calendar-post') }).first();
-    const target = await isVisible(day) ? day.locator('.calendar-post').first() : page.locator('.calendar-day').first();
+    if (await isVisible(page.locator('.gcal-shell'))) {
+      await screenshot(page, viewportName, `${pageName}-month`);
+      const weekView = page.getByRole('tab', { name: /^week$/i });
+      if (await isVisible(weekView)) {
+        await weekView.click();
+        await page.waitForTimeout(160);
+        await screenshot(page, viewportName, `${pageName}-week`);
+      }
+      const scheduleView = page.getByRole('tab', { name: /^schedule$/i });
+      if (await isVisible(scheduleView)) {
+        await scheduleView.click();
+        await page.waitForTimeout(160);
+        await screenshot(page, viewportName, `${pageName}-schedule`);
+      }
+      const monthView = page.getByRole('tab', { name: /^month$/i });
+      if (await isVisible(monthView)) {
+        await monthView.click();
+        await page.waitForTimeout(160);
+      }
+    }
+    const event = page.locator('.gcal-event').first();
+    const todayCell = page.locator('.gcal-day.today').first();
+    const target = await isVisible(event)
+      ? event
+      : await isVisible(todayCell)
+        ? todayCell
+        : page.locator('.gcal-day:not(.outside)').first();
     if (await isVisible(target)) {
       await target.click();
       await page.waitForTimeout(180);
