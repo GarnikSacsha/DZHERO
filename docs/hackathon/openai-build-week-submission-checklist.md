@@ -53,7 +53,7 @@ This checklist separates completed implementation from actions that must be perf
 
 - [x] Judge-accessible frontend/backend is deployed on Railway.
 - [x] Production `/api/health` returns HTTP 200 with `storage: postgres`.
-- [ ] Record the final UI/documentation commit in the verification record.
+- [x] Record final UI/English/documentation integration commit `be3ab33` in the verification record.
 - [ ] Confirm Railway deployed that exact commit successfully.
 - [ ] Confirm the public homepage and `/api/health` after deployment.
 - [ ] Make the repository public, **or** share the private repository with both:

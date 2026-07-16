@@ -112,7 +112,8 @@ Fill these fields immediately before submission:
 | --- | --- |
 | Branch | `hackathon/openai-build-week` |
 | Implementation baseline | `3529d80` |
-| Final submission commit | **FILL AFTER FINAL UI/DOCS COMMIT** |
+| Final UI/English/docs integration | `be3ab33` |
+| Submission branch tip | Use `git rev-parse HEAD` after this verification-record commit |
 | Final Railway deployment status | **FILL AFTER FINAL DEPLOY** |
 | Repository URL / judge access | **FILL BEFORE SUBMISSION** |
 | Deployed demo | `https://openaibuildweek.up.railway.app` |

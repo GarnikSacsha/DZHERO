@@ -8,9 +8,10 @@ Last updated: **2026-07-17**
 Repository: https://github.com/GarnikSacsha/insta-producer-.git
 Branch:     hackathon/openai-build-week
 Baseline:   3529d80 fix: authenticate Apify TikTok media downloads
+UI/docs:    be3ab33 feat: polish Build Week judge experience
 ```
 
-The final submission commit will be recorded after the last UI and documentation pass. Use `git log -1 --oneline` as the source of truth rather than copying the baseline above into Devpost.
+Use `git log -1 --oneline` as the source of truth for the final judge checkout because the verification-record commit follows the UI/docs implementation commit above.
 
 ## Runtime profiles
 

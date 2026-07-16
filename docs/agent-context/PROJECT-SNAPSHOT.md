@@ -43,7 +43,7 @@ Signals supports manual imports plus budget-bounded manual/scheduled discovery f
 - The owner manually verified YouTube and TikTok Agent Studio flows on 2026-07-17.
 - A reference run completed Hybrid, approval, and exactly seven Content Plan writes.
 
-Do not call `3529d80` the final submission commit. Record the final UI/documentation commit after the last deployment.
+Do not call `3529d80` the final submission commit. Final UI, English-output, tests, and documentation integration is `be3ab33`; use the branch tip after the verification-record commit as the judge checkout.
 
 ## Stack
 

@@ -22,7 +22,7 @@ This folder contains the submission-facing documentation for DZHERO Agent Studio
 - Public source coverage: owner manually verified YouTube and TikTok on 2026-07-17.
 - Pre-polish implementation baseline: `3529d80`.
 
-The final UI/documentation commit must replace the baseline in the verification record after Railway deploys it.
+Final UI, English-output, tests, and documentation integration is recorded in `be3ab33`. The verification-record commit follows it, so use the branch tip for the judge checkout and deployment comparison.
 
 ## Official submission requirements
 

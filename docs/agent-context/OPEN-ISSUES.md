@@ -5,7 +5,7 @@ Last updated: **2026-07-17**
 ## Required before Build Week submission
 
 - Complete one final signed-out English coffee-shop flow in production.
-- Confirm that the final UI/documentation commit, not only baseline `3529d80`, is deployed by Railway.
+- Confirm that the branch tip containing UI/docs integration `be3ab33`, not only baseline `3529d80`, is deployed by Railway.
 - Verify the demo workspace has no private customer data, personal billing details, or keys.
 - Make the repository public or share the private repository with `testing@devpost.com` and `build-week-event@openai.com`.
 - Record a public YouTube demo no longer than three minutes with voiceover covering the product, Codex, and GPT-5.6.
