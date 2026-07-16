@@ -1218,10 +1218,10 @@ function App() {
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
-      {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label="Закрити меню" onClick={() => setIsSidebarOpen(false)} />}
+      {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
-        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={generateFreshIdea} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
+        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={() => setMvpPage('agent-studio')} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && (
           selectedReel
@@ -2850,12 +2850,18 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       </nav>
       <div className="account-switcher compact">
         <section className="user-account-card" aria-label={language === 'en' ? 'Current account' : 'Поточний кабінет'}>
-          <button className="user-account-top user-account-trigger" type="button" onClick={() => setIsSwitcherOpen((value) => !value)} aria-expanded={isSwitcherOpen}>
+          <button
+            className="user-account-top user-account-trigger"
+            type="button"
+            onClick={() => setIsSwitcherOpen((value) => !value)}
+            aria-expanded={isSwitcherOpen}
+            title={`${accountName} · ${accountEmail}`}
+          >
             <div className="avatar user-avatar">{accountInitial}</div>
             <div>
               <small>{language === 'en' ? 'Signed in as' : 'Увійшли як'}</small>
-              <strong data-i18n-content>{accountName}</strong>
-              <span data-i18n-content>{accountEmail}</span>
+              <strong data-i18n-content title={accountName}>{accountName}</strong>
+              <span data-i18n-content title={accountEmail}>{accountEmail}</span>
             </div>
             <ChevronDown size={14} />
           </button>
@@ -2907,7 +2913,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
     : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
-  const ctaTarget = 'home';
+  const ctaTarget = page === 'settings' ? 'home' : 'agent-studio';
   const themeTitle = themeMode === 'auto'
     ? (language === 'en' ? 'Auto theme: local time' : 'Автотема: за локальним часом')
     : (language === 'en' ? 'Theme' : 'Тема');
@@ -2997,20 +3003,35 @@ function WorkflowRail({ active = 'home', setPage, notify, variant = 'default' })
 }
 
 function StudioEmptyState({ onOpenSignals }) {
-  const { translateText } = useI18n();
+  const { language, translateText } = useI18n();
+  const copy = language === 'en'
+    ? {
+      kicker: 'Studio',
+      subtitle: 'Choose a signal so DZHERO can prepare the adaptation, script, and CTA.',
+      title: 'Add a signal first',
+      text: 'Open Signals, add a video or source, then return here for adaptation.',
+      action: 'Open Signals',
+    }
+    : {
+      kicker: 'Студія',
+      subtitle: 'Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA.',
+      title: 'Спочатку додайте сигнал',
+      text: 'Відкрийте Signals, додайте ролик або джерело, а потім поверніться до адаптації.',
+      action: 'Відкрити Signals',
+    };
   return (
     <section className="page">
       <PageTitle
         title={translateText('Студія')}
-        subtitle={translateText('Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA.')}
+        subtitle={copy.subtitle}
       />
       <div className="table-card signals-empty-shell">
         <div className="signals-empty-state signals-empty-state--authoritative">
-          <span className="signals-empty-state-kicker">Студія</span>
-          <strong>Спочатку додайте сигнал</strong>
-          <p>Відкрийте Signals, додайте ролик або джерело, а потім поверніться до адаптації.</p>
+          <span className="signals-empty-state-kicker">{copy.kicker}</span>
+          <strong>{copy.title}</strong>
+          <p>{copy.text}</p>
           <div className="signals-empty-actions">
-            <button className="dark" type="button" onClick={onOpenSignals}>Відкрити Сигнали</button>
+            <button className="dark" type="button" onClick={onOpenSignals}>{copy.action}</button>
           </div>
         </div>
       </div>
@@ -3019,7 +3040,36 @@ function StudioEmptyState({ onOpenSignals }) {
 }
 
 function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId }) {
-  const { translateText } = useI18n();
+  const { language, translateText } = useI18n();
+  const copy = language === 'en'
+    ? {
+      eyebrow: 'Main action',
+      title: 'Build a weekly content plan',
+      description: 'Start with a real signal. Agent Studio grounds it, adapts it to the brand, and prepares seven actionable days.',
+      action: 'Open Agent Studio',
+      readyIdeas: 'Ready ideas',
+      planned: 'already in Content Plan',
+      waiting: 'still waiting',
+      moreNotes: 'more in Notes',
+      openNotes: 'Open Notes',
+      signals: 'Signals',
+      strongest: 'Strongest',
+      noSignals: 'No Signals yet',
+    }
+    : {
+      eyebrow: 'Головна дія',
+      title: 'Зібрати контент-план на тиждень',
+      description: 'Почни з реального сигналу. Agent Studio перевірить його, адаптує під бренд і підготує сім практичних днів.',
+      action: 'Відкрити Agent Studio',
+      readyIdeas: 'Готові ідеї',
+      planned: 'вже у контент-плані',
+      waiting: 'ще чекають',
+      moreNotes: 'ще в Notes',
+      openNotes: 'Відкрити Notes',
+      signals: 'Сигнали',
+      strongest: 'Найсильніший',
+      noSignals: 'Сигналів ще немає',
+    };
   const topReel = data.reels[0];
   const activeMarket = data.marketSegments.find((segment) => segment.id === market);
   const [onboarding, setOnboarding] = useState({
@@ -3091,17 +3141,17 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
       />
       <div className="mvp-home-grid">
         <article className="mvp-home-hero">
-          <small>Головна дія</small>
-          <h2>Згенерувати контент-план на тиждень</h2>
-          <p>Джеро бере найсильніші сигнали, адаптує їх під бренд і складає тижневий план без зайвого менеджменту.</p>
-          <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />Згенерувати контент-план на тиждень</button>
+          <small>{copy.eyebrow}</small>
+          <h2>{copy.title}</h2>
+          <p>{copy.description}</p>
+          <button className="dark home-primary-cta" onClick={onFreshIdea}><Sparkles size={18} />{copy.action}</button>
         </article>
         <article className="mvp-counter-card mvp-ideas-card">
           <div className="mvp-card-head">
-            <span>Готові ідеї</span>
+            <span>{copy.readyIdeas}</span>
             <strong>{data.ideas.length}</strong>
           </div>
-          <p>{plannedIdeasCount} вже у контент-плані · {availableIdeas.length} ще чекають</p>
+          <p>{`${plannedIdeasCount} ${copy.planned} · ${availableIdeas.length} ${copy.waiting}`}</p>
           <div className="mvp-ideas-preview">
             {previewIdeas.map((idea) => (
               <button type="button" key={idea.id || idea.title} onClick={() => setPage('plan')}>
@@ -3110,13 +3160,13 @@ function HomeDashboard({ data, market, notify, onFreshIdea, setPage, workspaceId
               </button>
             ))}
           </div>
-          {hiddenIdeasCount > 0 && <p className="mvp-muted-line">+{hiddenIdeasCount} ще в Notes</p>}
-          <button className="dark mvp-card-action" type="button" onClick={() => setPage('plan')}>Відкрити Notes</button>
+          {hiddenIdeasCount > 0 && <p className="mvp-muted-line">+{hiddenIdeasCount} {copy.moreNotes}</p>}
+          <button className="dark mvp-card-action" type="button" onClick={() => setPage('plan')}>{copy.openNotes}</button>
         </article>
         <article className="mvp-counter-card">
-          <span>Сигнали</span>
+          <span>{copy.signals}</span>
           <strong>{data.reels.length}</strong>
-          <p>{topReel ? `Найсильніший: ${topReel.score} score` : 'Сигналів ще немає'}</p>
+          <p>{topReel ? `${copy.strongest}: ${topReel.score} score` : copy.noSignals}</p>
         </article>
       </div>
     </section>
@@ -4427,7 +4477,13 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
         </button>
       )}
       {isOpen && <button className="jeryk-backdrop" type="button" aria-label={drawerCopy.closeLabel} onClick={onClose} />}
-      <aside className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'} aria-hidden={!isOpen}>
+      <aside
+        className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'}
+        aria-hidden={!isOpen}
+        aria-label={assistantName}
+        aria-modal={isOpen ? 'true' : undefined}
+        role="dialog"
+      >
         <div className="jeryk-head">
           <div className="jeryk-avatar"><Bot size={24} /></div>
           <div>
@@ -6104,13 +6160,15 @@ function LaunchRoadmap({ notify, setPage, workspaceId }) {
 }
 
 function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceId, onOpenPostInStudio }) {
-  const { t, translateText } = useI18n();
+  const { language, t, translateText } = useI18n();
   const today = new Date();
+  const locale = language === 'en' ? 'en-US' : 'uk-UA';
   const formatSuggestions = CONTENT_FORMATS;
   const [calendarDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1));
   const [modalDay, setModalDay] = useState(null);
   const [editingPostId, setEditingPostId] = useState('');
   const [isNotesOpen, setIsNotesOpen] = useState(true);
+  const [isPlanQueueExpanded, setIsPlanQueueExpanded] = useState(false);
   const [draft, setDraft] = useState({ title: '', body: '', format: 'Reels', time: '10:00' });
   const notesStorageKey = `dzhero-content-notes-${workspaceId || 'default'}`;
   const deletedNotesStorageKey = `dzhero-content-notes-deleted-${workspaceId || 'default'}`;
@@ -6146,7 +6204,10 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     done: false,
   })));
   const postsRef = useRef(posts);
-  const monthLabel = calendarDate.toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' });
+  const monthLabel = calendarDate.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+  const modalDateLabel = modalDay
+    ? new Date(calendarDate.getFullYear(), calendarDate.getMonth(), modalDay).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+    : '';
   const daysInMonth = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate();
   const firstWeekday = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay();
   const days = useMemo(() => [
@@ -6159,11 +6220,17 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     const deleted = new Set(deletedGeneratedNoteIds.map(String));
     return mergeEditableNotes(contentNotes, ideas).filter((note) => !deleted.has(String(note.id)));
   }, [contentNotes, ideas, deletedGeneratedNoteIds]);
-  const weeklyActions = [
-    ['Review scripts', pendingPosts.length, 'Перевірити хук, доказ і CTA перед зйомкою.'],
-    ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти рілси одним блоком і закрити тиждень.'],
-    ['Prepare Direct', 3, 'Підготувати короткі відповіді для коментарів і Direct.'],
-  ];
+  const weeklyActions = language === 'en'
+    ? [
+      ['Review scripts', pendingPosts.length, 'Review the hook, proof, and CTA before shooting.'],
+      ['Shoot batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Shoot the Reels in one batch and close the week.'],
+      ['Prepare Direct', 3, 'Prepare short replies for comments and Direct.'],
+    ]
+    : [
+      ['Перевірити сценарії', pendingPosts.length, 'Перевірити хук, доказ і CTA перед зйомкою.'],
+      ['Зняти batch', Math.max(1, Math.ceil(pendingPosts.length / 2)), 'Зняти Reels одним блоком і закрити тиждень.'],
+      ['Підготувати Direct', 3, 'Підготувати короткі відповіді для коментарів і Direct.'],
+    ];
   useEffect(() => {
     postsRef.current = posts;
   }, [posts]);
@@ -6345,7 +6412,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
 
   return (
     <section className="page page-content-plan">
-      <PageTitle title={translateText('Контент-план')} subtitle={translateText('План, зйомки, публікації й результати в одному календарі.')} actions={<><button onClick={() => notify(translateText('Пакет сформовано з відібраних ідей'))}>Сформувати пакет</button><button onClick={() => notify(translateText('Тижневий план сформовано'))}>Тижневий план</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />Новий пост</button></>} />
+      <PageTitle title={translateText('Контент-план')} subtitle={translateText('План, зйомки, публікації й результати в одному календарі.')} actions={<><button onClick={() => notify(translateText('Пакет сформовано з відібраних ідей'))}>{translateText('Сформувати пакет')}</button><button onClick={() => notify(translateText('Тижневий план сформовано'))}>{translateText('Тижневий план')}</button><button className="dark" onClick={() => openPostModal()}><Plus size={16} />{translateText('Новий пост')}</button></>} />
       <div className="stats">
         {[
           ['Усього', posts.length],
@@ -6353,12 +6420,13 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           ['Знято', doneCount],
           ['Опубліковано', doneCount],
           ['Потрібен розбір', posts.length - doneCount],
-        ].map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}
+        ].map(([label, value]) => <div key={label}><span>{translateText(label)}</span><strong>{value}</strong></div>)}
       </div>
       <div className="calendar-layout">
         <div className="calendar-card">
-          <div className="calendar-top"><ChevronLeft size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>Сьогодні</button><button onClick={() => openPostModal()}><Plus size={14} />Пост</button></div>
-          <div className="weekdays">{['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ'].map((d) => <b key={d}>{d}</b>)}</div>
+          <div className="calendar-top"><CalendarDays size={16} /><strong>{monthLabel}</strong><button onClick={() => openPostModal(today.getDate())}>{translateText('Сьогодні')}</button><button onClick={() => openPostModal()}><Plus size={14} />{translateText('Пост')}</button></div>
+          <div className="calendar-mobile-hint">{language === 'en' ? 'Swipe horizontally to see the whole month' : 'Гортай календар горизонтально, щоб побачити весь місяць'}</div>
+          <div className="weekdays">{(language === 'en' ? ['SUN','MON','TUE','WED','THU','FRI','SAT'] : ['НД','ПН','ВТ','СР','ЧТ','ПТ','СБ']).map((d) => <b key={d}>{d}</b>)}</div>
           <div className="calendar-grid">
             {days.map((cell) => cell.type === 'empty' ? <div className="calendar-empty" key={cell.id} /> : (
               <div
@@ -6401,7 +6469,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           </div>
         </div>
         <aside className="right-panel plan-panel">
-          <div className="panel-title"><strong>Next production steps</strong><span>{pendingPosts.length}</span></div>
+          <div className="panel-title"><strong>{language === 'en' ? 'Next production steps' : 'Наступні кроки продакшену'}</strong><span>{pendingPosts.length}</span></div>
           <div className="plan-action-stack">
             {weeklyActions.map(([title, value, text]) => (
               <article key={title}>
@@ -6416,12 +6484,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           <label className="direct-background-toggle">
             <input type="checkbox" />
             <span>
-              <strong>Автовідповідь в Direct</strong>
-              <small>Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.</small>
+              <strong>{translateText('Автовідповідь в Direct')}</strong>
+              <small>{translateText('Ключове слово: ХОЧУ. Працює фоном без CRM-дашборда.')}</small>
             </span>
           </label>
-          <div className="panel-title"><strong>Планові пости</strong><span>{posts.length}</span></div>
-          {posts.map((post) => (
+          <div className="panel-title"><strong>{translateText('Планові пости')}</strong><span>{posts.length}</span></div>
+          {(isPlanQueueExpanded ? posts : posts.slice(0, 5)).map((post) => (
             <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
               <label>
                 <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
@@ -6436,12 +6504,19 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
               </button>
             </article>
           ))}
+          {posts.length > 5 && (
+            <button className="plan-queue-toggle" type="button" onClick={() => setIsPlanQueueExpanded((value) => !value)}>
+              {isPlanQueueExpanded
+                ? (language === 'en' ? 'Show fewer posts' : 'Показати менше')
+                : (language === 'en' ? `Show all ${posts.length} posts` : `Показати всі ${posts.length} постів`)}
+            </button>
+          )}
         </aside>
       </div>
       <section className="content-notes-panel">
         <button className="content-notes-toggle" type="button" onClick={() => setIsNotesOpen((value) => !value)}>
           <span>Notes</span>
-          <strong>{allNotes.length} ідей</strong>
+          <strong>{allNotes.length} {language === 'en' ? 'ideas' : 'ідей'}</strong>
           <ChevronDown size={16} />
         </button>
         {isNotesOpen && (
@@ -6457,7 +6532,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 onChange={(event) => setNoteDraft((current) => ({ ...current, body: event.target.value }))}
                 placeholder={translateText('Ідея, інсайт, гіпотеза або короткий сценарій...')}
               />
-              <button type="submit"><Plus size={15} />Додати note</button>
+              <button type="submit"><Plus size={15} />{language === 'en' ? 'Add note' : 'Додати note'}</button>
             </form>
             {allNotes.length ? allNotes.map((idea, index) => {
               const isEditingNote = editingNoteId === idea.id;
@@ -6486,8 +6561,8 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 <div className="content-note-actions">
                   {isEditingNote ? (
                     <>
-                      <button className="ghost" type="button" onClick={cancelEditNote}>Скасувати</button>
-                      <button className="dark" type="button" onClick={() => saveEditedNote(idea)}>Зберегти</button>
+                      <button className="ghost" type="button" onClick={cancelEditNote}>{language === 'en' ? 'Cancel' : 'Скасувати'}</button>
+                      <button className="dark" type="button" onClick={() => saveEditedNote(idea)}>{language === 'en' ? 'Save' : 'Зберегти'}</button>
                     </>
                   ) : (
                     <>
@@ -6498,7 +6573,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                         <X size={14} />
                       </button>
                       <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
-                        <CalendarDays size={15} />Додати в план
+                        <CalendarDays size={15} />{language === 'en' ? 'Add to plan' : 'Додати в план'}
                       </button>
                     </>
                   )}
@@ -6508,9 +6583,9 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
             }) : (
               <article>
                 <div>
-                  <small>Поки порожньо</small>
-                  <strong>Згенеруй перші ідеї на головній</strong>
-                  <p>Варіанти можна буде вручну переносити в календар.</p>
+                  <small>{language === 'en' ? 'Nothing here yet' : 'Поки порожньо'}</small>
+                  <strong>{language === 'en' ? 'No saved notes yet' : 'Ще немає збережених нотаток'}</strong>
+                  <p>{language === 'en' ? 'Save an idea, insight, hypothesis, or draft here for later.' : 'Зберігай тут ідеї, спостереження, гіпотези або чернетки на потім.'}</p>
                 </div>
               </article>
             )}
@@ -6522,27 +6597,27 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           <div className="quick-modal calendar-post-modal" onClick={(event) => event.stopPropagation()}>
             <div className="calendar-post-modal-head">
               <div>
-                <small>{editingPostId ? 'Редагувати подію' : 'Нова подія'}</small>
-                <h2 data-i18n-content>{draft.title || 'Контент у календарі'}</h2>
+                <small>{editingPostId ? (language === 'en' ? 'Edit event' : 'Редагувати подію') : (language === 'en' ? 'New event' : 'Нова подія')}</small>
+                <h2 data-i18n-content>{draft.title || (language === 'en' ? 'Calendar content' : 'Контент у календарі')}</h2>
               </div>
               <button className="ghost icon" type="button" onClick={closePostModal} aria-label={translateText('Закрити')}>
                 <X size={16} />
               </button>
             </div>
             <p className="calendar-post-modal-subtitle">
-              {modalDay} {monthLabel} · {draft.time} · {draft.format}
+              {modalDateLabel} · {draft.time} · {draft.format}
             </p>
             <div className="calendar-post-form">
               <label>
-                <span>Дата</span>
-                <input value={`${modalDay} ${monthLabel}`} readOnly />
+                <span>{language === 'en' ? 'Date' : 'Дата'}</span>
+                <input value={modalDateLabel} readOnly />
               </label>
               <label>
-                <span>Час</span>
+                <span>{language === 'en' ? 'Time' : 'Час'}</span>
                 <input type="time" value={draft.time} onChange={(event) => setDraft((current) => ({ ...current, time: event.target.value }))} />
               </label>
               <label>
-                <span>Формат</span>
+                <span>{language === 'en' ? 'Format' : 'Формат'}</span>
                 <select value={draft.format} onChange={(event) => setDraft((current) => ({ ...current, format: event.target.value }))}>
                   {formatSuggestions.map((format) => <option key={format} value={format} />)}
                 </select>
@@ -6555,26 +6630,30 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                 ))}
               </div>
               <label className="wide">
-                <span>Назва</span>
+                <span>{language === 'en' ? 'Title' : 'Назва'}</span>
                 <input autoFocus value={draft.title} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} placeholder={translateText('Коротка назва події')} />
               </label>
               <label className="wide">
-                <span>Сценарій / текст</span>
+                <span>{language === 'en' ? 'Script / copy' : 'Сценарій / текст'}</span>
                 <textarea value={draft.body} onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))} placeholder={translateText('Хук, кадри, озвучка та CTA')} />
               </label>
             </div>
             {editingPostId && (
               <div className="calendar-post-danger-zone">
                 <div>
-                  <strong>Видалити подію</strong>
-                  <span>Прибере цей матеріал тільки з календаря. Джерело або Studio draft не видаляються.</span>
+                  <strong>{language === 'en' ? 'Delete event' : 'Видалити подію'}</strong>
+                  <span>{language === 'en' ? 'Removes this item only from the calendar. Its source and Studio draft remain available.' : 'Прибере цей матеріал тільки з календаря. Джерело або Studio draft не видаляються.'}</span>
                 </div>
-                <button className="danger" type="button" onClick={deletePost}>Видалити</button>
+                <button className="danger" type="button" onClick={deletePost}>{language === 'en' ? 'Delete' : 'Видалити'}</button>
               </div>
             )}
             <div className="modal-actions">
-              <button onClick={closePostModal}>Скасувати</button>
-              <button className="dark" onClick={savePost}>{editingPostId ? 'Зберегти зміни' : 'Додати в календар'}</button>
+              <button onClick={closePostModal}>{language === 'en' ? 'Cancel' : 'Скасувати'}</button>
+              <button className="dark" onClick={savePost}>
+                {editingPostId
+                  ? (language === 'en' ? 'Save changes' : 'Зберегти зміни')
+                  : (language === 'en' ? 'Add to calendar' : 'Додати в календар')}
+              </button>
             </div>
           </div>
         </div>
@@ -7118,17 +7197,17 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
     ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
     ['profile', language === 'en' ? 'Brand memory' : 'Памʼять бренду'],
     ['billing', language === 'en' ? 'Plan and limits' : 'Тариф і ліміти'],
-    ...(currentUser?.canManageTesters
+    ...(currentUser?.canManageTesters && !currentUser?.isDemo
       ? [['testers', language === 'en' ? 'Testers' : 'Тестери']]
       : []),
   ];
 
   useEffect(() => {
-    if (tab === 'testers' && !currentUser?.canManageTesters) {
+    if (tab === 'testers' && (!currentUser?.canManageTesters || currentUser?.isDemo)) {
       setTab('sources');
       window.localStorage.setItem(SOURCES_TAB_KEY, 'sources');
     }
-  }, [tab, currentUser?.canManageTesters]);
+  }, [tab, currentUser?.canManageTesters, currentUser?.isDemo]);
   const sourceTypes = [
     ['Instagram', 'Можна додати', 'Встав профіль, щоб Джеро зрозумів нішу, мову бренду і перші теми.', 'instagram'],
     ['TikTok', 'Можна додати', 'Встав відео, профіль або короткий опис, якщо бренд живе в TikTok.', 'tiktok'],
@@ -7183,8 +7262,10 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
   return (
     <section className="page">
       <PageTitle
-        title={translateText('Джерела')}
-        subtitle={translateText('Додай профіль або короткий опис бізнесу. Джеро збере контекст і перетворить його на план.')}
+        title={language === 'en' ? 'Settings' : 'Налаштування'}
+        subtitle={language === 'en'
+          ? 'Manage sources, brand memory, account access, and plan limits.'
+          : 'Керуй джерелами, пам’яттю бренду, доступом до акаунта й лімітами тарифу.'}
       />
       <Tabs
         active={tab}
@@ -7299,7 +7380,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       )}
       {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
-      {tab === 'testers' && currentUser?.canManageTesters && (
+      {tab === 'testers' && currentUser?.canManageTesters && !currentUser?.isDemo && (
         <TesterAccessPanel apiBase={API_BASE} authFetch={authFetch} language={language} notify={notify} />
       )}
     </section>

@@ -216,7 +216,7 @@ const PLAN_CATALOG = [
     billingPeriod: 'temporary',
     priceUah: 0,
     limits: {
-      aiOperations: 5,
+      aiOperations: 50,
       agentChat: 20,
       reelImports: 3,
       competitors: 8,
@@ -1524,7 +1524,7 @@ function publicUser(user) {
     role: user.role,
     provider,
     isDemo: provider === 'demo',
-    canManageTesters: userHasUnlimitedAccess(user),
+    canManageTesters: provider !== 'demo' && userHasUnlimitedAccess(user),
     workspaceId: user.workspaceId,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
@@ -1609,6 +1609,9 @@ function userHasUnlimitedAccess(user) {
 }
 
 function workspaceHasUnlimitedAccess(db, workspaceId, actorUser = null) {
+  if (String(workspaceId || '').startsWith('ws_demo_') || getPublicUserProvider(actorUser || {}) === 'demo') {
+    return false;
+  }
   if (userHasUnlimitedAccess(actorUser)) return true;
   return getWorkspaceUsers(db, workspaceId).some((user) => (
     user.role === 'admin'
@@ -5662,11 +5665,15 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/approve', async 
     if (addToContentPlan) {
       const sourceKey = `agent-studio:${run.id}`;
       const existingPosts = normalizeContentPlanPosts(workspace.contentPlanPosts || []);
+      // Keep the public demo repeatable: its newest approved package replaces older Agent Studio packages.
+      const contentPlanBasePosts = String(workspace.id || '').startsWith('ws_demo_')
+        ? existingPosts.filter((post) => !String(post.sourceKey || '').startsWith('agent-studio:'))
+        : existingPosts;
       const generatedPosts = buildAgentStudioContentPlanPosts(run, candidateId);
-      const uniquePosts = generatedPosts.filter((post) => !existingPosts.some((existing) => (
+      const uniquePosts = generatedPosts.filter((post) => !contentPlanBasePosts.some((existing) => (
         existing.sourceKey === sourceKey && existing.id === post.id
       )));
-      const nextPosts = [...existingPosts, ...uniquePosts];
+      const nextPosts = [...contentPlanBasePosts, ...uniquePosts];
       const billing = buildEntitlements(db, workspace.id, req.authUser);
       const limit = billing.plan.limits.contentPlanPosts;
       if (Number.isFinite(limit) && nextPosts.length > limit) {

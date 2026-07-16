@@ -82,7 +82,7 @@ assert.equal(getAgentStudioTraceEntries([
   { id: '3', agent: 'Critic', status: 'started', summary: 'Started' },
 ]).length, 2);
 
-assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Find a trend for me');
+assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Find from my Signals');
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
 assert.match(getAgentStudioErrorMessage({ error: 'agent_studio_candidate_not_production_ready' }, 'en'), /production-ready/i);
@@ -102,6 +102,9 @@ assert.match(pageSource, /addToContentPlan: true/);
 assert.match(pageSource, /isProductionReadyAgentStudioCandidate/);
 assert.match(pageSource, /copy\.alternativeApprovalHint/);
 assert.match(pageSource, /copy\.approvalSuccessTitle/);
+assert.match(pageSource, /QualityPanel/);
+assert.match(pageSource, /UsagePanel/);
+assert.match(pageSource, /dzhero-agent-studio-run:/);
 assert.match(pageSource, /onOpenContentPlan/);
 assert.doesNotMatch(pageSource, /OPENAI_API_KEY|GEMINI_API_KEY/);
 assert.match(mainSource, /page === 'agent-studio'/);

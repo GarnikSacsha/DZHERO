@@ -16,6 +16,7 @@
     "test:agent-studio-quality": "node scripts/test-agent-studio-quality.cjs",
     "test:agent-studio-usage": "node scripts/test-agent-studio-usage.cjs",
     "test:agent-studio": "node scripts/test-agent-studio-schemas.cjs && node scripts/test-agent-studio-quality.cjs && node scripts/test-agent-studio-run.cjs && node scripts/test-agent-studio-orchestrator.cjs && node scripts/test-agent-studio-video-tool.cjs && node scripts/test-agent-studio-source-resolver.cjs && node scripts/test-agent-studio-usage.cjs && node scripts/test-agent-studio-ui.mjs && node scripts/test-agent-studio-api.mjs",
+    "audit:ui": "node scripts/audit-ui-ux.mjs",
     "smoke:agent-studio-openai": "node scripts/smoke-agent-studio-openai.cjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
     "check:calendar-overflow": "node scripts/check-calendar-overflow.js",

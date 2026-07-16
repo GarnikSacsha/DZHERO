@@ -26,7 +26,7 @@ The clearest differentiator is the accountable chain from source evidence to a p
 9. Open Content Plan and confirm seven new items.
 10. Inspect the run usage summary.
 
-The **Find a trend for me** entry currently selects from the workspace’s existing Signals. It is not presented as live whole-internet discovery.
+The **Find from my Signals** entry currently selects from the workspace’s existing Signals. It is not presented as live whole-internet discovery.
 
 ## Local setup
 

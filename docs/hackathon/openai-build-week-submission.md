@@ -22,7 +22,7 @@ DZHERO starts where the owner actually gets stuck: deciding which content mechan
 
 Agent Studio has two entry modes:
 
-- **Find a trend for me** selects a relevant item from the current workspace’s existing Signals.
+- **Find from my Signals** selects a relevant item from the current workspace’s existing Signals.
 - **Adapt a Reel** starts from a saved signal or a supported public video URL.
 
 Both enter the same bounded workflow. Trend Analyst selects the transferable mechanic. Gemini Video Analyst extracts grounded evidence. Brand Strategist maps the mechanic to Brand Brain. Creative Producer creates a complete Reel and two distinct directions. Critic evaluates grounding and production quality with at most one revision. Content Planner turns the accepted strategy into seven distinct days. Jeryk Manager presents the package for explicit human approval.

@@ -16,7 +16,7 @@ The pre-existing product provides workspace context and destination surfaces. Th
 
 ## User journeys
 
-### Find a trend for me
+### Find from my Signals
 
 Trend Analyst selects a suitable item from the current workspace’s existing Signals for the supplied objective. The current MVP does not claim fresh whole-internet discovery.
 

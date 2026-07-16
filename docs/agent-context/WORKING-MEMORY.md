@@ -15,7 +15,7 @@ The user considers the core Agent Studio MVP strong: adaptation quality, shot-by
 
 - DZHERO is an AI producer, not a generic dashboard or blank chat.
 - Agent Studio is an additive beta inside the existing workspace.
-- “Find a trend for me” selects from existing workspace Signals in the MVP.
+- “Find from my Signals” selects from existing workspace Signals in the MVP.
 - “Adapt a Reel” is the primary complete judge story.
 - Gemini is the video-evidence specialist; OpenAI agents reason, produce, critique, plan, and manage.
 - The first two seconds, concrete scenes, and production notes are mandatory quality elements.
