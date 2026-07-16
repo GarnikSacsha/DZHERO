@@ -89,6 +89,15 @@ function isYouTubeUrl(value = '') {
   }
 }
 
+function isProtectedApifyMediaUrl(value = '') {
+  try {
+    const host = new URL(String(value)).hostname.toLowerCase();
+    return host === 'api.apify.com' || host.endsWith('.api.apify.com');
+  } catch {
+    return false;
+  }
+}
+
 function getPublicSourceUrl({ input = {}, selectedTrend = {}, signal = {} }) {
   return String(
     input.sourceUrl
@@ -185,12 +194,13 @@ async function uploadGeminiVideoBytes({
 async function uploadGeminiVideoFromUrl({
   sourceUrl,
   apiKey,
+  requestHeaders = {},
   fetchImpl = globalThis.fetch,
   sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
 }) {
   const download = await fetchImpl(sourceUrl, {
-    headers: { Accept: 'video/*,*/*;q=0.8' },
+    headers: { Accept: 'video/*,*/*;q=0.8', ...requestHeaders },
     redirect: 'follow',
   });
   if (!download.ok) throw new Error(`video_download_failed_${download.status}`);
@@ -298,6 +308,7 @@ async function analyzeAgentStudioVideo({
   selectedTrend = {},
   signal = {},
   apiKey = process.env.GEMINI_API_KEY || '',
+  mediaApiToken = process.env.APIFY_TOKEN || '',
   model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
   fetchImpl = globalThis.fetch,
   resolveSource,
@@ -366,13 +377,23 @@ async function analyzeAgentStudioVideo({
   ).trim();
   if (!uploadedFile && resolvedVideoUrl && !isYouTubeUrl(sourceUrl)) {
     try {
+      const requestHeaders = isProtectedApifyMediaUrl(sourceUrl) && mediaApiToken
+        ? { Authorization: `Bearer ${mediaApiToken}` }
+        : {};
       uploadedFile = await uploadGeminiVideoFromUrl({
         sourceUrl,
         apiKey,
+        requestHeaders,
         fetchImpl,
         sleepImpl,
       });
-    } catch {
+    } catch (error) {
+      if (isProtectedApifyMediaUrl(sourceUrl)) {
+        return buildUnavailableEvidence({
+          ...base,
+          reason: `Apify video transfer failed: ${error?.message || 'unknown error'}`,
+        });
+      }
       // Fall back to the resolved public media URL if file transfer fails.
     }
   }
