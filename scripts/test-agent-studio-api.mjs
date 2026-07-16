@@ -479,7 +479,22 @@ try {
 
   const persisted = JSON.parse(await readFile(dbPath, 'utf8'));
   const workspace = persisted.workspaces.find((item) => item.id === 'ws_1');
-  assert.equal(workspace.contentPlanPosts.filter((post) => post.source === 'agent_studio').length, 7);
+  const approvedPlanPosts = workspace.contentPlanPosts.filter((post) => post.source === 'agent_studio');
+  assert.equal(approvedPlanPosts.length, 7);
+  assert.equal(approvedPlanPosts.every((post) => /^\d{4}-\d{2}-\d{2}$/.test(post.date)), true);
+  assert.deepEqual(
+    approvedPlanPosts.map((post) => post.date),
+    approvedPlanPosts.map((_, index) => {
+      const scheduledDate = new Date();
+      scheduledDate.setHours(12, 0, 0, 0);
+      scheduledDate.setDate(scheduledDate.getDate() + index);
+      return [
+        scheduledDate.getFullYear(),
+        String(scheduledDate.getMonth() + 1).padStart(2, '0'),
+        String(scheduledDate.getDate()).padStart(2, '0'),
+      ].join('-');
+    }),
+  );
   assert.equal(persisted.agentStudioRuns.filter((run) => run.workspaceId === 'ws_1').length, 5);
   const meteredRun = persisted.agentStudioRuns.find((run) => run.id === create.body.run.id);
   assert.equal(meteredRun.usage.schemaVersion, 1);

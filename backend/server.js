@@ -1460,6 +1460,7 @@ function normalizeContentPlanPosts(posts) {
   return posts.slice(0, 2000).map((post, index) => ({
     id: String(post?.id || createId('post')).slice(0, 80),
     day: Math.min(31, Math.max(1, Number(post?.day || index + 1))),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(post?.date || '')) ? String(post.date) : '',
     title: String(post?.title || '').trim().slice(0, 180) || 'Untitled post',
     body: normalizeContentPlanBody(post?.body),
     format: normalizeContentFormat(post?.format),
@@ -3791,25 +3792,33 @@ function buildAgentStudioContentPlanPosts(run, candidateId) {
   if (days.length !== 7) throw new Error('agent_studio_content_plan_missing');
   const sourceKey = `agent-studio:${run.id}`;
   const today = new Date();
-  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-  return normalizeContentPlanPosts(days.map((day, index) => ({
-    id: `agent-studio-${run.id}-${day.day}`,
-    day: ((today.getDate() - 1 + index) % daysInMonth) + 1,
-    title: day.title,
-    body: index === 0
-      ? buildAgentStudioHeroBody(candidate, day)
-      : buildAgentStudioPlanDayBody(day),
-    format: day.format,
-    time: index % 2 === 0 ? '10:00' : '18:30',
-    done: false,
-    source: 'agent_studio',
-    sourceKey,
-    sourceTitle: candidate.title,
-    sourceUrl: finalPackage.selectedTrend?.sourceUrl || '',
-    sourceReelId: finalPackage.selectedTrend?.signalId || '',
-    sourceHandle: 'Jeryk + agent team',
-    dayLabel: `Day ${day.day}`,
-  })));
+  return normalizeContentPlanPosts(days.map((day, index) => {
+    const scheduledDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + index);
+    const date = [
+      scheduledDate.getFullYear(),
+      String(scheduledDate.getMonth() + 1).padStart(2, '0'),
+      String(scheduledDate.getDate()).padStart(2, '0'),
+    ].join('-');
+    return {
+      id: `agent-studio-${run.id}-${day.day}`,
+      day: scheduledDate.getDate(),
+      date,
+      title: day.title,
+      body: index === 0
+        ? buildAgentStudioHeroBody(candidate, day)
+        : buildAgentStudioPlanDayBody(day),
+      format: day.format,
+      time: index % 2 === 0 ? '10:00' : '18:30',
+      done: false,
+      source: 'agent_studio',
+      sourceKey,
+      sourceTitle: candidate.title,
+      sourceUrl: finalPackage.selectedTrend?.sourceUrl || '',
+      sourceReelId: finalPackage.selectedTrend?.signalId || '',
+      sourceHandle: 'Jeryk + agent team',
+      dayLabel: `Day ${day.day}`,
+    };
+  }));
 }
 
 async function persistAgentStudioEvent(runId, event) {
