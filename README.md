@@ -15,7 +15,7 @@ Agent Studio is the Build Week extension inside the existing DZHERO product. It 
 
 The extension is additive and feature-flagged. It does not replace the existing Signals, Gemini Studio, Brand Brain, Jeryk assistant, billing, or Content Plan.
 
-**Current Build Week state (2026-07-17):** the full-stack application is deployed on Railway at [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app), production state is backed by PostgreSQL, fresh-signal discovery and its background worker are enabled, and the owner has manually verified both YouTube and TikTok Agent Studio source flows. The exact final submission commit will be recorded after the last UI/documentation pass.
+**Current Build Week state (2026-07-17):** the full-stack application is deployed on Railway at [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app), production state is backed by PostgreSQL, fresh-signal discovery and its background worker are enabled, and the owner has manually verified both YouTube and TikTok Agent Studio source flows. Final UI, English-output, test, and documentation integration is recorded in `be3ab33`; use the branch tip as the judge checkout after the verification-record commit.
 
 ## Product flow
 

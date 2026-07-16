@@ -24,7 +24,7 @@ Last updated: **2026-07-17**
 - `9d13e02 feat: track Agent Studio provider usage`
   - bounded OpenAI, Gemini, and Apify usage aggregates.
 
-Use `git log --oneline -20` as the authoritative history. `3529d80` is the baseline before the final UI/documentation pass, not the final submission commit.
+Use `git log --oneline -20` as the authoritative history. `3529d80` is the pre-polish baseline; final UI, English-output, tests, and documentation integration is `be3ab33`, followed by its verification-record commit.
 
 ## Preserve these decisions
 
