@@ -111,11 +111,12 @@ We also learned that the strongest hybrid-model architecture gives each provider
 ## What is next
 
 - Automatically restore the latest run after a full page refresh.
-- Add a separately labelled fresh-signal acquisition pass.
 - Move long-running work to a durable queue.
 - Add team approval roles and version comparison.
 - Use post-performance feedback to improve future signal selection.
 - Tune model routing after collecting more real per-agent telemetry.
+
+The Signals workspace now includes a separately labelled **Find fresh signals** action and a scheduled discovery path. Both use a budget-bounded mix of accounts, keywords, hashtags, and trend searches across Instagram and TikTok.
 
 ## Demo story
 

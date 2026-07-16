@@ -253,9 +253,9 @@ export function deriveDiscoveryToolbarStatus(discovery, { language = 'uk' } = {}
 
   if (status.workerEnabled === false && settings.enabled !== false) {
     return {
-      label: t('signals.discovery.status.error'),
-      tone: 'error',
-      detail: t('signals.discovery.status.workerDetail'),
+      label: t('signals.discovery.status.manual'),
+      tone: 'scheduled',
+      detail: t('signals.discovery.status.manualDetail'),
     };
   }
 

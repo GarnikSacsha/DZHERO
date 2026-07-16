@@ -15,13 +15,16 @@ const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
 const AUTOMATIC_FALLBACK_SCORE_THRESHOLD = 55;
 const AUTOMATIC_RUN_LANE = 'automatic';
 const AUTOMATIC_INPUTS_PER_LANE = 3;
-const AUTOMATIC_METADATA_LIMIT = 8;
-const FORCED_AUTOMATIC_INPUTS_PER_LANE = 5;
-const FORCED_AUTOMATIC_METADATA_LIMIT = 12;
-const FORCED_AUTOMATIC_INSTAGRAM_METADATA_LIMIT = 30;
+const AUTOMATIC_METADATA_LIMIT = 5;
+const AUTOMATIC_MAX_PLANNED_CALLS = 4;
+const FORCED_AUTOMATIC_INPUTS_PER_LANE = 1;
+const FORCED_AUTOMATIC_METADATA_LIMIT = 5;
+const FORCED_AUTOMATIC_INSTAGRAM_METADATA_LIMIT = 5;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 20;
-const FORCED_AUTOMATIC_MAX_WINNERS = 60;
+const FORCED_AUTOMATIC_MAX_WINNERS = 10;
+const AUTOMATIC_MAX_WINNER_DOWNLOADS = 1;
+const FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS = 2;
 const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_BASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_CAP_MS = 6 * HOUR_MS;
@@ -886,6 +889,47 @@ function getPlannedAutomaticDiscoveryCalls(discoveryInputs = {}, platforms = [],
   return planAutomaticDiscoveryCalls(discoveryInputs, platforms, options).filter((call) => allowedLanes.has(call.lane));
 }
 
+function selectDiverseDiscoveryCalls(calls = [], platforms = [], maxCalls = AUTOMATIC_MAX_PLANNED_CALLS) {
+  const candidates = Array.isArray(calls) ? calls : [];
+  const limit = Math.max(1, Math.trunc(Number(maxCalls) || AUTOMATIC_MAX_PLANNED_CALLS));
+  const selected = [];
+  const used = new Set();
+  const orderedPlatforms = uniqueValues(platforms);
+
+  for (let laneIndex = 0; laneIndex < DEFAULT_LANES.length && selected.length < limit; laneIndex += 1) {
+    const lane = DEFAULT_LANES[laneIndex];
+    const preferredPlatform = orderedPlatforms.length
+      ? orderedPlatforms[laneIndex % orderedPlatforms.length]
+      : '';
+    const call = candidates.find((item) => (
+      item.lane === lane
+      && item.platform === preferredPlatform
+      && !used.has(item)
+    )) || candidates.find((item) => item.lane === lane && !used.has(item));
+    if (!call) continue;
+    selected.push(call);
+    used.add(call);
+  }
+
+  for (const platform of orderedPlatforms) {
+    if (selected.length >= limit) break;
+    if (selected.some((call) => call.platform === platform)) continue;
+    const call = candidates.find((item) => item.platform === platform && !used.has(item));
+    if (!call) continue;
+    selected.push(call);
+    used.add(call);
+  }
+
+  for (const call of candidates) {
+    if (selected.length >= limit) break;
+    if (used.has(call)) continue;
+    selected.push(call);
+    used.add(call);
+  }
+
+  return selected;
+}
+
 function createLaneScheduleMap(settings = {}) {
   return {
     lastRunAt: {
@@ -1165,7 +1209,7 @@ function prepareAutomaticDiscovery(args = {}) {
         }
         return selected;
       })()
-    : candidateCalls;
+    : selectDiverseDiscoveryCalls(candidateCalls, settings.platforms, AUTOMATIC_MAX_PLANNED_CALLS);
   const lanesWithCalls = new Set(plannedCalls.map((call) => call.lane));
   const emptyLanes = dueLanes.filter((lane) => !lanesWithCalls.has(lane));
   applyNormalLaneSchedules(workspace, settings, emptyLanes, now);
@@ -1194,7 +1238,7 @@ function prepareAutomaticDiscovery(args = {}) {
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
   const estimateExceedsBudget = spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd;
-  if (spentUsd >= settings.dailyBudgetUsd || (policy ? estimateExceedsBudget : (!isForcedRun && estimateExceedsBudget))) {
+  if (spentUsd >= settings.dailyBudgetUsd || estimateExceedsBudget) {
     applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
     const run = createAutomaticRun(state, {
       workspaceId,
@@ -1223,7 +1267,7 @@ function prepareAutomaticDiscovery(args = {}) {
     budgetUsd: settings.dailyBudgetUsd,
     spentUsdBefore: spentUsd,
     estimatedCostUsd: estimatedMetadataCostUsd,
-    reservedCostUsd: policy || !isForcedRun ? estimatedMetadataCostUsd : 0,
+    reservedCostUsd: estimatedMetadataCostUsd,
     requestedCount: plannedCalls.length,
   });
   if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
@@ -1236,6 +1280,9 @@ function prepareAutomaticDiscovery(args = {}) {
       dueLanes,
       plannedCalls,
       maxWinners: policy ? policy.dailyTarget : isForcedRun ? FORCED_AUTOMATIC_MAX_WINNERS : AUTOMATIC_MAX_WINNERS,
+      maxWinnerDownloads: isForcedRun
+        ? FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS
+        : AUTOMATIC_MAX_WINNER_DOWNLOADS,
       settings,
     },
   };
@@ -1261,6 +1308,7 @@ async function executeAutomaticDiscovery(args = {}) {
     dueLanes,
     plannedCalls,
     maxWinners = AUTOMATIC_MAX_WINNERS,
+    maxWinnerDownloads = AUTOMATIC_MAX_WINNER_DOWNLOADS,
     settings,
   } = prepared.execution;
   const spentUsd = run.spentUsdBefore;
@@ -1449,10 +1497,11 @@ async function executeAutomaticDiscovery(args = {}) {
   run.rejectedCount = Math.max(candidatesById.size - shortlistedSignals.length, 0);
 
   const acceptedSignals = [];
+  let winnerDownloadCount = 0;
   for (const shortlistedSignal of shortlistedSignals) {
     let acceptedSignal = shortlistedSignal;
     const platform = normalizeLower(shortlistedSignal.importedMetadata?.platform);
-    if (platform === 'tiktok') {
+    if (platform === 'tiktok' && winnerDownloadCount < maxWinnerDownloads) {
       const downloadInput = shortlistedSignal.sourceUrl || shortlistedSignal.importedMetadata?.url || '';
       const downloadCall = {
         platform: 'tiktok',
@@ -1464,6 +1513,7 @@ async function executeAutomaticDiscovery(args = {}) {
       };
       const downloadEstimateUsd = estimateDiscoveryCallCostUsd(downloadCall);
       if (downloadInput && spentUsd + run.reservedCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd) {
+        winnerDownloadCount += 1;
         run.estimatedCostUsd = roundUsd(run.estimatedCostUsd + downloadEstimateUsd);
         run.reservedCostUsd = roundUsd(run.reservedCostUsd + downloadEstimateUsd);
         run.attemptedCallCount += 1;
@@ -1535,7 +1585,9 @@ async function executeAutomaticDiscovery(args = {}) {
       createId: createAutomaticSignalId,
     });
     acceptedSignals.push(finalizedSignal);
+    run.acceptedCount = acceptedSignals.length;
     registerSignalIdentity(existingByIdentity, finalizedSignal);
+    await reportProgress();
   }
 
   if (acceptedSignals.length) {

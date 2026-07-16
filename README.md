@@ -326,11 +326,12 @@ The package includes:
 ## Post-hackathon roadmap
 
 - restore the latest run automatically in the UI;
-- add an explicit **Find fresh signals** acquisition pass;
 - compare model routing only after collecting more real per-agent telemetry;
 - add team approval roles and version comparison;
 - feed measured post performance back into future signal selection;
 - move long-running work to a durable job queue.
+
+Signals now includes an explicit **Find fresh signals** flow. It pulls a budget-bounded, mixed batch from connected accounts, brand keywords, hashtags, and trend searches across Instagram and TikTok; the same planner also powers scheduled discovery when the background worker is enabled.
 
 ## License
 

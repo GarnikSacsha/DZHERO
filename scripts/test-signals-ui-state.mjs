@@ -188,7 +188,19 @@ assert.equal(deriveDiscoveryRunNowLabel({
     dailyBudgetUsd: 0.8,
     remainingBudgetUsd: 0.8,
   },
-}), 'Запустити зараз');
+}), 'Знайти свіжі сигнали');
+
+const manualToolbar = deriveDiscoveryToolbarStatus({
+  settings: { enabled: true },
+  status: {
+    code: 'idle',
+    tokenConfigured: true,
+    workerEnabled: false,
+  },
+});
+assert.equal(manualToolbar.label, 'Ручний режим');
+assert.equal(manualToolbar.tone, 'scheduled');
+assert.match(manualToolbar.detail, /ключових слів|трендів/i);
 
 const englishToolbar = deriveDiscoveryToolbarStatus(null, { language: 'en' });
 assert.equal(englishToolbar.label, 'Loading');
@@ -203,7 +215,7 @@ const englishEmpty = deriveSignalsEmptyState({
   language: 'en',
 });
 assert.equal(englishEmpty.title, 'Automatic discovery has not filled the signal bank yet');
-assert.equal(englishEmpty.primaryAction.label, 'Run now');
+assert.equal(englishEmpty.primaryAction.label, 'Find fresh signals');
 assert.equal(englishEmpty.secondaryAction.label, 'Advanced import');
 
 const englishNotice = deriveDiscoveryRunNotice({
@@ -213,7 +225,7 @@ const englishNotice = deriveDiscoveryRunNotice({
 assert.match(englishNotice.message, /2 signals/);
 assert.doesNotMatch(englishNotice.message, /[А-Яа-яІіЇїЄєҐґ]/);
 
-assert.equal(deriveDiscoveryRunNowLabel(null, { language: 'en' }), 'Run now');
+assert.equal(deriveDiscoveryRunNowLabel(null, { language: 'en' }), 'Find fresh signals');
 
 const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
 const emptyStateIndex = mainSource.indexOf('const emptyState = deriveSignalsEmptyState({');
