@@ -100,6 +100,8 @@ assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
 assert.match(pageSource, /shouldPollAgentStudioRun/);
 assert.match(pageSource, /addToContentPlan: true/);
 assert.match(pageSource, /isProductionReadyAgentStudioCandidate/);
+assert.match(pageSource, /\['awaiting_approval', 'completed', 'failed', 'cancelled'\]\.includes\(run\.status\)/);
+assert.match(pageSource, /sourceUrl: '',\s*signalId: '',\s*userNotes: ''/);
 assert.match(pageSource, /copy\.alternativeApprovalHint/);
 assert.match(pageSource, /copy\.approvalSuccessTitle/);
 assert.match(pageSource, /QualityPanel/);
