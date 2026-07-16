@@ -1,5 +1,7 @@
 # File Map
 
+Last reviewed: **2026-07-17**
+
 ## Start files
 
 - `AGENTS.md` - root pointer for new agents.
@@ -21,8 +23,8 @@
 
 - `docs/MVP_TZ.md` - MVP technical/product spec.
 - `docs/PRODUCT_FLOW.md` - MVP flow from brief to content plan and Direct.
-- `docs/BACKEND.md` - backend routes and current backend skeleton.
-- `docs/BACKEND_ROADMAP.md` - backend milestones and module plan.
+- `docs/BACKEND.md` - legacy backend route notes; verify current behavior in `backend/server.js`.
+- `docs/BACKEND_ROADMAP.md` - historical backend milestones and module plan.
 - `docs/POSTGRES_STORAGE.md` - Postgres storage notes.
 
 ## Build Week package
@@ -53,6 +55,7 @@
 - `backend/services/usageLimits.cjs` - plan and usage limit checks.
 - `backend/services/youtubePopularFallback.cjs` - YouTube category fallback logic.
 - `backend/services/agentStudio*.cjs` - Agent Studio contracts, orchestration, video/source tools, quality, and usage.
+- `backend/services/automaticDiscovery*.js` - fresh-signal planning, policy, and storage helpers.
 - `backend/data/db.json` - local runtime DB. Do not commit casually.
 
 ## Tests and checks

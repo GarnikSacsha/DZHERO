@@ -20,9 +20,11 @@ DZHERO starts where the owner actually gets stuck: deciding which content mechan
 
 ## What it does
 
+The Signals workspace can run **Find fresh signals**, a budget-bounded discovery pass across configured accounts, brand keywords, hashtags, and trend searches on Instagram and TikTok. The same planner powers scheduled discovery when the worker is enabled.
+
 Agent Studio has two entry modes:
 
-- **Find from my Signals** selects a relevant item from the current workspace’s existing Signals.
+- **Choose from my Signals** selects a relevant item from the current workspace’s existing Signals.
 - **Adapt a Reel** starts from a saved signal or a supported public video URL.
 
 Both enter the same bounded workflow. Trend Analyst selects the transferable mechanic. Gemini Video Analyst extracts grounded evidence. Brand Strategist maps the mechanic to Brand Brain. Creative Producer creates a complete Reel and two distinct directions. Critic evaluates grounding and production quality with at most one revision. Content Planner turns the accepted strategy into seven distinct days. Jeryk Manager presents the package for explicit human approval.
@@ -34,7 +36,7 @@ Compact alternatives cannot be approved as if they were finished production scri
 ## Grounding and honest failure
 
 - YouTube can be analyzed from its native public URL.
-- Instagram and TikTok media use a narrow source-resolution layer before temporary Gemini Files analysis.
+- Instagram and TikTok media use a narrow source-resolution layer and authenticated server-side transfer before temporary Gemini Files analysis when the provider URL is protected.
 - Evidence distinguishes video observations, audio observations, on-screen text, metadata, and user notes.
 - Temporary Gemini files are deleted after analysis.
 - If reliable evidence is missing, the run enters `needs_context` or reports a classified source error instead of inventing scenes.
@@ -87,6 +89,7 @@ The Build Week extension adds:
 - safe agent activity trace;
 - provider usage telemetry;
 - focused contract, orchestration, UI, source, usage, and API verification.
+- budget-bounded fresh-signal discovery with manual and scheduled execution.
 
 ## Codex collaboration
 
@@ -97,6 +100,8 @@ The human owner made the product decisions: target user, coffee-shop demo story,
 ## Accomplishments
 
 - A real provider-backed run completed the full workflow, Hybrid pass, approval, and seven-day write.
+- The owner manually verified both YouTube and TikTok Agent Studio source paths on July 17, 2026.
+- The application is deployed on Railway with PostgreSQL-backed state and an enabled discovery worker.
 - The accepted run scored 85 or higher across all recorded quality dimensions.
 - Provider telemetry captured 11 OpenAI calls, 1 Gemini call, and 1 Apify call without exposing sensitive payloads.
 - Hybrid failure is recoverable without losing the original useful package.
@@ -110,7 +115,7 @@ We also learned that the strongest hybrid-model architecture gives each provider
 
 ## What is next
 
-- Automatically restore the latest run after a full page refresh.
+- Discover and restore the latest workspace run across browsers and devices; the current browser already restores its remembered run after refresh.
 - Move long-running work to a durable queue.
 - Add team approval roles and version comparison.
 - Use post-performance feedback to improve future signal selection.

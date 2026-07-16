@@ -26,7 +26,7 @@ const COPY = {
     newRun: 'New run',
     modes: {
       find_trend: {
-        title: 'Find from my Signals',
+        title: 'Choose from my Signals',
         description: 'The Trend Analyst chooses the strongest existing workspace signal for your objective.',
       },
       adapt_reel: {
@@ -54,8 +54,8 @@ const COPY = {
     chooseAnotherSource: 'Use another public link',
     resume: 'Upload and analyze',
     retrySource: 'Retry automatic video fetch',
-    retryingSource: 'Retrying Apify + Gemini...',
-    resultEyebrow: 'Jeryk manager review',
+    retryingSource: 'Retrying with Apify + Gemini...',
+    resultEyebrow: 'Jeryk Manager review',
     why: 'Why this works',
     evidence: 'Grounded evidence',
     mechanic: 'Transferable mechanic',
@@ -78,7 +78,7 @@ const COPY = {
     usageCalls: 'calls',
     usageTokens: 'tokens',
     usageEstimated: 'estimated',
-    usageReported: 'provider reported',
+    usageReported: 'reported by provider',
     concepts: 'Choose the creative direction',
     hero: 'Full production script',
     alternative: 'Alternative concept',
@@ -102,7 +102,7 @@ const COPY = {
     approvalSuccessDays: 'days were added to Content Plan.',
     approvalSuccessDuplicate: 'This package was already added to Content Plan.',
     openContentPlan: 'Open Content Plan',
-    disabledTitle: 'Agent Studio Beta is switched off',
+    disabledTitle: 'Agent Studio Beta is disabled',
     disabledText: 'Set ENABLE_AGENT_STUDIO=true on the backend to show this Build Week experience.',
     missingTitle: 'Agent providers need configuration',
     retry: 'Try again',
@@ -275,10 +275,11 @@ export function getAgentStudioTraceEntries(trace = []) {
   });
 }
 
-export function buildAgentStudioCreatePayload(form, idempotencyKey) {
+export function buildAgentStudioCreatePayload(form, idempotencyKey, outputLanguage = 'uk') {
   const payload = {
     mode: form.mode,
     objective: String(form.objective || '').trim(),
+    outputLanguage: outputLanguage === 'en' ? 'en' : 'uk',
     idempotencyKey,
   };
   if (form.mode === 'adapt_reel') {
@@ -297,7 +298,7 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
     ? {
       agent_studio_disabled: 'Agent Studio Beta is disabled on this environment.',
       agent_studio_not_configured: 'OpenAI or Gemini is not configured for Agent Studio.',
-      plan_limit_reached: 'Your plan limit is reached. Free space in Content Plan or change the plan.',
+      plan_limit_reached: 'Your plan limit has been reached. Remove an item from Content Plan or upgrade your plan.',
       rate_limit_exceeded: 'Too many requests. Wait a moment and try again.',
       invalid_agent_studio_input: 'Add an objective and choose a video URL, signal, or file.',
       agent_studio_upload_invalid: 'The uploaded video expired. Choose the file again.',

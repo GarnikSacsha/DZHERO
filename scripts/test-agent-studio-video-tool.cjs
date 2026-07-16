@@ -2,11 +2,21 @@ const assert = require('node:assert/strict');
 
 const {
   analyzeAgentStudioVideo,
+  buildGeminiPrompt,
   createGeminiVideoAnalysisTool,
   normalizeGeminiVideoResult,
   parseGeminiInteractionText,
 } = require('../backend/services/agentStudioVideoTool.cjs');
 const { EvidencePackageSchema } = require('../backend/services/agentStudioSchemas.cjs');
+
+assert.match(buildGeminiPrompt({
+  input: { objective: 'Drive visits', outputLanguage: 'en' },
+  selectedTrend: { title: 'Source', rationale: 'Relevant' },
+}), /natural English/);
+assert.match(buildGeminiPrompt({
+  input: { objective: 'Drive visits' },
+  selectedTrend: { title: 'Source', rationale: 'Relevant' },
+}), /natural Ukrainian/);
 
 function response(payload, { ok = true, status = 200, headers = {}, bytes = null } = {}) {
   const headerMap = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), String(value)]));

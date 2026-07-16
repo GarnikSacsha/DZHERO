@@ -10420,8 +10420,8 @@ nav button.active::before {
 }
 
 .score-sort-button {
-  min-height: 32px !important;
-  padding: 0 6px !important;
+  min-height: 36px !important;
+  padding: 0 8px !important;
 }
 
 button.dark,
@@ -10433,12 +10433,15 @@ button.dark,
 
 .signals-automation-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px 18px;
-  align-items: center;
-  margin: 6px 0 16px;
-  padding: 0 0 16px;
-  border-bottom: 1px solid var(--border-soft);
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  margin: 6px 0 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .signals-automation-main {
@@ -10609,7 +10612,9 @@ button.dark,
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
 }
 
 .signals-automation-actions button {
@@ -10671,7 +10676,7 @@ button.dark,
 
 .signal-source-tabs button {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 40px;
   align-items: center;
   gap: 8px;
   padding: 0 13px;
@@ -11255,9 +11260,13 @@ button.dark,
   align-items: center;
 }
 
+.content-note-actions button {
+  min-height: 40px;
+}
+
 .content-note-actions .danger {
-  width: 36px;
-  min-height: 34px;
+  width: 40px;
+  min-height: 40px;
   padding: 0;
   border-color: rgba(248, 113, 113, 0.32);
   color: #fecaca;
@@ -11265,8 +11274,8 @@ button.dark,
 
 .content-note-actions .icon,
 .calendar-post-modal-head .icon {
-  width: 36px;
-  min-height: 34px;
+  width: 40px;
+  min-height: 40px;
   padding: 0;
 }
 
@@ -15104,6 +15113,13 @@ nav button.active::before {
   font-size: 12px;
 }
 
+.jeryk-head > button.icon {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+}
+
 .jeryk-context {
   display: flex;
   align-items: center;
@@ -16635,13 +16651,38 @@ nav button.active::before {
 
 .topbar-quick-action,
 .top-actions > .icon {
-  min-height: 38px !important;
+  min-height: 42px !important;
 }
 
 .top-actions .language-switch button,
 .top-actions .icon {
-  min-width: 38px;
-  min-height: 38px !important;
+  min-width: 42px;
+  min-height: 42px !important;
+}
+
+@media (min-width: 761px) {
+  .app:not(.auth-app) .topbar-quick-action {
+    height: 42px !important;
+    min-height: 42px !important;
+  }
+
+  .app:not(.auth-app) .top-actions .icon {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .app:not(.auth-app) .mobile-menu-trigger,
+  .app:not(.auth-app) .topbar-quick-action,
+  .app:not(.auth-app) .top-actions .icon {
+    width: 42px !important;
+    height: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+  }
 }
 
 .agent-studio-run-button:disabled {
@@ -18292,6 +18333,10 @@ nav button.active::before {
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
 }
 
+.gcal-mobile-view-note {
+  display: none;
+}
+
 .gcal-month-scroll,
 .gcal-week-scroll {
   min-width: 0;
@@ -18776,6 +18821,18 @@ nav button.active::before {
   }
 }
 
+@media (max-width: 1240px) and (min-width: 901px) {
+  .signals-automation-main {
+    grid-template-columns: minmax(240px, 1fr) minmax(220px, 1fr);
+  }
+
+  .signals-automation-metrics {
+    grid-column: 1 / -1;
+    padding-top: 14px;
+    border-top: 1px solid var(--border-soft);
+  }
+}
+
 @media (max-width: 620px) {
   .page-content-plan .stats {
     display: none !important;
@@ -18826,6 +18883,31 @@ nav button.active::before {
 
   .gcal-view-switcher button {
     flex: 1 1 0;
+  }
+
+  .gcal-mobile-view-note {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 6%, var(--surface-soft));
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .gcal-mobile-view-note button {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+    border-radius: 9px;
+    background: var(--surface);
+    color: var(--accent-strong);
+    font-size: 11px;
+    font-weight: 850;
   }
 
   .page-content-plan .gcal-month.calendar-grid {

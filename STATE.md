@@ -1,97 +1,103 @@
-# State
+# DZHERO technical state
+
+Last updated: **2026-07-17**
 
 ## Git
 
-Initial local git repo has been created.
-
-Main branch:
-
 ```text
-main
+Repository: https://github.com/GarnikSacsha/insta-producer-.git
+Branch:     hackathon/openai-build-week
+Baseline:   3529d80 fix: authenticate Apify TikTok media downloads
 ```
 
-Initial commit:
+The final submission commit will be recorded after the last UI and documentation pass. Use `git log -1 --oneline` as the source of truth rather than copying the baseline above into Devpost.
+
+## Runtime profiles
+
+Standard local profile:
 
 ```text
-67bba41 Initial InstaProducer prototype
+Frontend: http://127.0.0.1:5173/
+Backend:  http://127.0.0.1:3000/
 ```
 
-## Remote
-
-GitHub repository:
+Isolated Build Week profile:
 
 ```text
-https://github.com/GarnikSacsha/insta-producer-.git
+Frontend: http://127.0.0.1:5180/
+Backend:  http://127.0.0.1:3100/
 ```
 
-## Local setup
-
-Project path:
+Production:
 
 ```text
-C:\Users\Денис\Desktop\Всякое вайбкодинг\Инстаграм продюссер
+Application: https://openaibuildweek.up.railway.app
+Health:      https://openaibuildweek.up.railway.app/api/health
+Storage:     PostgreSQL
 ```
 
-Install:
+Start locally:
 
-```bash
+```powershell
 npm install
-```
-
-Run:
-
-```bash
-npm run dev -- --port 5173
-```
-
-Run backend:
-
-```bash
 npm run dev:backend
+npm run dev:build-week
 ```
 
-Backend API:
+Verify:
 
-```text
-http://127.0.0.1:3000
-```
-
-Build:
-
-```bash
+```powershell
+npm run test:agent-studio
 npm run build
 ```
 
-## Architecture status
+## Architecture
 
-Current implementation is a single-page React prototype plus a first Express backend skeleton with local MVP auth.
+- React 19 and Vite 8 provide the workspace UI.
+- Express 5 serves authenticated APIs and the production frontend bundle.
+- OpenAI Agents SDK specialists produce, critique, plan, and manage Agent Studio artifacts.
+- Gemini performs video observation.
+- Apify resolves supported Instagram/TikTok sources and supplies fresh-signal discovery.
+- The backend owns schemas, limits, retries, state transitions, persistence, safe serialization, and workspace writes.
+- Production uses PostgreSQL with a transactional `app_state` JSONB document.
+- Local development falls back to `backend/data/db.json` when `DATABASE_URL` is absent.
 
-Backend storage is temporary JSON:
+## Agent Studio state model
+
+The workflow is bounded and persisted:
 
 ```text
-backend/data/db.json
+Trend Analyst
+-> Gemini Video Analyst
+-> Brand Strategist
+-> Creative Producer
+-> Critic
+-> optional single revision
+-> Content Planner
+-> Jeryk Manager
+-> human approval
 ```
 
-Next architecture step:
+Only a production-ready hero or Hybrid package can be approved. Approval writes exactly seven normalized Content Plan items once.
 
-1. replace JSON storage with real database;
-2. split backend routes into modules;
-3. finish Meta OAuth token exchange and Instagram account discovery;
-4. replace local auth/session JSON with production auth and role-based workspaces;
-5. implement sync queue;
-6. integrate AI.
+## Signal discovery state
 
-## Suggested backend entities
+- Manual URL/API import remains available.
+- **Find fresh signals** runs the same budget-aware planner on demand.
+- The production worker is enabled for scheduled discovery.
+- Discovery mixes connected accounts, brand keywords, hashtags, and trends across Instagram and TikTok.
+- Per-workspace settings, leases, checkpoints, daily budgets, deduplication, and run history are persisted.
 
-- users
-- workspaces
-- instagram_accounts
-- competitors
-- reels
-- ideas
-- remixes
-- content_plan_items
-- leads
-- crm_tags
-- ai_memory
-- sync_jobs
+## Deployment notes
+
+- Railway builds from `hackathon/openai-build-week` and serves the application on its assigned `PORT`.
+- `DATABASE_URL` selects PostgreSQL; the JSON file is only the local fallback/seed.
+- Provider keys remain server-side and must never use a `VITE_` prefix.
+- The final deployed commit must be recorded in the verification document after Railway reports success.
+
+## Known technical debt
+
+- `src/main.jsx`, `src/styles.css`, and `backend/server.js` remain large.
+- Cross-device latest-run discovery and a durable queue are post-hackathon work; the current browser already restores its remembered run after refresh.
+- The current PostgreSQL adapter serializes one application-state document; normalized tables are a future scaling step.
+- Route-level bundle splitting is deferred unless the final production rehearsal reveals a judge-visible problem.

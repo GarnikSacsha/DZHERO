@@ -1,5 +1,7 @@
 # DZHERO submission ownership and authorization
 
+Last reviewed: **2026-07-17**
+
 ## Entrant
 
 The submitting entrant for OpenAI Build Week is **Denis Efimenko**.
