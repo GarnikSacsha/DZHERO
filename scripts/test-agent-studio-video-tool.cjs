@@ -106,6 +106,8 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
     requestBody.response_format.schema.properties.observations.items.properties.sourceType.enum,
     ['video_observation', 'audio_observation', 'on_screen_text'],
   );
+  assert.equal('maxItems' in requestBody.response_format.schema.properties.observations, false);
+  assert.equal('maxItems' in requestBody.response_format.schema.properties.unknowns, false);
 
   const instagramRequests = [];
   const instagram = await analyzeAgentStudioVideo({

@@ -43,7 +43,6 @@ const GEMINI_VIDEO_RESPONSE_FORMAT = {
       },
       observations: {
         type: 'array',
-        maxItems: 60,
         items: {
           type: 'object',
           additionalProperties: false,
@@ -64,7 +63,6 @@ const GEMINI_VIDEO_RESPONSE_FORMAT = {
       },
       unknowns: {
         type: 'array',
-        maxItems: 20,
         items: { type: 'string' },
       },
     },
