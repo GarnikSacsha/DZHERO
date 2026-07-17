@@ -87,6 +87,13 @@ assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Choose from my Si
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
 assert.match(getAgentStudioErrorMessage({ error: 'agent_studio_candidate_not_production_ready' }, 'en'), /production-ready/i);
+assert.equal(
+  getAgentStudioErrorMessage({
+    code: 'quality_rejected',
+    message: 'The result did not pass the quality gate.',
+  }, 'uk'),
+  'Результат не пройшов перевірку якості.',
+);
 assert.doesNotMatch(getAgentStudioErrorMessage({ error: 'agent_studio_disabled' }, 'en'), /[А-Яа-яІіЇїЄє]/);
 
 const pageSource = readFileSync(new URL('../src/AgentStudioPage.jsx', import.meta.url), 'utf8');
