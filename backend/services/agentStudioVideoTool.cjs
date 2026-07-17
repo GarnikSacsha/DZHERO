@@ -382,27 +382,34 @@ async function analyzeAgentStudioVideo({
     || resolvedSignal.importedMetadata?.apify?.mediaUrls?.[0]
     || '',
   ).trim();
+  const originalApifyVideoUrl = String(resolvedSignal.importedMetadata?.apify?.videoUrl || '').trim();
   if (!uploadedFile && resolvedVideoUrl && !isYouTubeUrl(sourceUrl)) {
-    try {
-      const requestHeaders = isProtectedApifyMediaUrl(sourceUrl) && mediaApiToken
-        ? { Authorization: `Bearer ${mediaApiToken}` }
-        : {};
-      uploadedFile = await uploadGeminiVideoFromUrl({
-        sourceUrl,
-        apiKey,
-        requestHeaders,
-        fetchImpl,
-        sleepImpl,
-      });
-    } catch (error) {
-      if (isProtectedApifyMediaUrl(sourceUrl)) {
-        return buildUnavailableEvidence({
-          ...base,
-          reason: `Apify video transfer failed: ${error?.message || 'unknown error'}`,
+    const transferCandidates = [...new Set([resolvedVideoUrl, originalApifyVideoUrl].filter(Boolean))];
+    let transferError = null;
+    for (const candidateUrl of transferCandidates) {
+      try {
+        const requestHeaders = isProtectedApifyMediaUrl(candidateUrl) && mediaApiToken
+          ? { Authorization: `Bearer ${mediaApiToken}` }
+          : {};
+        uploadedFile = await uploadGeminiVideoFromUrl({
+          sourceUrl: candidateUrl,
+          apiKey,
+          requestHeaders,
+          fetchImpl,
+          sleepImpl,
         });
+        break;
+      } catch (error) {
+        transferError = error;
       }
-      // Fall back to the resolved public media URL if file transfer fails.
     }
+    if (!uploadedFile && isProtectedApifyMediaUrl(resolvedVideoUrl)) {
+      return buildUnavailableEvidence({
+        ...base,
+        reason: `Apify video transfer failed: ${transferError?.message || 'unknown error'}`,
+      });
+    }
+    // Fall back to the resolved public media URL if file transfer fails.
   }
 
   const videoInput = {
