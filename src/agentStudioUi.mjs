@@ -294,6 +294,11 @@ export function buildAgentStudioCreatePayload(form, idempotencyKey, outputLangua
 export function getAgentStudioErrorMessage(error, language = 'uk') {
   const code = typeof error === 'string' ? error : error?.error || error?.code;
   const fallback = typeof error === 'object' && error?.message ? error.message : '';
+  if (code === 'quality_rejected') {
+    return language === 'en'
+      ? 'The result did not pass the quality gate.'
+      : 'Результат не пройшов перевірку якості.';
+  }
   const messages = language === 'en'
     ? {
       agent_studio_disabled: 'Agent Studio Beta is disabled on this environment.',
