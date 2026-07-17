@@ -18,6 +18,7 @@ import {
   AGENT_STUDIO_STAGE_ORDER,
   buildAgentStudioCreatePayload,
   getAgentStudioCandidates,
+  getAgentStudioContextMessage,
   getAgentStudioCopy,
   getAgentStudioErrorMessage,
   getAgentStudioGroundingPercent,
@@ -754,7 +755,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
                 <Film size={23} />
                 <div>
                   <h2 data-i18n-content>{copy.contextTitle}</h2>
-                  <p data-i18n-content>{run.contextRequest?.message || copy.contextDescription}</p>
+                  <p data-i18n-content>{getAgentStudioContextMessage(run.contextRequest, language)}</p>
                   <div className="agent-studio-context-actions">
                     <button type="button" onClick={retrySource} disabled={isRetryingSource}>
                       {isRetryingSource ? <LoaderCircle className="spin" size={16} /> : <RefreshCw size={16} />}

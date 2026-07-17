@@ -22,6 +22,56 @@ const GeminiVideoResultSchema = z.object({
   unknowns: z.array(z.string().trim().min(1).max(500)).max(20),
 }).strict();
 
+const GEMINI_VIDEO_RESPONSE_FORMAT = {
+  type: 'text',
+  mime_type: 'application/json',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      accessible: {
+        type: 'boolean',
+        description: 'True only when the supplied video itself was inspected successfully.',
+      },
+      summary: {
+        type: 'string',
+        description: 'A natural-language summary in the requested output language.',
+      },
+      transferableMechanic: {
+        type: 'string',
+        description: 'The transferable content mechanic in the requested output language.',
+      },
+      observations: {
+        type: 'array',
+        maxItems: 60,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            sourceType: {
+              type: 'string',
+              enum: ['video_observation', 'audio_observation', 'on_screen_text'],
+            },
+            text: {
+              type: 'string',
+              description: 'The grounded observation in the requested output language.',
+            },
+            timestamp: { type: 'string' },
+            confidence: { type: 'number', minimum: 0, maximum: 1 },
+          },
+          required: ['sourceType', 'text', 'confidence'],
+        },
+      },
+      unknowns: {
+        type: 'array',
+        maxItems: 20,
+        items: { type: 'string' },
+      },
+    },
+    required: ['accessible', 'summary', 'transferableMechanic', 'observations', 'unknowns'],
+  },
+};
+
 function compactText(value, maxLength = 5000) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
@@ -452,6 +502,7 @@ async function analyzeAgentStudioVideo({
           videoInput,
           { type: 'text', text: buildGeminiPrompt({ input, selectedTrend, signal: resolvedSignal }) },
         ],
+        response_format: GEMINI_VIDEO_RESPONSE_FORMAT,
       }),
     });
     payload = await response.json().catch(() => ({}));

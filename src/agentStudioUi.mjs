@@ -49,8 +49,8 @@ const COPY = {
     run: 'Start agent team',
     running: 'Jeryk is managing the run',
     cancel: 'Cancel run',
-    contextTitle: 'This link is restricted by its source',
-    contextDescription: 'DZHERO tried the available automatic resolvers. Retry or choose another public link; no manual description or screen recording is required.',
+    contextTitle: 'Video analysis needs another attempt',
+    contextDescription: 'DZHERO could not obtain reliable structured video evidence. Retry or choose another public link.',
     chooseAnotherSource: 'Use another public link',
     resume: 'Upload and analyze',
     retrySource: 'Retry automatic video fetch',
@@ -146,8 +146,8 @@ const COPY = {
     run: 'Запустити команду агентів',
     running: 'Джерик керує запуском',
     cancel: 'Скасувати запуск',
-    contextTitle: 'Джерело обмежило доступ до цього посилання',
-    contextDescription: 'DZHERO вже спробував доступні автоматичні резолвери. Повтори спробу або встав інше публічне посилання — описувати чи записувати відео вручну не потрібно.',
+    contextTitle: 'Аналіз відео потребує повторної спроби',
+    contextDescription: 'DZHERO не зміг отримати надійні структуровані дані аналізу відео. Повтори спробу або встав інше публічне посилання.',
     chooseAnotherSource: 'Вставити інше публічне посилання',
     resume: 'Завантажити й проаналізувати',
     retrySource: 'Повторити автоматичне отримання відео',
@@ -325,4 +325,14 @@ export function getAgentStudioErrorMessage(error, language = 'uk') {
       agent_studio_candidate_not_production_ready: 'Це короткий напрям, а не готовий продакшн-сценарій. Спочатку об’єднай дві ідеї в повний гібрид.',
     };
   return messages[code] || fallback || (language === 'en' ? 'Agent Studio could not complete this request.' : 'Agent Studio не зміг завершити цей запит.');
+}
+
+export function getAgentStudioContextMessage(contextRequest, language = 'uk') {
+  const reason = String(contextRequest?.reason || contextRequest?.message || '').trim();
+  if (reason === 'Gemini did not return valid structured video evidence.') {
+    return language === 'en'
+      ? reason
+      : 'Gemini не повернув коректні структуровані дані аналізу відео.';
+  }
+  return reason || getAgentStudioCopy(language).contextDescription;
 }

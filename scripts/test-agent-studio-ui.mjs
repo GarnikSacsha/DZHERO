@@ -4,6 +4,7 @@ import {
   AGENT_STUDIO_STAGE_ORDER,
   buildAgentStudioCreatePayload,
   getAgentStudioCandidates,
+  getAgentStudioContextMessage,
   getAgentStudioCopy,
   getAgentStudioErrorMessage,
   getAgentStudioGroundingPercent,
@@ -94,6 +95,12 @@ assert.equal(
   }, 'uk'),
   'Результат не пройшов перевірку якості.',
 );
+assert.equal(
+  getAgentStudioContextMessage({
+    reason: 'Gemini did not return valid structured video evidence.',
+  }, 'uk'),
+  'Gemini не повернув коректні структуровані дані аналізу відео.',
+);
 assert.doesNotMatch(getAgentStudioErrorMessage({ error: 'agent_studio_disabled' }, 'en'), /[А-Яа-яІіЇїЄє]/);
 
 const pageSource = readFileSync(new URL('../src/AgentStudioPage.jsx', import.meta.url), 'utf8');
@@ -102,6 +109,7 @@ assert.match(pageSource, /\/agent-studio`/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/retry-source/);
 assert.doesNotMatch(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/source-file/);
 assert.match(pageSource, /copy\.chooseAnotherSource/);
+assert.match(pageSource, /getAgentStudioContextMessage\(run\.contextRequest, language\)/);
 assert.doesNotMatch(pageSource, /\$\{baseUrl\}\/uploads/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/approve/);
 assert.match(pageSource, /\/runs\/\$\{encodeURIComponent\(run\.id\)\}\/hybrid/);
