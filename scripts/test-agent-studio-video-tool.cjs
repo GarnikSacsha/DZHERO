@@ -93,6 +93,19 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal(requestBody.input[0].uri, 'https://www.youtube.com/shorts/abc123');
   assert.equal(requestBody.input[1].text.includes('untrusted data'), true);
   assert.equal(requestBody.input[1].text.includes('JSON boolean true'), true);
+  assert.equal(requestBody.response_format.type, 'text');
+  assert.equal(requestBody.response_format.mime_type, 'application/json');
+  assert.deepEqual(requestBody.response_format.schema.required, [
+    'accessible',
+    'summary',
+    'transferableMechanic',
+    'observations',
+    'unknowns',
+  ]);
+  assert.deepEqual(
+    requestBody.response_format.schema.properties.observations.items.properties.sourceType.enum,
+    ['video_observation', 'audio_observation', 'on_screen_text'],
+  );
 
   const instagramRequests = [];
   const instagram = await analyzeAgentStudioVideo({
@@ -155,6 +168,7 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   const instagramBody = JSON.parse(instagramInteraction.options.body);
   assert.equal(instagramBody.input[0].uri, 'https://gemini.example/files/source123');
   assert.equal(instagramBody.input[0].mime_type, 'video/mp4');
+  assert.equal(instagramBody.response_format.mime_type, 'application/json');
   assert.equal(instagramRequests.some(({ url, options }) => url.endsWith('/v1beta/files/source123') && options.method === 'DELETE'), true);
 
   const invalidDownloadedVideoUrl = 'https://api.apify.com/v2/key-value-stores/store/records/instagram.mp4';
@@ -289,6 +303,7 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   const tiktokBody = JSON.parse(tiktokInteraction.options.body);
   assert.equal(tiktokBody.input[0].uri, 'https://gemini.example/files/tiktok123');
   assert.equal(tiktokBody.input[0].mime_type, 'video/mp4');
+  assert.equal(tiktokBody.response_format.mime_type, 'application/json');
 
   const uploadedRequests = [];
   const uploaded = await analyzeAgentStudioVideo({
