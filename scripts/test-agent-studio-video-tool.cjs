@@ -157,6 +157,78 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal(instagramBody.input[0].mime_type, 'video/mp4');
   assert.equal(instagramRequests.some(({ url, options }) => url.endsWith('/v1beta/files/source123') && options.method === 'DELETE'), true);
 
+  const invalidDownloadedVideoUrl = 'https://api.apify.com/v2/key-value-stores/store/records/instagram.mp4';
+  const originalInstagramVideoUrl = 'https://scontent.example.com/original-instagram.mp4';
+  const instagramFallbackRequests = [];
+  const instagramFallback = await analyzeAgentStudioVideo({
+    input: {
+      mode: 'adapt_reel',
+      objective: 'Adapt an Instagram Reel when the downloaded copy is invalid',
+      sourceUrl: 'https://www.instagram.com/reel/fallback123/',
+    },
+    selectedTrend: {
+      title: 'Instagram fallback source',
+      rationale: 'The user supplied a Reel URL.',
+      sourceUrl: 'https://www.instagram.com/reel/fallback123/',
+    },
+    apiKey: 'test-key',
+    mediaApiToken: 'test-apify-token',
+    model: 'gemini-test',
+    resolveSource: async ({ sourceUrl }) => ({
+      sourceUrl,
+      videoUrl: invalidDownloadedVideoUrl,
+      importedMetadata: {
+        provider: 'apify',
+        videoUrl: invalidDownloadedVideoUrl,
+        apify: {
+          downloadedVideo: invalidDownloadedVideoUrl,
+          videoUrl: originalInstagramVideoUrl,
+        },
+      },
+    }),
+    sleepImpl: async () => {},
+    fetchImpl: async (url, options = {}) => {
+      instagramFallbackRequests.push({ url, options });
+      if (url === invalidDownloadedVideoUrl) {
+        assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
+        return response({}, {
+          headers: { 'content-type': 'text/html', 'content-length': '18' },
+          bytes: '<html>blocked</html>',
+        });
+      }
+      if (url === originalInstagramVideoUrl) {
+        return response({}, {
+          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+          bytes: new Uint8Array([1, 2, 3, 4, 5]),
+        });
+      }
+      if (url.endsWith('/upload/v1beta/files')) {
+        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/instagram-fallback-session' } });
+      }
+      if (url === 'https://upload.example.com/instagram-fallback-session') {
+        return response({ file: { name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'PROCESSING' } });
+      }
+      if (url.endsWith('/v1beta/files/instagram-fallback') && options.method === 'DELETE') return response({});
+      if (url.endsWith('/v1beta/files/instagram-fallback')) {
+        return response({ name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'ACTIVE' });
+      }
+      if (url.endsWith('/v1beta/interactions')) {
+        return response({
+          output_text: JSON.stringify({
+            accessible: true,
+            summary: 'Gemini inspected the original Instagram media URL after the downloaded copy failed.',
+            transferableMechanic: 'fast hook followed by a product reveal',
+            observations: [{ sourceType: 'video_observation', text: 'A fast hook cuts to a product reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
+            unknowns: [],
+          }),
+        });
+      }
+      throw new Error(`Unexpected Instagram fallback test URL: ${url}`);
+    },
+  });
+  assert.equal(instagramFallback.availability, 'reliable');
+  assert.equal(instagramFallbackRequests.some(({ url }) => url === originalInstagramVideoUrl), true);
+
   const apifyMediaUrl = 'https://api.apify.com/v2/key-value-stores/store/records/tiktok.mp4';
   const tiktokRequests = [];
   const tiktok = await analyzeAgentStudioVideo({
