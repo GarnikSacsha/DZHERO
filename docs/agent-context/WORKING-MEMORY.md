@@ -2,14 +2,14 @@
 
 ## Current user assessment
 
-The user considers the core Agent Studio MVP strong: adaptation quality, shot-by-shot production, Hybrid generation, and the seven-day package are all working well. Railway/PostgreSQL deployment and fresh-signal discovery are now live. The immediate priority is final UI polish, judge-facing documentation, and a final production rehearsal.
+The user considers the core Agent Studio MVP strong: adaptation quality, shot-by-shot production, Hybrid generation, and the seven-day package are all working well. The immediate product priority is a safe public beta from `main`: let trial users adapt a large existing Signals bank, prevent accidental paid discovery spend, keep Agent Studio available for the separate hackathon deployment but locked on the public product, and prevent purchases until billing intentionally launches.
 
 ## Current priorities
 
-1. Keep the repository understandable to judges and future maintainers.
-2. Document exactly what existed before Build Week and what was added.
-3. Keep the demo honest about source acquisition and provider fallbacks.
-4. Confirm the final UI/documentation commit in Railway, then finish repository access, public video, `/feedback`, and Devpost.
+1. Integrate the tested Build Week code into `main` without committing local runtime data.
+2. Configure the production shared-bank workspace and rehearse the public Free Trial flow.
+3. Keep the repository understandable to judges and future maintainers.
+4. Confirm the final UI/documentation commit in Railway, then finish the public video, `/feedback`, and Devpost.
 
 ## Product decisions
 
@@ -23,6 +23,9 @@ The user considers the core Agent Studio MVP strong: adaptation quality, shot-by
 - Only a full hero or Hybrid can be approved.
 - Approval must write exactly seven distinct content items once.
 - Provider usage should be visible but private payloads must remain hidden.
+- Public Free Trial reads shared Signals without copying them and cannot start paid discovery.
+- Public pricing is visible but non-purchasable until billing is explicitly enabled.
+- Agent Studio is enabled for the Build Week deployment and **Coming soon** on the public product.
 
 ## Submission and ownership decisions
 
@@ -44,10 +47,12 @@ The user considers the core Agent Studio MVP strong: adaptation quality, shot-by
 
 `backend/data/db.json` often changes during local runs and must not be staged unless explicitly requested.
 
-## 2026-07-17 operational state
+## 2026-07-20 operational state
 
-- Production health: HTTP 200 with `storage: postgres`.
+- Production health: HTTP 200 with `storage: postgres`, rechecked July 20.
 - Fresh-signal discovery is deployed and the Railway worker is enabled.
 - YouTube and TikTok Agent Studio source flows were manually verified.
-- Baseline commit before final UI/docs: `3529d80`.
+- Baseline commit before final UI/docs: `3529d80`; current verified code tip: `a22a955`.
 - The final submission commit, repository access, demo video, `/feedback` ID, and Devpost URL remain user-owned completion fields.
+- All nine deterministic Agent Studio suites and the production build passed on July 20 without external provider calls.
+- The deployed frontend matched the branch-tip build after normalizing the production API URL and Windows/Linux SVG line endings.

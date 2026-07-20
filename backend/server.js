@@ -50,6 +50,10 @@ const {
 } = require('./services/brandBrainPersistence.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
+const {
+  buildSharedSignalBankReels,
+  isSharedSignalBankPlan,
+} = require('./services/sharedSignalBank.cjs');
 const { normalizeContentPlanBody } = require('./services/contentPlanPostBody.cjs');
 const {
   getYouTubeShortsSearchQueries,
@@ -129,6 +133,7 @@ const PAYMENT_CARD_HOLDER = process.env.PAYMENT_CARD_HOLDER || '';
 const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
 const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
+const ENABLE_BILLING_PURCHASES = process.env.ENABLE_BILLING_PURCHASES === 'true';
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -151,6 +156,10 @@ const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidco
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
+const SHARED_SIGNAL_BANK_WORKSPACE_ID = String(process.env.SHARED_SIGNAL_BANK_WORKSPACE_ID || '').trim();
+const SHARED_SIGNAL_BANK_OWNER_EMAIL = String(process.env.SHARED_SIGNAL_BANK_OWNER_EMAIL || '').trim();
+const SHARED_SIGNAL_BANK_LIMIT = Number(process.env.SHARED_SIGNAL_BANK_LIMIT || 250);
+const ENABLE_PUBLIC_APIFY_BRAND_SCAN = process.env.ENABLE_PUBLIC_APIFY_BRAND_SCAN === 'true';
 const PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT = Math.max(
   1,
   Number(process.env.PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT || 20),
@@ -1158,6 +1167,56 @@ function getWorkspaceTesterDiscoveryPolicy(db = {}, workspaceId, actorUser = nul
   return getTesterDiscoveryPolicy(entitlements.plan.id);
 }
 
+function canWorkspaceUsePaidDiscovery(db = {}, workspaceId, actorUser = null) {
+  const workspaceUser = actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
+  const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
+  return Boolean(
+    entitlements.unlimited
+    || entitlements.plan.features?.includes('apify_discovery')
+  );
+}
+
+function buildPaidDiscoveryAccessError() {
+  const error = new Error('shared_signal_bank_only');
+  error.status = 403;
+  error.payload = {
+    error: 'shared_signal_bank_only',
+    message: 'Fresh paid discovery is closed during public beta. Choose a signal from the shared bank and adapt it instead.',
+  };
+  return error;
+}
+
+function assertWorkspaceCanUsePaidDiscovery(db = {}, workspaceId, actorUser = null) {
+  if (!canWorkspaceUsePaidDiscovery(db, workspaceId, actorUser)) {
+    throw buildPaidDiscoveryAccessError();
+  }
+}
+
+function buildSharedBankDiscoveryStatus(payload = {}) {
+  return {
+    ...payload,
+    access: {
+      mode: 'shared_bank',
+      paidDiscoveryEnabled: false,
+    },
+    settings: {
+      ...(payload.settings || {}),
+      enabled: false,
+    },
+    status: {
+      ...(payload.status || {}),
+      code: 'shared_bank',
+      label: 'Shared signal bank',
+      running: false,
+      canRunNow: false,
+      dailySpendUsd: 0,
+      remainingBudgetUsd: 0,
+      nextRunAt: null,
+      activeRun: null,
+    },
+  };
+}
+
 function hasReachedTesterDiscoveryDailyRunLimit(db = {}, workspaceId, policy, now = new Date()) {
   if (!policy) return false;
   const dayKey = now.toISOString().slice(0, 10);
@@ -1337,6 +1396,7 @@ function shouldRunAutomaticDiscoveryTick(db = {}, workspaceId, now = new Date())
   if (automaticDiscoveryWorkspacesInFlight.has(workspaceId)) return false;
   const workspace = db.workspaces.find((item) => item.id === workspaceId);
   if (!workspace) return false;
+  if (!canWorkspaceUsePaidDiscovery(db, workspaceId)) return false;
   const settings = getWorkspaceDiscoverySettingsSnapshot(workspace, now);
   const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
   if (policy) {
@@ -1377,6 +1437,7 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         error.payload = { error: 'workspace_not_found' };
         throw error;
       }
+      assertWorkspaceCanUsePaidDiscovery(db, workspaceId, options.actorUser || null);
       const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
       const prepared = prepareAutomaticDiscovery({
         state: db,
@@ -4319,7 +4380,7 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
     const metadata = await fetchPublicSourceMetadata(input);
     let apifyBrandSignals = [];
     let brandBrainWarning = '';
-    if (APIFY_TOKEN && shouldUseApifyForBrandScan(input, metadata)) {
+    if (ENABLE_PUBLIC_APIFY_BRAND_SCAN && APIFY_TOKEN && shouldUseApifyForBrandScan(input, metadata)) {
       try {
         apifyBrandSignals = await fetchApifySignals({
           token: APIFY_TOKEN,
@@ -5053,7 +5114,13 @@ app.get('/api/schema', (req, res) => {
 });
 
 app.get('/api/billing/plans', (req, res) => {
-  res.json({ plans: PLAN_CATALOG.filter((plan) => !plan.internal).map(publicPlan) });
+  res.json({
+    purchaseEnabled: ENABLE_BILLING_PURCHASES,
+    plans: PLAN_CATALOG.filter((plan) => !plan.internal).map((plan) => ({
+      ...publicPlan(plan),
+      availableForPurchase: ENABLE_BILLING_PURCHASES,
+    })),
+  });
 });
 
 app.get('/api/workspaces', async (req, res) => {
@@ -5112,6 +5179,13 @@ app.get('/api/workspaces/:workspaceId/billing/checkout', async (req, res) => {
     res.status(400).json({ error: 'valid_paid_plan_required' });
     return;
   }
+  if (!ENABLE_BILLING_PURCHASES) {
+    res.status(503).json({
+      error: 'billing_coming_soon',
+      message: 'Paid plans are coming soon. No payment can be created during public beta.',
+    });
+    return;
+  }
   const reference = `${PAYMENT_NOTE_PREFIX}-${workspace.id}-${plan.id}`.replace(/\s+/g, '-');
   res.json({
     plan: publicPlan(plan),
@@ -5143,6 +5217,13 @@ app.post('/api/workspaces/:workspaceId/billing/select-plan', async (req, res) =>
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
   if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
     res.status(400).json({ error: 'valid_paid_plan_required' });
+    return;
+  }
+  if (!ENABLE_BILLING_PURCHASES) {
+    res.status(503).json({
+      error: 'billing_coming_soon',
+      message: 'Paid plans are coming soon. No payment can be created during public beta.',
+    });
     return;
   }
   const subscription = ensureWorkspaceSubscription(db, req.params.workspaceId);
@@ -5919,15 +6000,31 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
 app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-  const reels = dedupeWorkspaceReelsForResponse(
-    db.reels.filter((item) => item.workspaceId === req.params.workspaceId)
-  );
-  res.json({ reels });
+  const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
+  const ownReels = db.reels.filter((item) => item.workspaceId === req.params.workspaceId);
+  const sharedBank = isSharedSignalBankPlan(entitlements)
+    ? buildSharedSignalBankReels(db, {
+        targetWorkspaceId: req.params.workspaceId,
+        workspaceId: SHARED_SIGNAL_BANK_WORKSPACE_ID,
+        ownerEmail: SHARED_SIGNAL_BANK_OWNER_EMAIL || Array.from(UNLIMITED_ACCESS_EMAILS)[0] || '',
+        limit: SHARED_SIGNAL_BANK_LIMIT,
+      })
+    : { sourceWorkspaceId: '', reels: [] };
+  const sharedBankReels = dedupeWorkspaceReelsForResponse(sharedBank.reels);
+  const reels = dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBankReels]);
+  res.json({
+    reels,
+    sharedBank: {
+      enabled: sharedBankReels.length > 0,
+      signalCount: sharedBankReels.length,
+    },
+  });
 });
 
 app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {
   const accessDb = await readDb();
   if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
+  const sharedBankOnly = !canWorkspaceUsePaidDiscovery(accessDb, req.params.workspaceId, req.authUser);
   const payload = await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
     const now = new Date();
     const workspace = db.workspaces.find((item) => item.id === req.params.workspaceId);
@@ -5935,13 +6032,14 @@ app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {
     recoverAutomaticDiscoveryLeases(db, req.params.workspaceId, now);
     return buildDiscoveryStatusResponse(db, req.params.workspaceId, now);
   });
-  res.json(payload);
+  res.json(sharedBankOnly ? buildSharedBankDiscoveryStatus(payload) : payload);
 });
 
 app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, next) => {
   try {
     const accessDb = await readDb();
     if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
+    assertWorkspaceCanUsePaidDiscovery(accessDb, req.params.workspaceId, req.authUser);
     const changes = parseDiscoverySettingsPatch(req.body || {});
     const payload = await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
       const workspace = db.workspaces.find((item) => item.id === req.params.workspaceId);
@@ -5963,8 +6061,12 @@ app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, 
   try {
     const accessDb = await readDb();
     if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
+    assertWorkspaceCanUsePaidDiscovery(accessDb, req.params.workspaceId, req.authUser);
 
-    const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, { force: true });
+    const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, {
+      force: true,
+      actorUser: req.authUser,
+    });
     if (!result.run) {
       if (result.reason === 'daily_run_limit') {
         res.status(429).json({
@@ -6147,6 +6249,7 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
+    assertWorkspaceCanUsePaidDiscovery(db, req.params.workspaceId, req.authUser);
     if (!APIFY_TOKEN) {
       res.status(501).json({
         error: 'apify_not_configured',

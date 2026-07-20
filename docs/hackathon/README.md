@@ -1,6 +1,6 @@
 # OpenAI Build Week judge package
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 This folder contains the submission-facing documentation for DZHERO Agent Studio.
 
@@ -16,13 +16,15 @@ This folder contains the submission-facing documentation for DZHERO Agent Studio
 ## Current delivery state
 
 - Railway deployment: [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app)
-- Production API health: HTTP 200, `storage: postgres` on 2026-07-17.
+- Production API health: HTTP 200, `storage: postgres` on 2026-07-20.
 - Fresh-signal discovery: deployed; scheduled worker enabled.
 - Agent Studio: provider-backed reference flow, Hybrid, approval, and seven-day write verified.
 - Public source coverage: owner manually verified YouTube and TikTok on 2026-07-17.
 - Pre-polish implementation baseline: `3529d80`.
+- Current verified code tip: `a22a955` on `hackathon/openai-build-week`.
+- July 20 frontend deployment comparison: exact match after normalizing the Railway API URL and Windows/Linux SVG line endings.
 
-Final UI, English-output, tests, and documentation integration is recorded in `be3ab33`. The verification-record commit follows it, so use the branch tip for the judge checkout and deployment comparison.
+Final UI, English-output, tests, and documentation integration is recorded in `be3ab33`. Later source/evidence fixes culminate in `a22a955`. Use the final committed branch tip as the judge checkout; confirm the exact backend revision in the Railway dashboard before submission.
 
 ## Official submission requirements
 
@@ -35,6 +37,8 @@ The final operator must recheck the current [Build Week FAQ](https://openai.devp
 - the `/feedback` Session ID from the primary build task;
 - submission by **July 21, 2026 at 5:00 PM Pacific Time**.
 
+The official pages were rechecked on July 20. The submission deadline is **July 21 at 5:00 PM PDT**, which is **July 22 at 3:00 AM EEST in Kyiv**.
+
 ## Technical records
 
 - [Implemented design](../superpowers/specs/2026-07-14-dzhero-agent-studio-build-week-design.md)
@@ -44,7 +48,7 @@ The final operator must recheck the current [Build Week FAQ](https://openai.devp
 
 ## Remaining user-owned fields
 
-- final deployed commit hash;
+- exact Railway backend deployment commit confirmation;
 - public repository URL or confirmed private judge access;
 - demo account instructions;
 - public YouTube video URL;

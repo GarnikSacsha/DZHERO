@@ -1,6 +1,6 @@
 # DZHERO submission ownership and authorization
 
-Last reviewed: **2026-07-17**
+Last reviewed: **2026-07-20**
 
 ## Entrant
 

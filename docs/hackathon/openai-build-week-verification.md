@@ -1,6 +1,6 @@
 # DZHERO Agent Studio — verification record
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 Update the final-evidence table after the last production rehearsal. Do not replace measured results with expected results.
 
@@ -31,6 +31,17 @@ Final UI/documentation integration verification on **2026-07-17**:
 - light and dark UI audits across Home, Signals, Studio, Agent Studio, Content Plan, Settings, and the open assistant at desktop, laptop, and mobile viewports — zero overflow, clipping, undersized controls, page errors, or request failures.
 
 The signed-out shell still logs the expected unauthenticated `/api/auth/me` HTTP 401 while deciding which entry screen to show; this does not fail navigation or API requests. Record the final commit below after creating it.
+
+July 20 pre-submission verification:
+
+- branch `hackathon/openai-build-week` was synchronized with origin at code tip `a22a955`;
+- all nine suites in `npm run test:agent-studio` passed;
+- the API journey and source resolver used deterministic stubs and consumed no OpenAI, Gemini, or Apify credits;
+- `npm run build` passed with the documented non-blocking bundle-size warning;
+- the public homepage, Terms, Privacy, and `/api/health` returned HTTP 200;
+- `/api/health` reported `storage: postgres`;
+- the deployed frontend matched the local branch-tip production build exactly after normalizing `VITE_API_URL=/api` and Windows/Linux SVG line endings;
+- the exact backend revision remains a Railway-dashboard confirmation because `a22a955` changes only the server-side Gemini schema.
 
 ## Provider-backed reference run
 
@@ -78,7 +89,7 @@ Instagram remains supported by the same source-resolution architecture but is no
 
 ## Deployment verification
 
-Checked on **2026-07-17**:
+Rechecked on **2026-07-20**:
 
 | Check | Result |
 | --- | --- |
@@ -88,6 +99,8 @@ Checked on **2026-07-17**:
 | Storage | `postgres` |
 | Fresh-signal discovery | deployed |
 | Scheduled discovery worker | enabled |
+| Deployed frontend | matched the branch-tip build after environment/line-ending normalization |
+| Exact backend commit | pending Railway dashboard confirmation |
 
 Production URL: `https://openaibuildweek.up.railway.app`
 
@@ -113,14 +126,15 @@ Fill these fields immediately before submission:
 | Branch | `hackathon/openai-build-week` |
 | Implementation baseline | `3529d80` |
 | Final UI/English/docs integration | `be3ab33` |
-| Submission branch tip | Use `git rev-parse HEAD` after this verification-record commit |
-| Final Railway deployment status | **FILL AFTER FINAL DEPLOY** |
-| Repository URL / judge access | **FILL BEFORE SUBMISSION** |
+| Verified code tip before final documentation commit | `a22a955` |
+| Submission branch tip | Record `git rev-parse HEAD` after the final documentation/evidence commit |
+| Final Railway deployment status | Frontend and health verified July 20; exact backend commit pending dashboard confirmation |
+| Repository URL / judge access | Pending entrant action |
 | Deployed demo | `https://openaibuildweek.up.railway.app` |
-| Demo account instructions | **PROVIDE PRIVATELY IF REQUIRED** |
-| Public YouTube video | **FILL BEFORE SUBMISSION** |
-| Codex `/feedback` Session ID | **FILL BEFORE SUBMISSION** |
-| Devpost submission URL | **FILL AFTER SUBMISSION** |
+| Demo account instructions | Provide privately if required |
+| Public YouTube video | Pending entrant action |
+| Codex `/feedback` Session ID | Pending entrant action |
+| Devpost submission URL | Pending entrant action after submission |
 
 If the repository remains private, confirm access for both `testing@devpost.com` and `build-week-event@openai.com`.
 

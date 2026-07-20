@@ -2,6 +2,19 @@
 
 DZHERO is an AI producer for small businesses, creators, SMM specialists, and multi-brand teams. It turns real short-form content signals into brand-specific scripts, production instructions, and an actionable content plan.
 
+## Public beta mode
+
+The public product and the Build Week demo use the same codebase with server-side feature flags:
+
+- Free Trial workspaces read an existing shared Signals bank and can adapt those signals without starting a new paid discovery run;
+- the shared bank is projected into each trial workspace at read time, without copying database rows or exposing saved brand adaptations;
+- paid discovery and advanced imports are rejected by the backend for plans without explicit discovery access;
+- public Brand Scan uses public metadata and Gemini unless its optional paid source expansion is explicitly enabled;
+- Agent Studio stays available on the Build Week deployment, while the public product shows it as disabled **Coming soon** when `ENABLE_AGENT_STUDIO=false`;
+- checkout is disabled by default with `ENABLE_BILLING_PURCHASES=false`, so the pricing grid is visible but cannot create a payment.
+
+Configure the production signal bank with `SHARED_SIGNAL_BANK_WORKSPACE_ID` or `SHARED_SIGNAL_BANK_OWNER_EMAIL`. The workspace id is preferred; the email fallback selects that user's workspace with the largest existing bank. If both are empty, the first `UNLIMITED_ACCESS_EMAILS` account is used as a safe owner-only fallback.
+
 ## OpenAI Build Week: Agent Studio Beta
 
 Agent Studio is the Build Week extension inside the existing DZHERO product. It is an accountable multi-agent workflow that turns one real signal into:
@@ -15,7 +28,7 @@ Agent Studio is the Build Week extension inside the existing DZHERO product. It 
 
 The extension is additive and feature-flagged. It does not replace the existing Signals, Gemini Studio, Brand Brain, Jeryk assistant, billing, or Content Plan.
 
-**Current Build Week state (2026-07-17):** the full-stack application is deployed on Railway at [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app), production state is backed by PostgreSQL, fresh-signal discovery and its background worker are enabled, and the owner has manually verified both YouTube and TikTok Agent Studio source flows. Final UI, English-output, test, and documentation integration is recorded in `be3ab33`; use the branch tip as the judge checkout after the verification-record commit.
+**Current Build Week state (2026-07-20):** the full-stack application is deployed on Railway at [openaibuildweek.up.railway.app](https://openaibuildweek.up.railway.app), production state is backed by PostgreSQL, and the owner has manually verified both YouTube and TikTok Agent Studio source flows. The current verified code tip is `a22a955` on `hackathon/openai-build-week`. On July 20, the deployed frontend was matched exactly to the branch-tip production build after normalizing the expected Railway API URL and Windows/Linux SVG line endings. The exact backend revision must still be confirmed in the Railway deployment dashboard because the final `a22a955` change is server-only.
 
 ## Product flow
 
@@ -302,7 +315,17 @@ On July 16, 2026, a real local coffee-shop run completed the full flow:
 
 Provider latency and cost vary by source, model output, revisions, and Hybrid usage. These numbers are a verified reference, not a promise.
 
-On July 17, 2026, the owner also manually verified public YouTube and TikTok inputs through the Agent Studio workflow after the authenticated Apify media-transfer fix in `3529d80`. The public deployment health endpoint returned `ok: true` and `storage: postgres`. A final signed-out production rehearsal is still required before submission.
+On July 17, 2026, the owner also manually verified public YouTube and TikTok inputs through the Agent Studio workflow after the authenticated Apify media-transfer fix in `3529d80`.
+
+On July 20, 2026:
+
+- all nine deterministic Agent Studio suites passed without external provider calls;
+- the production build passed with only the documented non-blocking bundle-size warning;
+- the public homepage, Terms, Privacy, and `/api/health` returned HTTP 200;
+- `/api/health` reported `ok: true` and `storage: postgres`;
+- the Railway frontend matched the current Build Week branch-tip build after environment and line-ending normalization.
+
+A final signed-out production rehearsal is still required before submission.
 
 ## Judge and submission documentation
 

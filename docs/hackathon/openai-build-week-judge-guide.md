@@ -1,6 +1,6 @@
 # DZHERO Agent Studio — judge guide
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 ## What to evaluate
 
@@ -22,12 +22,12 @@ The differentiator is the accountable chain from source evidence to a production
 - Fresh-signal discovery: deployed with scheduled worker enabled.
 - Public source paths manually verified on 2026-07-17: YouTube and TikTok.
 - Branch: `hackathon/openai-build-week`.
-- Baseline before final UI/docs: `3529d80`; use the verification record for the final deployed commit.
+- Baseline before final UI/docs: `3529d80`; current verified code tip: `a22a955`; use the verification record for the final deployed commit.
 
 ## Recommended evaluation path
 
 1. Enter the prepared English coffee-shop workspace.
-2. Open **Signals** and inspect the fresh-signal bank. **Find fresh signals** performs a real budget-bounded provider run; use it only if live provider latency/cost is appropriate.
+2. Open **Signals** and inspect the fresh-signal bank. **Find fresh signals** performs a real budget-bounded provider run; use it only if live provider latency and cost are appropriate.
 3. Open **Agent Studio · Beta** and choose **New run** if a previous package is visible.
 4. Choose **Adapt a Reel** and use the prepared verified public source.
 5. Use the weekday-morning-visits objective.

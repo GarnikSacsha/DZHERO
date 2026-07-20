@@ -63,6 +63,9 @@ try {
   assert.deepEqual(runtimeErrors, []);
   assert.match(bodyText, /Головна/);
   assert.match(bodyText, /Сигналів ще немає/);
+  const agentStudioNav = page.locator('[data-tour="sidebar-agent-studio"]');
+  assert.equal(await agentStudioNav.isDisabled(), true);
+  assert.match(await agentStudioNav.innerText(), /Coming soon/i);
   const signalsCard = page.locator('.mvp-counter-card').filter({ hasText: /Сигнали/i });
   assert.equal((await signalsCard.locator('strong').textContent())?.trim(), '0');
 
