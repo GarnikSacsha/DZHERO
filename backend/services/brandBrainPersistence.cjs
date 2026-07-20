@@ -10,6 +10,7 @@ const BRAND_BRAIN_FIELDS = [
   'proof',
   'contentFocus',
   'contentPillars',
+  'contentRubrics',
   'keywords',
   'goals',
   'stopTopics',

@@ -6,6 +6,7 @@ const {
 } = require('../backend/services/brandBrainPersistence.cjs');
 
 assert.equal(hasStoredBrandBrain({}), false);
+assert.equal(hasStoredBrandBrain({ contentRubrics: ['client FAQ'] }), true);
 assert.equal(hasStoredBrandBrain({ updatedAt: '2026-07-13T00:00:00.000Z' }), false);
 assert.equal(hasStoredBrandBrain({ product: 'десерти' }), true);
 assert.equal(hasStoredBrandBrain({ stopTopics: ['не вигадувати цифри'] }), true);

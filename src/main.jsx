@@ -1257,7 +1257,7 @@ function App() {
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
-        {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={() => setMvpPage('agent-studio')} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
+        {page === 'home' && <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && (
           selectedReel
@@ -2885,7 +2885,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   };
   const labels = language === 'en'
     ? {
-      home: 'Home',
+      home: 'Brand Brain',
       viral: 'Signals',
       remix: 'Studio',
       'agent-studio': 'Agent Studio · Beta',
@@ -2893,7 +2893,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       settings: 'Settings',
     }
     : {
-      home: 'Головна',
+      home: 'Brand Brain',
       viral: 'Сигнали',
       remix: 'Студія',
       'agent-studio': 'Agent Studio · Beta',
@@ -2901,7 +2901,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       settings: 'Налаштування',
     };
   const primaryItems = [
-    ['home', Home],
+    ['home', Database],
     ['viral', Radio],
     ['remix', Wand2],
     ['agent-studio', Bot],
@@ -3010,10 +3010,12 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
 
 function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, agentStudioAvailable = false, onOpenMenu, onCloseMenu }) {
   const { translateText } = useI18n();
-  const ctaLabel = page === 'settings'
-    ? (language === 'en' ? 'Back to hub' : 'До хабу')
-    : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
-  const ctaTarget = page === 'settings' ? 'home' : 'agent-studio';
+  const ctaLabel = page === 'home'
+    ? (language === 'en' ? 'Next: Signals' : 'Далі: Сигнали')
+    : page === 'settings'
+      ? (language === 'en' ? 'Back to Brand Brain' : 'До Brand Brain')
+      : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
+  const ctaTarget = page === 'home' ? 'viral' : page === 'settings' ? 'home' : 'agent-studio';
   const themeTitle = themeMode === 'auto'
     ? (language === 'en' ? 'Auto theme: local time' : 'Автотема: за локальним часом')
     : (language === 'en' ? 'Theme' : 'Тема');
@@ -5863,6 +5865,42 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
   );
 }
 
+function BrandBrainStartPage({ notify, workspaceId, language = 'uk', setPage }) {
+  useI18n();
+  const copy = language === 'en'
+    ? {
+      subtitle: 'Start here once. Dzhero will use this memory in Signals, Studio, scripts, and the content plan.',
+      eyebrow: 'Next step',
+      title: 'Brand memory ready?',
+      text: 'Open Signals, choose a useful reference, and adapt it with the context you saved here.',
+      action: 'Continue to Signals',
+    }
+    : {
+      subtitle: 'Почни звідси один раз. Дзеро використовуватиме цю пам’ять у Сигналах, Студії, сценаріях і контент-плані.',
+      eyebrow: 'Наступний крок',
+      title: 'Пам’ять бренду готова?',
+      text: 'Відкрий Сигнали, обери корисний референс і адаптуй його з контекстом, який збережено тут.',
+      action: 'Перейти до Сигналів',
+    };
+
+  return (
+    <section className="page page-brand-brain-start">
+      <PageTitle title="Brand Brain" subtitle={copy.subtitle} />
+      <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />
+      <div className="brand-brain-next-step">
+        <div>
+          <small>{copy.eyebrow}</small>
+          <strong>{copy.title}</strong>
+          <p>{copy.text}</p>
+        </div>
+        <button className="dark" type="button" onClick={() => setPage('viral')}>
+          <Radio size={16} /> {copy.action}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function VideoTaskQueue({ notify, workspaceId }) {
   const { t, translateText } = useI18n();
   const [jobs, setJobs] = useState([]);
@@ -7407,7 +7445,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
 }
 
 function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
-  const { t, translateText } = useI18n();
+  const { translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
   const [sourceInput, setSourceInput] = useState('');
@@ -7424,6 +7462,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       scanning: 'Scanning...',
       analyze: 'Analyze source',
       connectInstagram: 'Connect Instagram',
+      comingSoon: 'Coming soon',
       loadingTitle: 'Jeryk is preparing the Brand Scan preview',
       loadingText: 'Checking the public source and preparing the first production preview.',
       openStudio: 'Open in Studio',
@@ -7440,6 +7479,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       scanning: 'Скануємо...',
       analyze: 'Проаналізувати джерело',
       connectInstagram: 'Підключити Instagram',
+      comingSoon: 'Незабаром',
       loadingTitle: 'Джерик збирає Brand Scan preview',
       loadingText: 'Перевіряю відкрите джерело і готую перший production preview.',
       openStudio: 'Відкрити в Studio',
@@ -7507,17 +7547,6 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
     notify(hasSourceMetadata(result.metadata) ? sourceCopy.previewFromSource : sourceCopy.previewFromDescription);
   };
 
-  const connectInstagram = async () => {
-    try {
-      const response = await authFetch(`${API_BASE}/auth/meta/start?workspaceId=${workspaceId}`);
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'meta_not_configured');
-      window.location.href = payload.authUrl;
-    } catch (error) {
-      notify(localizeInterfaceError(error, t, 'errors.instagramNotConfigured'));
-    }
-  };
-
   return (
     <section className="page">
       <PageTitle
@@ -7553,8 +7582,16 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
                 <button className="dark" type="button" onClick={buildSourcePreview} disabled={isScanning}>
                   <Sparkles size={16} /> {isScanning ? sourceCopy.scanning : sourceCopy.analyze}
                 </button>
-                <button className="dark source-connect-inline" type="button" onClick={connectInstagram}>
+                <button
+                  className="dark source-connect-inline source-connect-coming-soon"
+                  type="button"
+                  disabled
+                  title={sourceCopy.comingSoon}
+                  data-coming-soon={sourceCopy.comingSoon}
+                  aria-label={`${sourceCopy.connectInstagram}. ${sourceCopy.comingSoon}`}
+                >
                   <Link2 size={16} /> {sourceCopy.connectInstagram}
+                  <small>{sourceCopy.comingSoon}</small>
                 </button>
                 {sourceError && <span>{sourceError}</span>}
               </div>
@@ -7631,8 +7668,16 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
           )}
 
           <div className="sources-instagram-only">
-            <button className="dark source-connect-button" type="button" onClick={connectInstagram}>
+            <button
+              className="dark source-connect-button source-connect-coming-soon"
+              type="button"
+              disabled
+              title={sourceCopy.comingSoon}
+              data-coming-soon={sourceCopy.comingSoon}
+              aria-label={`${sourceCopy.connectInstagram}. ${sourceCopy.comingSoon}`}
+            >
               <Link2 size={16} /> {sourceCopy.connectInstagram}
+              <small>{sourceCopy.comingSoon}</small>
             </button>
           </div>
         </div>

@@ -61,14 +61,11 @@ try {
 
   const bodyText = await page.locator('body').innerText();
   assert.deepEqual(runtimeErrors, []);
-  assert.match(bodyText, /Головна/);
-  assert.match(bodyText, /Сигналів ще немає/);
+  assert.match(bodyText, /Brand Brain/);
+  assert.equal(await page.locator('.page-brand-brain-start .brand-brain').count(), 1);
   const agentStudioNav = page.locator('[data-tour="sidebar-agent-studio"]');
   assert.equal(await agentStudioNav.isDisabled(), true);
   assert.match(await agentStudioNav.innerText(), /Coming soon/i);
-  const signalsCard = page.locator('.mvp-counter-card').filter({ hasText: /Сигнали/i });
-  assert.equal((await signalsCard.locator('strong').textContent())?.trim(), '0');
-
   await page.getByRole('button', { name: 'Студія' }).click();
   await page.getByText('Спочатку додайте сигнал', { exact: true }).waitFor({ timeout: 5_000 });
 
