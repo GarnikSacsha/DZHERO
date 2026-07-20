@@ -14704,6 +14704,91 @@ nav button.active::before {
   background: rgba(14, 165, 233, 0.08);
 }
 
+.page-brand-brain-start .brand-brain {
+  margin-bottom: 0;
+}
+
+.brand-brain-next-step {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.brand-brain-next-step div {
+  display: grid;
+  gap: 5px;
+}
+
+.brand-brain-next-step small {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brand-brain-next-step strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.brand-brain-next-step p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.brand-brain-next-step button {
+  flex: 0 0 auto;
+  min-height: 42px;
+}
+
+.source-connect-coming-soon:disabled {
+  position: relative;
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
+.source-connect-coming-soon small {
+  margin-left: 2px;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.source-connect-coming-soon:hover::after {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  content: attr(data-coming-soon);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 1;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
 .source-type-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -14849,6 +14934,14 @@ nav button.active::before {
 }
 
 @media (max-width: 760px) {
+  .brand-brain-next-step {
+    display: grid;
+  }
+
+  .brand-brain-next-step button {
+    width: 100%;
+  }
+
   .sources-command,
   .sources-bottom-grid {
     grid-template-columns: 1fr;

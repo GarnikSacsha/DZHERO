@@ -40,6 +40,7 @@ const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage
 const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
+  mergeBusinessBriefWithBrandBrain,
 } = require('./services/brandBrainContext.cjs');
 const {
   buildBrandBrainEnrichment,
@@ -6388,12 +6389,10 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
 
     const metadata = await fetchPublicSourceMetadata(url, { beforeProviderAttempt });
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
-    const mergedBrief = {
-      niche: req.body.businessBrief?.niche || workspace.brief?.businessType || 'Локальний бізнес',
-      product: req.body.businessBrief?.product || workspace.brief?.product || 'продукт або послуга бренду',
-      location: req.body.businessBrief?.location || workspace.brief?.location || 'Україна',
-      toneOfVoice: req.body.businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень',
-    };
+    const mergedBrief = mergeBusinessBriefWithBrandBrain(
+      workspace.brief || {},
+      req.body.businessBrief || {},
+    );
 
     const remixResult = await generateRemix(globalInsight, mergedBrief, { beforeProviderAttempt });
     const sourceLabel = metadata.source?.label || 'URL import';
@@ -6942,30 +6941,10 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
       return;
     }
 
-    // Merge supplied brief with workspace stored brief if empty
-    const mergedBrief = {
-      niche: businessBrief?.niche || workspace.brief?.businessType || 'Локальний бізнес',
-      product: businessBrief?.product || workspace.brief?.product || 'продукт або послуга бренду',
-      location: businessBrief?.location || workspace.brief?.location || 'Україна',
-      toneOfVoice: businessBrief?.toneOfVoice || workspace.brief?.toneOfVoice || 'коротко, конкретно, дружньо, без перебільшень'
-    };
-
-    const storedBrief = buildBusinessBriefFromBrandBrain(workspace.brief || {});
-    const finalBrief = {
-      ...mergedBrief,
-      ...storedBrief,
-      ...(businessBrief || {}),
-      niche: businessBrief?.niche || storedBrief.niche || '',
-      product: businessBrief?.product || storedBrief.product || '',
-      location: businessBrief?.location || storedBrief.location || '',
-      toneOfVoice: businessBrief?.toneOfVoice || storedBrief.toneOfVoice || '',
-      audience: businessBrief?.audience || storedBrief.audience || '',
-      goals: businessBrief?.goals || storedBrief.goals || [],
-      stopTopics: businessBrief?.stopTopics || storedBrief.stopTopics || [],
-      contentFocus: businessBrief?.contentFocus || storedBrief.contentFocus || '',
-      cta: businessBrief?.cta || storedBrief.cta || '',
-      proof: businessBrief?.proof || storedBrief.proof || '',
-    };
+    const finalBrief = mergeBusinessBriefWithBrandBrain(
+      workspace.brief || {},
+      businessBrief || {},
+    );
 
     const result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
     res.json(result);

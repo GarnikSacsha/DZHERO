@@ -42,6 +42,7 @@ const renderTimeLocalized = [
   'IdeasBoard',
   'AgentPipeline',
   'BrandBrain',
+  'BrandBrainStartPage',
   'VideoTaskQueue',
   'CreatorAssistant',
   'LaunchRoadmap',

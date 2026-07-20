@@ -140,7 +140,7 @@ async function runAudit(appUrl) {
     });
     assert.deepEqual(initialCyrillic, [], `Initial English render flashed Cyrillic: ${initialCyrillic.join(' | ')}`);
 
-    await assertEnglishSurface(page, 'Home');
+    await assertEnglishSurface(page, 'Brand Brain');
     for (const [selector, label] of [
       ['[data-tour="sidebar-transcript"]', 'Signals'],
       ['[data-tour="sidebar-remix"]', 'Studio'],
@@ -168,7 +168,7 @@ async function runAudit(appUrl) {
     await page.locator('.language-switch button', { hasText: 'UK' }).first().click();
     await page.waitForTimeout(50);
     assert.equal(await page.locator('html').getAttribute('lang'), 'uk');
-    assert.match(await page.locator('[data-tour="sidebar-home"]').innerText(), CYRILLIC);
+    assert.match(await page.locator('[data-tour="sidebar-home"]').innerText(), /Brand Brain/);
     await page.evaluate(() => {
       window.__englishSwitchCyrillic = [];
       const observer = new MutationObserver((records) => {
