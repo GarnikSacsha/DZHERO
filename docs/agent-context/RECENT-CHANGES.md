@@ -1,6 +1,15 @@
 # Recent changes
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
+
+## Public beta integration
+
+- Free Trial now reads a shared, read-only signal bank instead of launching paid discovery.
+- Trial discovery settings, manual discovery runs, and advanced provider imports are blocked server-side.
+- Public Brand Scan no longer expands through the optional paid source provider unless explicitly enabled.
+- Agent Studio remains usable on the Build Week deployment but is disabled with **Coming soon** on the public deployment.
+- The pricing grid remains visible while checkout and plan selection are disabled by default.
+- Added public-beta API/UI regression coverage and re-ran the complete Agent Studio suite and production build.
 
 ## Latest Build Week commits
 
@@ -24,7 +33,14 @@ Last updated: **2026-07-17**
 - `9d13e02 feat: track Agent Studio provider usage`
   - bounded OpenAI, Gemini, and Apify usage aggregates.
 
-Use `git log --oneline -20` as the authoritative history. `3529d80` is the pre-polish baseline; final UI, English-output, tests, and documentation integration is `be3ab33`, followed by its verification-record commit.
+Latest verified branch-tip fixes:
+
+- `a22a955 fix: remove rejected Gemini schema limits`
+- `43469e9 fix: enforce structured Gemini video evidence`
+- `0997b9c fix: localize Agent Studio quality errors`
+- `498032c fix: fall back to Instagram media URL`
+
+Use `git log --oneline -20` as the authoritative history. `3529d80` is the pre-polish baseline; final UI, English-output, tests, and documentation integration is `be3ab33`; later source/evidence fixes culminate in `a22a955` before the July 20 documentation refresh.
 
 ## Preserve these decisions
 

@@ -170,6 +170,7 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     AUTOMATIC_DISCOVERY_TEST_PROVIDER: providerPath,
     AUTOMATIC_DISCOVERY_TEST_PROVIDER_STARTED_PATH: providerStartedPath,
     AUTOMATIC_DISCOVERY_TEST_PROVIDER_RELEASE_PATH: providerReleasePath,
+    SHARED_SIGNAL_BANK_OWNER_EMAIL: 'automatic-discovery-smoke@example.com',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -219,6 +220,25 @@ try {
   const otherHeaders = {
     authorization: `Bearer ${authSecond.body.token}`,
   };
+
+  const publicPlans = await requestJson(baseUrl, '/api/billing/plans');
+  assert.equal(publicPlans.response.status, 200);
+  assert.equal(publicPlans.body?.purchaseEnabled, false);
+  assert.ok(publicPlans.body?.plans?.every((plan) => plan.availableForPurchase === false));
+
+  const blockedCheckout = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/billing/checkout?planId=starter`, {
+    headers: otherHeaders,
+  });
+  assert.equal(blockedCheckout.response.status, 503);
+  assert.equal(blockedCheckout.body?.error, 'billing_coming_soon');
+
+  const blockedPlanSelection = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/billing/select-plan`, {
+    method: 'POST',
+    headers: otherHeaders,
+    body: JSON.stringify({ planId: 'starter' }),
+  });
+  assert.equal(blockedPlanSelection.response.status, 503);
+  assert.equal(blockedPlanSelection.body?.error, 'billing_coming_soon');
 
   const verifiedGoogleState = JSON.parse(await readFile(dbPath, 'utf8'));
   const verifiedGoogleUser = verifiedGoogleState.users.find((user) => user.id === auth.body.user.id);
@@ -352,6 +372,39 @@ try {
   assert.equal(dedupedReels.body?.reels?.length, 2);
   assert.equal(dedupedReels.body?.reels?.filter((reel) => reel.title === 'Same YouTube Short').length, 1);
   assert.equal(dedupedReels.body?.reels?.find((reel) => reel.title === 'Same YouTube Short')?.views, '60M');
+
+  const sharedBankStatus = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery`, {
+    headers: otherHeaders,
+  });
+  assert.equal(sharedBankStatus.response.status, 200);
+  assert.equal(sharedBankStatus.body?.access?.mode, 'shared_bank');
+  assert.equal(sharedBankStatus.body?.status?.canRunNow, false);
+  assert.equal(sharedBankStatus.body?.status?.dailySpendUsd, 0);
+
+  const sharedBankReels = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/reels`, {
+    headers: otherHeaders,
+  });
+  assert.equal(sharedBankReels.response.status, 200);
+  assert.equal(sharedBankReels.body?.sharedBank?.enabled, true);
+  assert.equal(sharedBankReels.body?.sharedBank?.signalCount, 2);
+  assert.ok(sharedBankReels.body?.reels?.every((reel) => reel.workspaceId === otherWorkspaceId));
+  assert.ok(sharedBankReels.body?.reels?.every((reel) => reel.sharedBank === true));
+
+  const blockedTrialRun = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/discovery/run`, {
+    method: 'POST',
+    headers: otherHeaders,
+    body: JSON.stringify({}),
+  });
+  assert.equal(blockedTrialRun.response.status, 403);
+  assert.equal(blockedTrialRun.body?.error, 'shared_signal_bank_only');
+
+  const blockedTrialImport = await requestJson(baseUrl, `/api/workspaces/${otherWorkspaceId}/signals/apify/import`, {
+    method: 'POST',
+    headers: otherHeaders,
+    body: JSON.stringify({ platform: 'instagram', inputValue: '@example', limit: 5 }),
+  });
+  assert.equal(blockedTrialImport.response.status, 403);
+  assert.equal(blockedTrialImport.body?.error, 'shared_signal_bank_only');
 
   const runState = JSON.parse(await readFile(dbPath, 'utf8'));
   const workspace = runState.workspaces.find((item) => item.id === workspaceId);

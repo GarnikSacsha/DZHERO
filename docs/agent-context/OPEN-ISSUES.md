@@ -1,11 +1,11 @@
 # Open issues
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 ## Required before Build Week submission
 
 - Complete one final signed-out English coffee-shop flow in production.
-- Confirm that the branch tip containing UI/docs integration `be3ab33`, not only baseline `3529d80`, is deployed by Railway.
+- Confirm in the Railway dashboard that the exact final backend revision is deployed. The July 20 frontend comparison matches the current Build Week code, but `a22a955` is server-only and cannot be proven from static assets.
 - Verify the demo workspace has no private customer data, personal billing details, or keys.
 - Make the repository public or share the private repository with `testing@devpost.com` and `build-week-event@openai.com`.
 - Record a public YouTube demo no longer than three minutes with voiceover covering the product, Codex, and GPT-5.6.
@@ -36,6 +36,12 @@ Last updated: **2026-07-17**
 - Add team approvals and version comparison.
 - Feed measured content performance into future signal selection.
 - Use accumulated per-agent telemetry to evaluate model routing.
+
+## Public beta deployment
+
+- Set `SHARED_SIGNAL_BANK_WORKSPACE_ID` to the workspace containing the curated signal bank (preferred), or set `SHARED_SIGNAL_BANK_OWNER_EMAIL` as a fallback.
+- Keep `ENABLE_BILLING_PURCHASES=false` until checkout is intentionally launched.
+- Keep `ENABLE_AGENT_STUDIO=false` on the public product; the separate Build Week deployment may keep it enabled.
 
 ## Repository hygiene
 

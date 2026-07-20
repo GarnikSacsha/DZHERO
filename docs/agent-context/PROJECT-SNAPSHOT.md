@@ -1,6 +1,6 @@
 # Project snapshot
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 ## Product
 
@@ -33,17 +33,19 @@ Agent Studio supports:
 
 Signals supports manual imports plus budget-bounded manual/scheduled discovery from accounts, keywords, hashtags, and trend lanes across Instagram and TikTok.
 
+For the public beta, normal Free Trial workspaces instead receive a shared read-only Signals bank. Paid discovery is denied server-side unless the workspace has explicit internal discovery access. Billing checkout defaults to **Coming soon**, and Agent Studio remains visible but locked on the public deployment while the Build Week deployment can keep it enabled through its backend feature flag.
+
 ## Verified current state
 
 - Branch: `hackathon/openai-build-week`.
 - Pre-polish implementation baseline: `3529d80`.
 - Railway application: `https://openaibuildweek.up.railway.app`.
-- Production health checked 2026-07-17: HTTP 200, `storage: postgres`.
+- Production health rechecked 2026-07-20: HTTP 200, `storage: postgres`.
 - Fresh-signal discovery is deployed; the production worker is enabled.
 - The owner manually verified YouTube and TikTok Agent Studio flows on 2026-07-17.
 - A reference run completed Hybrid, approval, and exactly seven Content Plan writes.
 
-Do not call `3529d80` the final submission commit. Final UI, English-output, tests, and documentation integration is `be3ab33`; use the branch tip after the verification-record commit as the judge checkout.
+Do not call `3529d80` the final submission commit. Final UI, English-output, tests, and documentation integration is `be3ab33`; later source/evidence fixes culminate in verified code tip `a22a955`. Use the final documentation/evidence commit as the judge checkout and confirm the exact Railway backend revision.
 
 ## Stack
 
@@ -60,6 +62,7 @@ Do not call `3529d80` the final submission commit. Final UI, English-output, tes
 ```powershell
 npm install
 npm run test:agent-studio
+npm run test:public-beta
 npm run build
 ```
 

@@ -1,8 +1,22 @@
 # OpenAI Build Week submission checklist
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 This checklist separates completed implementation from actions that must be performed by the entrant during the final rehearsal and submission.
+
+## When the entrant returns
+
+Complete the remaining work in this order:
+
+1. Confirm the final branch/commit in the Railway deployment dashboard.
+2. Run the signed-out/private English coffee-shop rehearsal and inspect the demo workspace for private data.
+3. Record and publish the sub-three-minute English YouTube demo.
+4. Run Codex `/feedback` in the primary build task and save the Session ID.
+5. Make the repository public or grant both required judge accounts access.
+6. Update the final evidence table, paste the prepared English submission copy into Devpost, and submit.
+7. Save the confirmation screenshot and final Devpost URL.
+
+Deadline: **July 21, 2026 at 5:00 PM PDT**, equivalent to **July 22 at 3:00 AM EEST in Kyiv**.
 
 ## Product and repository package — complete
 
@@ -34,8 +48,11 @@ This checklist separates completed implementation from actions that must be perf
 - [x] Re-run `npm run build` after the final UI/documentation integration.
 - [x] Run the complete localization audit suite after the final integration.
 - [x] Run light and dark UI audits across desktop, laptop, and mobile viewports.
+- [x] Re-run all nine deterministic Agent Studio suites on July 20 without external provider credits.
+- [x] Re-run the production build on July 20.
+- [x] Confirm the July 20 Railway frontend matches the branch-tip build after environment and line-ending normalization.
 
-## Tomorrow's final production rehearsal
+## Final production rehearsal
 
 - [ ] Open `https://openaibuildweek.up.railway.app` in a signed-out/private browser.
 - [ ] Confirm the complete interface and generated package remain English.
@@ -54,8 +71,8 @@ This checklist separates completed implementation from actions that must be perf
 - [x] Judge-accessible frontend/backend is deployed on Railway.
 - [x] Production `/api/health` returns HTTP 200 with `storage: postgres`.
 - [x] Record final UI/English/documentation integration commit `be3ab33` in the verification record.
-- [ ] Confirm Railway deployed that exact commit successfully.
-- [ ] Confirm the public homepage and `/api/health` after deployment.
+- [ ] Confirm Railway deployed the final branch tip successfully; the current verified code tip before this documentation refresh is `a22a955`.
+- [x] Confirm the public homepage and `/api/health` on July 20.
 - [ ] Make the repository public, **or** share the private repository with both:
   - `testing@devpost.com`
   - `build-week-event@openai.com`

@@ -102,7 +102,7 @@ Check current plan and remaining usage:
 GET /api/workspaces/ws_demo_ua/billing
 ```
 
-Payment provider integration is not active yet. `select-plan` records a pending payment intent. `manual-activate` is protected by `ADMIN_TOKEN` and is only for internal testing before WayForPay/Fondy/another provider is connected.
+Payment provider integration is not active yet. In public beta, both `select-plan` and `checkout` return `billing_coming_soon` unless `ENABLE_BILLING_PURCHASES=true`. `manual-activate` remains protected by `ADMIN_TOKEN` for internal testing.
 
 Manual card checkout is controlled by deployment variables:
 
@@ -112,7 +112,19 @@ PAYMENT_CARD_HOLDER=
 PAYMENT_CARD_URL=
 PAYMENT_SUPPORT_URL=
 PAYMENT_NOTE_PREFIX=Dzhero
+ENABLE_BILLING_PURCHASES=false
 ```
+
+Free Trial can use one shared, read-only signal bank without copying signals into every workspace:
+
+```text
+SHARED_SIGNAL_BANK_WORKSPACE_ID=
+SHARED_SIGNAL_BANK_OWNER_EMAIL=
+SHARED_SIGNAL_BANK_LIMIT=250
+ENABLE_PUBLIC_APIFY_BRAND_SCAN=false
+```
+
+Use the workspace id when known. The owner-email fallback selects that user's workspace with the most saved signals; if neither shared-bank value is set, the first `UNLIMITED_ACCESS_EMAILS` account is used. Trial users cannot start automatic discovery or advanced provider imports through either the UI or direct API calls.
 
 ## Google login and Tester Pro
 

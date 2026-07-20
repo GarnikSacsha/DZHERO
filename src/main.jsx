@@ -104,6 +104,8 @@ const isLocalPage = isBrowser && ['localhost', '127.0.0.1', '::1'].includes(wind
 const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(rawApiUrl);
 const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
+const IS_BUILD_WEEK_HOST = isBrowser && window.location.hostname === 'openaibuildweek.up.railway.app';
+const AGENT_STUDIO_PUBLIC_ENTRY = IS_BUILD_WEEK_HOST || import.meta.env.VITE_ENABLE_AGENT_STUDIO === 'true';
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
 const BRAND_SCAN_PENDING_KEY = 'dzhero-brand-scan-pending';
@@ -391,6 +393,7 @@ function App() {
   const [userWorkspaces, setUserWorkspaces] = useState([]);
   const [sourcesTab, setSourcesTab] = useState(() => window.localStorage.getItem(SOURCES_TAB_KEY) || 'sources');
   const [signalDiscovery, setSignalDiscovery] = useState(null);
+  const [agentStudioAvailable, setAgentStudioAvailable] = useState(AGENT_STUDIO_PUBLIC_ENTRY);
   const [signalDiscoveryError, setSignalDiscoveryError] = useState('');
   const [isSignalDiscoveryLoading, setIsSignalDiscoveryLoading] = useState(false);
   const [isSignalDiscoveryToggling, setIsSignalDiscoveryToggling] = useState(false);
@@ -421,14 +424,40 @@ function App() {
     || DEMO_WORKSPACES[0];
   const setMvpPage = (nextPage) => {
     const allowedPages = new Set(['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings']);
+    if (nextPage === 'agent-studio' && !agentStudioAvailable) {
+      setToast(language === 'en' ? 'Agent Studio is coming soon.' : 'Agent Studio — незабаром.');
+      window.clearTimeout(window.__toastTimer);
+      window.__toastTimer = window.setTimeout(() => setToast(''), 2600);
+      return;
+    }
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
   };
 
   useEffect(() => {
-    if (!['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(page)) {
+    if (!['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(page)
+      || (page === 'agent-studio' && !agentStudioAvailable)) {
       setPage('home');
     }
-  }, [page]);
+  }, [page, agentStudioAvailable]);
+
+  useEffect(() => {
+    if (!currentUser || !workspaceId) {
+      setAgentStudioAvailable(AGENT_STUDIO_PUBLIC_ENTRY);
+      return undefined;
+    }
+    let isMounted = true;
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/agent-studio/config`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((config) => {
+        if (isMounted) setAgentStudioAvailable(Boolean(config?.enabled && config?.configured));
+      })
+      .catch(() => {
+        if (isMounted) setAgentStudioAvailable(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser, workspaceId]);
 
   useEffect(() => {
     if (!currentUser || !workspaceId) return undefined;
@@ -608,7 +637,7 @@ function App() {
     setSessionRevision((revision) => revision + 1);
     applyAuthPayload(payload);
     if (['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(destination)) {
-      setPage(destination);
+      setPage(destination === 'agent-studio' && !AGENT_STUDIO_PUBLIC_ENTRY ? 'home' : destination);
     }
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
@@ -1221,12 +1250,13 @@ function App() {
         language={language}
         onWorkspaceChange={switchWorkspace}
         onLogout={handleLogout}
+        agentStudioAvailable={agentStudioAvailable}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
+        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && <HomeDashboard data={data} market={market} notify={notify} onFreshIdea={() => setMvpPage('agent-studio')} setPage={setMvpPage} workspaceId={workspaceId} language={language} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && (
@@ -1234,7 +1264,7 @@ function App() {
             ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />
             : <StudioEmptyState onOpenSignals={() => setMvpPage('viral')} />
         )}
-        {page === 'agent-studio' && (
+        {page === 'agent-studio' && agentStudioAvailable && (
           <AgentStudioPage
             apiBase={API_BASE}
             fetcher={authFetch}
@@ -2424,10 +2454,13 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
                 className="agent-studio-demo-button"
                 type="button"
                 onClick={() => enterDemo('agent-studio')}
-                disabled={isLoading}
+                disabled={isLoading || !AGENT_STUDIO_PUBLIC_ENTRY}
+                title={!AGENT_STUDIO_PUBLIC_ENTRY ? 'Coming soon' : undefined}
               >
                 <Bot size={17} />
-                {isLoading
+                {!AGENT_STUDIO_PUBLIC_ENTRY
+                  ? 'Agent Studio · Coming soon'
+                  : isLoading
                   ? scanCopy.opening
                   : language === 'en'
                     ? 'Open Agent Studio demo'
@@ -2831,7 +2864,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
   );
 }
 
-function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, isOpen, onClose }) {
+function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, agentStudioAvailable = false, isOpen, onClose }) {
   useI18n();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const accountName = currentUser?.name || currentUser?.email?.split('@')?.[0] || (language === 'en' ? 'Your account' : 'Твій кабінет');
@@ -2879,12 +2912,24 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     setPage(id);
     onClose?.();
   };
-  const renderNavButton = ([id, Icon]) => (
-    <button className={page === id ? 'active' : ''} data-tour={tourTargets[id]} key={id} onClick={() => selectPage(id)}>
-      <Icon size={16} />
-      <span className="nav-label">{labels[id]}</span>
-    </button>
-  );
+  const renderNavButton = ([id, Icon]) => {
+    const isComingSoon = id === 'agent-studio' && !agentStudioAvailable;
+    return (
+      <button
+        className={`${page === id ? 'active' : ''}${isComingSoon ? ' coming-soon' : ''}`}
+        data-tour={tourTargets[id]}
+        key={id}
+        onClick={() => selectPage(id)}
+        disabled={isComingSoon}
+        title={isComingSoon ? 'Coming soon' : undefined}
+        data-coming-soon={isComingSoon ? 'Coming soon' : undefined}
+      >
+        <Icon size={16} />
+        <span className="nav-label">{labels[id]}</span>
+        {isComingSoon && <small className="nav-coming-soon">Coming soon</small>}
+      </button>
+    );
+  };
 
   return (
     <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
@@ -2963,7 +3008,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   );
 }
 
-function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, onOpenMenu, onCloseMenu }) {
+function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, agentStudioAvailable = false, onOpenMenu, onCloseMenu }) {
   const { translateText } = useI18n();
   const ctaLabel = page === 'settings'
     ? (language === 'en' ? 'Back to hub' : 'До хабу')
@@ -2981,7 +3026,14 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
         </button>
       </div>
       <div className="top-actions">
-        <button className="topbar-quick-action" type="button" aria-label={ctaLabel} title={ctaLabel} onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}>
+        <button
+          className="topbar-quick-action"
+          type="button"
+          aria-label={ctaLabel}
+          title={ctaTarget === 'agent-studio' && !agentStudioAvailable ? 'Coming soon' : ctaLabel}
+          disabled={ctaTarget === 'agent-studio' && !agentStudioAvailable}
+          onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}
+        >
           <Sparkles size={15} />
           <span>{ctaLabel}</span>
         </button>
@@ -3071,8 +3123,8 @@ function StudioEmptyState({ onOpenSignals }) {
       kicker: 'Студія',
       subtitle: 'Оберіть сигнал, щоб Джеро підготував адаптацію, сценарій і CTA.',
       title: 'Спочатку додайте сигнал',
-      text: 'Відкрийте Signals, додайте ролик або джерело, а потім поверніться до адаптації.',
-      action: 'Відкрити Signals',
+      text: 'Відкрийте Сигнали, додайте ролик або джерело, а потім поверніться до адаптації.',
+      action: 'Відкрити Сигнали',
     };
   return (
     <section className="page">
@@ -3718,12 +3770,17 @@ function ViralBank({
   const previewImage = getReelPreviewImage(previewReel);
   const previewVideoSource = getReelVideoSource(previewReel);
   const discovery = automation?.discovery || null;
+  const isSharedSignalBank = discovery?.access?.mode === 'shared_bank';
   const discoveryState = deriveDiscoveryToolbarStatus(discovery, { language });
   const discoveryStatus = discovery?.status || {};
   const isAutomationReady = Boolean(discovery);
   const isAutomationBusy = Boolean(automation?.isLoading || automation?.isRefreshing || automation?.isToggling || automation?.isRunning);
-  const automationEnabled = discovery?.settings?.enabled !== false;
-  const automationStatusText = automation?.error ? t('signals.discovery.status.failedDetail') : discoveryState.detail;
+  const automationEnabled = !isSharedSignalBank && discovery?.settings?.enabled !== false;
+  const automationStatusText = isSharedSignalBank
+    ? (language === 'en'
+        ? 'Choose an existing signal and adapt it. Public beta does not launch paid discovery.'
+        : 'Обери готовий сигнал і адаптуй його. Публічна бета не запускає платний пошук.')
+    : automation?.error ? t('signals.discovery.status.failedDetail') : discoveryState.detail;
   const canRunAutomation = canRunDiscoveryNow(discovery, { busy: isAutomationBusy });
   const hasActiveFilters = Boolean(trimmedQuery || pastedReelUrl || sourceFilter !== 'all');
   const emptyState = deriveSignalsEmptyState({
@@ -3760,19 +3817,24 @@ function ViralBank({
             type="button"
             role="switch"
             aria-checked={automationEnabled}
-            onClick={() => onToggleAutomation?.(!automationEnabled)}
-            disabled={!isAutomationReady || isAutomationBusy}
+            onClick={() => !isSharedSignalBank && onToggleAutomation?.(!automationEnabled)}
+            disabled={isSharedSignalBank || !isAutomationReady || isAutomationBusy}
+            title={isSharedSignalBank ? 'Shared signal bank' : undefined}
           >
             <span className="signals-automation-toggle-track" aria-hidden="true">
               <span className="signals-automation-toggle-thumb" />
             </span>
             <span className="signals-automation-toggle-copy">
-              <strong>{t('signals.discovery.title')}</strong>
-              <small>{t('signals.discovery.description')}</small>
+              <strong>{isSharedSignalBank ? (language === 'en' ? 'Shared signal bank' : 'Спільний банк сигналів') : t('signals.discovery.title')}</strong>
+              <small>{isSharedSignalBank
+                ? (language === 'en' ? `${reels.length} ready signals without a new discovery run.` : `${reels.length} готових сигналів без нового запуску пошуку.`)
+                : t('signals.discovery.description')}</small>
             </span>
           </button>
           <div className="signals-automation-summary">
-            <span className={`signals-automation-status tone-${discoveryState.tone}`}>{discoveryState.label}</span>
+            <span className={`signals-automation-status tone-${isSharedSignalBank ? 'completed' : discoveryState.tone}`}>
+              {isSharedSignalBank ? (language === 'en' ? 'BETA BANK' : 'БЕТА-БАНК') : discoveryState.label}
+            </span>
             <p className="signals-automation-status-text" role="status" aria-live="polite">{automationStatusText}</p>
           </div>
           <div className="signals-automation-metrics">
@@ -3791,18 +3853,22 @@ function ViralBank({
           </div>
         </div>
         <div className="signals-automation-actions">
-          <button className="dark" type="button" onClick={() => onRunAutomation?.()} disabled={!canRunAutomation}>
-            {automation?.isRunning || discoveryStatus.running ? <RefreshCw className="is-spinning" size={16} /> : <Bot size={16} />}
-            {runNowLabel}
-          </button>
+          {!isSharedSignalBank && (
+            <button className="dark" type="button" onClick={() => onRunAutomation?.()} disabled={!canRunAutomation}>
+              {automation?.isRunning || discoveryStatus.running ? <RefreshCw className="is-spinning" size={16} /> : <Bot size={16} />}
+              {runNowLabel}
+            </button>
+          )}
           <button type="button" onClick={() => void onRefreshAutomation?.()} disabled={isAutomationBusy}>
             <RefreshCw className={automation?.isRefreshing ? 'is-spinning' : ''} size={16} />
             Оновити
           </button>
-          <button type="button" onClick={() => setApifyModalOpen(true)}>
-            <ChevronDown size={16} />
-            Розширений імпорт
-          </button>
+          {!isSharedSignalBank && (
+            <button type="button" onClick={() => setApifyModalOpen(true)}>
+              <ChevronDown size={16} />
+              Розширений імпорт
+            </button>
+          )}
         </div>
       </div>
       <div className="search-row">
@@ -3889,7 +3955,7 @@ function ViralBank({
             onRefreshAutomation={onRefreshAutomation}
             onRunAutomation={onRunAutomation}
             onToggleAutomation={onToggleAutomation}
-            onOpenAdvancedImport={() => setApifyModalOpen(true)}
+            onOpenAdvancedImport={isSharedSignalBank ? null : () => setApifyModalOpen(true)}
             emptyState={pastedReelUrl
               ? {
                   title: signalsCopy.linkReadyTitle,
@@ -3934,7 +4000,7 @@ function ViralBank({
           </div>
         </aside>
       </div>
-      {apifyModalOpen && (
+      {apifyModalOpen && !isSharedSignalBank && (
         <ApifySignalImportModal
           onClose={() => setApifyModalOpen(false)}
           onImport={onImportApifySignals}
@@ -7003,6 +7069,7 @@ function AnalysisSetup({ notify, workspaceId }) {
 function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   const { t, translateText } = useI18n();
   const [plans, setPlans] = useState([]);
+  const [purchaseEnabled, setPurchaseEnabled] = useState(false);
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
   const [status, setStatus] = useState('loading');
@@ -7019,6 +7086,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       if (!plansResponse.ok) throw new Error(plansPayload.message || plansPayload.error || 'plans_failed');
       if (!billingResponse.ok) throw new Error(billingPayload.message || billingPayload.error || 'billing_failed');
       setPlans(plansPayload.plans || []);
+      setPurchaseEnabled(Boolean(plansPayload.purchaseEnabled));
       setBilling(billingPayload);
       setStatus('ready');
     } catch (err) {
@@ -7096,6 +7164,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       demoButton: 'Demo access',
       trialButton: 'Trial after login',
       payButton: 'Pay for plan',
+      comingSoon: 'Coming soon',
       usageRows: [
         ['Paid AI operations', 'aiOperations'],
         ['AI messages', 'agentChat'],
@@ -7157,6 +7226,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
       demoButton: 'Демо доступ',
       trialButton: 'Trial після логіну',
       payButton: 'Оплатити тариф',
+      comingSoon: 'Незабаром',
       usageRows: [
         ['Платні AI-операції', 'aiOperations'],
         ['AI повідомлення', 'agentChat'],
@@ -7257,7 +7327,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
           const isTrial = plan.id === 'trial';
           return (
             <article className={isCurrent ? 'billing-plan active' : 'billing-plan'} key={plan.id}>
-              <small>{plan.billingPeriod}</small>
+              <small>{plan.billingPeriod} {!purchaseEnabled && !isCurrent ? `· ${billingCopy.comingSoon}` : ''}</small>
               <h3 data-i18n-content>{plan.name}</h3>
               <div className="billing-price">{plan.priceUah ? `₴${plan.priceUah}` : (language === 'en' ? 'Free' : 'Безкоштовно')}</div>
               <ul>
@@ -7280,10 +7350,19 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
               <button
                 className={isCurrent ? 'billing-plan-button current' : 'billing-plan-button'}
                 type="button"
-                disabled={isCurrent || isDemo || isTrial}
+                disabled={!purchaseEnabled || isCurrent || isDemo || isTrial}
+                title={!purchaseEnabled && !isCurrent ? billingCopy.comingSoon : undefined}
                 onClick={() => selectPlan(plan.id)}
               >
-                {isCurrent ? billingCopy.currentButton : isDemo ? billingCopy.demoButton : isTrial ? billingCopy.trialButton : billingCopy.payButton}
+                {isCurrent
+                  ? billingCopy.currentButton
+                  : !purchaseEnabled
+                    ? billingCopy.comingSoon
+                    : isDemo
+                      ? billingCopy.demoButton
+                      : isTrial
+                        ? billingCopy.trialButton
+                        : billingCopy.payButton}
               </button>
             </article>
           );

@@ -10424,6 +10424,49 @@ nav button.active::before {
   padding: 0 8px !important;
 }
 
+.sidebar nav button.coming-soon:disabled {
+  position: relative;
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.sidebar nav button.coming-soon:hover::after {
+  position: absolute;
+  z-index: 20;
+  left: calc(100% + 8px);
+  top: 50%;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text);
+  content: attr(data-coming-soon);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+
+.sidebar nav button .nav-coming-soon {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.topbar-quick-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+  transform: none;
+}
+
 button.dark,
 .actions button.dark,
 .submit-button,

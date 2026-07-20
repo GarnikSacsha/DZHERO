@@ -1,6 +1,6 @@
 # DZHERO Agent Studio — demo script under three minutes
 
-Last updated: **2026-07-17**
+Last updated: **2026-07-20**
 
 ## Before recording
 
