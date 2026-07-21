@@ -115,6 +115,23 @@ const COPY = {
       planning: 'Content Planner',
       awaiting_approval: 'Jeryk review',
     },
+    stageStatus: {
+      selecting_signal: 'selecting signal',
+      analyzing_video: 'analyzing video',
+      adapting_brand: 'adapting brand',
+      producing: 'producing',
+      evaluating: 'evaluating',
+      planning: 'planning',
+      awaiting_approval: 'awaiting approval',
+    },
+    traceStatuses: {
+      started: 'started',
+      completed: 'completed',
+      needs_context: 'needs context',
+      revised: 'revised',
+      failed: 'failed',
+      cancelled: 'cancelled',
+    },
   },
   uk: {
     eyebrow: 'OpenAI Build Week · Beta',
@@ -212,6 +229,23 @@ const COPY = {
       planning: 'Content Planner',
       awaiting_approval: 'Ревʼю Джерика',
     },
+    stageStatus: {
+      selecting_signal: 'вибір сигналу',
+      analyzing_video: 'аналіз відео',
+      adapting_brand: 'адаптація бренду',
+      producing: 'продакшен',
+      evaluating: 'оцінювання',
+      planning: 'планування',
+      awaiting_approval: 'очікує підтвердження',
+    },
+    traceStatuses: {
+      started: 'запущено',
+      completed: 'завершено',
+      needs_context: 'потрібен контекст',
+      revised: 'доопрацьовано',
+      failed: 'помилка',
+      cancelled: 'скасовано',
+    },
   },
 };
 
@@ -273,6 +307,34 @@ export function getAgentStudioTraceEntries(trace = []) {
       || previous.status !== entry.status
       || previous.summary !== entry.summary;
   });
+}
+
+export function getAgentStudioRunLanguage(run) {
+  return run?.input?.outputLanguage === 'en' ? 'en' : 'uk';
+}
+
+export function agentStudioRunMatchesLanguage(run, language = 'uk') {
+  return getAgentStudioRunLanguage(run) === (language === 'en' ? 'en' : 'uk');
+}
+
+export function getAgentStudioStatusLabel(status, language = 'uk') {
+  const normalized = String(status || '').replaceAll('_', ' ');
+  if (language === 'en') return normalized;
+  const labels = {
+    queued: 'у черзі',
+    selecting_signal: 'вибір сигналу',
+    analyzing_video: 'аналіз відео',
+    adapting_brand: 'адаптація бренду',
+    producing: 'продакшен',
+    evaluating: 'оцінювання',
+    planning: 'планування',
+    awaiting_approval: 'очікує підтвердження',
+    completed: 'завершено',
+    failed: 'помилка',
+    cancelled: 'скасовано',
+    needs_context: 'потрібен контекст',
+  };
+  return labels[status] || normalized;
 }
 
 export function buildAgentStudioCreatePayload(form, idempotencyKey, outputLanguage = 'uk') {

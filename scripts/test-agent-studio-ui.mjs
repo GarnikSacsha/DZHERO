@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   AGENT_STUDIO_STAGE_ORDER,
+  agentStudioRunMatchesLanguage,
   buildAgentStudioCreatePayload,
   getAgentStudioCandidates,
   getAgentStudioContextMessage,
   getAgentStudioCopy,
   getAgentStudioErrorMessage,
   getAgentStudioGroundingPercent,
+  getAgentStudioRunLanguage,
   getAgentStudioStageState,
+  getAgentStudioStatusLabel,
   getAgentStudioTraceEntries,
   isProductionReadyAgentStudioCandidate,
   shouldPollAgentStudioRun,
@@ -86,6 +89,13 @@ assert.equal(getAgentStudioTraceEntries([
 
 assert.equal(getAgentStudioCopy('en').modes.find_trend.title, 'Choose from my Signals');
 assert.match(getAgentStudioCopy('uk').modes.adapt_reel.title, /Reel/);
+assert.equal(getAgentStudioRunLanguage({ input: { outputLanguage: 'en' } }), 'en');
+assert.equal(getAgentStudioRunLanguage({ input: { outputLanguage: 'uk' } }), 'uk');
+assert.equal(agentStudioRunMatchesLanguage({ input: { outputLanguage: 'en' } }, 'en'), true);
+assert.equal(agentStudioRunMatchesLanguage({ input: { outputLanguage: 'uk' } }, 'en'), false);
+assert.equal(getAgentStudioStatusLabel('awaiting_approval', 'en'), 'awaiting approval');
+assert.equal(getAgentStudioCopy('en').stageStatus.awaiting_approval, 'awaiting approval');
+assert.equal(getAgentStudioCopy('en').traceStatuses.needs_context, 'needs context');
 assert.match(getAgentStudioErrorMessage({ error: 'plan_limit_reached' }, 'en'), /limit/i);
 assert.match(getAgentStudioErrorMessage({ error: 'agent_studio_candidate_not_production_ready' }, 'en'), /production-ready/i);
 assert.equal(
@@ -122,7 +132,9 @@ assert.match(pageSource, /copy\.alternativeApprovalHint/);
 assert.match(pageSource, /copy\.approvalSuccessTitle/);
 assert.match(pageSource, /QualityPanel/);
 assert.match(pageSource, /UsagePanel/);
-assert.match(pageSource, /dzhero-agent-studio-run:/);
+assert.match(pageSource, /dzhero-agent-studio-run:\$\{workspaceId\}:\$\{activeLanguage\}/);
+assert.match(pageSource, /runs\/latest\?language=\$\{activeLanguage\}/);
+assert.match(pageSource, /agentStudioRunMatchesLanguage/);
 assert.match(pageSource, /onOpenContentPlan/);
 assert.doesNotMatch(pageSource, /OPENAI_API_KEY|GEMINI_API_KEY/);
 assert.match(mainSource, /page === 'agent-studio'/);
