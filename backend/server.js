@@ -37,6 +37,7 @@ const {
 } = require('./services/agentStudioVideoTool.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
 const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage.cjs');
+const agentStudioCoffeeFixture = require('../scripts/fixtures/agent-studio-coffee-shop.cjs');
 const {
   normalizeBrandBrain,
   buildBusinessBriefFromBrandBrain,
@@ -3806,6 +3807,89 @@ function findAgentStudioRun(db, workspaceId, runId) {
   )) || null;
 }
 
+function getAgentStudioRunLanguage(run = {}) {
+  return run.input?.outputLanguage === 'en' ? 'en' : 'uk';
+}
+
+function isAgentStudioDemoWorkspace(workspaceId) {
+  return String(workspaceId || '') === 'ws_demo_agent_studio_coffee';
+}
+
+function buildAgentStudioCoffeeDemoRun({ workspaceId, userId, language = 'en', now = new Date().toISOString() }) {
+  const isEnglish = language === 'en';
+  const fixture = agentStudioCoffeeFixture;
+  return {
+    id: `agent_run_demo_coffee_${isEnglish ? 'en' : 'uk'}`,
+    workspaceId: String(workspaceId),
+    userId: String(userId),
+    input: {
+      mode: 'adapt_reel',
+      objective: isEnglish
+        ? 'Bring more weekday morning visits to a neighborhood coffee shop with a low-budget Reel anyone can shoot.'
+        : 'Bring more weekday morning visits to a neighborhood coffee shop with a low-budget Reel anyone can shoot.',
+      outputLanguage: isEnglish ? 'en' : 'uk',
+      signalId: fixture.selectedTrend.signalId,
+      sourceUrl: fixture.selectedTrend.sourceUrl,
+      idempotencyKey: `demo_coffee_${isEnglish ? 'en' : 'uk'}`,
+    },
+    status: 'completed',
+    currentStage: 'completed',
+    artifacts: {
+      selectedTrend: fixture.selectedTrend,
+      evidence: fixture.evidence,
+      brandStrategy: fixture.brandStrategy,
+      creative: fixture.creative,
+      evaluation: fixture.acceptEvaluation,
+      contentPlan: fixture.contentPlan,
+      managerReview: fixture.managerReview,
+    },
+    trace: [
+      ['Jeryk Manager', 'queued', 'started', 'Jeryk queued the Agent Studio run.'],
+      ['Trend Analyst', 'selecting_signal', 'completed', 'Matched a low-budget reveal mechanic to morning visits.'],
+      ['Video evidence', 'analyzing_video', 'completed', 'Grounded the quiet setup, interruption, and product reveal.'],
+      ['Brand Strategist', 'adapting_brand', 'completed', 'Turned the mechanic into a Kyiv morning-reset position.'],
+      ['Creative Producer', 'producing', 'completed', 'Built one complete Reel and two distinct alternatives.'],
+      ['Critic', 'evaluating', 'completed', 'Removed the unsupported best-in-Kyiv claim.'],
+      ['Content Planner', 'planning', 'completed', 'Expanded the strategy into seven non-repetitive days.'],
+      ['Jeryk Manager', 'awaiting_approval', 'completed', fixture.managerReview.headline],
+    ].map(([agent, stage, status, summary], index) => ({
+      id: `trace_demo_coffee_${isEnglish ? 'en' : 'uk'}_${index + 1}`,
+      agent,
+      stage,
+      status,
+      summary,
+      createdAt: now,
+    })),
+    contextRequest: null,
+    contextHistory: [],
+    outputRepairCount: 0,
+    criticRevisionCount: 0,
+    approval: {
+      candidateId: fixture.creative.heroReel.id,
+      approvedAt: now,
+      addedToContentPlan: true,
+    },
+    error: null,
+    usage: createAgentStudioUsageCollector().snapshot(),
+    createdAt: now,
+    updatedAt: now,
+    completedAt: now,
+  };
+}
+
+async function ensureAgentStudioDemoRun(db, workspaceId, userId, language) {
+  if (!isAgentStudioDemoWorkspace(workspaceId) || language !== 'en') return null;
+  const runId = 'agent_run_demo_coffee_en';
+  const existing = (db.agentStudioRuns || []).find((run) => (
+    run.id === runId && run.workspaceId === workspaceId
+  ));
+  if (existing) return existing;
+  const run = buildAgentStudioCoffeeDemoRun({ workspaceId, userId, language });
+  db.agentStudioRuns = [run, ...(db.agentStudioRuns || [])];
+  await writeDb(db);
+  return run;
+}
+
 function isAgentStudioProductionReadyCandidate(candidate) {
   return Array.isArray(candidate?.scenes)
     && candidate.scenes.length >= 2
@@ -5522,6 +5606,28 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs', expensiveLimiter, asy
     await writeDb(db);
     res.status(201).json({ run: toPublicAgentStudioRun(run) });
     scheduleAgentStudioRun(run.id);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/workspaces/:workspaceId/agent-studio/runs/latest', async (req, res, next) => {
+  try {
+    const language = req.query.language === 'en' ? 'en' : 'uk';
+    const db = await readDb();
+    let run = (db.agentStudioRuns || []).find((item) => (
+      item.workspaceId === req.params.workspaceId
+      && getAgentStudioRunLanguage(item) === language
+      && ['awaiting_approval', 'completed'].includes(item.status)
+    ));
+    if (!run) {
+      run = await ensureAgentStudioDemoRun(db, req.params.workspaceId, req.authUser.id, language);
+    }
+    if (!run) {
+      res.status(404).json({ error: 'agent_studio_run_not_found' });
+      return;
+    }
+    res.json({ run: toPublicAgentStudioRun(run) });
   } catch (error) {
     next(error);
   }
