@@ -16,6 +16,7 @@ import {
 
 import {
   AGENT_STUDIO_STAGE_ORDER,
+  agentStudioRunMatchesLanguage,
   buildAgentStudioCreatePayload,
   getAgentStudioCandidates,
   getAgentStudioContextMessage,
@@ -23,6 +24,7 @@ import {
   getAgentStudioErrorMessage,
   getAgentStudioGroundingPercent,
   getAgentStudioStageState,
+  getAgentStudioStatusLabel,
   getAgentStudioTraceEntries,
   isProductionReadyAgentStudioCandidate,
   shouldPollAgentStudioRun,
@@ -54,7 +56,7 @@ function AgentStageRail({ run, copy }) {
             <span>{state === 'complete' ? <Check size={13} /> : state === 'active' ? <LoaderCircle size={13} /> : null}</span>
             <div>
               <strong data-i18n-content>{copy.stages[stage]}</strong>
-              <small data-i18n-content>{stage.replaceAll('_', ' ')}</small>
+              <small data-i18n-content>{copy.stageStatus?.[stage] || stage.replaceAll('_', ' ')}</small>
             </div>
           </li>
         );
@@ -93,7 +95,7 @@ function AgentTrace({ trace, copy }) {
               <strong data-i18n-content>{entry.agent}</strong>
               <p data-i18n-content>{entry.summary}</p>
             </div>
-            <small data-i18n-content>{entry.status.replaceAll('_', ' ')}</small>
+            <small data-i18n-content>{copy.traceStatuses?.[entry.status] || entry.status.replaceAll('_', ' ')}</small>
           </article>
         ))}
       </div>
@@ -418,6 +420,7 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
 }
 
 export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals = [], language = 'uk', notify, onOpenContentPlan }) {
+  const activeLanguage = language === 'en' ? 'en' : 'uk';
   const copy = getAgentStudioCopy(language);
   const [config, setConfig] = useState(null);
   const [configError, setConfigError] = useState('');
@@ -433,7 +436,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const pollGenerationRef = useRef(0);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
-  const runStorageKey = `dzhero-agent-studio-run:${workspaceId}`;
+  const runStorageKey = `dzhero-agent-studio-run:${workspaceId}:${activeLanguage}`;
   const selectedSignal = useMemo(
     () => signals.find((signal) => signal.id === form.signalId),
     [signals, form.signalId],
@@ -459,19 +462,32 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
     setApprovalResult(null);
     setError('');
     void loadConfig();
-    const storedRunId = globalThis.localStorage?.getItem(runStorageKey);
-    if (storedRunId) {
-      const restoreRun = async () => {
+    const restoreRun = async () => {
+      const acceptRun = (nextRun) => {
+        if (!agentStudioRunMatchesLanguage(nextRun, activeLanguage)) return false;
+        setRun(nextRun);
+        globalThis.localStorage?.setItem(runStorageKey, nextRun.id);
+        return true;
+      };
+      const storedRunId = globalThis.localStorage?.getItem(runStorageKey);
+      if (storedRunId) {
         try {
           const payload = await readResponse(await fetcher(`${baseUrl}/runs/${encodeURIComponent(storedRunId)}`));
-          setRun(payload.run);
+          if (acceptRun(payload.run)) return;
+          globalThis.localStorage?.removeItem(runStorageKey);
         } catch {
           globalThis.localStorage?.removeItem(runStorageKey);
         }
-      };
-      void restoreRun();
-    }
-  }, [workspaceId, language]);
+      }
+      try {
+        const payload = await readResponse(await fetcher(`${baseUrl}/runs/latest?language=${activeLanguage}`));
+        acceptRun(payload.run);
+      } catch {
+        // A workspace may not have a completed run in this language yet.
+      }
+    };
+    void restoreRun();
+  }, [workspaceId, activeLanguage]);
 
   useEffect(() => {
     if (!run || !shouldPollAgentStudioRun(run.status)) return undefined;
@@ -735,7 +751,7 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
               <span className={`agent-studio-status-dot ${run.status}`} />
               <div>
                 <small>RUN STATUS</small>
-                <strong data-i18n-content>{run.status.replaceAll('_', ' ')}</strong>
+                <strong data-i18n-content>{getAgentStudioStatusLabel(run.status, activeLanguage)}</strong>
               </div>
             </div>
             <AgentStageRail run={run} copy={copy} />
