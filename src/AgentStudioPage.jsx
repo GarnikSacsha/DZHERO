@@ -419,7 +419,7 @@ function CreativeResult({ run, selectedCandidateId, setSelectedCandidateId, copy
   );
 }
 
-export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals = [], language = 'uk', notify, onOpenContentPlan }) {
+export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals = [], language = 'uk', notify, onOpenContentPlan, onGenerationComplete }) {
   const activeLanguage = language === 'en' ? 'en' : 'uk';
   const copy = getAgentStudioCopy(language);
   const [config, setConfig] = useState(null);
@@ -434,6 +434,23 @@ export default function AgentStudioPage({ apiBase, fetcher, workspaceId, signals
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [approvalResult, setApprovalResult] = useState(null);
   const pollGenerationRef = useRef(0);
+  const previousRunStateRef = useRef({ id: null, status: null });
+
+  useEffect(() => {
+    const previous = previousRunStateRef.current;
+    if (
+      run?.id
+      && run.status === 'awaiting_approval'
+      && previous.id === run.id
+      && shouldPollAgentStudioRun(previous.status)
+    ) {
+      onGenerationComplete?.(run.id);
+    }
+    previousRunStateRef.current = {
+      id: run?.id || null,
+      status: run?.status || null,
+    };
+  }, [run?.id, run?.status, onGenerationComplete]);
 
   const baseUrl = `${apiBase}/workspaces/${encodeURIComponent(workspaceId)}/agent-studio`;
   const runStorageKey = `dzhero-agent-studio-run:${workspaceId}:${activeLanguage}`;
