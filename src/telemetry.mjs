@@ -3,9 +3,16 @@ export const TRACKER_INTEGRITY = 'sha384-QN3eJBX5Fi2HH/RS9Mqgfnlyd6zQeTXfdI3jmDe
 
 
 const viteEnv = import.meta.env || {};
-const productionEnabled = Boolean(
-  viteEnv.PROD && viteEnv.VITE_DZHERO_CRM_ENABLED !== 'false',
-);
+export function shouldEnableTelemetry({ env = viteEnv, hostname = globalThis.location?.hostname } = {}) {
+  return Boolean(
+    env.PROD
+    && env.VITE_DZHERO_CRM_ENABLED !== 'false'
+    && ['dzhero.com.ua', 'www.dzhero.com.ua'].includes(hostname),
+  );
+}
+
+
+const productionEnabled = shouldEnableTelemetry();
 
 
 export function createTelemetry({
@@ -85,3 +92,41 @@ export function createTelemetry({
 
 
 export const telemetry = createTelemetry();
+
+
+export function syncTelemetryIdentity({
+  user,
+  telemetryClient = telemetry,
+  windowRef = globalThis.window,
+} = {}) {
+  if (!user || user.provider !== 'google' || !user.email || !user.id || !windowRef) return;
+  const lead = {
+    email: user.email,
+    google_id: user.id,
+    full_name: user.name,
+    avatar_url: user.avatarUrl,
+  };
+  try {
+    const params = new URLSearchParams(windowRef.location.search);
+    if (params.get('auth') !== 'google') {
+      telemetryClient.identify(lead);
+      return;
+    }
+
+    const eventId = `google_login:${user.id}:${user.lastLoginAt || 'current'}`;
+    const storageKey = `dzhero_crm_${eventId}`;
+    if (windowRef.sessionStorage?.getItem(storageKey)) {
+      telemetryClient.identify(lead);
+    } else {
+      telemetryClient.authSuccess({ ...lead, event_id: eventId });
+      windowRef.sessionStorage?.setItem(storageKey, '1');
+    }
+
+    params.delete('auth');
+    const query = params.toString();
+    const nextUrl = `${windowRef.location.pathname}${query ? `?${query}` : ''}${windowRef.location.hash || ''}`;
+    windowRef.history?.replaceState(windowRef.history.state, '', nextUrl);
+  } catch {
+    // Identity telemetry must never interrupt authentication.
+  }
+}

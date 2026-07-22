@@ -137,6 +137,7 @@ const PAYMENT_CARD_URL = process.env.PAYMENT_CARD_URL || '';
 const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
 const ENABLE_BILLING_PURCHASES = process.env.ENABLE_BILLING_PURCHASES === 'true';
+const CRM_TELEMETRY_ORIGIN = 'https://crmdzhero-production.up.railway.app';
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -391,11 +392,11 @@ app.use(helmet({
       baseUri: ["'self'"],
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
-      scriptSrc: ["'self'"],
+      scriptSrc: ["'self'", CRM_TELEMETRY_ORIGIN],
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
       fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
-      connectSrc: ["'self'", ...Array.from(allowedOrigins), 'https://www.googleapis.com'],
+      connectSrc: ["'self'", ...Array.from(allowedOrigins), 'https://www.googleapis.com', CRM_TELEMETRY_ORIGIN],
       formAction: ["'self'"],
     },
   } : false,
@@ -1612,6 +1613,7 @@ function publicUser(user) {
     isDemo: provider === 'demo',
     canManageTesters: provider !== 'demo' && userHasUnlimitedAccess(user),
     workspaceId: user.workspaceId,
+    avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt,
     lastLoginAt: user.lastLoginAt || null,
   };
@@ -4411,6 +4413,7 @@ const LEGAL_PAGES = {
     sections: [
       ['Who we are', 'Dzhero is a web-based AI workspace that helps marketers, creators, and small businesses analyze short-form content signals and prepare original content plans.'],
       ['Data we collect', 'Dzhero may collect account information such as name, email address, connected social account identifiers, profile information, profile links, avatar images, and account statistics when a user authorizes a supported platform such as TikTok, Google, Meta, Instagram, or YouTube. Users may also provide business briefs, source links, notes, content ideas, drafts, and workspace settings.'],
+      ['DZHERO CRM telemetry / Телеметрія CRM DZHERO', 'EN: DZHERO uses a separate DZHERO CRM service for product analytics: page views without query parameters, allowlisted CTA identifiers, an anonymous visitor ID, UTM attribution, Google lead fields after successful sign-in, and successful-generation identifiers. Telemetry does not collect prompts, generated or source content, passwords, OAuth tokens, or session cookies. Analytics failure does not restrict product access. Data deletion requests can be sent through the contact listed in this policy. UA: DZHERO використовує окремий сервіс CRM DZHERO для продуктової аналітики: перегляди сторінок без query-параметрів, ідентифікатори дозволених CTA, анонімний visitor ID, UTM-атрибуцію, дані Google-ліда після успішного входу та ідентифікатори успішних генерацій. Телеметрія не збирає промпти, згенерований або вихідний контент, паролі, OAuth-токени чи сесійні cookie. Збій аналітики не обмежує доступ до продукту. Запит на видалення даних можна надіслати через контакт, указаний у цій політиці.'],
       ['TikTok data', 'When a user connects TikTok through Login Kit, Dzhero uses the approved permissions to identify the connected account, show profile context, and display profile statistics such as follower count, following count, likes count, and video count inside the user workspace. Dzhero does not sell TikTok data and does not post to TikTok or modify a TikTok account unless a user explicitly authorizes a future product feature for that purpose.'],
       ['How we use data', 'Dzhero uses data to provide the service, authenticate users, connect user-owned sources, analyze public and authorized content signals, generate content ideas, prepare scripts, build content plans, prevent abuse, enforce usage limits, and improve product reliability.'],
       ['AI processing', 'Dzhero may send user-provided briefs, source metadata, notes, and selected content context to AI service providers to generate drafts and recommendations. Users are responsible for reviewing AI output before publishing or using it externally.'],
@@ -7145,7 +7148,8 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
     );
 
     const result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
-    res.json(result);
+    const generationId = `remix_generation_${crypto.randomUUID().replaceAll('-', '')}`;
+    res.json({ ...result, generationId });
   } catch (err) {
     next(err);
   }

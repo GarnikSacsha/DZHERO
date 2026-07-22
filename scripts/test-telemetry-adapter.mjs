@@ -4,6 +4,7 @@ import {
   TRACKER_INTEGRITY,
   TRACKER_URL,
   createTelemetry,
+  shouldEnableTelemetry,
 } from '../src/telemetry.mjs';
 
 
@@ -68,5 +69,9 @@ const disabledClient = createTelemetry({
 });
 disabledClient.load();
 assert.equal(disabledScripts.length, 0);
+assert.equal(shouldEnableTelemetry({ env: { PROD: true }, hostname: 'dzhero.com.ua' }), true);
+assert.equal(shouldEnableTelemetry({ env: { PROD: true }, hostname: 'www.dzhero.com.ua' }), true);
+assert.equal(shouldEnableTelemetry({ env: { PROD: true }, hostname: '127.0.0.1' }), false);
+assert.equal(shouldEnableTelemetry({ env: { PROD: false }, hostname: 'dzhero.com.ua' }), false);
+assert.equal(shouldEnableTelemetry({ env: { PROD: true, VITE_DZHERO_CRM_ENABLED: 'false' }, hostname: 'dzhero.com.ua' }), false);
 console.log('telemetry adapter contract passed');
-

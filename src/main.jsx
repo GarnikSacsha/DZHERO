@@ -49,6 +49,7 @@ import './styles.css';
 import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
+import { syncTelemetryIdentity, telemetry } from './telemetry.mjs';
 import ContentCalendar, {
   fromLocalDateKey,
   resolveInitialCalendarView,
@@ -237,7 +238,7 @@ function getInitialAppPage() {
 }
 
 function PublicLegalPage({ page }) {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
   const [deletionResult, setDeletionResult] = useState(null);
   const [deletionStatus, setDeletionStatus] = useState('');
@@ -267,6 +268,9 @@ function PublicLegalPage({ page }) {
       sections: [
         ['Who we are', 'Dzhero is a web-based AI workspace that helps marketers, creators, and small businesses analyze short-form content signals and prepare original content plans.'],
         ['Data we collect', 'Dzhero may collect account information such as name, email address, connected social account identifiers, profile information, profile links, avatar images, and account statistics when a user authorizes a supported platform such as TikTok, Google, Meta, Instagram, or YouTube. Users may also provide business briefs, source links, notes, content ideas, drafts, and workspace settings.'],
+        ['DZHERO CRM telemetry', language === 'en'
+          ? 'DZHERO uses a separate DZHERO CRM service for product analytics: page views without query parameters, allowlisted CTA identifiers, an anonymous visitor ID, UTM attribution, Google lead fields after successful sign-in, and successful-generation identifiers. Telemetry does not collect prompts, generated or source content, passwords, OAuth tokens, or session cookies. Analytics failure does not restrict product access. Data deletion requests can be sent through the contact listed in this policy.'
+          : 'DZHERO використовує окремий сервіс CRM DZHERO для продуктової аналітики: перегляди сторінок без query-параметрів, ідентифікатори дозволених CTA, анонімний visitor ID, UTM-атрибуцію, дані Google-ліда після успішного входу та ідентифікатори успішних генерацій. Телеметрія не збирає промпти, згенерований або вихідний контент, паролі, OAuth-токени чи сесійні cookie. Збій аналітики не обмежує доступ до продукту. Запит на видалення даних можна надіслати через контакт, указаний у цій політиці.'],
         ['TikTok data', 'When a user connects TikTok through Login Kit, Dzhero uses the approved permissions to identify the connected account, show profile context, and display profile statistics such as follower count, following count, likes count, and video count inside the user workspace. Dzhero does not sell TikTok data and does not post to TikTok or modify a TikTok account unless a user explicitly authorizes a future product feature for that purpose.'],
         ['How we use data', 'Dzhero uses data to provide the service, authenticate users, connect user-owned sources, analyze public and authorized content signals, generate content ideas, prepare scripts, build content plans, prevent abuse, enforce usage limits, and improve product reliability.'],
         ['AI processing', 'Dzhero may send user-provided briefs, source metadata, notes, and selected content context to AI service providers to generate drafts and recommendations. Users are responsible for reviewing AI output before publishing or using it externally.'],
@@ -406,6 +410,7 @@ function App() {
   const signalDiscoveryRunRequestRef = useRef(0);
   const signalsWorkspaceRequestRef = useRef({ workspaceId, generation: 0 });
   const apifyImportRequestRef = useRef(0);
+  const initialTelemetryPageRef = useRef(true);
   const visibleSignalsRefreshPromiseRef = useRef(null);
   const reelsWorkspaceRef = useRef('');
   const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
@@ -432,6 +437,18 @@ function App() {
     }
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
   };
+
+  useEffect(() => {
+    telemetry.load();
+  }, []);
+
+  useEffect(() => {
+    if (initialTelemetryPageRef.current) {
+      initialTelemetryPageRef.current = false;
+      return;
+    }
+    telemetry.pageView(`page:${page}`);
+  }, [page]);
 
   useEffect(() => {
     if (!['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(page)
@@ -546,6 +563,7 @@ function App() {
     const user = payload?.user || null;
     const workspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
     setCurrentUser(user);
+    syncTelemetryIdentity({ user });
     setUserWorkspaces(workspaces);
     const primaryWorkspaceId = user?.workspaceId || workspaces[0]?.id || '';
     if (primaryWorkspaceId) {
@@ -645,6 +663,7 @@ function App() {
 
   const handleLogout = async () => {
     setAuthStatus('checking');
+    telemetry.logout();
     try {
       await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
     } catch {
@@ -862,6 +881,11 @@ function App() {
       setData((current) => ({ ...current, reels: dedupeSignalReels([importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)]) }));
       setRemixDraft(importedReel);
       setPage('remix');
+      if (importedReel.id) {
+        telemetry.track('generation', 'url_adaptation', {
+          eventId: `url_adaptation:${importedReel.id}`,
+        });
+      }
       notify(['public_metadata', 'youtube_api', 'youtube_oembed'].includes(importedReel.sourceStatus)
         ? 'Сигнал імпортовано: адаптація готова'
         : 'Джерело дало мінімум даних, але базову UA-адаптацію підготовлено');
@@ -1273,6 +1297,11 @@ function App() {
             language={language}
             notify={notify}
             onOpenContentPlan={() => setMvpPage('plan')}
+            onGenerationComplete={(runId) => telemetry.track(
+              'generation',
+              'agent_studio_generation',
+              { eventId: `agent_studio_generation:${runId}` },
+            )}
           />
         )}
         {page === 'plan' && <ContentPlan plans={data.plans} ideas={data.ideas} openModal={setModal} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} onOpenPostInStudio={openCalendarPostInStudio} />}
@@ -2441,18 +2470,19 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
               rows={3}
             />
             <div className="auth-scan-actions">
-              <button className="auth-submit primary" type="button" onClick={buildPreviewPlan} disabled={isScanning}>
+              <button className="auth-submit primary" type="button" data-dzhero-track="btn_brand_scan" onClick={buildPreviewPlan} disabled={isScanning}>
                 <Sparkles size={17} /> {isScanning ? scanCopy.scanningButton : scanCopy.buildButton}
               </button>
             </div>
             <div className="auth-access-card">
-              <button className="google-auth-button" type="button" onClick={startGoogleLogin} disabled={isLoading}>
+              <button className="google-auth-button" type="button" data-dzhero-track="btn_google_signin" onClick={startGoogleLogin} disabled={isLoading}>
                 <GoogleIcon />
                 {scanCopy.googleButton}
               </button>
               <button
                 className="agent-studio-demo-button"
                 type="button"
+                data-dzhero-track="btn_demo_entry"
                 onClick={() => enterDemo('agent-studio')}
                 disabled={isLoading || !AGENT_STUDIO_PUBLIC_ENTRY}
                 title={!AGENT_STUDIO_PUBLIC_ENTRY ? 'Coming soon' : undefined}
@@ -2469,7 +2499,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
             </div>
             <p className="auth-privacy-note">
               {scanCopy.privacy}
-              <button className="demo-link-inline" type="button" onClick={() => enterDemo()} disabled={isLoading}>
+              <button className="demo-link-inline" type="button" data-dzhero-track="btn_demo_entry" onClick={() => enterDemo()} disabled={isLoading}>
                 {scanCopy.demoButton}
               </button>
             </p>
@@ -2755,7 +2785,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           <button className="auth-submit auth-meta-button primary" type="button" onClick={startInstagramLogin} disabled={isLoading}>
             {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
           </button>
-          <button className="auth-demo secondary" type="button" onClick={enterDemo} disabled={isLoading}>
+          <button className="auth-demo secondary" type="button" data-dzhero-track="btn_demo_entry" onClick={enterDemo} disabled={isLoading}>
             {authCopy.demoButton}
           </button>
           {instagramConfig && (
@@ -5362,6 +5392,11 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
       if (!response.ok) throw new Error(payload.message || payload.error || 'remix_generation_failed');
       setGeneratedRemix(payload);
       setAdaptationState('ready');
+      if (payload.generationId) {
+        telemetry.track('generation', 'remix_generation', {
+          eventId: `remix_generation:${payload.generationId}`,
+        });
+      }
       notify(translateText('Підготовлено 3 AI-варіанти адаптації'));
     } catch (error) {
       setAdaptationState('idle');
@@ -7111,6 +7146,11 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   const [billing, setBilling] = useState(null);
   const [checkout, setCheckout] = useState(null);
   const [status, setStatus] = useState('loading');
+  const pricingTrackIds = {
+    starter: 'btn_pricing_starter',
+    pro: 'btn_pricing_pro',
+    agency: 'btn_pricing_agency',
+  };
 
   const loadBilling = async () => {
     setStatus('loading');
@@ -7138,6 +7178,10 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   }, [workspaceId]);
 
   const selectPlan = async (planId) => {
+    if (!purchaseEnabled) {
+      notify(language === 'en' ? 'Payments are coming soon.' : 'Оплата незабаром.');
+      return;
+    }
     const paymentWindow = window.open('', '_blank');
     if (paymentWindow) {
       paymentWindow.opener = null;
@@ -7388,7 +7432,8 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
               <button
                 className={isCurrent ? 'billing-plan-button current' : 'billing-plan-button'}
                 type="button"
-                disabled={!purchaseEnabled || isCurrent || isDemo || isTrial}
+                data-dzhero-track={pricingTrackIds[plan.id]}
+                disabled={isCurrent || isDemo || isTrial}
                 title={!purchaseEnabled && !isCurrent ? billingCopy.comingSoon : undefined}
                 onClick={() => selectPlan(plan.id)}
               >
@@ -7910,7 +7955,7 @@ function PageTitle({ title, subtitle, actions }) {
 }
 
 function Tabs({ items, active, onChange }) {
-  return <div className="tabs">{items.map(([id, label]) => <button className={active === id ? 'active' : ''} key={id} onClick={() => onChange(id)}>{label}</button>)}</div>;
+  return <div className="tabs">{items.map(([id, label]) => <button className={active === id ? 'active' : ''} data-dzhero-track={id === 'billing' ? 'btn_open_pricing' : undefined} key={id} onClick={() => onChange(id)}>{label}</button>)}</div>;
 }
 
 function Score({ value, compact }) {
