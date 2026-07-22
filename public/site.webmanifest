@@ -1,0 +1,10 @@
+{
+  "name": "Dzhero — AI content producer",
+  "short_name": "Dzhero",
+  "description": "Signals, brand adaptation, scripts, and content planning in one AI workspace.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#090b10",
+  "theme_color": "#090b10",
+  "lang": "uk"
+}

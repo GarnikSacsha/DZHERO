@@ -1,0 +1,4 @@
+Contact: https://github.com/GarnikSacsha/DZHERO/issues
+Preferred-Languages: uk, en
+Canonical: https://dzhero.com.ua/.well-known/security.txt
+Expires: 2027-07-22T00:00:00.000Z
