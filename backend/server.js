@@ -92,6 +92,7 @@ const {
   buildAuthWorkspacePayload,
 } = require('./services/authWorkspacePayload.cjs');
 const { reserveUsageCounter } = require('./services/paidUsage.cjs');
+const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
 const {
   getActiveTesterGrant,
   getTesterDiscoveryPolicy,
@@ -139,6 +140,8 @@ const ENABLE_BILLING_PURCHASES = process.env.ENABLE_BILLING_PURCHASES === 'true'
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+const MAX_ACTIVE_SESSIONS_PER_USER = Math.min(50, Math.max(1, Number(process.env.MAX_ACTIVE_SESSIONS_PER_USER || 8) || 8));
+const REGISTER_RATE_LIMIT_PER_HOUR = Math.min(100, Math.max(1, Number(process.env.REGISTER_RATE_LIMIT_PER_HOUR || 10) || 10));
 const OAUTH_STATE_TTL_MS = Number(process.env.OAUTH_STATE_TTL_MINUTES || 10) * 60 * 1000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
@@ -389,9 +392,9 @@ app.use(helmet({
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
       scriptSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc: ["'self'", 'data:', 'https:'],
-      fontSrc: ["'self'", 'data:'],
+      fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
       connectSrc: ["'self'", ...Array.from(allowedOrigins), 'https://www.googleapis.com'],
       formAction: ["'self'"],
     },
@@ -405,7 +408,10 @@ app.use('/api', cors({
       callback(null, true);
       return;
     }
-    callback(new Error(`CORS blocked for origin: ${origin}`));
+    const error = new Error(`CORS blocked for origin: ${origin}`);
+    error.status = 403;
+    error.payload = { error: 'cors_origin_denied' };
+    callback(error);
   },
   credentials: true,
 }));
@@ -416,6 +422,17 @@ const authLimiter = rateLimit({
   limit: 40,
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: REGISTER_RATE_LIMIT_PER_HOUR,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'registration_rate_limit_reached',
+    message: 'Too many accounts were created from this network. Try again later or use Google sign-in.',
+  },
 });
 
 const oauthLimiter = rateLimit({
@@ -462,7 +479,7 @@ app.use('/api/auth/instagram/callback', oauthLimiter);
 app.use('/api/auth/callback/google', oauthLimiter);
 app.use('/api/auth/tiktok/callback', oauthLimiter);
 app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/register', registerLimiter, authLimiter);
 app.use('/api/auth/demo', authLimiter);
 app.use('/api/data-deletion/request', authLimiter);
 app.use('/api/brand-scan/preview', publicPreviewDailyLimiter, expensiveLimiter);
@@ -1881,6 +1898,55 @@ function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
   };
 }
 
+function getCurrentActor(db, actorUser) {
+  if (!actorUser?.id) return actorUser || null;
+  return db.users.find((user) => user.id === actorUser.id) || null;
+}
+
+function assertCurrentWorkspaceAccess(db, workspaceId, actorUser) {
+  const currentActor = getCurrentActor(db, actorUser);
+  if (!currentActor) {
+    const error = new Error('unauthorized');
+    error.status = 401;
+    error.payload = { error: 'unauthorized' };
+    throw error;
+  }
+  const workspace = db.workspaces.find((item) => item.id === workspaceId);
+  if (!workspace) {
+    const error = new Error('workspace_not_found');
+    error.status = 404;
+    error.payload = { error: 'workspace_not_found' };
+    throw error;
+  }
+  if (!canAccessWorkspace(currentActor, workspaceId)) {
+    const error = new Error('workspace_forbidden');
+    error.status = 403;
+    error.payload = { error: 'workspace_forbidden' };
+    throw error;
+  }
+  return { actorUser: currentActor, workspace };
+}
+
+function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
+  let providerAttemptQueue = Promise.resolve();
+  return () => {
+    providerAttemptQueue = providerAttemptQueue.then(() => serializeBackgroundMutation(async () => {
+      const db = await readDb();
+      const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+      const billing = buildEntitlements(db, workspaceId, current.actorUser);
+      reserveUsageCounter(db, {
+        workspaceId,
+        metric: USAGE_METRICS.aiOperations,
+        period: billing.period,
+        limit: billing.plan.limits.aiOperations,
+        unlimited: billing.unlimited,
+      });
+      await writeDb(db);
+    }));
+    return providerAttemptQueue;
+  };
+}
+
 function activateWorkspacePlan(db, workspaceId, planId, options = {}) {
   const plan = PLAN_CATALOG.find((item) => item.id === planId);
   if (!plan || plan.internal || ['demo', 'trial'].includes(plan.id)) {
@@ -3044,18 +3110,17 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
   }
 
   try {
-    const response = await fetch(url, {
+    const response = await safeFetchPublicText(url, {
       headers: {
         accept: 'text/html,application/xhtml+xml',
         'user-agent': 'Mozilla/5.0 (compatible; DzheroBot/1.0; +https://dzhero.com.ua)',
       },
-      redirect: 'follow',
     });
     if (!response.ok) {
       return { ...fallback, url, sourceStatus: `metadata_unavailable_${response.status}` };
     }
 
-    const html = await response.text();
+    const html = response.text;
     const rawTitle = extractMetaContent(html, 'og:title') || html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || '';
     const rawDescription = extractMetaContent(html, 'og:description') || extractMetaContent(html, 'description') || '';
     let title = decodeHtml(rawTitle)
@@ -3220,6 +3285,14 @@ function buildGlobalInsightFromReelMetadata(metadata) {
 
 function createSession(db, userId) {
   const now = Date.now();
+  const activeSessions = db.sessions
+    .filter((item) => Date.parse(item.expiresAt || '') > now)
+    .sort((left, right) => Date.parse(right.createdAt || 0) - Date.parse(left.createdAt || 0));
+  const retainedUserTokens = new Set(activeSessions
+    .filter((item) => item.userId === userId)
+    .slice(0, Math.max(0, MAX_ACTIVE_SESSIONS_PER_USER - 1))
+    .map((item) => item.token));
+  db.sessions = activeSessions.filter((item) => item.userId !== userId || retainedUserTokens.has(item.token));
   const session = {
     token: crypto.randomBytes(32).toString('hex'),
     userId,
@@ -3285,10 +3358,20 @@ function verifyTrustedWriteRequest(req, res, next) {
 
 let mutatingApiQueue = Promise.resolve();
 
+function usesLongRunningExternalWork(req) {
+  if (req.method !== 'POST') return false;
+  return [
+    /^\/brand-scan\/preview\/?$/,
+    /^\/workspaces\/[^/]+\/reels\/import-url\/?$/,
+    /^\/workspaces\/[^/]+\/agent\/chat\/?$/,
+    /^\/workspaces\/[^/]+\/remix\/generate\/?$/,
+  ].some((pattern) => pattern.test(req.path));
+}
+
 function serializeMutatingApiRequests(req, res, next) {
   const usesWorkspaceDiscoveryLock = req.method === 'POST'
     && /^\/workspaces\/[^/]+\/signals\/discovery\/run\/?$/.test(req.path);
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || usesWorkspaceDiscoveryLock) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method) || usesWorkspaceDiscoveryLock || usesLongRunningExternalWork(req)) {
     next();
     return;
   }
@@ -4442,13 +4525,16 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
       return;
     }
     if (APIFY_TOKEN || GEMINI_API_KEY) {
-      const db = await readDb();
       try {
-        reserveUsageCounter(db, {
-          workspaceId: 'platform_global',
-          metric: 'public_brand_scan_preview',
-          period: new Date().toISOString().slice(0, 10),
-          limit: PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT,
+        await serializeBackgroundMutation(async () => {
+          const db = await readDb();
+          reserveUsageCounter(db, {
+            workspaceId: 'platform_global',
+            metric: 'public_brand_scan_preview',
+            period: new Date().toISOString().slice(0, 10),
+            limit: PUBLIC_PREVIEW_GLOBAL_DAILY_LIMIT,
+          });
+          await writeDb(db);
         });
       } catch (error) {
         if (error?.payload?.error === 'plan_limit_reached') {
@@ -4460,7 +4546,6 @@ app.post('/api/brand-scan/preview', async (req, res, next) => {
         }
         throw error;
       }
-      await writeDb(db);
     }
     const metadata = await fetchPublicSourceMetadata(input);
     let apifyBrandSignals = [];
@@ -6472,8 +6557,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
-    const beforeProviderAttempt = createPaidAiAttemptGuard({
-      db,
+    const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
       workspaceId: req.params.workspaceId,
       actorUser: req.authUser,
     });
@@ -6532,45 +6616,49 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     const analysis = analyzeReel(importedReel, workspace);
     importedReel.score = Math.max(analysis.score, ['public_metadata', 'youtube_api', 'youtube_oembed'].includes(metadata.sourceStatus) ? 78 : 70);
     importedReel.analysis = analysis;
-    const existingByStableKey = getExistingReelByStableKey(db, req.params.workspaceId);
-    const existingReel = getReelStableKeys(importedReel)
-      .map((key) => existingByStableKey.get(key))
-      .find(Boolean);
-    const returnedReel = existingReel
-      ? Object.assign(existingReel, mergeDuplicateReelForDisplay(existingReel, importedReel), {
-        updatedAt: new Date().toISOString(),
-      })
-      : importedReel;
-    if (!existingReel) {
-      db.reels.unshift(importedReel);
-    }
-    db.remixes.unshift({
-      id: createId('remix'),
-      workspaceId: req.params.workspaceId,
-      reelId: returnedReel.id,
-      sourceUrl: metadata.url || url,
-      provider: getAiProviderStatus().textAgent.provider,
-      result: remixResult,
-      createdAt: new Date().toISOString(),
+    const persisted = await serializeBackgroundMutation(async () => {
+      const currentDb = await readDb();
+      const current = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
+      const existingByStableKey = getExistingReelByStableKey(currentDb, req.params.workspaceId);
+      const existingReel = getReelStableKeys(importedReel)
+        .map((key) => existingByStableKey.get(key))
+        .find(Boolean);
+      if (!existingReel) {
+        assertUsageAvailable(currentDb, req.params.workspaceId, 'reelImports', 1, current.actorUser);
+      }
+      const returnedReel = existingReel
+        ? Object.assign(existingReel, mergeDuplicateReelForDisplay(existingReel, importedReel), {
+          updatedAt: new Date().toISOString(),
+        })
+        : importedReel;
+      if (!existingReel) currentDb.reels.unshift(importedReel);
+      currentDb.remixes.unshift({
+        id: createId('remix'),
+        workspaceId: req.params.workspaceId,
+        reelId: returnedReel.id,
+        sourceUrl: metadata.url || url,
+        provider: getAiProviderStatus().textAgent.provider,
+        result: remixResult,
+        createdAt: new Date().toISOString(),
+      });
+      createSyncJob(currentDb, req.params.workspaceId, 'url_reel_imported', {
+        reelId: returnedReel.id,
+        sourceStatus: metadata.sourceStatus,
+        reused: Boolean(existingReel),
+      });
+      if (!existingReel) incrementUsage(currentDb, req.params.workspaceId, USAGE_METRICS.reelImports);
+      const billing = buildEntitlements(currentDb, req.params.workspaceId, current.actorUser);
+      await writeDb(currentDb);
+      return { billing, existingReel, returnedReel };
     });
-    createSyncJob(db, req.params.workspaceId, 'url_reel_imported', {
-      reelId: returnedReel.id,
-      sourceStatus: metadata.sourceStatus,
-      reused: Boolean(existingReel),
-    });
-    if (!existingReel) {
-      incrementUsage(db, req.params.workspaceId, USAGE_METRICS.reelImports);
-    }
-    const billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
-    await writeDb(db);
     res.status(201).json({
-      reel: returnedReel,
+      reel: persisted.returnedReel,
       analysis,
       remix: remixResult,
       metadata,
-      importedCount: existingReel ? 0 : 1,
-      reusedCount: existingReel ? 1 : 0,
-      billing,
+      importedCount: persisted.existingReel ? 0 : 1,
+      reusedCount: persisted.existingReel ? 1 : 0,
+      billing: persisted.billing,
     });
   } catch (err) {
     next(err);
@@ -6822,48 +6910,53 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     ideas: db.ideas.filter((item) => item.workspaceId === req.params.workspaceId),
     sources: db.sources.filter((item) => item.workspaceId === req.params.workspaceId),
   };
-  const beforeProviderAttempt = createPaidAiAttemptGuard({
-    db,
+  const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
     workspaceId: req.params.workspaceId,
     actorUser: req.authUser,
   });
 
   try {
     const result = await generateAgentReply({ message, history, workspace, snapshot, beforeProviderAttempt });
-    const job = {
-      id: createId('ai_job'),
-      workspaceId: req.params.workspaceId,
-      type: 'agent_chat',
-      status: 'completed',
-      provider: result.provider,
-      model: result.model,
-      sourceType: 'chat',
-      sourceId: null,
-      result: { text: result.text },
-      createdAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-    };
-    db.aiJobs.unshift(job);
-    db.aiMemory.unshift({
-      id: createId('mem'),
-      workspaceId: req.params.workspaceId,
-      type: 'agent_exchange',
-      value: {
-        user: message,
-        assistant: result.text,
+    const persisted = await serializeBackgroundMutation(async () => {
+      const currentDb = await readDb();
+      const current = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
+      const job = {
+        id: createId('ai_job'),
+        workspaceId: req.params.workspaceId,
+        type: 'agent_chat',
+        status: 'completed',
         provider: result.provider,
         model: result.model,
-      },
-      createdAt: new Date().toISOString(),
+        sourceType: 'chat',
+        sourceId: null,
+        result: { text: result.text },
+        createdAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      };
+      currentDb.aiJobs.unshift(job);
+      currentDb.aiMemory.unshift({
+        id: createId('mem'),
+        workspaceId: req.params.workspaceId,
+        type: 'agent_exchange',
+        value: {
+          user: message,
+          assistant: result.text,
+          provider: result.provider,
+          model: result.model,
+        },
+        createdAt: new Date().toISOString(),
+      });
+      incrementUsage(currentDb, req.params.workspaceId, USAGE_METRICS.agentChat);
+      const currentBilling = buildEntitlements(currentDb, req.params.workspaceId, current.actorUser);
+      await writeDb(currentDb);
+      return { billing: currentBilling, job };
     });
-    incrementUsage(db, req.params.workspaceId, USAGE_METRICS.agentChat);
-    billing = buildEntitlements(db, req.params.workspaceId, req.authUser);
-    await writeDb(db);
+    billing = persisted.billing;
     res.status(201).json({
       reply: result.text,
       provider: result.provider,
       model: result.model,
-      aiJob: job,
+      aiJob: persisted.job,
       billing,
     });
   } catch (err) {
@@ -7034,8 +7127,7 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
-    const beforeProviderAttempt = createPaidAiAttemptGuard({
-      db,
+    const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
       workspaceId: req.params.workspaceId,
       actorUser: req.authUser,
     });
