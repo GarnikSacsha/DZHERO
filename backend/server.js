@@ -94,6 +94,14 @@ const {
 const { reserveUsageCounter } = require('./services/paidUsage.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
 const {
+  buildLeadSyncPayload,
+  createCrmSyncClient,
+  createLatestSyncScheduler,
+  isVerifiedGoogleUser: isCrmSyncEligibleUser,
+  publicCommunicationPreferences,
+  updateCommunicationPreferences,
+} = require('./services/crmSync.cjs');
+const {
   getActiveTesterGrant,
   getTesterDiscoveryPolicy,
   linkTesterGrant,
@@ -138,6 +146,8 @@ const PAYMENT_SUPPORT_URL = process.env.PAYMENT_SUPPORT_URL || '';
 const PAYMENT_NOTE_PREFIX = process.env.PAYMENT_NOTE_PREFIX || 'Dzhero';
 const ENABLE_BILLING_PURCHASES = process.env.ENABLE_BILLING_PURCHASES === 'true';
 const CRM_TELEMETRY_ORIGIN = 'https://crmdzhero-production.up.railway.app';
+const DZHERO_CRM_API_URL = String(process.env.DZHERO_CRM_API_URL || '').trim();
+const DZHERO_CRM_SYNC_TOKEN = String(process.env.DZHERO_CRM_SYNC_TOKEN || '').trim();
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
@@ -198,6 +208,32 @@ const OPENAI_AGENT_MODEL = process.env.OPENAI_AGENT_MODEL || 'gpt-5.6';
 const AGENT_STUDIO_TEST_PROVIDER = process.env.NODE_ENV === 'test'
   ? String(process.env.AGENT_STUDIO_TEST_PROVIDER || '').trim()
   : '';
+
+const crmSyncClient = createCrmSyncClient({
+  apiUrl: DZHERO_CRM_API_URL,
+  token: DZHERO_CRM_SYNC_TOKEN,
+  timeoutMs: 3000,
+});
+const crmSyncScheduler = createLatestSyncScheduler((payload) => crmSyncClient.sync(payload));
+
+function scheduleCrmSync(user, context = {}) {
+  if (!crmSyncClient.configured) return 'not_configured';
+  if (!isCrmSyncEligibleUser(user)) return 'not_eligible';
+  let payload;
+  try {
+    payload = buildLeadSyncPayload({
+      user,
+      visitorId: context.visitorId,
+      attribution: context.attribution,
+    });
+  } catch {
+    return 'not_eligible';
+  }
+  crmSyncScheduler.schedule(user.id, payload).catch((error) => {
+    console.error(`[CrmSync] ${String(error?.message || 'sync_failed').slice(0, 160)}`);
+  });
+  return 'scheduled';
+}
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID || META_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET || META_APP_SECRET;
 const INSTAGRAM_REDIRECT_URI = process.env.INSTAGRAM_REDIRECT_URI || `http://127.0.0.1:${PORT}/api/auth/instagram/callback`;
@@ -1630,10 +1666,19 @@ function ensureOAuthUser(db, profile) {
   }
   let user = db.users.find((item) => normalizeEmail(item.email) === email);
   if (user) {
+    if (
+      profile.provider === 'google'
+      && user.oauthSubject
+      && profile.sub
+      && user.oauthSubject !== profile.sub
+    ) {
+      throw new Error('Google identity does not match the existing account.');
+    }
     user.name = user.name || profile.name || email.split('@')[0];
     user.avatarUrl = user.avatarUrl || profile.picture || '';
     user.oauthProviders = Array.from(new Set([...(user.oauthProviders || []), profile.provider]));
     user.authProvider = profile.provider;
+    if (profile.provider === 'google' && !user.oauthSubject) user.oauthSubject = profile.sub || null;
     user.lastLoginAt = new Date().toISOString();
     return user;
   }
@@ -4913,6 +4958,7 @@ app.get('/api/auth/callback/google', async (req, res) => {
     stateRecord.usedAt = new Date().toISOString();
     const session = createSession(db, user.id);
     await writeDb(db);
+    scheduleCrmSync(user);
     setSessionCookie(res, session.token);
     res.redirect(`${CLIENT_URL}/?auth=google`);
   } catch (err) {
@@ -5246,7 +5292,57 @@ app.get('/api/auth/me', async (req, res) => {
     res.status(401).json({ error: 'unauthorized' });
     return;
   }
+  scheduleCrmSync(user);
   res.json(buildAuthPayload(db, user));
+});
+
+app.get('/api/account/communication-preferences', async (req, res) => {
+  const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  scheduleCrmSync(user);
+  res.json(publicCommunicationPreferences(user));
+});
+
+app.put('/api/account/communication-preferences', async (req, res) => {
+  const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  try {
+    updateCommunicationPreferences(user, {
+      product_updates: req.body?.product_updates,
+      early_bird_offers: req.body?.early_bird_offers,
+      research_invites: req.body?.research_invites,
+      locale: req.body?.locale,
+      source: req.body?.source || 'settings',
+      recordedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(400).json({ error: 'invalid_communication_preferences', message: error.message });
+    return;
+  }
+  await writeDb(db);
+  const syncStatus = scheduleCrmSync(user);
+  res.json({ ...publicCommunicationPreferences(user), sync_status: syncStatus });
+});
+
+app.post('/api/account/crm-sync', async (req, res) => {
+  const db = await readDb();
+  const user = requireAuthUser(db, req, res);
+  if (!user) return;
+  if (!isCrmSyncEligibleUser(user)) {
+    res.status(409).json({ error: 'verified_google_identity_required' });
+    return;
+  }
+  const syncStatus = scheduleCrmSync(user, {
+    visitorId: req.body?.visitor_id,
+    attribution: {
+      utm_source: req.body?.utm_source,
+      utm_medium: req.body?.utm_medium,
+      utm_campaign: req.body?.utm_campaign,
+    },
+  });
+  res.status(202).json({ status: syncStatus });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
