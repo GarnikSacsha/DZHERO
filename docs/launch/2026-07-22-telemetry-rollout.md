@@ -4,7 +4,7 @@
 
 - DZHERO `main`: `c4000801d9118719c9b3a9f15047498108e434d4`
 - CRM `main`: `27394a07418b65885aaffcce7d8c3fee2a9cd635`
-- Tracker: `https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.3.0.js`
+- Tracker: `https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.3.0.min.js`
 - Tracker SRI: `sha384-QN3eJBX5Fi2HH/RS9Mqgfnlyd6zQeTXfdI3jmDent/EJEy1ZXL8cIgS9a6w62nfg`
 
 ## Production evidence
