@@ -111,9 +111,15 @@ async function selectBestSignalForBrand({
   };
   if (typeof geminiClient !== 'function') return fallback;
 
+  const authoredFacts = {
+    profileDescription: answers.profileDescription,
+    audience: answers.audience,
+    niche: answers.niche,
+    market: answers.market,
+  };
   const prompt = JSON.stringify({
     task: 'Choose exactly one existing signal ID that best matches the brand.',
-    brand: { answers, derivedBrief },
+    brand: { answers: authoredFacts, derivedBrief },
     candidates: shortlist.map(({ candidate, deterministicScore }) => ({
       ...candidate,
       deterministicScore,
@@ -131,7 +137,8 @@ async function selectBestSignalForBrand({
       selectionMode: 'gemini',
       createdAt: now().toISOString(),
     };
-  } catch {
+  } catch (error) {
+    if (error?.providerAttemptBlocked) throw error;
     return fallback;
   }
 }

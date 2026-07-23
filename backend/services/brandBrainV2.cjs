@@ -61,7 +61,10 @@ function isLegacyBrandComplete(brief = {}) {
 }
 
 function isBrandContextComplete(brief = {}) {
-  return isBrandBrainV2Complete(brief) || isLegacyBrandComplete(brief);
+  if (Number(brief.schemaVersion) === BRAND_BRAIN_SCHEMA_VERSION) {
+    return isBrandBrainV2Complete(brief);
+  }
+  return isLegacyBrandComplete(brief);
 }
 
 function projectBrandBrainCompatibility(brief = {}) {

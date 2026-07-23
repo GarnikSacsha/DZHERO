@@ -290,9 +290,15 @@ async function buildDerivedBrandBrainV2({
   };
   if (typeof geminiClient !== 'function') return fallback;
 
+  const authoredFacts = {
+    profileDescription: answers.profileDescription,
+    audience: answers.audience,
+    niche: answers.niche,
+    market: answers.market,
+  };
   const prompt = JSON.stringify({
     task: 'Derive internal brand strategy without changing authored answers.',
-    answers,
+    answers: authoredFacts,
     verifiedInstagramMetadata: sanitizePublicMetadataForPrompt(instagramMetadata, ''),
     rules: [
       'Return summary, offer, cta, toneOfVoice, evidenceByField.',
@@ -322,7 +328,8 @@ async function buildDerivedBrandBrainV2({
       toneOfVoice: groundedField('toneOfVoice', 500),
       evidenceByField,
     };
-  } catch {
+  } catch (error) {
+    if (error?.providerAttemptBlocked) throw error;
     return fallback;
   }
 }

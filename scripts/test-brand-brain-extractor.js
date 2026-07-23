@@ -135,28 +135,42 @@ function testPromptAndApifyGuards() {
 }
 
 async function testVersion2DerivedContextNeedsGroundedEvidence() {
+  let sanitizedPrompt = null;
   const derived = await buildDerivedBrandBrainV2({
     answers: {
       profileDescription: 'Coffee and fast breakfasts',
       audience: 'Busy commuters',
       niche: 'Coffee shop',
       market: 'Kyiv',
-      instagramUrl: '',
+      instagramUrl: 'https://instagram.com/raw_handle',
     },
-    instagramMetadata: {},
-    geminiClient: async () => JSON.stringify({
-      summary: 'Kyiv coffee and breakfast for commuters',
-      offer: 'A fast breakfast option',
-      cta: 'Visit before work',
-      toneOfVoice: 'Warm and concise',
-      evidenceByField: {
-        summary: ['Coffee and fast breakfasts', 'Busy commuters', 'Kyiv'],
-        offer: ['fast breakfasts'],
-        cta: [],
-        toneOfVoice: [],
-      },
-    }),
+    instagramMetadata: {
+      handle: '@raw_handle',
+      description: 'Verified Kyiv coffee and breakfasts @raw_handle',
+    },
+    geminiClient: async (prompt) => {
+      sanitizedPrompt = JSON.parse(prompt);
+      return JSON.stringify({
+        summary: 'Kyiv coffee and breakfast for commuters',
+        offer: 'A fast breakfast option',
+        cta: 'Visit before work',
+        toneOfVoice: 'Warm and concise',
+        evidenceByField: {
+          summary: ['Coffee and fast breakfasts', 'Busy commuters', 'Kyiv'],
+          offer: ['fast breakfasts'],
+          cta: [],
+          toneOfVoice: [],
+        },
+      });
+    },
   });
+  assert.deepEqual(Object.keys(sanitizedPrompt.answers).sort(), [
+    'audience',
+    'market',
+    'niche',
+    'profileDescription',
+  ]);
+  assert.doesNotMatch(JSON.stringify(sanitizedPrompt), /instagram\.com\/raw_handle|@raw_handle/);
   assert.equal(derived.summary, 'Kyiv coffee and breakfast for commuters');
   assert.equal(derived.offer, 'A fast breakfast option');
   assert.equal(derived.cta, '');
