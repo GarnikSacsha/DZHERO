@@ -176,6 +176,14 @@ async function runAudit(appUrl) {
       await settingsTabs.nth(index).click();
       await assertEnglishSurface(page, `Settings tab ${index + 1}`);
     }
+    await page.getByRole('button', { name: /my brands/i }).click();
+    await page.getByRole('button', { name: /edit brand/i }).click();
+    for (const label of [/profile and product/i, /target audience/i, /^niche$/i, /^market$/i, /instagram/i]) {
+      assert.equal(await page.getByLabel(label).count(), 1, `My Brands V2 is missing its rendered ${label} label`);
+    }
+    await page.getByRole('button', { name: /cancel/i }).click();
+    assert.equal(await page.getByRole('button', { name: /open recommended signal/i }).count(), 1, 'My Brands must render the localized recommended-signal action');
+    await assertEnglishSurface(page, 'My Brands V2 Settings');
 
     const assistantButton = page.locator('.jeryk-idle-card').first();
     assert.equal(await assistantButton.count(), 1, 'Assistant entry point is not reachable by the rendered audit');
@@ -187,6 +195,13 @@ async function runAudit(appUrl) {
     await page.waitForTimeout(50);
     assert.equal(await page.locator('html').getAttribute('lang'), 'uk');
     assert.equal(await page.locator('[data-tour="sidebar-home"]').count(), 0, 'My Brands must remain outside the sidebar after a language switch');
+    await page.locator('[data-tour="sidebar-settings"]').click();
+    await page.getByRole('button', { name: /мої бренди/i }).click();
+    await page.getByRole('button', { name: /редагувати бренд/i }).click();
+    for (const label of [/профіль та продукт/i, /цільова аудиторія/i, /^ніша$/i, /^ринок$/i, /instagram/i]) {
+      assert.equal(await page.getByLabel(label).count(), 1, `My Brands V2 is missing its Ukrainian rendered ${label} label`);
+    }
+    await page.getByRole('button', { name: /скасувати/i }).click();
     await page.evaluate(() => {
       window.__englishSwitchCyrillic = [];
       const observer = new MutationObserver((records) => {

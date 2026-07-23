@@ -4064,11 +4064,34 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
+.brand-card-instagram {
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.brand-card-instagram a {
+  color: var(--accent);
+}
+
+.brand-recommendation-action {
+  width: fit-content;
+}
+
+.brand-brain-v2-fields .brand-field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
 .brand-facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
+}
+
+.brand-facts.brand-facts-v2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .brand-facts div,
