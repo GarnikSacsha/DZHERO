@@ -49,12 +49,20 @@ function currentConsentDecisions(user) {
 function buildLeadSyncPayload({ user, visitorId, attribution = {}, idempotencyKey }) {
   if (!isVerifiedGoogleUser(user)) throw new Error('CRM sync requires a verified Google identity.');
   const consents = currentConsentDecisions(user);
+  const normalizedVisitorId = normalizeVisitorId(visitorId);
+  const normalizedAttribution = {
+    utm_source: cleanOptional(attribution.utm_source, 100),
+    utm_medium: cleanOptional(attribution.utm_medium, 100),
+    utm_campaign: cleanOptional(attribution.utm_campaign, 100),
+  };
   const revisionInput = JSON.stringify({
     userId: user.id,
     email: String(user.email).trim().toLowerCase(),
     googleId: user.oauthSubject,
     name: user.name || '',
     avatarUrl: user.avatarUrl || '',
+    visitorId: normalizedVisitorId || '',
+    attribution: normalizedAttribution,
     consents,
   });
   const revision = crypto.createHash('sha256').update(revisionInput).digest('hex').slice(0, 32);
@@ -66,15 +74,15 @@ function buildLeadSyncPayload({ user, visitorId, attribution = {}, idempotencyKe
   return {
     idempotency_key: explicitIdempotencyKey || `dzhero:${safeUserId}:${revision}`,
     site_id: 'dzhero.com.ua',
-    ...(normalizeVisitorId(visitorId) ? { visitor_id: normalizeVisitorId(visitorId) } : {}),
+    ...(normalizedVisitorId ? { visitor_id: normalizedVisitorId } : {}),
     external_user_id: String(user.id),
     google_id: String(user.oauthSubject),
     email: String(user.email).trim().toLowerCase(),
     ...(cleanOptional(user.name) ? { full_name: cleanOptional(user.name) } : {}),
     ...(cleanOptional(user.avatarUrl, 1000) ? { avatar_url: cleanOptional(user.avatarUrl, 1000) } : {}),
-    ...(cleanOptional(attribution.utm_source, 100) ? { utm_source: cleanOptional(attribution.utm_source, 100) } : {}),
-    ...(cleanOptional(attribution.utm_medium, 100) ? { utm_medium: cleanOptional(attribution.utm_medium, 100) } : {}),
-    ...(cleanOptional(attribution.utm_campaign, 100) ? { utm_campaign: cleanOptional(attribution.utm_campaign, 100) } : {}),
+    ...(normalizedAttribution.utm_source ? { utm_source: normalizedAttribution.utm_source } : {}),
+    ...(normalizedAttribution.utm_medium ? { utm_medium: normalizedAttribution.utm_medium } : {}),
+    ...(normalizedAttribution.utm_campaign ? { utm_campaign: normalizedAttribution.utm_campaign } : {}),
     consents,
   };
 }
