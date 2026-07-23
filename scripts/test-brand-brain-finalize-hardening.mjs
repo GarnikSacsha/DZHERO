@@ -159,6 +159,10 @@ async function run() {
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-brand-brain-hardening-'));
   const databasePath = path.join(tempDirectory, 'db.json');
   const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.json'), 'utf8'));
+  const originalSubscription = structuredClone(
+    database.subscriptions.find((item) => item.workspaceId === workspaceId),
+  );
+  assert.ok(originalSubscription);
   writeFileSync(databasePath, JSON.stringify(database));
   const appPort = await freePort();
   const geminiPort = await freePort();
@@ -204,6 +208,9 @@ async function run() {
       current.reels.push(...signals);
       current.aiMemory = (current.aiMemory || []).filter((item) => item.workspaceId !== workspaceId);
       current.usageCounters = (current.usageCounters || []).filter((item) => item.workspaceId !== workspaceId);
+      const subscriptionIndex = current.subscriptions.findIndex((item) => item.workspaceId === workspaceId);
+      assert.notEqual(subscriptionIndex, -1);
+      current.subscriptions[subscriptionIndex] = structuredClone(originalSubscription);
     });
     gemini.reset();
   };
@@ -262,6 +269,68 @@ async function run() {
         after.aiMemory.filter((item) => item.workspaceId === workspaceId).length,
         before.aiMemory.filter((item) => item.workspaceId === workspaceId).length,
       );
+    }
+
+    if (shouldRun('onboarding-quota')) {
+      const originalDraft = {
+        currentStep: 4,
+        answers: { ...completeAnswers, market: 'Quota onboarding market' },
+        updatedAt: '2026-07-23T00:00:00.000Z',
+      };
+      resetWorkspace({ draft: originalDraft });
+      mutateDatabase((current) => {
+        current.usageCounters.push({
+          id: 'usage_brand_brain_onboarding_quota',
+          workspaceId,
+          metric: 'ai_operations',
+          period: currentPeriod(),
+          value: 50,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      });
+      const result = await finalize(originalDraft.answers);
+      assert.equal(
+        result.status,
+        200,
+        'Mandatory first Brand Brain completion must fall back when AI usage is exhausted',
+      );
+      assert.equal(result.body.complete, true);
+      assert.equal(gemini.calls.length, 0, 'An exhausted quota must prevent paid provider calls');
+      const workspace = readDatabase().workspaces.find((item) => item.id === workspaceId);
+      assert.equal(workspace.brief.schemaVersion, 2);
+      assert.deepEqual(workspace.brief.answers, originalDraft.answers);
+      assert.equal(workspace.brandBrainDraft, undefined);
+    }
+
+    if (shouldRun('expired-onboarding')) {
+      const originalDraft = {
+        currentStep: 4,
+        answers: { ...completeAnswers, market: 'Expired onboarding market' },
+        updatedAt: '2026-07-23T00:00:00.000Z',
+      };
+      resetWorkspace({ draft: originalDraft });
+      mutateDatabase((current) => {
+        const subscription = current.subscriptions.find((item) => item.workspaceId === workspaceId);
+        assert.ok(subscription);
+        subscription.planId = 'trial';
+        subscription.status = 'trialing';
+        subscription.trialEndsAt = '2026-07-22T00:00:00.000Z';
+        subscription.currentPeriodEnd = '2026-07-22T00:00:00.000Z';
+        subscription.updatedAt = new Date().toISOString();
+      });
+      const result = await finalize(originalDraft.answers);
+      assert.equal(
+        result.status,
+        200,
+        'An expired trial must not trap a user before mandatory first Brand Brain completion',
+      );
+      assert.equal(result.body.complete, true);
+      assert.equal(gemini.calls.length, 0, 'An expired trial must prevent paid provider calls');
+      const workspace = readDatabase().workspaces.find((item) => item.id === workspaceId);
+      assert.equal(workspace.brief.schemaVersion, 2);
+      assert.deepEqual(workspace.brief.answers, originalDraft.answers);
+      assert.equal(workspace.brandBrainDraft, undefined);
     }
 
     if (shouldRun('single-flight')) {

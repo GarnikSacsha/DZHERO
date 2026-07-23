@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "label": "reproduced",
+  "captured_at": "2026-07-23T20:09:00.000000+00:00",
+  "command": [
+    "node",
+    "scripts/test-brand-brain-finalize-hardening.mjs"
+  ],
+  "cwd": "C:\\Users\\Денис\\Desktop\\Всякое вайбкодинг\\insta-producer-redesign-work",
+  "runtime": "Node.js on Windows AMD64",
+  "duration_ms": 4200,
+  "exit_code": 1,
+  "timed_out": false,
+  "stdout": "ONBOARDING_QUOTA_EXIT=1\n",
+  "stderr": "AssertionError: Mandatory first Brand Brain completion must fall back when AI usage is exhausted. Expected HTTP 200, received HTTP 402 plan_limit_reached. Provider calls: 0.",
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "secrets_redacted": true
+}

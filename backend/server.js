@@ -2032,6 +2032,19 @@ function createBrandBrainFinalizeError(code, status = 409) {
   return error;
 }
 
+function isBrandBrainUsageBlock(error) {
+  const code = String(error?.payload?.error || error?.message || '');
+  return code === 'plan_limit_reached' || code === 'trial_expired';
+}
+
+function isBrandBrainAiUnavailable(entitlements = {}) {
+  if (entitlements.unlimited) return false;
+  if (entitlements.trial?.expired) return true;
+  const limit = entitlements.plan?.limits?.aiOperations;
+  const used = Number(entitlements.usage?.aiOperations || 0);
+  return Number.isFinite(limit) && used >= limit;
+}
+
 function hasBrandBrainFingerprint(brief = {}, fingerprint = '') {
   return Number(brief.schemaVersion) === 2
     && buildBrandAnswerFingerprint(brief.answers) === fingerprint;
@@ -2077,6 +2090,8 @@ function runBrandBrainFinalizeSingleFlight(key, task) {
 async function reserveBrandBrainFinalizeIntent({ workspaceId, fingerprint, actorUser }) {
   return serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(workspaceId, async (db) => {
     const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+    const mandatoryOnboarding = !isBrandContextComplete(current.workspace.brief || {});
+    const entitlements = buildEntitlements(db, workspaceId, current.actorUser);
     const accessibleSignals = getAccessibleWorkspaceSignals(db, workspaceId, current.actorUser);
     const persisted = buildPersistedBrandBrainFinalizePayload(
       current.workspace,
@@ -2093,6 +2108,8 @@ async function reserveBrandBrainFinalizeIntent({ workspaceId, fingerprint, actor
     return {
       token,
       accessibleSignals,
+      mandatoryOnboarding,
+      onboardingProviderBlocked: mandatoryOnboarding && isBrandBrainAiUnavailable(entitlements),
     };
   }));
 }
@@ -2145,13 +2162,22 @@ async function persistBrandBrainFinalizeResult({
       ...finalized.compatibilityBrief,
       recommendation,
     };
+    const mandatoryOnboarding = !isBrandContextComplete(workspace.brief || {});
     const shouldChargeSave = shouldChargeBrandBrainSave({
       existingBrief: workspace.brief || {},
       nextBrief,
     });
     if (shouldChargeSave) {
-      assertUsageAvailable(db, workspace.id, 'brandBrainSaves', 1, current.actorUser);
-      incrementUsage(db, workspace.id, USAGE_METRICS.brandBrainSaves);
+      let saveAllowedByPlan = true;
+      try {
+        assertUsageAvailable(db, workspace.id, 'brandBrainSaves', 1, current.actorUser);
+      } catch (error) {
+        if (!mandatoryOnboarding || !isBrandBrainUsageBlock(error)) throw error;
+        saveAllowedByPlan = false;
+      }
+      if (saveAllowedByPlan) {
+        incrementUsage(db, workspace.id, USAGE_METRICS.brandBrainSaves);
+      }
     }
     workspace.brief = nextBrief;
     delete workspace.brandBrainDraft;
@@ -7173,7 +7199,12 @@ app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res,
         actorUser: req.authUser,
       });
       if (reservation.persisted) return reservation.persisted;
-      const { token, accessibleSignals } = reservation;
+      const {
+        token,
+        accessibleSignals,
+        mandatoryOnboarding,
+        onboardingProviderBlocked: initiallyBlockedProvider,
+      } = reservation;
       try {
         let instagramMetadata = {};
         if (requestedAnswers.instagramUrl) {
@@ -7190,8 +7221,21 @@ app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res,
           workspaceId: req.params.workspaceId,
           actorUser: req.authUser,
         });
+        let onboardingProviderBlocked = Boolean(initiallyBlockedProvider);
+        const generateBrandBrainText = async (prompt, options) => {
+          if (mandatoryOnboarding && onboardingProviderBlocked) return '';
+          try {
+            return await generateGeminiJsonText(prompt, options);
+          } catch (error) {
+            if (!mandatoryOnboarding || !error?.providerAttemptBlocked || !isBrandBrainUsageBlock(error)) {
+              throw error;
+            }
+            onboardingProviderBlocked = true;
+            return '';
+          }
+        };
         const deriveClient = GEMINI_API_KEY
-          ? (prompt) => generateGeminiJsonText(prompt, {
+          ? (prompt) => generateBrandBrainText(prompt, {
               maxOutputTokens: 1600,
               temperature: 0.2,
               operation: 'brand_brain_derive_v2',
@@ -7199,7 +7243,7 @@ app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res,
             })
           : null;
         const rerankClient = GEMINI_API_KEY
-          ? (prompt) => generateGeminiJsonText(prompt, {
+          ? (prompt) => generateBrandBrainText(prompt, {
               maxOutputTokens: 500,
               temperature: 0.1,
               operation: 'brand_signal_rerank',

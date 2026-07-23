@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "label": "fixed",
+  "captured_at": "2026-07-23T20:16:15.499072+00:00",
+  "command": [
+    "node",
+    "scripts/test-brand-brain-finalize-hardening.mjs"
+  ],
+  "cwd": "C:\\Users\\\u0414\u0435\u043d\u0438\u0441\\Desktop\\\u0412\u0441\u044f\u043a\u043e\u0435 \u0432\u0430\u0439\u0431\u043a\u043e\u0434\u0438\u043d\u0433\\insta-producer-redesign-work",
+  "runtime": "Python 3.14.6 on Windows AMD64",
+  "duration_ms": 4358.565,
+  "exit_code": 0,
+  "timed_out": false,
+  "stdout": "Brand Brain finalize hardening tests passed\n",
+  "stderr": "",
+  "stdout_truncated": false,
+  "stderr_truncated": false,
+  "secrets_redacted": true
+}

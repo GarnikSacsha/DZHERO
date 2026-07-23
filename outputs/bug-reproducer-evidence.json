@@ -8,18 +8,18 @@
   "before": {
     "schema_version": 1,
     "label": "reproduced",
-    "captured_at": "2026-07-22T00:00:00.000Z",
+    "captured_at": "2026-07-23T20:09:00.000000+00:00",
     "command": [
       "node",
-      "scripts/test-mutating-api-concurrency.mjs"
+      "scripts/test-brand-brain-finalize-hardening.mjs"
     ],
     "cwd": "C:\\Users\\\u0414\u0435\u043d\u0438\u0441\\Desktop\\\u0412\u0441\u044f\u043a\u043e\u0435 \u0432\u0430\u0439\u0431\u043a\u043e\u0434\u0438\u043d\u0433\\insta-producer-redesign-work",
-    "runtime": "Node.js v24.11.1 on Windows",
-    "duration_ms": 4000,
+    "runtime": "Node.js on Windows AMD64",
+    "duration_ms": 4200,
     "exit_code": 1,
     "timed_out": false,
-    "stdout": "Dzhero listening on http://127.0.0.1:56376",
-    "stderr": "AssertionError [ERR_ASSERTION]: REPRODUCED: an unrelated workspace write waited 1812ms behind a 1800ms AI request.",
+    "stdout": "ONBOARDING_QUOTA_EXIT=1\n",
+    "stderr": "AssertionError: Mandatory first Brand Brain completion must fall back when AI usage is exhausted. Expected HTTP 200, received HTTP 402 plan_limit_reached. Provider calls: 0.",
     "stdout_truncated": false,
     "stderr_truncated": false,
     "secrets_redacted": true
@@ -27,17 +27,17 @@
   "after": {
     "schema_version": 1,
     "label": "fixed",
-    "captured_at": "2026-07-22T12:04:00.166147+00:00",
+    "captured_at": "2026-07-23T20:16:15.499072+00:00",
     "command": [
       "node",
-      "scripts/test-mutating-api-concurrency.mjs"
+      "scripts/test-brand-brain-finalize-hardening.mjs"
     ],
     "cwd": "C:\\Users\\\u0414\u0435\u043d\u0438\u0441\\Desktop\\\u0412\u0441\u044f\u043a\u043e\u0435 \u0432\u0430\u0439\u0431\u043a\u043e\u0434\u0438\u043d\u0433\\insta-producer-redesign-work",
-    "runtime": "Python 3.12.13 on Windows AMD64",
-    "duration_ms": 3764.498,
+    "runtime": "Python 3.14.6 on Windows AMD64",
+    "duration_ms": 4358.565,
     "exit_code": 0,
     "timed_out": false,
-    "stdout": "Mutating API concurrency check passed in 7ms.\n",
+    "stdout": "Brand Brain finalize hardening tests passed\n",
     "stderr": "",
     "stdout_truncated": false,
     "stderr_truncated": false,

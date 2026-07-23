@@ -1,0 +1,73 @@
+{
+  "title": "Mandatory Brand Brain finalization is blocked by trial or AI limits",
+  "project": "DZHERO",
+  "generated_at": "2026-07-23",
+  "mode": "prove-fix",
+  "original_report": "On Step 4 of Brand Brain, both Finish and Skip Instagram stay on the page and show a generic failure toast.",
+  "discovery_scope": [
+    "BrandBrainWizard finalization UI",
+    "workspace Brand Brain finalize API",
+    "AI and Brand Brain usage enforcement",
+    "existing hardening and browser suites"
+  ],
+  "candidates": [],
+  "expected": "The first mandatory Brand Brain completion saves and unlocks Signals without paid provider calls when AI access is unavailable.",
+  "actual": "The API returned 402 plan_limit_reached for exhausted AI usage; an expired trial also prevented completion.",
+  "environment": "Node.js, Windows, isolated temporary JSON database, controlled local Gemini fixture",
+  "reproduction": "An incomplete workspace at wizard Step 4 exhausts ai_operations or has an expired trial, then POSTs complete authored answers to /agent/context/finalize.",
+  "failure_signal": "Expected HTTP 200 complete=true, received HTTP 402; both UI buttons share this endpoint and displayed the generic failure toast.",
+  "root_cause": "The finalize route rethrew provider usage denials and the persistence boundary enforced trial/save limits even for the mandatory first Brand Brain completion.",
+  "fix_summary": "For incomplete Brand Brain only, detect unavailable AI before provider work, use the deterministic fallback, and allow the mandatory first save when trial/save enforcement would otherwise trap the user. Completed-brand Settings edits remain strictly metered.",
+  "why_causal": "The change affects only the two blocking boundaries reached by first-time finalization; the same request now persists without provider calls while the existing completed-brand denial regression still returns 402.",
+  "reproduction_files": [
+    {
+      "path": "C:/Users/Денис/Desktop/Всякое вайбкодинг/insta-producer-redesign-work/scripts/test-brand-brain-finalize-hardening.mjs",
+      "line": 268,
+      "summary": "Approved exhausted-quota and expired-trial onboarding regressions."
+    }
+  ],
+  "fix_files": [
+    {
+      "path": "C:/Users/Денис/Desktop/Всякое вайбкодинг/insta-producer-redesign-work/backend/server.js",
+      "line": 2035,
+      "summary": "Mandatory-onboarding usage fallback and first-save handling."
+    }
+  ],
+  "checks": [
+    {
+      "name": "Exhausted AI onboarding reproducer",
+      "status": "passed",
+      "detail": "Red 402 before; green 200 with zero provider calls after."
+    },
+    {
+      "name": "Expired trial onboarding reproducer",
+      "status": "passed",
+      "detail": "Red trial_expired before; green 200 with zero provider calls after."
+    },
+    {
+      "name": "Complete hardening suite",
+      "status": "passed",
+      "detail": "Usage denial for completed-brand edits, concurrency, empty bank, and strict V2 remain green."
+    },
+    {
+      "name": "API, public beta, browser, and build",
+      "status": "passed",
+      "detail": "Wizard API, public-beta guards, My Brands browser suite, syntax check, and production build passed."
+    }
+  ],
+  "reproduce": [
+    "$env:BRAND_BRAIN_HARDENING_CASE='onboarding-quota'; node scripts/test-brand-brain-finalize-hardening.mjs",
+    "$env:BRAND_BRAIN_HARDENING_CASE='expired-onboarding'; node scripts/test-brand-brain-finalize-hardening.mjs"
+  ],
+  "limitations": [
+    "The user's authenticated production response body was not accessible; the reproducer proves the exact reachable code paths shown by the screenshot and generic toast."
+  ],
+  "residual_risks": [
+    "A deployment must include the new backend commit before the production account can be retested."
+  ],
+  "notes": [
+    "No paid provider call is made by either mandatory-onboarding fallback.",
+    "Settings edits after Brand Brain completion continue to respect trial and AI limits.",
+    "backend/data/db.json was not edited or staged."
+  ]
+}
