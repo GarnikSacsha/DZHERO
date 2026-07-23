@@ -49,6 +49,8 @@ const {
 } = require('./services/brandBrainExtractor.cjs');
 const {
   shouldChargeBrandBrainSave,
+  getMissingRequiredBrandFields,
+  normalizeBrandBrainSourceLinks,
 } = require('./services/brandBrainPersistence.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
@@ -5641,20 +5643,31 @@ app.get('/api/workspaces/:workspaceId/brief', async (req, res) => {
   res.json({ brief: workspace.brief || {} });
 });
 
+function prepareBrandBrainWrite(existingBrief, input) {
+  const patch = input && typeof input === 'object' && !Array.isArray(input) ? input : {};
+  const nextBrief = { ...(existingBrief || {}), ...patch };
+  nextBrief.sourceLinks = normalizeBrandBrainSourceLinks(nextBrief.sourceLinks);
+  return { nextBrief, missingFields: getMissingRequiredBrandFields(nextBrief) };
+}
+
 app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  const { nextBrief, missingFields } = prepareBrandBrainWrite(workspace.brief, req.body);
+  if (missingFields.length) {
+    res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields });
+    return;
+  }
   const shouldChargeSave = shouldChargeBrandBrainSave({
     existingBrief: workspace.brief || {},
-    nextBrief: req.body || {},
+    nextBrief,
   });
   if (shouldChargeSave) {
     assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
   }
   workspace.brief = {
-    ...(workspace.brief || {}),
-    ...req.body,
+    ...nextBrief,
     updatedAt: new Date().toISOString(),
   };
   if (shouldChargeSave) {
@@ -6951,23 +6964,27 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  const { nextBrief, missingFields } = prepareBrandBrainWrite(workspace.brief, req.body);
+  if (missingFields.length) {
+    res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields });
+    return;
+  }
   const shouldChargeSave = shouldChargeBrandBrainSave({
     existingBrief: workspace.brief || {},
-    nextBrief: req.body || {},
+    nextBrief,
   });
   if (shouldChargeSave) {
     assertUsageAvailable(db, req.params.workspaceId, 'brandBrainSaves', 1, req.authUser);
   }
   workspace.brief = {
-    ...(workspace.brief || {}),
-    ...req.body,
+    ...nextBrief,
     updatedAt: new Date().toISOString(),
   };
   const memory = {
     id: createId('mem'),
     workspaceId: req.params.workspaceId,
     type: 'brand_context_update',
-    value: req.body,
+    value: nextBrief,
     createdAt: new Date().toISOString(),
   };
   db.aiMemory.unshift(memory);

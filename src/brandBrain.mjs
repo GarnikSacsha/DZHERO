@@ -165,8 +165,10 @@ export function buildBrandBrainDraft({
   exampleCaption = '',
   language = 'uk',
 } = {}) {
-  const businessType = compactText(label || (isEnglish(language) ? 'local business' : 'локальний бізнес'));
   const product = extractCleanBrandProduct({ title, description, handle, label: '' });
+  const businessType = product && /workout|training|fitness|wellness|health|трен|beauty|salon|салон|clothes|fashion|одяг/i.test(product)
+    ? compactText(label)
+    : '';
   const proof = [
     stats.followers && `${stats.followers} followers`,
     stats.posts && `${stats.posts} posts`,

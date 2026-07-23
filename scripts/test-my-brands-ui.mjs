@@ -191,11 +191,17 @@ await withRuntime({}, async (page) => {
     await page.locator('.brand-brain textarea').count() > 0,
     'Empty My Brands must render onboarding inputs',
   );
-  const saveResponse = page.waitForResponse((response) => (
-    response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
-  ));
+  let incompleteSaveRequests = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && /\/agent\/context$/.test(request.url())) incompleteSaveRequests += 1;
+  });
   await page.getByRole('button', { name: /save memory/i }).click();
-  assert.equal((await saveResponse).ok(), true, 'Incomplete Brand Brain saves must still reach persisted context');
+  await page.waitForTimeout(300);
+  assert.equal(incompleteSaveRequests, 0, 'Incomplete Brand Brain saves must not reach persisted context');
+  await assert.doesNotReject(
+    page.getByRole('alert').waitFor({ state: 'visible', timeout: 5000 }),
+    'Incomplete Brand Brain saves must show an accessible missing-fields error',
+  );
   assert.equal(
     await page.getByRole('button', { name: /continue to signals/i }).isDisabled(),
     true,
@@ -249,6 +255,75 @@ await withRuntime({
   );
   assert.equal(await page.getByRole('button', { name: /save changes/i }).count(), 1);
   assert.equal(await page.getByRole('button', { name: /cancel/i }).count(), 1);
+  const productInput = page.locator('textarea[name="product"]');
+  await productInput.fill('Unsaved latte');
+  await page.getByRole('button', { name: /cancel/i }).click();
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByText('Espresso and fresh pastries', { exact: true }).count(), 1, 'Cancel must restore the saved snapshot');
+
+  await page.getByRole('button', { name: /edit brand/i }).click();
+  await page.locator('textarea[name="product"]').fill('Iced espresso');
+  const saveResponse = page.waitForResponse((response) => (
+    response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
+  ));
+  await page.getByRole('button', { name: /save changes/i }).click();
+  assert.equal((await saveResponse).ok(), true, 'Save Changes must receive a successful persisted-context response');
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByText('Iced espresso', { exact: true }).count(), 1, 'Save Changes must persist and render the edited value');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.shell');
+  await page.locator('[data-tour="sidebar-settings"]').click();
+  await page.getByRole('button', { name: /my brands|brand memory/i }).click();
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByText('Iced espresso', { exact: true }).count(), 1, 'Reloaded My Brands must render the persisted edited value');
+});
+
+await withRuntime({
+  brandName: 'Saved Coffee',
+  businessType: 'Coffee shop',
+  product: 'Espresso',
+  audience: 'Commuters',
+  offer: 'Breakfast set',
+  cta: 'Visit today',
+  toneOfVoice: 'Warm',
+}, async (page) => {
+  await page.route('**/api/brand-scan/preview', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {
+          source: { label: 'Instagram', tone: 'instagram' },
+          sourceStatus: 'instagram_web_profile',
+          handle: '@car_finder_',
+          title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
+          description: '',
+          stats: { followers: '1,642', following: '55', posts: '322' },
+        },
+        capabilities: {},
+      }),
+    });
+  });
+  let brandBrainPuts = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && /\/agent\/context$/.test(request.url())) brandBrainPuts += 1;
+  });
+  await page.locator('[data-tour="sidebar-settings"]').click();
+  await page.locator('.source-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
+  await page.getByRole('button', { name: /analyze/i }).click();
+  await page.getByRole('button', { name: /open.*studio/i }).click();
+  await page.getByRole('button', { name: /brand brain/i }).click();
+  await page.waitForSelector('.brand-brain textarea');
+  assert.equal(brandBrainPuts, 0, 'Sparse Brand Scan must not persist Brand Brain through the Studio save action');
+  assert.equal(
+    await page.getByLabel(/brand name/i).inputValue(),
+    '@car_finder_',
+    'Sparse Brand Scan must keep the verified handle in the routed My Brands onboarding draft',
+  );
+  assert.equal(
+    await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
+    true,
+    'Sparse Brand Scan must route to locked My Brands onboarding until manual completion',
+  );
 });
 
 console.log('My Brands onboarding and locked-card UI tests passed');

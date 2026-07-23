@@ -903,26 +903,13 @@ function App() {
       return false;
     }
     const payload = buildBrandBrainFromScanReel(reel, language);
-    const requestWorkspaceId = workspaceId;
-    try {
-      const response = await authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/agent/context`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error(await readApiError(response, 'brand_brain_save_failed'));
-      const saved = await response.json().catch(() => ({}));
-      const savedBrief = normalizeEditableBrandBrief(saved?.brief && typeof saved.brief === 'object' ? saved.brief : payload);
-      handleBrandContextSaved(requestWorkspaceId, savedBrief);
-      notify('Brand Scan збережено в Brand Brain');
-      window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
-      setSourcesTab('profile');
-      setMvpPage('settings');
-      return true;
-    } catch (error) {
-      notify(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
-      return false;
-    }
+    setBrandContext(payload);
+    setBrandContextStatus('onboarding');
+    window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
+    setSourcesTab('profile');
+    setMvpPage('settings');
+    notify('Brand Scan відкрито в My Brands. Додай відсутні факти та збережи їх вручну.');
+    return true;
   };
   const addManualReel = (payload) => {
     const title = payload.title?.trim() || payload.caption?.trim() || 'Ручний рілс для адаптації';
@@ -2222,33 +2209,18 @@ function buildBrandBrainFromScanReel(reel, language = 'uk') {
     exampleCaption: reel?.scanExample?.caption || '',
     language,
   });
-  const productLine = draft.product;
-  const productLooksLikeClothing = /майк|футбол|бод[іи]|лонгслів|лонгслив|сукн|комбінез|топ|одяг|clothes|fashion/i.test(productLine);
-  const businessType = productLooksLikeClothing
-    ? (language === 'en' ? 'Clothing store' : 'Магазин одягу')
-    : draft.businessType || reel?.scanLabel || reel?.status?.[0] || (language === 'en' ? 'Local business' : 'Локальний бізнес');
-  const proofParts = [
-    draft.proof,
-    cardText[language === 'en' ? 'Brand signals' : 'Сигнали бренду'],
-  ].filter(Boolean);
   return {
-    businessType,
-    product: productLine,
-    audience: draft.audience
-      || cardText[language === 'en' ? 'Brand profile' : 'Портрет бренду']
-      || cardText[language === 'en' ? 'Public profile' : 'Публічний профіль']
-      || cardText[language === 'en' ? 'Profile' : 'Профіль']
-      || '',
-    location: language === 'en' ? 'Online / Ukraine' : 'онлайн / Україна',
-    toneOfVoice: language === 'en' ? 'concise, specific, friendly, and evidence-led' : 'коротко, конкретно, дружньо, без перебільшень',
-    offer: draft.offer || productLine || reel?.scanPlan?.[0]?.[1] || '',
-    cta: draft.cta || (language === 'en' ? 'lead to a DM with one simple keyword' : 'вести в Direct через просте ключове слово'),
-    proof: proofParts.join(' · '),
-    stopTopics: language === 'en'
-      ? ['do not invent numbers', 'do not copy source content verbatim', 'do not promise results without evidence']
-      : ['не вигадувати цифри', 'не копіювати чужий контент дослівно', 'не обіцяти результат без доказу'],
-    sourceUrl: reel?.sourceUrl || '',
-    sourceStatus: reel?.sourceStatus || 'preview',
+    brandName: metadata.handle || '',
+    businessType: draft.businessType,
+    product: draft.product,
+    audience: '',
+    location: '',
+    toneOfVoice: '',
+    offer: '',
+    cta: '',
+    proof: draft.proof,
+    stopTopics: [],
+    sourceLinks: normalizeSourceLinks([reel?.sourceUrl, metadata.url]),
   };
 }
 
@@ -5941,7 +5913,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
   };
 
   const saveBrief = async () => {
-    const nextMissingFields = mode === 'editing' ? getMissingRequiredBrandFields(brief) : [];
+    const nextMissingFields = getMissingRequiredBrandFields(brief);
     if (nextMissingFields.length) {
       setMissingFields(nextMissingFields);
       return;
@@ -6082,11 +6054,24 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
           feature
         />
       )}
+      <label className="brand-field brand-name-field">
+        <span>{language === 'en' ? 'Brand name' : 'Назва бренду'}</span>
+        <textarea
+          name="brandName"
+          data-i18n-content
+          value={brief.brandName || ''}
+          onChange={(event) => updateField('brandName', event.target.value)}
+          placeholder={language === 'en' ? '@your_brand' : '@ваш_бренд'}
+          rows={2}
+        />
+        <small>{language === 'en' ? 'Use the verified public name or handle when one is available.' : 'Вкажи перевірену публічну назву або handle, якщо він доступний.'}</small>
+      </label>
       <div className="brand-brain-grid">
         {mainFields.map(([field, label, placeholder, help]) => (
           <label className="brand-field" key={field}>
             <span>{label}</span>
             <textarea
+              name={field}
               data-i18n-content
               value={brief[field] || ''}
               onChange={(event) => updateField(field, event.target.value)}
