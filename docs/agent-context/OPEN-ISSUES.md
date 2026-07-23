@@ -1,6 +1,6 @@
 # Open issues
 
-Last updated: **2026-07-20**
+Last updated: **2026-07-24**
 
 ## Required before Build Week submission
 
@@ -42,6 +42,9 @@ Last updated: **2026-07-20**
 - Set `SHARED_SIGNAL_BANK_WORKSPACE_ID` to the workspace containing the curated signal bank (preferred), or set `SHARED_SIGNAL_BANK_OWNER_EMAIL` as a fallback.
 - Keep `ENABLE_BILLING_PURCHASES=false` until checkout is intentionally launched.
 - Keep `ENABLE_AGENT_STUDIO=false` on the public product; the separate Build Week deployment may keep it enabled.
+- Configure a real `GEMINI_API_KEY` in the public Railway service. Model/base overrides are optional and should only be set intentionally; missing or failed Gemini now returns an honest typed 503/502 instead of mock success.
+- Monitor provider cost against the Free Trial safety ceiling of 250 provider attempts per Kyiv day per workspace.
+- Daily quota reservations use the current single-process serialized JSONB state model. Revisit atomic reservation storage before running multiple application replicas.
 
 ## Repository hygiene
 
