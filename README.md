@@ -2,6 +2,24 @@
 
 DZHERO is an AI producer for small businesses, creators, SMM specialists, and multi-brand teams. It turns real short-form content signals into brand-specific scripts, production instructions, and an actionable content plan.
 
+## Product analytics and communication consent
+
+The public product loads the anonymous-only DZHERO tracker v1.4. Page paths, allowlisted CTA identifiers, UTM attribution, an anonymous visitor ID, and successful-generation identifiers may be sent to the CRM; browser requests never contain email, Google subject, name, or avatar.
+
+After verified Google sign-in, the DZHERO backend synchronizes verified identity to CRM with `DZHERO_CRM_API_URL` and `DZHERO_CRM_SYNC_TOKEN`. Users receive three independent, optional, unchecked communication preferences (product education, early-bird offers, and research invitations). They can skip the first prompt and later grant or revoke each preference in Settings → Email preferences. Product access never depends on these choices.
+
+Contract checks:
+
+```powershell
+npm run test:crm-sync
+npm run test:crm-sync-api
+npm run test:crm-contract
+npm run test:communication-preferences
+npm run test:telemetry-adapter
+npm run test:telemetry-identity
+npm run test:telemetry-integration
+```
+
 ## Public beta mode
 
 The public product and the Build Week demo use the same codebase with server-side feature flags:

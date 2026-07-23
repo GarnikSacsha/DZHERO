@@ -46,7 +46,7 @@ function currentConsentDecisions(user) {
   });
 }
 
-function buildLeadSyncPayload({ user, visitorId, attribution = {} }) {
+function buildLeadSyncPayload({ user, visitorId, attribution = {}, idempotencyKey }) {
   if (!isVerifiedGoogleUser(user)) throw new Error('CRM sync requires a verified Google identity.');
   const consents = currentConsentDecisions(user);
   const revisionInput = JSON.stringify({
@@ -59,8 +59,12 @@ function buildLeadSyncPayload({ user, visitorId, attribution = {} }) {
   });
   const revision = crypto.createHash('sha256').update(revisionInput).digest('hex').slice(0, 32);
   const safeUserId = String(user.id).replace(/[^A-Za-z0-9_.:-]/g, '_').slice(0, 96);
+  const explicitIdempotencyKey = cleanOptional(idempotencyKey, 160);
+  if (explicitIdempotencyKey && !/^[A-Za-z0-9_.:-]{8,160}$/.test(explicitIdempotencyKey)) {
+    throw new Error('CRM sync idempotency key is invalid.');
+  }
   return {
-    idempotency_key: `dzhero:${safeUserId}:${revision}`,
+    idempotency_key: explicitIdempotencyKey || `dzhero:${safeUserId}:${revision}`,
     site_id: 'dzhero.com.ua',
     ...(normalizeVisitorId(visitorId) ? { visitor_id: normalizeVisitorId(visitorId) } : {}),
     external_user_id: String(user.id),

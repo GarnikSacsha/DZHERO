@@ -23,6 +23,7 @@
     "test:crm-sync": "node scripts/test-crm-sync.cjs",
     "test:crm-sync-api": "node scripts/test-crm-sync-api.mjs",
     "test:communication-preferences": "node scripts/test-communication-preferences.mjs",
+    "test:crm-contract": "node scripts/test-crm-contract-fixture.mjs",
     "audit:ui": "node scripts/audit-ui-ux.mjs",
     "smoke:agent-studio-openai": "node scripts/smoke-agent-studio-openai.cjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",
