@@ -211,7 +211,7 @@ const UNLIMITED_ACCESS_EMAILS = new Set(
     .map((email) => normalizeEmail(email))
     .filter(Boolean)
 );
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
 const ENABLE_AGENT_STUDIO = process.env.ENABLE_AGENT_STUDIO === 'true';
@@ -589,6 +589,7 @@ function normalizeDbShape(db = {}) {
 
 let automaticDiscoveryTickInFlight = false;
 const automaticDiscoveryWorkspacesInFlight = new Set();
+const brandBrainFinalizeFlights = new Map();
 const automaticDiscoveryFileMutex = createKeyedMutex();
 let automaticDiscoveryTestProvider = null;
 let agentStudioTestProvider = null;
@@ -2003,20 +2004,173 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
   let providerAttemptQueue = Promise.resolve();
   return () => {
     providerAttemptQueue = providerAttemptQueue.then(() => serializeBackgroundMutation(async () => {
-      const db = await readDb();
-      const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
-      const billing = buildEntitlements(db, workspaceId, current.actorUser);
-      reserveUsageCounter(db, {
-        workspaceId,
-        metric: USAGE_METRICS.aiOperations,
-        period: billing.period,
-        limit: billing.plan.limits.aiOperations,
-        unlimited: billing.unlimited,
-      });
-      await writeDb(db);
+      try {
+        const db = await readDb();
+        const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+        const billing = buildEntitlements(db, workspaceId, current.actorUser);
+        reserveUsageCounter(db, {
+          workspaceId,
+          metric: USAGE_METRICS.aiOperations,
+          period: billing.period,
+          limit: billing.plan.limits.aiOperations,
+          unlimited: billing.unlimited,
+        });
+        await writeDb(db);
+      } catch (error) {
+        error.providerAttemptBlocked = true;
+        throw error;
+      }
     }));
     return providerAttemptQueue;
   };
+}
+
+function createBrandBrainFinalizeError(code, status = 409) {
+  const error = new Error(code);
+  error.status = status;
+  error.payload = { error: code };
+  return error;
+}
+
+function hasBrandBrainFingerprint(brief = {}, fingerprint = '') {
+  return Number(brief.schemaVersion) === 2
+    && buildBrandAnswerFingerprint(brief.answers) === fingerprint;
+}
+
+function buildPersistedBrandBrainFinalizePayload(workspace, accessibleSignals, fingerprint) {
+  const brief = workspace.brief || {};
+  if (!hasBrandBrainFingerprint(brief, fingerprint)) return null;
+  const recommendation = brief.recommendation || null;
+  if (!recommendation) {
+    if (accessibleSignals.length) {
+      throw createBrandBrainFinalizeError('brand_brain_recommendation_unavailable');
+    }
+    return {
+      complete: true,
+      brief,
+      recommendation: null,
+      signal: null,
+    };
+  }
+  const signal = accessibleSignals.find((item) => item.id === recommendation.signalId);
+  if (!signal) throw createBrandBrainFinalizeError('brand_brain_recommendation_unavailable');
+  return {
+    complete: true,
+    brief,
+    recommendation,
+    signal,
+  };
+}
+
+function runBrandBrainFinalizeSingleFlight(key, task) {
+  const existing = brandBrainFinalizeFlights.get(key);
+  if (existing) return existing;
+  const flight = Promise.resolve().then(task);
+  brandBrainFinalizeFlights.set(key, flight);
+  const cleanup = () => {
+    if (brandBrainFinalizeFlights.get(key) === flight) brandBrainFinalizeFlights.delete(key);
+  };
+  flight.then(cleanup, cleanup);
+  return flight;
+}
+
+async function reserveBrandBrainFinalizeIntent({ workspaceId, fingerprint, actorUser }) {
+  return serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(workspaceId, async (db) => {
+    const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+    const accessibleSignals = getAccessibleWorkspaceSignals(db, workspaceId, current.actorUser);
+    const persisted = buildPersistedBrandBrainFinalizePayload(
+      current.workspace,
+      accessibleSignals,
+      fingerprint,
+    );
+    if (persisted) return { persisted };
+    const token = createId('brand_finalize');
+    current.workspace.brandBrainFinalizeIntent = {
+      fingerprint,
+      token,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      token,
+      accessibleSignals,
+    };
+  }));
+}
+
+async function clearBrandBrainFinalizeIntent({ workspaceId, token }) {
+  if (!token) return;
+  await serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(workspaceId, async (db) => {
+    const workspace = db.workspaces.find((item) => item.id === workspaceId);
+    if (workspace?.brandBrainFinalizeIntent?.token === token) {
+      delete workspace.brandBrainFinalizeIntent;
+    }
+  }));
+}
+
+async function persistBrandBrainFinalizeResult({
+  workspaceId,
+  fingerprint,
+  token,
+  actorUser,
+  finalized,
+}) {
+  return serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(workspaceId, async (db) => {
+    const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+    const workspace = current.workspace;
+    const accessibleSignals = getAccessibleWorkspaceSignals(db, workspaceId, current.actorUser);
+    const persisted = buildPersistedBrandBrainFinalizePayload(
+      workspace,
+      accessibleSignals,
+      fingerprint,
+    );
+    if (persisted) return persisted;
+    const intent = workspace.brandBrainFinalizeIntent;
+    if (intent?.token !== token || intent?.fingerprint !== fingerprint) {
+      return { superseded: true };
+    }
+
+    let recommendation = finalized.recommendation || null;
+    let signal = recommendation
+      ? accessibleSignals.find((item) => item.id === recommendation.signalId) || null
+      : null;
+    if (recommendation && !signal && accessibleSignals.length) {
+      throw createBrandBrainFinalizeError('brand_brain_accessible_signal_required');
+    }
+    if (!recommendation && accessibleSignals.length) {
+      throw createBrandBrainFinalizeError('brand_brain_accessible_signal_required');
+    }
+    if (!signal) recommendation = null;
+
+    const nextBrief = {
+      ...finalized.compatibilityBrief,
+      recommendation,
+    };
+    const shouldChargeSave = shouldChargeBrandBrainSave({
+      existingBrief: workspace.brief || {},
+      nextBrief,
+    });
+    if (shouldChargeSave) {
+      assertUsageAvailable(db, workspace.id, 'brandBrainSaves', 1, current.actorUser);
+      incrementUsage(db, workspace.id, USAGE_METRICS.brandBrainSaves);
+    }
+    workspace.brief = nextBrief;
+    delete workspace.brandBrainDraft;
+    delete workspace.brandBrainFinalizeIntent;
+    const memory = {
+      id: createId('mem'),
+      workspaceId: workspace.id,
+      type: 'brand_context_update',
+      value: nextBrief,
+      createdAt: new Date().toISOString(),
+    };
+    db.aiMemory.unshift(memory);
+    return {
+      complete: true,
+      brief: nextBrief,
+      recommendation,
+      signal,
+    };
+  }));
 }
 
 function activateWorkspacePlan(db, workspaceId, planId, options = {}) {
@@ -7011,115 +7165,90 @@ app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res,
     const initialDb = await readDb();
     const initialWorkspace = requireWorkspace(initialDb, req.params.workspaceId, res);
     if (!initialWorkspace) return;
-    const existingRecommendation = initialWorkspace.brief?.recommendation;
-    if (Number(initialWorkspace.brief?.schemaVersion) === 2
-      && existingRecommendation?.briefFingerprint === fingerprint) {
-      const accessible = getAccessibleWorkspaceSignals(initialDb, initialWorkspace.id, req.authUser);
-      const signal = accessible.find((item) => item.id === existingRecommendation.signalId);
-      if (signal) {
-        res.json({ complete: true, brief: initialWorkspace.brief, recommendation: existingRecommendation, signal });
-        return;
-      }
-      res.status(409).json({ error: 'brand_brain_recommendation_unavailable' });
-      return;
-    }
-
-    let instagramMetadata = {};
-    if (requestedAnswers.instagramUrl) {
-      try {
-        instagramMetadata = await Promise.race([
-          fetchPublicSourceMetadata(requestedAnswers.instagramUrl),
-          new Promise((resolve) => setTimeout(() => resolve({}), 2500)),
-        ]);
-      } catch {
-        instagramMetadata = {};
-      }
-    }
-    const accessibleSignals = getAccessibleWorkspaceSignals(initialDb, initialWorkspace.id, req.authUser);
-    const deriveClient = GEMINI_API_KEY
-      ? (prompt) => generateGeminiJsonText(prompt, {
-          maxOutputTokens: 1600,
-          temperature: 0.2,
-          operation: 'brand_brain_derive_v2',
-        })
-      : null;
-    const rerankClient = GEMINI_API_KEY
-      ? (prompt) => generateGeminiJsonText(prompt, {
-          maxOutputTokens: 500,
-          temperature: 0.1,
-          operation: 'brand_signal_rerank',
-        })
-      : null;
-    const finalized = await finalizeBrandBrainV2({
-      answers: requestedAnswers,
-      signals: accessibleSignals,
-      instagramMetadata,
-      deriveClient,
-      rerankClient,
-    });
-    if (!finalized.ok) {
-      res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields: finalized.missingFields });
-      return;
-    }
-    if (!finalized.recommendation || !accessibleSignals.some((item) => item.id === finalized.recommendation.signalId)) {
-      res.status(409).json({ error: 'brand_brain_accessible_signal_required' });
-      return;
-    }
-
-    const payload = await serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
-      const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
-      const workspace = current.workspace;
-      const actorUser = current.actorUser;
-      const currentRecommendation = workspace.brief?.recommendation;
-      const accessible = getAccessibleWorkspaceSignals(db, workspace.id, actorUser);
-      if (Number(workspace.brief?.schemaVersion) === 2
-        && currentRecommendation?.briefFingerprint === fingerprint) {
-        const signal = accessible.find((item) => item.id === currentRecommendation.signalId);
-        if (signal) {
-          return {
-            complete: true,
-            brief: workspace.brief,
-            recommendation: currentRecommendation,
-            signal,
-          };
-        }
-        const error = new Error('brand_brain_recommendation_unavailable');
-        error.status = 409;
-        error.payload = { error: 'brand_brain_recommendation_unavailable' };
-        throw error;
-      }
-      const signal = accessible.find((item) => item.id === finalized.recommendation.signalId);
-      if (!signal) {
-        const error = new Error('brand_brain_accessible_signal_required');
-        error.status = 409;
-        throw error;
-      }
-      const shouldChargeSave = shouldChargeBrandBrainSave({
-        existingBrief: workspace.brief || {},
-        nextBrief: finalized.brief,
+    const flightKey = `${req.params.workspaceId}:${fingerprint}`;
+    await runBrandBrainFinalizeSingleFlight(flightKey, async () => {
+      const reservation = await reserveBrandBrainFinalizeIntent({
+        workspaceId: req.params.workspaceId,
+        fingerprint,
+        actorUser: req.authUser,
       });
-      if (shouldChargeSave) {
-        assertUsageAvailable(db, workspace.id, 'brandBrainSaves', 1, actorUser);
-        incrementUsage(db, workspace.id, USAGE_METRICS.brandBrainSaves);
+      if (reservation.persisted) return reservation.persisted;
+      const { token, accessibleSignals } = reservation;
+      try {
+        let instagramMetadata = {};
+        if (requestedAnswers.instagramUrl) {
+          try {
+            instagramMetadata = await Promise.race([
+              fetchPublicSourceMetadata(requestedAnswers.instagramUrl),
+              new Promise((resolve) => setTimeout(() => resolve({}), 2500)),
+            ]);
+          } catch {
+            instagramMetadata = {};
+          }
+        }
+        const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
+          workspaceId: req.params.workspaceId,
+          actorUser: req.authUser,
+        });
+        const deriveClient = GEMINI_API_KEY
+          ? (prompt) => generateGeminiJsonText(prompt, {
+              maxOutputTokens: 1600,
+              temperature: 0.2,
+              operation: 'brand_brain_derive_v2',
+              beforeProviderAttempt,
+            })
+          : null;
+        const rerankClient = GEMINI_API_KEY
+          ? (prompt) => generateGeminiJsonText(prompt, {
+              maxOutputTokens: 500,
+              temperature: 0.1,
+              operation: 'brand_signal_rerank',
+              beforeProviderAttempt,
+            })
+          : null;
+        const finalized = await finalizeBrandBrainV2({
+          answers: requestedAnswers,
+          signals: accessibleSignals,
+          instagramMetadata,
+          deriveClient,
+          rerankClient,
+        });
+        if (!finalized.ok) {
+          throw createBrandBrainFinalizeError('brand_brain_required_fields_missing', 422);
+        }
+        return persistBrandBrainFinalizeResult({
+          workspaceId: req.params.workspaceId,
+          fingerprint,
+          token,
+          actorUser: req.authUser,
+          finalized,
+        });
+      } finally {
+        await clearBrandBrainFinalizeIntent({
+          workspaceId: req.params.workspaceId,
+          token,
+        });
       }
-      workspace.brief = finalized.compatibilityBrief;
-      workspace.brandBrainDraft = undefined;
-      const memory = {
-        id: createId('mem'),
-        workspaceId: workspace.id,
-        type: 'brand_context_update',
-        value: finalized.compatibilityBrief,
-        createdAt: new Date().toISOString(),
-      };
-      db.aiMemory.unshift(memory);
-      return {
-        complete: true,
-        brief: workspace.brief,
-        recommendation: workspace.brief.recommendation,
-        signal,
-      };
-    }));
-    if (payload) res.json(payload);
+    });
+
+    const responseDb = await readDb();
+    const current = assertCurrentWorkspaceAccess(
+      responseDb,
+      req.params.workspaceId,
+      req.authUser,
+    );
+    const accessibleSignals = getAccessibleWorkspaceSignals(
+      responseDb,
+      req.params.workspaceId,
+      current.actorUser,
+    );
+    const payload = buildPersistedBrandBrainFinalizePayload(
+      current.workspace,
+      accessibleSignals,
+      fingerprint,
+    );
+    if (!payload) throw createBrandBrainFinalizeError('brand_brain_finalize_superseded');
+    res.json(payload);
   } catch (error) {
     next(error);
   }

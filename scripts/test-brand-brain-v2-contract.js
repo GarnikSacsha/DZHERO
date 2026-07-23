@@ -52,6 +52,16 @@ assert.equal(isBrandBrainV2Complete({
   schemaVersion: 2,
   answers: { ...answers, market: '' },
 }), false);
+assert.equal(isBrandContextComplete({
+  schemaVersion: 2,
+  answers: { ...answers, market: '' },
+  businessType: 'Legacy coffee shop',
+  product: 'Legacy coffee',
+  audience: 'Legacy commuters',
+  offer: 'Legacy breakfast',
+  cta: 'Legacy CTA',
+  toneOfVoice: 'Legacy warm',
+}), false, 'Malformed Version 2 briefs must never fall through to legacy completeness');
 
 const draft = normalizeBrandBrainDraft({
   currentStep: 9,

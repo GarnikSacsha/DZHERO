@@ -113,15 +113,26 @@ const signals = [
   });
   assert.equal(promptedCandidates.length, 24);
 
+  let rerankPrompt = null;
   const geminiChoice = await selectBestSignalForBrand({
     answers,
     signals,
-    geminiClient: async () => JSON.stringify({
-      signalId: 'reel-coffee',
-      reason: 'Matches breakfast, coffee, commuters, and Kyiv.',
-    }),
+    geminiClient: async (prompt) => {
+      rerankPrompt = JSON.parse(prompt);
+      return JSON.stringify({
+        signalId: 'reel-coffee',
+        reason: 'Matches breakfast, coffee, commuters, and Kyiv.',
+      });
+    },
     now: () => new Date('2026-07-23T12:00:00.000Z'),
   });
+  assert.deepEqual(Object.keys(rerankPrompt.brand.answers).sort(), [
+    'audience',
+    'market',
+    'niche',
+    'profileDescription',
+  ]);
+  assert.doesNotMatch(JSON.stringify(rerankPrompt), /instagram\.com/);
   assert.equal(geminiChoice.signalId, 'reel-coffee');
   assert.equal(geminiChoice.selectionMode, 'gemini');
 

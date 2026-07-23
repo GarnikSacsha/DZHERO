@@ -195,10 +195,23 @@ export default function BrandBrainWizard({ workspaceId, language, initialDraft, 
     }
   };
 
-  const goBack = () => {
+  const goBack = async () => {
     if (status === 'saving' || status === 'finalizing' || draft.currentStep === 1) return;
-    setDraft((current) => ({ ...current, currentStep: current.currentStep - 1 }));
+    const previousDraft = normalizeWizardDraft({
+      ...draft,
+      currentStep: draft.currentStep - 1,
+      answers: draft.answers,
+    });
+    setStatus('saving');
     setErrors([]);
+    try {
+      const savedDraft = await putDraft(previousDraft);
+      setDraft(savedDraft);
+      setStatus('ready');
+    } catch {
+      setStatus('error');
+      notify?.(copy.saveError);
+    }
   };
 
   const field = (name, label, hint, multiline = false) => {
@@ -251,7 +264,7 @@ export default function BrandBrainWizard({ workspaceId, language, initialDraft, 
           {draft.currentStep === 4 && field('instagramUrl', copy.instagramLabel, copy.instagramHint)}
         </div>
         <div className="brand-wizard-actions">
-          {draft.currentStep > 1 ? <button type="button" onClick={goBack} disabled={busy}>{copy.back}</button> : <span />}
+          {draft.currentStep > 1 ? <button type="button" onClick={() => void goBack()} disabled={busy}>{copy.back}</button> : <span />}
           {draft.currentStep === 4 ? (
             <div className="brand-wizard-actions-end">
               <button type="button" onClick={() => void continueStep()} disabled={busy}>{status === 'finalizing' ? copy.finishing : copy.finish}</button>

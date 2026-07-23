@@ -1464,7 +1464,7 @@ function App() {
             setRecommendedSignalId(payload?.recommendation?.signalId || '');
             setPage('viral');
           }} />
-          : <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} initialBrief={brandContext} onSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)} navigationLocked={navigationLocked} />)}
+          : <HomeDashboard data={filtered} market={market} notify={notify} onFreshIdea={() => setMvpPage('viral')} setPage={setMvpPage} workspaceId={workspaceId} />)}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
         {page === 'remix' && (
           selectedReel
@@ -6152,9 +6152,10 @@ function BrandBrain({
     ['businessType', copy.niche],
     ['product', copy.profileDescription],
     ['audience', copy.audience],
-    ['offer', 'Offer'],
+    ['market', copy.market, savedSnapshot.market || savedSnapshot.location],
+    ['offer', language === 'en' ? 'Offer' : '\u041e\u0444\u0435\u0440'],
     ['cta', 'CTA'],
-    ['toneOfVoice', 'Tone of Voice'],
+    ['toneOfVoice', language === 'en' ? 'Tone of voice' : '\u0422\u043e\u043d \u0433\u043e\u043b\u043e\u0441\u0443'],
   ];
   const instagramUrl = savedAnswers.instagramUrl;
 
@@ -6173,8 +6174,8 @@ function BrandBrain({
             </button>
           </div>
           <dl className={`brand-facts ${isV2 ? 'brand-facts-v2' : ''}`}>
-            {(isV2 ? authoredCardFields : legacyCardFields).map(([field, label]) => (
-              <div key={field}><dt>{label}</dt><dd>{isV2 ? savedAnswers[field] || copy.notSpecified : savedSnapshot[field] || copy.notSpecified}</dd></div>
+            {(isV2 ? authoredCardFields : legacyCardFields).map(([field, label, legacyValue]) => (
+              <div key={field}><dt>{label}</dt><dd>{isV2 ? savedAnswers[field] || copy.notSpecified : (legacyValue ?? savedSnapshot[field]) || copy.notSpecified}</dd></div>
             ))}
           </dl>
           {isV2 && instagramUrl && <div className="brand-card-instagram"><a href={instagramUrl} target="_blank" rel="noreferrer">{instagramUrl}</a></div>}

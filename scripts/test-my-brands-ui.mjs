@@ -155,7 +155,11 @@ async function stopProcess(processHandle) {
   ]);
 }
 
-function createDatabase(tempDirectory, brief, { draft = null, secondaryBrief = {} } = {}) {
+function createDatabase(tempDirectory, brief, {
+  draft = null,
+  secondaryBrief = {},
+  emptySignals = false,
+} = {}) {
   const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
   const workspace = source.workspaces.find((item) => item.id === DEMO_WORKSPACE_ID);
   const demoUser = source.users.find((item) => item.workspaceId === DEMO_WORKSPACE_ID);
@@ -163,22 +167,26 @@ function createDatabase(tempDirectory, brief, { draft = null, secondaryBrief = {
   assert.ok(demoUser, 'Demo user fixture is missing');
   workspace.brief = brief;
   workspace.brandBrainDraft = draft;
-  source.reels.push({
-    id: 'reel_coffee_fixture',
-    workspaceId: DEMO_WORKSPACE_ID,
-    handle: '@coffee_fixture',
-    sourceHandle: '@coffee_fixture',
-    sourceUrl: 'https://www.tiktok.com/@coffee/video/123',
-    sourceStatus: 'fixture',
-    sourceType: 'TikTok',
-    market: 'ua',
-    title: 'Breakfast coffee before the commute',
-    views: 42000,
-    likes: 2100,
-    comments: 84,
-    score: 91,
-    status: ['TikTok', 'Fixture'],
-  });
+  if (emptySignals) {
+    source.reels = source.reels.filter((item) => item.workspaceId !== DEMO_WORKSPACE_ID);
+  } else {
+    source.reels.push({
+      id: 'reel_coffee_fixture',
+      workspaceId: DEMO_WORKSPACE_ID,
+      handle: '@coffee_fixture',
+      sourceHandle: '@coffee_fixture',
+      sourceUrl: 'https://www.tiktok.com/@coffee/video/123',
+      sourceStatus: 'fixture',
+      sourceType: 'TikTok',
+      market: 'ua',
+      title: 'Breakfast coffee before the commute',
+      views: 42000,
+      likes: 2100,
+      comments: 84,
+      score: 91,
+      status: ['TikTok', 'Fixture'],
+    });
+  }
   demoUser.workspaceIds = [DEMO_WORKSPACE_ID, 'ws_test_secondary'];
   source.workspaces.push({
     id: 'ws_test_secondary',
@@ -193,15 +201,15 @@ function createDatabase(tempDirectory, brief, { draft = null, secondaryBrief = {
   return databasePath;
 }
 
-async function loginDemo(page, appUrl) {
-  await page.addInitScript(() => {
-    localStorage.setItem('insta-producer-language', 'en');
+async function loginDemo(page, appUrl, language = 'en') {
+  await page.addInitScript((nextLanguage) => {
+    localStorage.setItem('insta-producer-language', nextLanguage);
     localStorage.removeItem('dzhero-active-workspace');
     localStorage.removeItem('dzhero-sources-tab');
-  });
+  }, language);
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
   if (!(await page.locator('.shell').count())) {
-    await page.getByRole('button', { name: /view demo|start with demo/i }).first().click();
+    await page.getByRole('button', { name: /view demo|start with demo|\u043f\u043e\u0434\u0438\u0432\u0438\u0442\u0438\u0441\u044c \u0434\u0435\u043c\u043e|\u043f\u043e\u0447\u0430\u0442\u0438 \u0437 \u0434\u0435\u043c\u043e/i }).first().click();
   }
   await page.waitForSelector('.shell', { timeout: 15000 });
 }
@@ -237,7 +245,7 @@ async function withRuntime(brief, callback, options = {}) {
       });
       await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
     } else {
-      await loginDemo(page, appUrl);
+      await loginDemo(page, appUrl, options.language || 'en');
     }
     await callback(page);
   } finally {
@@ -281,6 +289,36 @@ await withRuntime({}, async (page) => {
   await page.getByRole('button', { name: /continue|продовжити/i }).click();
   assert.equal((await thirdDraftResponse).ok(), true);
   assert.equal(await page.getByRole('button', { name: /skip instagram|пропустити instagram/i }).count(), 1);
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/draft', async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'draft_save_failed' }),
+    });
+  }, { times: 1 });
+  const failedBackResponse = page.waitForResponse(
+    (response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()),
+  );
+  await page.getByRole('button', { name: /^back$/i }).click();
+  assert.equal((await failedBackResponse).ok(), false, 'A failed Back save must surface the failed draft write');
+  await expectVisible(page.getByRole('heading', { name: /add instagram/i }));
+
+  const backDraftResponse = page.waitForResponse(
+    (response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()),
+  );
+  await page.getByRole('button', { name: /^back$/i }).click();
+  assert.equal((await backDraftResponse).ok(), true, 'Back must persist the earlier step before moving');
+  await expectVisible(page.getByRole('heading', { name: /your niche and market/i }));
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.shell');
+  await expectVisible(page.getByRole('heading', { name: /your niche and market/i }));
+  const forwardAgain = page.waitForResponse(
+    (response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()),
+  );
+  await page.getByRole('button', { name: /continue/i }).click();
+  assert.equal((await forwardAgain).ok(), true);
+  await expectVisible(page.getByRole('heading', { name: /add instagram/i }));
+
   let finalizeRequests = 0;
   let releaseFinalize;
   const finalizeGate = new Promise((resolve) => { releaseFinalize = resolve; });
@@ -340,6 +378,47 @@ await withRuntime({}, async (page) => {
   assert.equal(await page.locator('.page-signals').evaluate((element) => document.activeElement === element), true, 'Closing the automatic preview must restore a meaningful Signals focus target');
 });
 
+await withRuntime({}, async (page) => {
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/finalize', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        complete: true,
+        brief: {
+          schemaVersion: 2,
+          answers: {
+            profileDescription: 'Specialty coffee',
+            audience: 'Commuters',
+            niche: 'Coffee shop',
+            market: 'Kyiv',
+            instagramUrl: '',
+          },
+          derivedBrief: {},
+          recommendation: null,
+        },
+        recommendation: null,
+        signal: null,
+      }),
+    });
+  });
+  await page.getByRole('button', { name: /skip instagram/i }).click();
+  await page.waitForSelector('.page-signals');
+  assert.equal(await page.locator('.video-preview-modal').count(), 0, 'An empty signal bank must not fabricate or open a recommendation preview');
+  await expectVisible(page.locator('.signals-empty-state--authoritative'));
+}, {
+  emptySignals: true,
+  draft: {
+    currentStep: 4,
+    answers: {
+      profileDescription: 'Specialty coffee',
+      audience: 'Commuters',
+      niche: 'Coffee shop',
+      market: 'Kyiv',
+      instagramUrl: '',
+    },
+  },
+});
+
 let releaseDelayedRecommendationReels = false;
 await withRuntime({
   schemaVersion: 2,
@@ -385,6 +464,11 @@ await withRuntime({
   },
   recommendation: { signalId: 'reel_coffee_fixture' },
 }, async (page) => {
+  assert.equal(
+    await page.evaluate(() => window.__completedHomeRenderedBrandBrain),
+    false,
+    'A completed Home load must never render the Brand Brain start page, even transiently',
+  );
   assert.equal(
     await page.locator('[data-tour="sidebar-home"]').count(),
     0,
@@ -481,6 +565,42 @@ await withRuntime({
   await page.getByRole('button', { name: /my brands|brand memory/i }).click();
   await page.waitForSelector('.brand-card');
   assert.equal(await page.getByText('Lviv, Ukraine', { exact: true }).count(), 1, 'Reloaded My Brands must render the persisted edited value');
+}, {
+  beforeLogin: async (page) => {
+    await page.addInitScript(() => {
+      window.__completedHomeRenderedBrandBrain = false;
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('.page-brand-brain-start .brand-brain')) {
+          window.__completedHomeRenderedBrandBrain = true;
+        }
+      });
+      observer.observe(document, { childList: true, subtree: true });
+    });
+  },
+});
+
+await withRuntime({
+  schemaVersion: 2,
+  answers: {
+    profileDescription: 'Incomplete V2 coffee profile',
+    audience: 'Commuters',
+    niche: 'Coffee shop',
+    market: '',
+    instagramUrl: '',
+  },
+  businessType: 'Legacy coffee shop',
+  product: 'Legacy espresso',
+  audience: 'Legacy commuters',
+  offer: 'Legacy breakfast set',
+  cta: 'Visit today',
+  toneOfVoice: 'Warm',
+}, async (page) => {
+  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
+  assert.equal(
+    await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
+    true,
+    'An incomplete schemaVersion 2 brief must not unlock through complete-looking legacy fields',
+  );
 });
 
 await withRuntime({
@@ -497,12 +617,34 @@ await withRuntime({
   await page.getByRole('button', { name: /my brands|brand memory/i }).click();
   await page.waitForSelector('.brand-card');
   await expectVisible(page.getByText('Espresso and fresh pastries', { exact: true }));
+  await expectVisible(page.getByText('Legacy market', { exact: true }));
   await page.getByRole('button', { name: /edit brand/i }).click();
   assert.equal(await page.locator('.brand-brain textarea').count(), 2, 'Editing a legacy card must project it into the V2 authored-answer contract');
   assert.equal(await page.locator('input[name="market"]').inputValue(), 'Legacy market', 'Legacy upgrades must project brief.market before falling back to location');
   await page.getByRole('button', { name: /save changes/i }).click();
   await page.waitForSelector('.brand-card');
   assert.equal(await page.getByText(/offer|cta|tone of voice/i).count(), 0, 'A completed legacy edit must upgrade the card to the locked V2 authored fields');
+});
+
+await withRuntime({
+  brandName: 'Legacy Coffee',
+  businessType: 'Coffee shop',
+  product: 'Espresso and fresh pastries',
+  audience: 'Morning commuters',
+  location: 'Kyiv, Ukraine',
+  offer: 'Breakfast set',
+  cta: 'Visit today',
+  toneOfVoice: 'Warm',
+}, async (page) => {
+  await page.locator('[data-tour="sidebar-settings"]').click();
+  await page.getByRole('button', { name: /my brands|brand memory|\u043c\u043e\u0457 \u0431\u0440\u0435\u043d\u0434\u0438/i }).click();
+  await page.waitForSelector('.brand-card');
+  await expectVisible(page.getByText('Kyiv, Ukraine', { exact: true }));
+  await expectVisible(page.getByText('\u041e\u0444\u0435\u0440', { exact: true }));
+  await expectVisible(page.getByText('CTA', { exact: true }));
+  await expectVisible(page.getByText('\u0422\u043e\u043d \u0433\u043e\u043b\u043e\u0441\u0443', { exact: true }));
+}, {
+  language: 'uk',
 });
 
 await withRuntime({

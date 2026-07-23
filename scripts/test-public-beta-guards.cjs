@@ -49,14 +49,27 @@ const appSource = readFileSync(path.join(root, 'src', 'main.jsx'), 'utf8');
 assert.match(serverSource, /ENABLE_BILLING_PURCHASES === 'true'/);
 assert.match(serverSource, /shared_signal_bank_only/);
 assert.match(serverSource, /ENABLE_PUBLIC_APIFY_BRAND_SCAN && APIFY_TOKEN/);
+assert.match(
+  serverSource,
+  /const GEMINI_API_BASE = process\.env\.GEMINI_API_BASE \|\| 'https:\/\/generativelanguage\.googleapis\.com\/v1beta'/,
+  'Focused provider tests need an explicit Gemini base URL while production keeps the official default',
+);
 assert.match(serverSource, /function getAccessibleWorkspaceSignals\(db, workspaceId, authUser\)/);
 assert.match(serverSource, /const reels = getAccessibleWorkspaceSignals\(db, req\.params\.workspaceId, req\.authUser\)/);
 assert.ok(serverSource.includes('agent\\/context\\/finalize'));
-assert.ok(serverSource.includes('const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);'));
+assert.match(
+  serverSource,
+  /async function reserveBrandBrainFinalizeIntent[\s\S]*?assertCurrentWorkspaceAccess\(db, workspaceId, actorUser\)/,
+);
+assert.match(
+  serverSource,
+  /async function persistBrandBrainFinalizeResult[\s\S]*?assertCurrentWorkspaceAccess\(db, workspaceId, actorUser\)/,
+);
 const finalizeSource = serverSource.slice(serverSource.indexOf("app.post('/api/workspaces/:workspaceId/agent/context/finalize'"));
-assert.ok(finalizeSource.includes('const payload = await serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock('));
-assert.ok(finalizeSource.indexOf('fetchPublicSourceMetadata') < finalizeSource.indexOf('serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock'));
-assert.ok(finalizeSource.indexOf('finalizeBrandBrainV2') < finalizeSource.indexOf('serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock'));
+assert.ok(finalizeSource.includes('runBrandBrainFinalizeSingleFlight'));
+assert.ok(finalizeSource.includes('beforeProviderAttempt'));
+assert.ok(finalizeSource.indexOf('fetchPublicSourceMetadata') < finalizeSource.indexOf('persistBrandBrainFinalizeResult'));
+assert.ok(finalizeSource.indexOf('finalizeBrandBrainV2') < finalizeSource.indexOf('persistBrandBrainFinalizeResult'));
 assert.match(appSource, /Agent Studio · Coming soon/);
 assert.match(appSource, /purchaseEnabled/);
 assert.match(appSource, /Спільний банк сигналів/);
