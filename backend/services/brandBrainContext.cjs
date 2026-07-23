@@ -19,6 +19,24 @@ function pickFirst(...values) {
   return values.map(compactText).find(Boolean) || '';
 }
 
+function normalizeSourceLinks(value) {
+  const candidates = Array.isArray(value) ? value : String(value || '').match(/https?:\/\/[^\s<>'"`]+/gi) || [];
+  const seen = new Set();
+  return candidates.reduce((links, candidate) => {
+    try {
+      const url = new URL(String(candidate).replace(/[),.;]+$/, ''));
+      if (!/^https?:$/.test(url.protocol)) return links;
+      url.hash = '';
+      const normalized = url.toString();
+      if (!seen.has(normalized.toLowerCase())) {
+        seen.add(normalized.toLowerCase());
+        links.push(normalized);
+      }
+    } catch {}
+    return links;
+  }, []);
+}
+
 function normalizeBrandBrain(input = {}) {
   const brief = input.brief || input.brandBrain || input || {};
   const contentPillars = compactList(brief.contentPillars || brief.contentRubrics || brief.pillars);
@@ -38,6 +56,7 @@ function normalizeBrandBrain(input = {}) {
     contentFocus: pickFirst(brief.contentFocus, brief.focus),
     cta: pickFirst(brief.cta, brief.mainCta),
     proof: pickFirst(brief.proof, brief.socialProof, brief.resultProof),
+    sourceLinks: normalizeSourceLinks(brief.sourceLinks),
     offer: pickFirst(brief.offer, brief.productOffer, brief.product),
     updatedAt: brief.updatedAt || null,
   };
@@ -101,6 +120,7 @@ function buildBrandBrainPromptBlock(input = {}) {
     `Content focus: ${context.contentFocus || 'not specified'}`,
     `CTA: ${context.cta || 'not specified'}`,
     `Proof: ${context.proof || 'not specified'}`,
+    `Source links: ${context.sourceLinks.length ? context.sourceLinks.join('; ') : 'not specified'}`,
     `Goals: ${context.goals.length ? context.goals.join('; ') : 'not specified'}`,
     `Content pillars: ${context.contentPillars.length ? context.contentPillars.join('; ') : 'not specified'}`,
     `Content rubrics: ${context.contentRubrics.length ? context.contentRubrics.join('; ') : 'not specified'}`,
@@ -128,6 +148,7 @@ function buildBusinessBriefFromBrandBrain(input = {}) {
     contentFocus: context.contentFocus || '',
     cta: context.cta || '',
     proof: context.proof || '',
+    sourceLinks: context.sourceLinks,
     brandBrainMode: context.mode,
     brandBrainReady: context.ready,
   };
@@ -153,12 +174,14 @@ function mergeBusinessBriefWithBrandBrain(storedInput = {}, overrideInput = {}) 
     contentFocus: override.contentFocus || stored.contentFocus,
     cta: override.cta || stored.cta,
     proof: override.proof || stored.proof,
+    sourceLinks: override.sourceLinks.length ? override.sourceLinks : stored.sourceLinks,
   });
 }
 
 module.exports = {
   compactText,
   compactList,
+  normalizeSourceLinks,
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
   buildBusinessBriefFromBrandBrain,
