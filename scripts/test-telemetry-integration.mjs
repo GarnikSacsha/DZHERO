@@ -9,8 +9,9 @@ const server = read('../backend/server.js');
 
 assert.ok(main.includes("from './telemetry.mjs'"));
 assert.ok(main.includes('telemetry.load()'));
-assert.ok(main.includes('syncTelemetryIdentity'));
-assert.ok(main.includes('telemetry.logout()'));
+assert.ok(main.includes('syncCrmSession'));
+assert.equal(main.includes('syncTelemetryIdentity'), false);
+assert.equal(main.includes('telemetry.logout()'), false);
 assert.ok(main.includes('telemetry.pageView'));
 
 for (const id of [
@@ -37,5 +38,6 @@ assert.ok(server.includes('generationId'));
 assert.ok(server.includes('DZHERO CRM'));
 assert.ok(server.includes('CRM DZHERO'));
 assert.equal(server.includes('https://*.railway.app'), false);
+assert.equal(main.includes('dzheroAuthSuccess'), false);
+assert.equal(main.includes('dzheroIdentify'), false);
 console.log('telemetry integration contract passed');
-

@@ -49,7 +49,8 @@ import './styles.css';
 import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
-import { syncTelemetryIdentity, telemetry } from './telemetry.mjs';
+import CommunicationPreferences from './CommunicationPreferences.jsx';
+import { syncCrmSession, telemetry } from './telemetry.mjs';
 import ContentCalendar, {
   fromLocalDateKey,
   resolveInitialCalendarView,
@@ -269,8 +270,8 @@ function PublicLegalPage({ page }) {
         ['Who we are', 'Dzhero is a web-based AI workspace that helps marketers, creators, and small businesses analyze short-form content signals and prepare original content plans.'],
         ['Data we collect', 'Dzhero may collect account information such as name, email address, connected social account identifiers, profile information, profile links, avatar images, and account statistics when a user authorizes a supported platform such as TikTok, Google, Meta, Instagram, or YouTube. Users may also provide business briefs, source links, notes, content ideas, drafts, and workspace settings.'],
         ['DZHERO CRM telemetry', language === 'en'
-          ? 'DZHERO uses a separate DZHERO CRM service for product analytics: page views without query parameters, allowlisted CTA identifiers, an anonymous visitor ID, UTM attribution, Google lead fields after successful sign-in, and successful-generation identifiers. Telemetry does not collect prompts, generated or source content, passwords, OAuth tokens, or session cookies. Analytics failure does not restrict product access. Data deletion requests can be sent through the contact listed in this policy.'
-          : 'DZHERO використовує окремий сервіс CRM DZHERO для продуктової аналітики: перегляди сторінок без query-параметрів, ідентифікатори дозволених CTA, анонімний visitor ID, UTM-атрибуцію, дані Google-ліда після успішного входу та ідентифікатори успішних генерацій. Телеметрія не збирає промпти, згенерований або вихідний контент, паролі, OAuth-токени чи сесійні cookie. Збій аналітики не обмежує доступ до продукту. Запит на видалення даних можна надіслати через контакт, указаний у цій політиці.'],
+          ? 'DZHERO uses a separate CRM service for product analytics. The browser tracker sends page paths without query parameters, allowlisted CTA identifiers, an anonymous visitor ID, UTM attribution, and successful-generation identifiers; it does not send account identity. After verified Google sign-in, the DZHERO backend sends the verified email, Google subject, display name, avatar, first-touch attribution, and the user’s three optional communication preferences to CRM through an authenticated server request. These preferences are off by default, do not restrict product access, and can be changed in Settings. DZHERO does not send prompts, generated or source content, passwords, OAuth tokens, or session cookies to CRM. Data deletion requests can be sent through the contact listed in this policy.'
+          : 'DZHERO використовує окремий CRM-сервіс для продуктової аналітики. Браузерний трекер передає шляхи сторінок без query-параметрів, дозволені ідентифікатори CTA, анонімний visitor ID, UTM-атрибуцію та ідентифікатори успішних генерацій; дані акаунта він не передає. Після підтвердженого входу через Google бекенд DZHERO надсилає в CRM підтверджену пошту, Google subject, ім’я, аватар, атрибуцію першого контакту та три добровільні налаштування комунікації через захищений серверний запит. Ці налаштування початково вимкнені, не обмежують доступ до продукту й доступні для зміни в Налаштуваннях. DZHERO не передає в CRM промпти, згенерований або вихідний контент, паролі, OAuth-токени чи сесійні cookie. Запит на видалення даних можна надіслати через контакт, указаний у цій політиці.'],
         ['TikTok data', 'When a user connects TikTok through Login Kit, Dzhero uses the approved permissions to identify the connected account, show profile context, and display profile statistics such as follower count, following count, likes count, and video count inside the user workspace. Dzhero does not sell TikTok data and does not post to TikTok or modify a TikTok account unless a user explicitly authorizes a future product feature for that purpose.'],
         ['How we use data', 'Dzhero uses data to provide the service, authenticate users, connect user-owned sources, analyze public and authorized content signals, generate content ideas, prepare scripts, build content plans, prevent abuse, enforce usage limits, and improve product reliability.'],
         ['AI processing', 'Dzhero may send user-provided briefs, source metadata, notes, and selected content context to AI service providers to generate drafts and recommendations. Users are responsible for reviewing AI output before publishing or using it externally.'],
@@ -389,6 +390,7 @@ function App() {
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
   const [sessionRevision, setSessionRevision] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
+  const [consentPromptDismissed, setConsentPromptDismissed] = useState(false);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
@@ -563,7 +565,8 @@ function App() {
     const user = payload?.user || null;
     const workspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
     setCurrentUser(user);
-    syncTelemetryIdentity({ user });
+    setConsentPromptDismissed(false);
+    void syncCrmSession({ user, fetcher: authFetch, apiBase: API_BASE });
     setUserWorkspaces(workspaces);
     const primaryWorkspaceId = user?.workspaceId || workspaces[0]?.id || '';
     if (primaryWorkspaceId) {
@@ -663,7 +666,6 @@ function App() {
 
   const handleLogout = async () => {
     setAuthStatus('checking');
-    telemetry.logout();
     try {
       await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
     } catch {
@@ -1325,6 +1327,16 @@ function App() {
           />
         )}
       </main>
+      {currentUser?.provider === 'google' && !consentPromptDismissed && (
+        <CommunicationPreferences
+          key={`communication-prompt-${currentUser.id}`}
+          apiBase={API_BASE}
+          fetcher={authFetch}
+          language={language}
+          mode="prompt"
+          onClose={() => setConsentPromptDismissed(true)}
+        />
+      )}
       {modal?.type === 'reel' || modal === 'reel'
         ? <ManualReelModal onClose={() => setModal(null)} onSubmit={addManualReel} defaultMarket={market === 'all' ? 'global' : market} initialUrl={typeof modal === 'object' ? modal.url : ''} />
         : modal && <QuickModal type={modal} onClose={() => setModal(null)} onSubmit={{ competitor: addCompetitor, idea: addIdea, post: addPost }[modal]} />}
@@ -7536,6 +7548,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
     ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
     ['profile', language === 'en' ? 'Brand memory' : 'Памʼять бренду'],
     ['billing', language === 'en' ? 'Plan and limits' : 'Тариф і ліміти'],
+    ['communications', language === 'en' ? 'Email preferences' : 'Листи та згоди'],
     ...(currentUser?.canManageTesters && !currentUser?.isDemo
       ? [['testers', language === 'en' ? 'Testers' : 'Тестери']]
       : []),
@@ -7729,6 +7742,9 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       )}
       {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
+      {tab === 'communications' && (
+        <CommunicationPreferences apiBase={API_BASE} fetcher={authFetch} language={language} mode="settings" />
+      )}
       {tab === 'testers' && currentUser?.canManageTesters && !currentUser?.isDemo && (
         <TesterAccessPanel apiBase={API_BASE} authFetch={authFetch} language={language} notify={notify} />
       )}
