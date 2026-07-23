@@ -5774,6 +5774,16 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
   const analyzeSeed = async () => {
     const cleanSeed = seed.trim();
     if (!cleanSeed || status === 'analyzing') return;
+    const submittedSourceLinks = Array.from(new Set((cleanSeed.match(/https?:\/\/[^\s<>'"`]+/gi) || []).map((value) => {
+      try {
+        const url = new URL(value.replace(/[),.;]+$/, ''));
+        if (!/^https?:$/.test(url.protocol)) return '';
+        url.hash = '';
+        return url.toString();
+      } catch {
+        return '';
+      }
+    }).filter(Boolean)));
     setStatus('analyzing');
     try {
       const response = await fetch(`${API_BASE}/brand-scan/preview`, {
@@ -5785,6 +5795,10 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       if (!response.ok) throw new Error(payload.error || 'brand_scan_failed');
       const metadata = payload.metadata || null;
       if (!canBuildFromSourceOnly(cleanSeed, metadata)) {
+        setBrief((current) => ({
+          ...current,
+          sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...submittedSourceLinks])),
+        }));
         setStatus('ready');
         notify?.(translateText('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.'));
         return;
@@ -5797,6 +5811,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
       setBrief((current) => ({
         ...current,
         ...nextBrief,
+        sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...(nextBrief.sourceLinks || []), ...submittedSourceLinks])),
         stopTopics: Array.isArray(nextBrief.stopTopics) ? nextBrief.stopTopics.join(', ') : nextBrief.stopTopics || current.stopTopics,
       }));
       setStatus('ready');
@@ -5806,13 +5821,11 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
     } catch {
       setBrief((current) => ({
         ...current,
-        product: current.product || cleanSeed,
-        audience: current.audience || 'Потенційні клієнти, яким потрібне це рішення зараз',
-        offer: current.offer || cleanSeed,
-        toneOfVoice: current.toneOfVoice || 'коротко, конкретно, дружньо',
+        sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...submittedSourceLinks])),
       }));
       setStatus('ready');
-      notify?.(translateText('Не вдалося прочитати джерело автоматично, але я підготував чернетку з опису.'));
+      notify?.(translateText('Не вдалося прочитати джерело автоматично. Поточний Brand Brain збережено без припущень.'));
+      return;
     }
   };
 

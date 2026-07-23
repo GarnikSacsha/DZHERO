@@ -1,127 +1,75 @@
 const assert = require('node:assert/strict');
+const { buildBrandBrainEnrichment, buildGeminiBrandBrainPrompt, shouldUseApifyForBrandScan } = require('../backend/services/brandBrainExtractor.cjs');
 
-const {
-  buildBrandBrainEnrichment,
-  buildGeminiBrandBrainPrompt,
-  shouldUseApifyForBrandScan,
-} = require('../backend/services/brandBrainExtractor.cjs');
-
-const apifySignals = [
-  {
-    title: 'Ранкова кава + круасан біля ратуші',
-    caption: 'Сніданки щодня з 8:00. Напиши в Direct, щоб забронювати столик у Чернівцях.',
-    views: 12400,
-    likes: 880,
-    comments: 42,
-    sourceUrl: 'https://www.instagram.com/reel/abc/',
-    importedMetadata: {
-      handle: '@bacara_coffee',
-      stats: { views: 12400, likes: 880, comments: 42 },
-      description: 'міське кафе, кава, сніданки, десерти',
-    },
-  },
-  {
-    title: 'Матча, десерти і тихий дворик',
-    caption: 'Коли хочеться кави без поспіху. Збережи, щоб не загубити Bacara у Чернівцях.',
-    views: 7300,
-    likes: 410,
-    comments: 19,
-    sourceUrl: 'https://www.instagram.com/reel/def/',
-    importedMetadata: {
-      handle: '@bacara_coffee',
-      stats: { views: 7300, likes: 410, comments: 19 },
-    },
-  },
-];
-
-async function testGeminiStructuredDraftWins() {
+async function testSparseInstagramProfileDoesNotInventBrandFacts() {
   const result = await buildBrandBrainEnrichment({
-    input: 'https://www.instagram.com/bacara_coffee/',
-    metadata: {
-      source: { label: 'Instagram', tone: 'instagram' },
-      sourceStatus: 'instagram_web_profile',
-      handle: '@bacara_coffee',
-      title: 'Bacara Coffee • Instagram',
-      description: 'міське кафе у Чернівцях: кава, сніданки, десерти',
-      stats: { followers: '7.5K', posts: '421' },
-    },
-    apifySignals,
-    geminiClient: async (prompt) => {
-      assert.match(prompt, /Return only valid JSON/i);
-      assert.match(prompt, /Ранкова кава/);
-      return JSON.stringify({
-        brandName: 'Bacara Coffee',
-        businessType: 'міське кафе у Чернівцях',
-        product: 'кава, сніданки, десерти і бронювання столика',
-        audience: 'люди у Чернівцях, які шукають затишне кафе для сніданку, кави або зустрічі',
-        location: 'Чернівці',
-        offer: 'зайти на сніданок, каву або десерт у міське кафе без поспіху',
-        cta: 'написати в Direct, щоб забронювати столик або уточнити меню',
-        toneOfVoice: 'тепло, конкретно, спокійно, без перебільшень',
-        proof: '7.5K followers; reels про сніданки і каву мають тисячі переглядів',
-        contentPillars: ['сніданки', 'кава', 'атмосфера', 'десерти'],
-        keywords: ['кава Чернівці', 'сніданки Чернівці', 'міське кафе'],
-        stopTopics: ['не обіцяти найкращу каву без доказів'],
-        confidence: 0.86,
-        missingFields: ['ціни', 'адреса'],
-      });
-    },
-  });
-
-  assert.equal(result.brief.businessType, 'міське кафе у Чернівцях');
-  assert.equal(result.brief.product, 'кава, сніданки, десерти і бронювання столика');
-  assert.equal(result.brief.location, 'Чернівці');
-  assert.deepEqual(result.brief.contentPillars, ['сніданки', 'кава', 'атмосфера', 'десерти']);
-  assert.equal(result.confidence, 0.86);
-  assert.deepEqual(result.missingFields, ['ціни', 'адреса']);
-  assert.equal(result.sourceStatus, 'brand_brain_gemini');
-  assert.equal(result.evidence.apifySignalsUsed, 2);
-}
-
-async function testHeuristicFallbackUsesApifyEvidence() {
-  const result = await buildBrandBrainEnrichment({
-    input: 'https://www.instagram.com/bacara_coffee/',
-    metadata: {
-      source: { label: 'Instagram', tone: 'instagram' },
-      sourceStatus: 'url_only',
-      handle: '@bacara_coffee',
-      stats: { followers: '7.5K' },
-    },
-    apifySignals,
+    input: 'https://www.instagram.com/car_finder_/',
+    metadata: { source: { tone: 'instagram' }, sourceStatus: 'instagram_web_profile', handle: '@car_finder_', title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos', stats: { followers: '1,642', following: '55', posts: '322' } },
     geminiClient: async () => 'not json',
   });
-
-  assert.equal(result.brief.businessType, 'кафе / їжа');
-  assert.match(result.brief.product, /кава|сніданки|десерти/i);
-  assert.match(result.brief.audience, /Чернівцях|кафе/i);
-  assert.match(result.brief.cta, /Direct/i);
-  assert.match(result.brief.proof, /7.5K followers/);
-  assert.equal(result.sourceStatus, 'brand_brain_heuristic');
-  assert.ok(result.confidence < 0.75);
+  assert.equal(result.brief.brandName, '@car_finder_');
+  for (const field of ['businessType', 'product', 'audience', 'offer', 'cta', 'toneOfVoice']) assert.equal(result.brief[field], '');
+  assert.match(result.brief.proof, /1,642 followers/);
+  assert.deepEqual(result.missingFields, ['businessType', 'product', 'audience', 'offer', 'cta', 'toneOfVoice']);
+  assert.deepEqual(result.brief.sourceLinks, ['https://www.instagram.com/car_finder_/']);
 }
 
-function testPromptContainsSourceBoundaries() {
-  const prompt = buildGeminiBrandBrainPrompt({
-    input: '@bacara_coffee',
-    metadata: { handle: '@bacara_coffee', description: 'кава і сніданки' },
-    apifySignals,
+async function testGeminiRequiredFactsNeedSubmittedEvidence() {
+  const base = { input: 'https://example.com/shop https://EXAMPLE.com/shop#about', metadata: { description: 'Acme sells coffee. Visit Acme today.' } };
+  const unsupported = await buildBrandBrainEnrichment({ ...base, geminiClient: async () => JSON.stringify({ businessType: 'coffee shop', product: 'coffee', audience: 'office workers', offer: 'discount', cta: 'Visit Acme today', toneOfVoice: 'warm', evidenceByField: { cta: ['Visit Acme today'] } }) });
+  assert.match(unsupported.brief.businessType, /coffee|кафе/i);
+  assert.equal(unsupported.brief.audience, '');
+  assert.equal(unsupported.brief.cta, 'Visit Acme today');
+  assert.deepEqual(unsupported.brief.sourceLinks, ['https://example.com/shop']);
+  assert.deepEqual(unsupported.missingFields, ['product', 'audience', 'offer', 'toneOfVoice']);
+
+  const grounded = await buildBrandBrainEnrichment({ ...base, geminiClient: async () => JSON.stringify({ businessType: 'coffee shop', evidenceByField: { businessType: ['Acme sells coffee'] } }) });
+  assert.equal(grounded.brief.businessType, 'coffee shop');
+}
+
+async function testGeminiRejectsSocialProofAsBusinessFact() {
+  const result = await buildBrandBrainEnrichment({
+    input: 'https://instagram.com/acme',
+    metadata: { description: '10K views on Instagram' },
+    geminiClient: async () => JSON.stringify({
+      product: '10K views',
+      evidenceByField: { product: ['10K views'] },
+    }),
   });
-
-  assert.match(prompt, /Do not invent facts/i);
-  assert.match(prompt, /contentPillars/);
-  assert.match(prompt, /@bacara_coffee/);
+  assert.equal(result.brief.product, '');
+  assert.ok(result.missingFields.includes('product'));
 }
 
-function testApifyRoutingGuard() {
-  assert.equal(shouldUseApifyForBrandScan('https://www.instagram.com/bacara_coffee/', { sourceStatus: 'url_only' }), true);
+async function testGeminiRejectsLabelFirstMetricsAndPlatformBoilerplate() {
+  for (const [source, product] of [
+    ['Followers: 10K', 'Followers: 10K'],
+    ['Instagram profile', 'Instagram profile'],
+    ['YouTube Channel', 'YouTube Channel'],
+  ]) {
+    const result = await buildBrandBrainEnrichment({
+      input: 'https://instagram.com/acme',
+      metadata: { description: source },
+      geminiClient: async () => JSON.stringify({ product, evidenceByField: { product: [source] } }),
+    });
+    assert.equal(result.brief.product, '');
+    assert.ok(result.missingFields.includes('product'));
+  }
+}
+
+function testPromptAndApifyGuards() {
+  const prompt = buildGeminiBrandBrainPrompt({ input: '@acme', metadata: { description: 'coffee' } });
+  assert.match(prompt, /evidenceByField/);
+  assert.match(prompt, /exact snippet/i);
+  assert.equal(shouldUseApifyForBrandScan('https://www.instagram.com/acme/', { sourceStatus: 'url_only' }), true);
   assert.equal(shouldUseApifyForBrandScan('https://www.instagram.com/reel/abc/', { sourceStatus: 'url_only' }), false);
-  assert.equal(shouldUseApifyForBrandScan('кавʼярня у Чернівцях', { sourceStatus: 'manual_text' }), false);
+  assert.equal(shouldUseApifyForBrandScan('manual business text', { sourceStatus: 'manual_text' }), false);
 }
 
 (async () => {
-  await testGeminiStructuredDraftWins();
-  await testHeuristicFallbackUsesApifyEvidence();
-  testPromptContainsSourceBoundaries();
-  testApifyRoutingGuard();
+  await testSparseInstagramProfileDoesNotInventBrandFacts();
+  await testGeminiRequiredFactsNeedSubmittedEvidence();
+  await testGeminiRejectsSocialProofAsBusinessFact();
+  await testGeminiRejectsLabelFirstMetricsAndPlatformBoilerplate();
+  testPromptAndApifyGuards();
   console.log('brand brain extractor tests passed');
 })();

@@ -3,31 +3,40 @@ function compactText(value = '', maxLength = 1200) {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
-function clampConfidence(value, fallback = 0.54) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.max(0, Math.min(1, number));
-}
+const REQUIRED_FACT_FIELDS = ['businessType', 'product', 'audience', 'offer', 'cta', 'toneOfVoice'];
 
 function unique(values = [], limit = 8) {
   const seen = new Set();
-  const result = [];
-  for (const value of values) {
+  return values.reduce((result, value) => {
     const text = compactText(value, 120);
-    if (!text) continue;
-    const key = text.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(text);
-    if (result.length >= limit) break;
-  }
-  return result;
+    if (text && !seen.has(text.toLowerCase()) && result.length < limit) {
+      seen.add(text.toLowerCase());
+      result.push(text);
+    }
+    return result;
+  }, []);
 }
 
 function normalizeArray(value, limit = 8) {
-  if (Array.isArray(value)) return unique(value, limit);
-  if (!value) return [];
-  return unique(String(value).split(/[,;\n]/), limit);
+  return unique(Array.isArray(value) ? value : String(value || '').split(/[,;\n]/), limit);
+}
+
+function normalizeSourceLinks(value) {
+  const candidates = Array.isArray(value) ? value : String(value || '').match(/https?:\/\/[^\s<>'"`]+/gi) || [];
+  const seen = new Set();
+  return candidates.reduce((links, candidate) => {
+    try {
+      const url = new URL(String(candidate).replace(/[),.;]+$/, ''));
+      if (!/^https?:$/.test(url.protocol)) return links;
+      url.hash = '';
+      const normalized = url.toString();
+      if (!seen.has(normalized.toLowerCase())) {
+        seen.add(normalized.toLowerCase());
+        links.push(normalized);
+      }
+    } catch {}
+    return links;
+  }, []);
 }
 
 function normalizeBrief(value = {}) {
@@ -44,235 +53,141 @@ function normalizeBrief(value = {}) {
     contentPillars: normalizeArray(value.contentPillars || value.pillars, 8),
     keywords: normalizeArray(value.keywords, 10),
     stopTopics: normalizeArray(value.stopTopics, 8),
+    sourceLinks: normalizeSourceLinks(value.sourceLinks),
   };
 }
 
 function getSignalStats(signal = {}) {
-  const metadataStats = signal.importedMetadata?.stats || {};
-  return {
-    views: Number(signal.views || metadataStats.views || 0) || 0,
-    likes: Number(signal.likes || metadataStats.likes || 0) || 0,
-    comments: Number(signal.comments || metadataStats.comments || 0) || 0,
-  };
+  const stats = signal.importedMetadata?.stats || {};
+  return { views: Number(signal.views || stats.views || 0) || 0, likes: Number(signal.likes || stats.likes || 0) || 0, comments: Number(signal.comments || stats.comments || 0) || 0 };
 }
 
 function summarizeApifySignals(apifySignals = []) {
-  return (Array.isArray(apifySignals) ? apifySignals : [])
-    .slice(0, 12)
-    .map((signal) => {
-      const stats = getSignalStats(signal);
-      const text = compactText([
-        signal.title,
-        signal.caption,
-        signal.transcript,
-        signal.importedMetadata?.description,
-      ].filter(Boolean).join(' '), 700);
-      return {
-        handle: signal.handle || signal.sourceHandle || signal.importedMetadata?.handle || '',
-        title: compactText(signal.title, 160),
-        caption: compactText(signal.caption || signal.importedMetadata?.description, 420),
-        url: signal.sourceUrl || signal.importedMetadata?.url || '',
-        stats,
-        text,
-      };
-    })
-    .filter((item) => item.text || item.title || item.caption);
+  return (Array.isArray(apifySignals) ? apifySignals : []).slice(0, 12).map((signal) => ({
+    handle: signal.handle || signal.sourceHandle || signal.importedMetadata?.handle || '',
+    title: compactText(signal.title, 160),
+    caption: compactText(signal.caption || signal.importedMetadata?.description, 420),
+    url: signal.sourceUrl || signal.importedMetadata?.url || '',
+    stats: getSignalStats(signal),
+    text: compactText([signal.title, signal.caption, signal.transcript, signal.importedMetadata?.description].filter(Boolean).join(' '), 700),
+  })).filter((item) => item.text || item.title || item.caption);
+}
+
+function cleanSourceText(value = '') {
+  return compactText(value)
+    .replace(/\b[\d,.]+\s*[KMB]?\s+(?:followers|following|posts)\b,?\s*/gi, '')
+    .replace(/\bsee instagram photos and videos(?: from)?\b/gi, '')
+    .replace(/\bcreate an account or log in to instagram\b/gi, '')
+    .replace(/\bshare what you're into with the people who get you\b/gi, '')
+    .trim();
+}
+
+function combinedSourceMaterial({ input = '', metadata = {}, apifySignals = [] } = {}) {
+  return compactText([input, metadata.title, metadata.description, ...summarizeApifySignals(apifySignals).map((signal) => signal.text)]
+    .map(cleanSourceText).filter(Boolean).join(' '), 5000);
 }
 
 function buildGeminiBrandBrainPrompt({ input = '', metadata = {}, apifySignals = [] } = {}) {
-  const signalSummary = summarizeApifySignals(apifySignals);
   return [
     'You are Dzhero Brand Brain extractor.',
     'Return only valid JSON. Do not wrap it in markdown.',
-    'Do not invent facts. If a field is inferred from weak evidence, keep it practical and add the gap to missingFields.',
-    'Use Ukrainian for user-facing fields unless the source is clearly English-only.',
-    '',
-    'Required JSON keys:',
-    'brandName, businessType, product, audience, location, offer, cta, toneOfVoice, proof, contentPillars, keywords, stopTopics, confidence, missingFields.',
-    '',
+    'Do not invent facts. Leave unsupported facts empty.',
+    'Required JSON keys: brandName, businessType, product, audience, location, offer, cta, toneOfVoice, proof, contentPillars, keywords, stopTopics, confidence, missingFields, evidenceByField.',
+    'For every populated required fact (businessType, product, audience, offer, cta, toneOfVoice), evidenceByField must include an exact snippet copied from the submitted source material.',
     `User input: ${compactText(input, 500)}`,
-    `Public metadata: ${JSON.stringify({
-      handle: metadata.handle || '',
-      title: metadata.title || '',
-      description: metadata.description || '',
-      stats: metadata.stats || {},
-      sourceStatus: metadata.sourceStatus || '',
-    })}`,
-    `Apify profile signals: ${JSON.stringify(signalSummary)}`,
+    `Public metadata: ${JSON.stringify({ handle: metadata.handle || '', title: metadata.title || '', description: metadata.description || '', stats: metadata.stats || {}, sourceStatus: metadata.sourceStatus || '' })}`,
+    `Apify profile signals: ${JSON.stringify(summarizeApifySignals(apifySignals))}`,
   ].join('\n');
 }
 
 function extractJsonObject(text = '') {
   const raw = String(text || '').trim();
-  if (!raw) return null;
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const candidate = fenced || raw;
-  try {
-    return JSON.parse(candidate);
-  } catch {
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start === -1 || end === -1 || end <= start) return null;
-    try {
-      return JSON.parse(candidate.slice(start, end + 1));
-    } catch {
-      return null;
-    }
+  const candidate = raw.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1] || raw;
+  try { return JSON.parse(candidate); } catch {
+    const start = candidate.indexOf('{'); const end = candidate.lastIndexOf('}');
+    try { return start >= 0 && end > start ? JSON.parse(candidate.slice(start, end + 1)) : null; } catch { return null; }
   }
 }
 
 function inferBusinessType(text = '') {
-  const lower = text.toLowerCase();
-  if (/кава|кав|coffee|снідан|десерт|круасан|матча|cafe|restaurant|breakfast/.test(lower)) return 'кафе / їжа';
-  if (/манік|beauty|salon|nails|бров/.test(lower)) return 'салон краси / beauty';
-  if (/одяг|сукн|футбол|fashion|clothes|wear/.test(lower)) return 'магазин одягу';
-  if (/fitness|workout|пілатес|йога|тренув|спорт/.test(lower)) return 'фітнес / wellness';
-  return 'локальний бізнес';
+  if (/\bcoffee|cafe|restaurant|breakfast\b|\u043a\u0430\u0432|\u0441\u043d\u0456\u0434\u0430\u043d|\u0434\u0435\u0441\u0435\u0440\u0442/i.test(text)) return '\u043a\u0430\u0444\u0435 / \u0457\u0436\u0430';
+  if (/\bbeauty|salon|nails\b|\u043c\u0430\u043d\u0456\u043a|\u0431\u0440\u043e\u0432/i.test(text)) return '\u0441\u0430\u043b\u043e\u043d \u043a\u0440\u0430\u0441\u0438 / beauty';
+  if (/\bfashion|clothes|wear\b|\u043e\u0434\u044f\u0433|\u0441\u0443\u043a\u043d|\u0444\u0443\u0442\u0431\u043e\u043b/i.test(text)) return '\u043c\u0430\u0433\u0430\u0437\u0438\u043d \u043e\u0434\u044f\u0433\u0443';
+  if (/\bfitness|workout\b|\u043f\u0456\u043b\u0430\u0442\u0435\u0441|\u0439\u043e\u0433|\u0442\u0440\u0435\u043d\u0443\u0432/i.test(text)) return '\u0444\u0456\u0442\u043d\u0435\u0441 / wellness';
+  return '';
 }
 
 function inferLocation(text = '') {
-  const lower = text.toLowerCase();
-  const known = [
-    ['Чернівці', /чернівц/i],
-    ['Київ', /київ|києв/i],
-    ['Львів', /львів|львов/i],
-    ['Одеса', /одес/i],
-    ['Дніпро', /дніпр/i],
-    ['Харків', /харків|харьк/i],
-    ['Україна', /україн|украин/i],
-  ];
-  return known.find(([, pattern]) => pattern.test(lower))?.[0] || '';
+  const known = [['\u0427\u0435\u0440\u043d\u0456\u0432\u0446\u0456', /\u0447\u0435\u0440\u043d\u0456\u0432\u0446/i], ['\u041a\u0438\u0457\u0432', /\u043a\u0438\u0457\u0432/i], ['\u041b\u044c\u0432\u0456\u0432', /\u043b\u044c\u0432\u0456\u0432/i], ['\u0423\u043a\u0440\u0430\u0457\u043d\u0430', /\u0443\u043a\u0440\u0430\u0457\u043d/i]];
+  return known.find(([, pattern]) => pattern.test(text))?.[0] || '';
 }
 
 function inferKeywords(text = '') {
-  const dictionary = [
-    'кава',
-    'сніданки',
-    'десерти',
-    'матча',
-    'круасан',
-    'бронювання',
-    'манікюр',
-    'одяг',
-    'тренування',
-    'консультація',
-  ];
-  const lower = text.toLowerCase();
-  return dictionary.filter((word) => lower.includes(word.toLowerCase()));
+  const dictionary = ['\u043a\u0430\u0432\u0430', '\u0441\u043d\u0456\u0434\u0430\u043d\u043a\u0438', '\u0434\u0435\u0441\u0435\u0440\u0442\u0438', '\u043c\u0430\u0442\u0447\u0430', '\u043a\u0440\u0443\u0430\u0441\u0430\u043d', '\u043c\u0430\u043d\u0456\u043a\u044e\u0440', '\u043e\u0434\u044f\u0433', '\u0442\u0440\u0435\u043d\u0443\u0432\u0430\u043d\u043d\u044f'];
+  return dictionary.filter((word) => text.toLowerCase().includes(word));
 }
 
 function inferCta(text = '') {
-  if (/direct|директ|напиши|брон/i.test(text)) return 'написати в Direct, щоб забронювати або уточнити деталі';
-  if (/замов|order|куп/i.test(text)) return 'написати в Direct або перейти за лінком, щоб замовити';
-  return 'написати в Direct, щоб уточнити деталі';
+  return compactText(text.match(/[^.!?\n]*(?:direct|\u0434\u0438\u0440\u0435\u043a\u0442|\u043d\u0430\u043f\u0438\u0448\u0438|\u0437\u0430\u043c\u043e\u0432|order|\u043a\u0443\u043f|book|visit)[^.!?\n]*/i)?.[0], 220);
 }
 
 function buildHeuristicBrief({ input = '', metadata = {}, apifySignals = [] } = {}) {
-  const signalSummary = summarizeApifySignals(apifySignals);
-  const combinedText = compactText([
-    input,
-    metadata.title,
-    metadata.description,
-    metadata.handle,
-    ...signalSummary.map((signal) => signal.text),
-  ].filter(Boolean).join(' '), 5000);
-  const keywords = inferKeywords(combinedText);
-  const businessType = inferBusinessType(combinedText);
-  const location = inferLocation(combinedText);
-  const product = keywords.length
-    ? unique(keywords, 5).join(', ')
-    : compactText(metadata.description || metadata.title || input, 220);
-  const audience = location
-    ? `люди у ${location}, які шукають ${businessType === 'кафе / їжа' ? 'кафе, каву або сніданок' : product || 'це рішення'}`
-    : `люди, яким потрібен ${product || businessType} і які можуть купити зараз`;
-  const statParts = [
-    metadata.stats?.followers && `${metadata.stats.followers} followers`,
-    metadata.stats?.posts && `${metadata.stats.posts} posts`,
-    signalSummary[0]?.stats?.views && `${signalSummary[0].stats.views} views на одному з роликів`,
-  ].filter(Boolean);
-
+  const signals = summarizeApifySignals(apifySignals);
+  const text = combinedSourceMaterial({ input, metadata, apifySignals });
+  const keywords = inferKeywords(text);
+  const proof = [metadata.stats?.followers && `${metadata.stats.followers} followers`, metadata.stats?.posts && `${metadata.stats.posts} posts`, signals[0]?.stats?.views && `${signals[0].stats.views} views`].filter(Boolean).join('; ');
   return normalizeBrief({
-    brandName: metadata.handle || '',
-    businessType,
-    product,
-    audience,
-    location,
-    offer: businessType === 'кафе / їжа'
-      ? `зайти на ${keywords.includes('сніданки') ? 'сніданок, ' : ''}каву або десерт`
-      : `зрозуміла пропозиція навколо: ${product || businessType}`,
-    cta: inferCta(combinedText),
-    toneOfVoice: 'коротко, конкретно, дружньо, без перебільшень',
-    proof: statParts.join('; '),
-    contentPillars: unique(keywords.length ? keywords : [businessType, product], 6),
-    keywords: unique([...(location ? [`${product} ${location}`] : []), ...keywords], 10),
-    stopTopics: ['не вигадувати цифри', 'не обіцяти результат без доказу', 'не копіювати чужий контент дослівно'],
+    brandName: metadata.handle || '', businessType: inferBusinessType(text), product: keywords.join(', '), audience: '', location: inferLocation(text), offer: '', cta: inferCta(text), toneOfVoice: '', proof,
+    contentPillars: keywords, keywords, stopTopics: [], sourceLinks: normalizeSourceLinks(input),
   });
 }
 
-function mergeBriefs(fallbackBrief, geminiBrief) {
-  const normalizedGemini = normalizeBrief(geminiBrief);
-  const result = { ...fallbackBrief };
-  for (const [key, value] of Object.entries(normalizedGemini)) {
-    if (Array.isArray(value)) {
-      if (value.length) result[key] = value;
-    } else if (value) {
-      result[key] = value;
-    }
+function hasSubmittedEvidence(field, evidenceByField, sourceMaterial) {
+  const source = String(sourceMaterial || '').toLowerCase();
+  const snippets = unique(Array.isArray(evidenceByField?.[field]) ? evidenceByField[field] : [evidenceByField?.[field]], 8);
+  const value = compactText(evidenceByField?.[field]);
+  if (isSocialMetricOrPlatformBoilerplate(value) || snippets.some(isSocialMetricOrPlatformBoilerplate)) return false;
+  return snippets.some((snippet) => source.includes(snippet.toLowerCase()));
+}
+
+function isSocialMetricOrPlatformBoilerplate(value = '') {
+  const text = compactText(value);
+  return /\b\d[\d,.]*\s*[kmb]?\s*(?:views?|likes?|comments?|followers?|following|posts?|subscribers?)\b/i.test(text)
+    || /\b(?:views?|likes?|comments?|followers?|following|posts?|subscribers?)\s*:\s*\d[\d,.]*\s*[kmb]?\b/i.test(text)
+    || /^(?:watch\s+on\s+)?(?:instagram|tiktok|youtube)(?:\s+(?:profile|page|account|channel|videos?|shorts|reels|photos?|posts))?$/i.test(text)
+    || /\b(?:see instagram photos and videos|create an account|log in to instagram|share what you're into)\b/i.test(text);
+}
+
+function mergeGroundedGeminiBrief(fallbackBrief, geminiBrief, sourceMaterial) {
+  const normalized = normalizeBrief(geminiBrief); const result = { ...fallbackBrief };
+  for (const [field, value] of Object.entries(normalized)) {
+    if (REQUIRED_FACT_FIELDS.includes(field)) result[field] = value && !isSocialMetricOrPlatformBoilerplate(value) && hasSubmittedEvidence(field, geminiBrief.evidenceByField, sourceMaterial) ? value : fallbackBrief[field] || '';
+    else if (Array.isArray(value)) { if (value.length) result[field] = value; } else if (value) result[field] = value;
   }
   return result;
 }
 
+function missingRequiredFacts(brief = {}) { return REQUIRED_FACT_FIELDS.filter((field) => !compactText(brief[field])); }
+
 async function buildBrandBrainEnrichment({ input = '', metadata = {}, apifySignals = [], geminiClient = null } = {}) {
   const fallbackBrief = buildHeuristicBrief({ input, metadata, apifySignals });
-  const evidence = {
-    publicSourceStatus: metadata.sourceStatus || '',
-    publicHandle: metadata.handle || '',
-    apifySignalsUsed: Array.isArray(apifySignals) ? apifySignals.length : 0,
-    apifyCaptionsUsed: summarizeApifySignals(apifySignals).filter((signal) => signal.caption || signal.text).length,
-  };
-
+  const evidence = { publicSourceStatus: metadata.sourceStatus || '', publicHandle: metadata.handle || '', apifySignalsUsed: Array.isArray(apifySignals) ? apifySignals.length : 0, apifyCaptionsUsed: summarizeApifySignals(apifySignals).filter((signal) => signal.caption || signal.text).length };
+  const sourceMaterial = combinedSourceMaterial({ input, metadata, apifySignals });
   if (typeof geminiClient === 'function') {
-    const prompt = buildGeminiBrandBrainPrompt({ input, metadata, apifySignals });
     try {
-      const responseText = await geminiClient(prompt);
-      const parsed = extractJsonObject(responseText);
+      const parsed = extractJsonObject(await geminiClient(buildGeminiBrandBrainPrompt({ input, metadata, apifySignals })));
       if (parsed && typeof parsed === 'object') {
-        return {
-          brief: mergeBriefs(fallbackBrief, parsed),
-          evidence,
-          sourceStatus: 'brand_brain_gemini',
-          confidence: clampConfidence(parsed.confidence, 0.78),
-          missingFields: normalizeArray(parsed.missingFields, 10),
-        };
+        const brief = mergeGroundedGeminiBrief(fallbackBrief, parsed, sourceMaterial);
+        return { brief, evidence, sourceStatus: 'brand_brain_gemini', confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0.78)), missingFields: missingRequiredFacts(brief) };
       }
-    } catch (error) {
-      evidence.geminiError = error.message || 'gemini_failed';
-    }
+    } catch (error) { evidence.geminiError = error.message || 'gemini_failed'; }
   }
-
-  return {
-    brief: fallbackBrief,
-    evidence,
-    sourceStatus: 'brand_brain_heuristic',
-    confidence: evidence.apifySignalsUsed ? 0.62 : 0.42,
-    missingFields: evidence.apifySignalsUsed ? ['ціни', 'точна адреса', 'унікальна перевага'] : ['опис бізнесу', 'продукт', 'аудиторія'],
-  };
+  return { brief: fallbackBrief, evidence, sourceStatus: 'brand_brain_heuristic', confidence: evidence.apifySignalsUsed ? 0.62 : 0.42, missingFields: missingRequiredFacts(fallbackBrief) };
 }
 
 function shouldUseApifyForBrandScan(input = '', metadata = {}) {
   const raw = String(input || '').trim();
-  if (!/(^@[\w.]+$|instagram\.com\/)/i.test(raw)) return false;
-  if (/instagram\.com\/(?:p|reel|reels|tv|stories|explore)\//i.test(raw)) return false;
-  if (metadata.source?.tone && metadata.source.tone !== 'instagram') return false;
-  if (metadata.sourceStatus === 'manual_text') return false;
-  return true;
+  return /(^@[\w.]+$|instagram\.com\/)/i.test(raw) && !/instagram\.com\/(?:p|reel|reels|tv|stories|explore)\//i.test(raw) && (!metadata.source?.tone || metadata.source.tone === 'instagram') && metadata.sourceStatus !== 'manual_text';
 }
 
-module.exports = {
-  buildBrandBrainEnrichment,
-  buildGeminiBrandBrainPrompt,
-  buildHeuristicBrief,
-  extractJsonObject,
-  shouldUseApifyForBrandScan,
-  summarizeApifySignals,
-};
+module.exports = { buildBrandBrainEnrichment, buildGeminiBrandBrainPrompt, buildHeuristicBrief, extractJsonObject, normalizeSourceLinks, shouldUseApifyForBrandScan, summarizeApifySignals };

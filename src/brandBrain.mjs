@@ -59,7 +59,9 @@ function normalizeProductPhrase(value) {
 }
 
 function isGenericPlatformMeta(value) {
-  return /create an account|log in to instagram|share what you're into|people who get you|instagram\.com/i.test(compactText(value));
+  const text = compactText(value);
+  return /^(?:watch\s+on\s+)?(?:instagram|tiktok|youtube)(?:\s+(?:profile|page|account|channel|videos?|shorts|reels|photos?|posts))?$/i.test(text)
+    || /create an account|log in to instagram|share what you're into|people who get you|instagram\.com|see instagram photos and videos/i.test(text);
 }
 
 function isProductionDraftTitle(value) {
@@ -164,19 +166,20 @@ export function buildBrandBrainDraft({
   language = 'uk',
 } = {}) {
   const businessType = compactText(label || (isEnglish(language) ? 'local business' : 'локальний бізнес'));
-  const product = extractCleanBrandProduct({ title, description, handle, label: businessType }) || businessType;
+  const product = extractCleanBrandProduct({ title, description, handle, label: '' });
   const proof = [
     stats.followers && `${stats.followers} followers`,
     stats.posts && `${stats.posts} posts`,
-    compactText(title) && !isProductionDraftTitle(title) && normalizeProductPhrase(stripBrandPrefix(stripHandle(stripProfileStats(title), handle))),
+    compactText(title) && !isProductionDraftTitle(title) && !isGenericPlatformMeta(title) && normalizeProductPhrase(stripBrandPrefix(stripHandle(stripProfileStats(title), handle))),
   ].filter(Boolean).join(' · ');
 
   return {
     businessType,
     product,
-    audience: buildAudience(product, businessType, language),
-    offer: buildOffer(product, businessType, language),
-    cta: buildCta(product, exampleCaption, language),
+    audience: '',
+    offer: '',
+    cta: '',
+    toneOfVoice: '',
     proof,
   };
 }

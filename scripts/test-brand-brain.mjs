@@ -6,91 +6,61 @@ const draft = buildBrandBrainDraft({
   title: '220K Followers, 7 Following, 4,529 Posts - See Instagram photos and videos from WOWBODY - 20-minute workouts for health and beauty (@wowbody_app)',
   description: '@wowbody_app - WOWBODY - 20-minute workouts for health and beauty',
   handle: '@wowbody_app',
-  stats: {
-    followers: '220K',
-    following: '7',
-    posts: '4,529',
-  },
+  stats: { followers: '220K', following: '7', posts: '4,529' },
   exampleCaption: '20 minutes is better than starting Monday. Save this mini-start and write START if you want the first mini workout.',
 });
 
 assert.equal(draft.businessType, 'fitness / wellness');
 assert.equal(draft.product, '20-minute workouts for health and beauty');
-assert.equal(draft.audience, 'люди, які хочуть короткі тренування для здоровʼя і краси без довгої рутини в залі');
-assert.equal(draft.offer, '20-хвилинне стартове тренування, яке можна зберегти і спробувати сьогодні');
-assert.equal(draft.cta, 'написати START, щоб отримати перше міні-тренування');
+assert.equal(draft.audience, '');
+assert.equal(draft.offer, '');
+assert.equal(draft.cta, '');
+assert.equal(draft.toneOfVoice, '');
 assert.match(draft.proof, /220K followers/);
 assert.doesNotMatch(draft.product, /Followers|Following|Posts|See Instagram/i);
-assert.doesNotMatch(draft.audience, /@wowbody_app|Followers|Following|Posts|See Instagram/i);
-assert.doesNotMatch(draft.offer, /Followers|Following|Posts|See Instagram/i);
-
-const englishDraft = buildBrandBrainDraft({
-  language: 'en',
-  label: 'fitness / wellness',
-  title: draft.product,
-  stats: { followers: '220K' },
-  exampleCaption: 'write START',
-});
-
-assert.equal(englishDraft.audience, 'people who want short health and beauty workouts without a long gym routine');
-assert.equal(englishDraft.offer, 'a 20-minute starter workout people can save and try today');
-assert.equal(englishDraft.cta, 'write START to get the first mini workout');
-
-const fallback = buildBrandBrainDraft({
-  label: 'local business',
-  title: 'Only stats: 5K Followers, 12 Following, 33 Posts - See Instagram photos and videos',
-  description: '',
-  handle: '@empty',
-  stats: { followers: '5K' },
-});
-
-assert.equal(fallback.product, 'local business');
-assert.equal(fallback.offer, 'зрозуміла пропозиція для людей, яким потрібен local business');
-assert.doesNotMatch(fallback.product, /Followers|Following|Posts|See Instagram/i);
 
 const instagramLoginDraft = buildBrandBrainDraft({
-  label: 'Фітнес / wellness',
+  label: 'fitness / wellness',
   title: "Create an account or log in to Instagram - Share what you're into with the people who get you.",
   description: "Create an account or log in to Instagram - Share what you're into with the people who get you.",
   handle: '@wowbody_app',
-  stats: {},
-  language: 'uk',
 });
+assert.equal(instagramLoginDraft.product, '');
+assert.equal(instagramLoginDraft.audience, '');
+assert.equal(instagramLoginDraft.offer, '');
+assert.equal(instagramLoginDraft.cta, '');
+assert.doesNotMatch(Object.values(instagramLoginDraft).join(' '), /Create an account|log in to Instagram|people who get you/i);
 
-assert.equal(instagramLoginDraft.product, 'Фітнес / wellness');
-assert.equal(instagramLoginDraft.offer, 'зрозуміла пропозиція для людей, яким потрібен Фітнес \/ wellness');
-assert.doesNotMatch(instagramLoginDraft.product, /Create an account|log in to Instagram|people who get you/i);
-assert.doesNotMatch(instagramLoginDraft.offer, /Create an account|log in to Instagram|people who get you/i);
+for (const boilerplate of ['Watch on YouTube', 'TikTok videos', 'YouTube Channel']) {
+  const platformDraft = buildBrandBrainDraft({
+    label: 'creator',
+    title: boilerplate,
+    description: boilerplate,
+    handle: '@creator',
+  });
+  assert.equal(platformDraft.product, '');
+  assert.doesNotMatch(Object.values(platformDraft).join(' '), /Watch on YouTube|TikTok videos/i);
+}
 
 const productionFallbackDraft = buildBrandBrainDraft({
-  label: 'Локальний бізнес',
-  title: 'Short-form: проблема + рішення',
-  description: '',
-  handle: '@voronych_',
-  stats: {},
-  language: 'uk',
+  label: 'local business',
+  title: 'Short-form: problem + solution',
+  handle: '@creator',
 });
-
-assert.equal(productionFallbackDraft.product, 'Локальний бізнес');
-assert.equal(productionFallbackDraft.offer, 'зрозуміла пропозиція для людей, яким потрібен Локальний бізнес');
-assert.doesNotMatch(productionFallbackDraft.product, /Short-form|проблема \+ рішення/i);
-assert.doesNotMatch(productionFallbackDraft.offer, /Short-form|проблема \+ рішення/i);
+assert.equal(productionFallbackDraft.product, '');
+assert.equal(productionFallbackDraft.audience, '');
+assert.equal(productionFallbackDraft.offer, '');
+assert.equal(productionFallbackDraft.cta, '');
 
 const clothingDraft = buildBrandBrainDraft({
-  label: 'Магазин одягу',
-  title: '1,234 Followers, 12 Following, 88 Posts - See Instagram photos and videos from МАЙКА, ФУТБОЛКА, БОДІ, ЛОНГСЛІВ, СУКНЯ, КОМБІНЕЗОН, ТОП ()',
-  description: '',
-  handle: '@anshelbrand',
+  label: 'clothing store',
+  title: '1,234 Followers, 12 Following, 88 Posts - See Instagram photos and videos from \u041c\u0410\u0419\u041a\u0410, \u0424\u0423\u0422\u0411\u041e\u041b\u041a\u0410, \u0421\u0423\u041a\u041d\u042f ()',
+  handle: '@shop',
   stats: { followers: '1,234', posts: '88' },
-  language: 'uk',
 });
-
-assert.equal(clothingDraft.businessType, 'Магазин одягу');
-assert.equal(clothingDraft.product, 'майка, футболка, боді, лонгслів, сукня, комбінезон, топ');
-assert.equal(clothingDraft.audience, 'жінки, які обирають стильний повсякденний одяг онлайн і хочуть бачити посадку, тканину та готові образи перед покупкою');
-assert.equal(clothingDraft.offer, 'актуальні речі для повсякденних образів, які можна замовити в Direct');
-assert.equal(clothingDraft.cta, 'написати в Direct, щоб уточнити наявність, розмір або замовити');
+assert.equal(clothingDraft.product, '\u043c\u0430\u0439\u043a\u0430, \u0444\u0443\u0442\u0431\u043e\u043b\u043a\u0430, \u0441\u0443\u043a\u043d\u044f');
+assert.equal(clothingDraft.audience, '');
+assert.equal(clothingDraft.offer, '');
+assert.equal(clothingDraft.cta, '');
 assert.doesNotMatch(clothingDraft.product, /^from\b|\(\)|Followers|Following|Posts|See Instagram/i);
-assert.doesNotMatch(clothingDraft.audience, /^люди, яким потрібен from/i);
-assert.doesNotMatch(clothingDraft.offer, /головна пропозиція|from МАЙКА/i);
-assert.doesNotMatch(clothingDraft.proof, /^from\b|\(\)|Following|See Instagram/i);
+console.log('brand brain tests passed');
