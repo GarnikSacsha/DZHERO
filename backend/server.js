@@ -48,6 +48,15 @@ const {
   shouldUseApifyForBrandScan,
 } = require('./services/brandBrainExtractor.cjs');
 const {
+  normalizeBrandAnswers,
+  getMissingBrandAnswers,
+  normalizeBrandBrainDraft,
+  projectBrandBrainCompatibility,
+  isBrandContextComplete,
+  buildBrandAnswerFingerprint,
+} = require('./services/brandBrainV2.cjs');
+const { finalizeBrandBrainV2 } = require('./services/brandBrainFinalizer.cjs');
+const {
   shouldChargeBrandBrainSave,
   getMissingRequiredBrandFields,
   normalizeBrandBrainSourceLinks,
@@ -1947,6 +1956,20 @@ function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
   };
 }
 
+function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
+  const entitlements = buildEntitlements(db, workspaceId, authUser);
+  const ownReels = db.reels.filter((item) => item.workspaceId === workspaceId);
+  const sharedBank = isSharedSignalBankPlan(entitlements)
+    ? buildSharedSignalBankReels(db, {
+        targetWorkspaceId: workspaceId,
+        workspaceId: SHARED_SIGNAL_BANK_WORKSPACE_ID,
+        ownerEmail: SHARED_SIGNAL_BANK_OWNER_EMAIL || Array.from(UNLIMITED_ACCESS_EMAILS)[0] || '',
+        limit: SHARED_SIGNAL_BANK_LIMIT,
+      })
+    : { reels: [] };
+  return dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBank.reels]);
+}
+
 function getCurrentActor(db, actorUser) {
   if (!actorUser?.id) return actorUser || null;
   return db.users.find((user) => user.id === actorUser.id) || null;
@@ -3413,6 +3436,7 @@ function usesLongRunningExternalWork(req) {
     /^\/brand-scan\/preview\/?$/,
     /^\/workspaces\/[^/]+\/reels\/import-url\/?$/,
     /^\/workspaces\/[^/]+\/agent\/chat\/?$/,
+    /^\/workspaces\/[^/]+\/agent\/context\/finalize\/?$/,
     /^\/workspaces\/[^/]+\/remix\/generate\/?$/,
   ].some((pattern) => pattern.test(req.path));
 }
@@ -5654,6 +5678,10 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  if (Number(workspace.brief?.schemaVersion) === 2) {
+    res.status(409).json({ error: 'brand_brain_v2_finalize_required' });
+    return;
+  }
   const { nextBrief, missingFields } = prepareBrandBrainWrite(workspace.brief, req.body);
   if (missingFields.length) {
     res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields });
@@ -6304,18 +6332,8 @@ app.post('/api/workspaces/:workspaceId/competitors', async (req, res) => {
 app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
   const db = await readDb();
   if (!requireWorkspace(db, req.params.workspaceId, res)) return;
-  const entitlements = buildEntitlements(db, req.params.workspaceId, req.authUser);
-  const ownReels = db.reels.filter((item) => item.workspaceId === req.params.workspaceId);
-  const sharedBank = isSharedSignalBankPlan(entitlements)
-    ? buildSharedSignalBankReels(db, {
-        targetWorkspaceId: req.params.workspaceId,
-        workspaceId: SHARED_SIGNAL_BANK_WORKSPACE_ID,
-        ownerEmail: SHARED_SIGNAL_BANK_OWNER_EMAIL || Array.from(UNLIMITED_ACCESS_EMAILS)[0] || '',
-        limit: SHARED_SIGNAL_BANK_LIMIT,
-      })
-    : { sourceWorkspaceId: '', reels: [] };
-  const sharedBankReels = dedupeWorkspaceReelsForResponse(sharedBank.reels);
-  const reels = dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBankReels]);
+  const reels = getAccessibleWorkspaceSignals(db, req.params.workspaceId, req.authUser);
+  const sharedBankReels = reels.filter((item) => item.sharedBank);
   res.json({
     reels,
     sharedBank: {
@@ -6951,19 +6969,170 @@ app.get('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  const brief = workspace.brief || {};
+  const complete = isBrandContextComplete(brief);
   res.json({
     workspaceId: workspace.id,
-    brief: workspace.brief || {},
-    brandBrain: normalizeBrandBrain(workspace.brief || {}),
+    complete,
+    brief,
+    brandBrain: normalizeBrandBrain(projectBrandBrainCompatibility(brief)),
+    draft: complete ? null : normalizeBrandBrainDraft(workspace.brandBrainDraft),
+    recommendation: brief.recommendation || null,
     providers: getAiProviderStatus(),
     memory: db.aiMemory.filter((item) => item.workspaceId === req.params.workspaceId).slice(0, 20),
   });
+});
+
+app.put('/api/workspaces/:workspaceId/agent/context/draft', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  if (isBrandContextComplete(workspace.brief || {})) {
+    res.status(409).json({ error: 'brand_brain_already_complete' });
+    return;
+  }
+  workspace.brandBrainDraft = {
+    ...normalizeBrandBrainDraft(req.body),
+    updatedAt: new Date().toISOString(),
+  };
+  await writeDb(db);
+  res.json({ complete: false, draft: workspace.brandBrainDraft });
+});
+
+app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res, next) => {
+  try {
+    const requestedAnswers = normalizeBrandAnswers(req.body?.answers);
+    const missingFields = getMissingBrandAnswers(requestedAnswers);
+    if (missingFields.length) {
+      res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields });
+      return;
+    }
+    const fingerprint = buildBrandAnswerFingerprint(requestedAnswers);
+    const initialDb = await readDb();
+    const initialWorkspace = requireWorkspace(initialDb, req.params.workspaceId, res);
+    if (!initialWorkspace) return;
+    const existingRecommendation = initialWorkspace.brief?.recommendation;
+    if (Number(initialWorkspace.brief?.schemaVersion) === 2
+      && existingRecommendation?.briefFingerprint === fingerprint) {
+      const accessible = getAccessibleWorkspaceSignals(initialDb, initialWorkspace.id, req.authUser);
+      const signal = accessible.find((item) => item.id === existingRecommendation.signalId);
+      if (signal) {
+        res.json({ complete: true, brief: initialWorkspace.brief, recommendation: existingRecommendation, signal });
+        return;
+      }
+      res.status(409).json({ error: 'brand_brain_recommendation_unavailable' });
+      return;
+    }
+
+    let instagramMetadata = {};
+    if (requestedAnswers.instagramUrl) {
+      try {
+        instagramMetadata = await Promise.race([
+          fetchPublicSourceMetadata(requestedAnswers.instagramUrl),
+          new Promise((resolve) => setTimeout(() => resolve({}), 2500)),
+        ]);
+      } catch {
+        instagramMetadata = {};
+      }
+    }
+    const accessibleSignals = getAccessibleWorkspaceSignals(initialDb, initialWorkspace.id, req.authUser);
+    const deriveClient = GEMINI_API_KEY
+      ? (prompt) => generateGeminiJsonText(prompt, {
+          maxOutputTokens: 1600,
+          temperature: 0.2,
+          operation: 'brand_brain_derive_v2',
+        })
+      : null;
+    const rerankClient = GEMINI_API_KEY
+      ? (prompt) => generateGeminiJsonText(prompt, {
+          maxOutputTokens: 500,
+          temperature: 0.1,
+          operation: 'brand_signal_rerank',
+        })
+      : null;
+    const finalized = await finalizeBrandBrainV2({
+      answers: requestedAnswers,
+      signals: accessibleSignals,
+      instagramMetadata,
+      deriveClient,
+      rerankClient,
+    });
+    if (!finalized.ok) {
+      res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields: finalized.missingFields });
+      return;
+    }
+    if (!finalized.recommendation || !accessibleSignals.some((item) => item.id === finalized.recommendation.signalId)) {
+      res.status(409).json({ error: 'brand_brain_accessible_signal_required' });
+      return;
+    }
+
+    const payload = await serializeBackgroundMutation(() => withAutomaticDiscoveryStateLock(req.params.workspaceId, async (db) => {
+      const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+      const workspace = current.workspace;
+      const actorUser = current.actorUser;
+      const currentRecommendation = workspace.brief?.recommendation;
+      const accessible = getAccessibleWorkspaceSignals(db, workspace.id, actorUser);
+      if (Number(workspace.brief?.schemaVersion) === 2
+        && currentRecommendation?.briefFingerprint === fingerprint) {
+        const signal = accessible.find((item) => item.id === currentRecommendation.signalId);
+        if (signal) {
+          return {
+            complete: true,
+            brief: workspace.brief,
+            recommendation: currentRecommendation,
+            signal,
+          };
+        }
+        const error = new Error('brand_brain_recommendation_unavailable');
+        error.status = 409;
+        error.payload = { error: 'brand_brain_recommendation_unavailable' };
+        throw error;
+      }
+      const signal = accessible.find((item) => item.id === finalized.recommendation.signalId);
+      if (!signal) {
+        const error = new Error('brand_brain_accessible_signal_required');
+        error.status = 409;
+        throw error;
+      }
+      const shouldChargeSave = shouldChargeBrandBrainSave({
+        existingBrief: workspace.brief || {},
+        nextBrief: finalized.brief,
+      });
+      if (shouldChargeSave) {
+        assertUsageAvailable(db, workspace.id, 'brandBrainSaves', 1, actorUser);
+        incrementUsage(db, workspace.id, USAGE_METRICS.brandBrainSaves);
+      }
+      workspace.brief = finalized.compatibilityBrief;
+      workspace.brandBrainDraft = undefined;
+      const memory = {
+        id: createId('mem'),
+        workspaceId: workspace.id,
+        type: 'brand_context_update',
+        value: finalized.compatibilityBrief,
+        createdAt: new Date().toISOString(),
+      };
+      db.aiMemory.unshift(memory);
+      return {
+        complete: true,
+        brief: workspace.brief,
+        recommendation: workspace.brief.recommendation,
+        signal,
+      };
+    }));
+    if (payload) res.json(payload);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
+  if (Number(workspace.brief?.schemaVersion) === 2) {
+    res.status(409).json({ error: 'brand_brain_v2_finalize_required' });
+    return;
+  }
   const { nextBrief, missingFields } = prepareBrandBrainWrite(workspace.brief, req.body);
   if (missingFields.length) {
     res.status(422).json({ error: 'brand_brain_required_fields_missing', missingFields });

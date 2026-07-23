@@ -1,5 +1,10 @@
 const assert = require('node:assert/strict');
-const { buildBrandBrainEnrichment, buildGeminiBrandBrainPrompt, shouldUseApifyForBrandScan } = require('../backend/services/brandBrainExtractor.cjs');
+const {
+  buildBrandBrainEnrichment,
+  buildDerivedBrandBrainV2,
+  buildGeminiBrandBrainPrompt,
+  shouldUseApifyForBrandScan,
+} = require('../backend/services/brandBrainExtractor.cjs');
 
 async function testSparseInstagramProfileDoesNotInventBrandFacts() {
   const result = await buildBrandBrainEnrichment({
@@ -129,6 +134,67 @@ function testPromptAndApifyGuards() {
   assert.equal(shouldUseApifyForBrandScan('manual business text', { sourceStatus: 'manual_text' }), false);
 }
 
+async function testVersion2DerivedContextNeedsGroundedEvidence() {
+  const derived = await buildDerivedBrandBrainV2({
+    answers: {
+      profileDescription: 'Coffee and fast breakfasts',
+      audience: 'Busy commuters',
+      niche: 'Coffee shop',
+      market: 'Kyiv',
+      instagramUrl: '',
+    },
+    instagramMetadata: {},
+    geminiClient: async () => JSON.stringify({
+      summary: 'Kyiv coffee and breakfast for commuters',
+      offer: 'A fast breakfast option',
+      cta: 'Visit before work',
+      toneOfVoice: 'Warm and concise',
+      evidenceByField: {
+        summary: ['Coffee and fast breakfasts', 'Busy commuters', 'Kyiv'],
+        offer: ['fast breakfasts'],
+        cta: [],
+        toneOfVoice: [],
+      },
+    }),
+  });
+  assert.equal(derived.summary, 'Kyiv coffee and breakfast for commuters');
+  assert.equal(derived.offer, 'A fast breakfast option');
+  assert.equal(derived.cta, '');
+  assert.equal(derived.toneOfVoice, '');
+
+  const ungroundedOffer = await buildDerivedBrandBrainV2({
+    answers: {
+      profileDescription: 'Coffee and fast breakfasts',
+      audience: 'Busy commuters',
+      niche: 'Coffee shop',
+      market: 'Kyiv',
+      instagramUrl: '',
+    },
+    geminiClient: async () => JSON.stringify({
+      offer: 'Free cars for every customer',
+      evidenceByField: { offer: ['Coffee'] },
+    }),
+  });
+  assert.equal(ungroundedOffer.offer, '');
+  assert.deepEqual(ungroundedOffer.evidenceByField, {});
+
+  const undercoveredOffer = await buildDerivedBrandBrainV2({
+    answers: {
+      profileDescription: 'Coffee and fast breakfasts',
+      audience: 'Busy commuters',
+      niche: 'Coffee shop',
+      market: 'Kyiv',
+      instagramUrl: '',
+    },
+    geminiClient: async () => JSON.stringify({
+      offer: 'Coffee shop gives every customer a free car',
+      evidenceByField: { offer: ['Coffee shop'] },
+    }),
+  });
+  assert.equal(undercoveredOffer.offer, '');
+  assert.deepEqual(undercoveredOffer.evidenceByField, {});
+}
+
 (async () => {
   await testSparseInstagramProfileDoesNotInventBrandFacts();
   await testGeminiRequiredFactsNeedSubmittedEvidence();
@@ -137,6 +203,7 @@ function testPromptAndApifyGuards() {
   await testGeminiDoesNotTreatSubmittedUrlOrHandleAsEvidence();
   await testGeminiAcceptsGroundedManualDescriptionEvidence();
   await testGeminiUsesSanitizedAnalysisTextAsGroundedEvidence();
+  await testVersion2DerivedContextNeedsGroundedEvidence();
   testPromptAndApifyGuards();
   console.log('brand brain extractor tests passed');
 })();

@@ -176,6 +176,54 @@ function hasSubmittedEvidence(field, evidenceByField, sourceMaterial) {
   return snippets.some((snippet) => source.includes(snippet.toLowerCase()));
 }
 
+function sanitizePublicMetadataForPrompt(metadata = {}, handle = '') {
+  return {
+    title: stripNonEvidenceIdentifiers(metadata.title, handle || metadata.handle),
+    description: stripNonEvidenceIdentifiers(metadata.description, handle || metadata.handle),
+    analysisText: stripNonEvidenceIdentifiers(metadata.analysisText, handle || metadata.handle),
+    stats: metadata.stats || {},
+    sourceStatus: compactText(metadata.sourceStatus, 120),
+  };
+}
+
+const NEUTRAL_CLAIM_TOKENS = new Set([
+  'about', 'available', 'best', 'for', 'from', 'offer', 'offers', 'option', 'options',
+  'the', 'this', 'that', 'these', 'those', 'with', 'your',
+]);
+
+function normalizeGroundedToken(value = '') {
+  const token = String(value || '').toLowerCase();
+  if (token.endsWith('ies') && token.length > 4) return `${token.slice(0, -3)}y`;
+  if (token.endsWith('s') && !token.endsWith('ss') && token.length > 3) return token.slice(0, -1);
+  return token;
+}
+
+function significantTokens(value = '') {
+  return [...new Set(compactText(value, 1600)
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map(normalizeGroundedToken)
+    .filter((token) => token.length >= 3 && !NEUTRAL_CLAIM_TOKENS.has(token)))];
+}
+
+function getGroundedEvidenceSnippets(field, derivedValue, evidenceByField, sourceMaterial) {
+  const source = String(sourceMaterial || '').toLowerCase();
+  const derivedTokens = new Set(significantTokens(derivedValue));
+  if (!derivedTokens.size) return [];
+  const snippets = unique(Array.isArray(evidenceByField?.[field]) ? evidenceByField[field] : [evidenceByField?.[field]], 8)
+    .filter((snippet) => !isSocialMetricOrPlatformBoilerplate(snippet))
+    .filter((snippet) => source.includes(snippet.toLowerCase()))
+    .filter((snippet) => significantTokens(snippet).some((token) => derivedTokens.has(token)));
+  const coveredTokens = new Set(snippets.flatMap(significantTokens).filter((token) => derivedTokens.has(token)));
+  const minimumCoverage = derivedTokens.size === 1 ? 1 : Math.ceil((derivedTokens.size * 2) / 3);
+  return coveredTokens.size >= minimumCoverage ? snippets : [];
+}
+
+function hasGroundedEvidence(field, value, sourceMaterial) {
+  return Boolean(value && typeof value === 'object')
+    && getGroundedEvidenceSnippets(field, value[field], value.evidenceByField, sourceMaterial).length > 0;
+}
+
 function isSocialMetricOrPlatformBoilerplate(value = '') {
   const text = compactText(value);
   return /\b\d[\d,.]*\s*[kmb]?\s*(?:views?|likes?|comments?|followers?|following|posts?|subscribers?)\b/i.test(text)
@@ -211,9 +259,86 @@ async function buildBrandBrainEnrichment({ input = '', metadata = {}, apifySigna
   return { brief: fallbackBrief, evidence, sourceStatus: 'brand_brain_heuristic', confidence: evidence.apifySignalsUsed ? 0.62 : 0.42, missingFields: missingRequiredFacts(fallbackBrief) };
 }
 
+async function buildDerivedBrandBrainV2({
+  answers = {},
+  instagramMetadata = {},
+  geminiClient = null,
+} = {}) {
+  const authoredEvidence = stripNonEvidenceIdentifiers([
+    answers.profileDescription,
+    answers.audience,
+    answers.niche,
+    answers.market,
+  ].filter(Boolean).join(' '));
+  const instagramEvidence = combinedSourceMaterial({
+    input: '',
+    metadata: instagramMetadata,
+    apifySignals: [],
+  });
+  const evidenceMaterial = compactText(`${authoredEvidence} ${instagramEvidence}`, 12000);
+  const fallback = {
+    summary: compactText([
+      answers.profileDescription,
+      answers.audience,
+      answers.niche,
+      answers.market,
+    ].filter(Boolean).join(' | '), 1600),
+    offer: '',
+    cta: '',
+    toneOfVoice: '',
+    evidenceByField: {},
+  };
+  if (typeof geminiClient !== 'function') return fallback;
+
+  const prompt = JSON.stringify({
+    task: 'Derive internal brand strategy without changing authored answers.',
+    answers,
+    verifiedInstagramMetadata: sanitizePublicMetadataForPrompt(instagramMetadata, ''),
+    rules: [
+      'Return summary, offer, cta, toneOfVoice, evidenceByField.',
+      'Every populated field needs an exact evidence snippet.',
+      'Leave unsupported fields empty.',
+    ],
+  });
+  try {
+    const parsed = extractJsonObject(await geminiClient(prompt));
+    if (!parsed || typeof parsed !== 'object') return fallback;
+    const evidenceByField = {};
+    const groundedField = (field, maxLength, fallbackValue = '') => {
+      const snippets = getGroundedEvidenceSnippets(
+        field,
+        parsed[field],
+        parsed.evidenceByField,
+        evidenceMaterial,
+      );
+      if (!snippets.length) return fallbackValue;
+      evidenceByField[field] = snippets;
+      return compactText(parsed[field], maxLength);
+    };
+    return {
+      summary: groundedField('summary', 1600, fallback.summary),
+      offer: groundedField('offer', 800),
+      cta: groundedField('cta', 500),
+      toneOfVoice: groundedField('toneOfVoice', 500),
+      evidenceByField,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 function shouldUseApifyForBrandScan(input = '', metadata = {}) {
   const raw = String(input || '').trim();
   return /(^@[\w.]+$|instagram\.com\/)/i.test(raw) && !/instagram\.com\/(?:p|reel|reels|tv|stories|explore)\//i.test(raw) && (!metadata.source?.tone || metadata.source.tone === 'instagram') && metadata.sourceStatus !== 'manual_text';
 }
 
-module.exports = { buildBrandBrainEnrichment, buildGeminiBrandBrainPrompt, buildHeuristicBrief, extractJsonObject, normalizeSourceLinks, shouldUseApifyForBrandScan, summarizeApifySignals };
+module.exports = {
+  buildBrandBrainEnrichment,
+  buildDerivedBrandBrainV2,
+  buildGeminiBrandBrainPrompt,
+  buildHeuristicBrief,
+  extractJsonObject,
+  normalizeSourceLinks,
+  shouldUseApifyForBrandScan,
+  summarizeApifySignals,
+};
