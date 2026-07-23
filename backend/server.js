@@ -103,6 +103,13 @@ const {
   buildAuthWorkspacePayload,
 } = require('./services/authWorkspacePayload.cjs');
 const { reserveUsageCounter } = require('./services/paidUsage.cjs');
+const {
+  TRIAL_DAILY_LIMITS,
+  buildDailyTrialSnapshot,
+  releaseDailyTrialAction,
+  reserveDailyTrialAction,
+  resolveProviderAttemptBudget,
+} = require('./services/dailyTrialQuota.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
 const {
   buildLeadSyncPayload,
@@ -296,8 +303,8 @@ const PLAN_CATALOG = [
     billingPeriod: '3 days',
     priceUah: 0,
     limits: {
-      aiOperations: 5,
-      agentChat: 5,
+      aiOperations: 750,
+      agentChat: 300,
       reelImports: 3,
       competitors: 2,
       workspaces: 1,
@@ -305,6 +312,12 @@ const PLAN_CATALOG = [
       instagramAccounts: 0,
       brandBrainSaves: 1,
       contentPlanPosts: 7,
+    },
+    dailyLimits: {
+      remix: TRIAL_DAILY_LIMITS.remix,
+      agentChat: TRIAL_DAILY_LIMITS.agentChat,
+      providerAttempts: TRIAL_DAILY_LIMITS.providerAttempts,
+      timezone: 'Europe/Kyiv',
     },
     features: ['guest_preview', 'brand_scan_trial', 'brand_brain_once', 'studio_drafts_limited'],
   },
@@ -1733,6 +1746,7 @@ function publicPlan(plan) {
     priceUah: plan.priceUah,
     limits: plan.limits,
     features: plan.features,
+    dailyLimits: plan.dailyLimits || null,
   };
 }
 
@@ -1775,6 +1789,7 @@ function buildUnlimitedPlan(basePlan) {
     billingPeriod: 'internal',
     priceUah: 0,
     limits,
+    dailyLimits: null,
     features: Array.from(new Set([...(basePlan.features || []), 'owner_unlimited'])),
   };
 }
@@ -1838,7 +1853,7 @@ function getUsageCounter(db, workspaceId, metric, period = getUsagePeriod()) {
   return counter;
 }
 
-function buildEntitlements(db, workspaceId, actorUser = null) {
+function buildEntitlements(db, workspaceId, actorUser = null, now = new Date()) {
   const subscription = ensureWorkspaceSubscription(db, workspaceId);
   const basePlan = getPlan(subscription.planId);
   const unlimited = workspaceHasUnlimitedAccess(db, workspaceId, actorUser);
@@ -1852,7 +1867,7 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
     unlimited,
   });
   const plan = unlimited ? buildUnlimitedPlan(basePlan) : resolvedAccess.plan;
-  const period = getUsagePeriod();
+  const period = getUsagePeriod(now);
   const usage = {
     aiOperations: getUsageCounter(db, workspaceId, USAGE_METRICS.aiOperations, period).value,
     agentChat: getUsageCounter(db, workspaceId, USAGE_METRICS.agentChat, period).value,
@@ -1872,13 +1887,14 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
       return [key, Number.isFinite(limit) ? Math.max(0, limit - usage[key]) : null];
     })
   );
+  const nowMs = new Date(now).getTime();
   const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
   const testerAccessActive = resolvedAccess.accessSource === 'tester_grant';
   const trial = {
-    active: !unlimited && !testerAccessActive && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > Date.now()),
-    expired: !unlimited && !testerAccessActive && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= Date.now(),
+    active: !unlimited && !testerAccessActive && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > nowMs),
+    expired: !unlimited && !testerAccessActive && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= nowMs,
     endsAt: subscription.trialEndsAt,
-    daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - Date.now()) / (24 * 60 * 60 * 1000))) : null,
+    daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - nowMs) / (24 * 60 * 60 * 1000))) : null,
   };
   return {
     plan: publicPlan(plan),
@@ -1887,7 +1903,16 @@ function buildEntitlements(db, workspaceId, actorUser = null) {
     period,
     usage,
     remaining,
+    daily: buildDailyTrialSnapshot(db, {
+      workspaceId,
+      planId: plan.id,
+      unlimited,
+      accessSource: resolvedAccess.accessSource,
+      testerAccessActive,
+      now,
+    }),
     unlimited,
+    testerAccessActive,
     accessSource: resolvedAccess.accessSource,
     testerGrant: testerGrant ? {
       id: testerGrant.id,
@@ -2007,14 +2032,41 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
       try {
         const db = await readDb();
         const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
-        const billing = buildEntitlements(db, workspaceId, current.actorUser);
-        reserveUsageCounter(db, {
-          workspaceId,
-          metric: USAGE_METRICS.aiOperations,
-          period: billing.period,
-          limit: billing.plan.limits.aiOperations,
-          unlimited: billing.unlimited,
-        });
+        const now = new Date();
+        const billing = buildEntitlements(db, workspaceId, current.actorUser, now);
+        const budget = resolveProviderAttemptBudget(billing, now);
+        try {
+          reserveUsageCounter(db, {
+            workspaceId,
+            metric: budget.metric,
+            period: budget.period,
+            limit: budget.limit,
+            unlimited: budget.unlimited,
+            now,
+          });
+        } catch (error) {
+          if (
+            budget.metric === 'trial_provider_attempts_daily'
+            && error?.payload?.error === 'plan_limit_reached'
+          ) {
+            const capacityError = new Error('ai_provider_capacity_reached');
+            capacityError.status = error.status;
+            capacityError.payload = {
+              error: 'ai_provider_capacity_reached',
+              limit: budget.limit,
+              period: budget.period,
+              resetsAt: billing.daily.resetsAt,
+            };
+            throw capacityError;
+          }
+          if (
+            budget.metric === USAGE_METRICS.aiOperations
+            && error?.payload?.error === 'plan_limit_reached'
+          ) {
+            error.payload.usageKey = 'aiOperations';
+          }
+          throw error;
+        }
         await writeDb(db);
       } catch (error) {
         error.providerAttemptBlocked = true;
@@ -2023,6 +2075,71 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
     }));
     return providerAttemptQueue;
   };
+}
+
+function assertAiTrialActive(billing) {
+  if (!billing?.trial?.expired) return;
+  const error = new Error('trial_expired');
+  error.status = 402;
+  error.payload = {
+    error: 'trial_expired',
+    plan: billing.plan,
+    trial: billing.trial,
+    message: 'Free Trial has ended. Choose a paid plan to continue.',
+  };
+  throw error;
+}
+
+function dailyActionOptions({ workspaceId, billing, action, now }) {
+  return {
+    workspaceId,
+    action,
+    planId: billing.plan.id,
+    unlimited: billing.unlimited,
+    accessSource: billing.accessSource,
+    testerAccessActive: billing.testerAccessActive,
+    now,
+  };
+}
+
+async function reserveSerializedDailyAiAction({ workspaceId, actorUser, action }) {
+  return serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+    const now = new Date();
+    const billing = buildEntitlements(db, workspaceId, current.actorUser, now);
+    assertAiTrialActive(billing);
+    const reservation = reserveDailyTrialAction(db, dailyActionOptions({
+      workspaceId,
+      billing,
+      action,
+      now,
+    }));
+    if (reservation) await writeDb(db);
+    return {
+      reservation,
+      billing: reservation
+        ? buildEntitlements(db, workspaceId, current.actorUser, now)
+        : billing,
+    };
+  });
+}
+
+async function releaseSerializedDailyAiAction(reservation) {
+  if (!reservation) return;
+  await serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    releaseDailyTrialAction(db, reservation, { now: new Date() });
+    await writeDb(db);
+  });
+}
+
+async function readSerializedBilling(workspaceId, actorUser) {
+  return serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
+    return buildEntitlements(db, workspaceId, current.actorUser);
+  });
 }
 
 function createBrandBrainFinalizeError(code, status = 409) {
@@ -2034,13 +2151,17 @@ function createBrandBrainFinalizeError(code, status = 409) {
 
 function isBrandBrainUsageBlock(error) {
   const code = String(error?.payload?.error || error?.message || '');
-  return code === 'plan_limit_reached' || code === 'trial_expired';
+  return code === 'plan_limit_reached'
+    || code === 'trial_expired'
+    || code === 'ai_provider_capacity_reached';
 }
 
 function isBrandBrainAiUnavailable(entitlements = {}) {
   if (entitlements.unlimited) return false;
   if (entitlements.trial?.expired) return true;
-  const limit = entitlements.plan?.limits?.aiOperations;
+  const budget = resolveProviderAttemptBudget(entitlements, new Date());
+  if (budget.metric === 'trial_provider_attempts_daily') return false;
+  const limit = budget.limit;
   const used = Number(entitlements.usage?.aiOperations || 0);
   return Number.isFinite(limit) && used >= limit;
 }
@@ -7356,12 +7477,7 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
     return;
   }
   let billing;
-  try {
-    billing = assertUsageAvailable(db, req.params.workspaceId, 'aiOperations', 1, req.authUser);
-  } catch (err) {
-    res.status(err.status || 402).json(err.payload || { error: err.message });
-    return;
-  }
+  let dailyReservation = null;
   const history = Array.isArray(req.body.history) ? req.body.history.slice(-20) : [];
   const snapshot = {
     reels: db.reels.filter((item) => item.workspaceId === req.params.workspaceId),
@@ -7374,6 +7490,13 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
   });
 
   try {
+    const reserved = await reserveSerializedDailyAiAction({
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+      action: 'agentChat',
+    });
+    dailyReservation = reserved.reservation;
+    billing = reserved.billing;
     const result = await generateAgentReply({ message, history, workspace, snapshot, beforeProviderAttempt });
     const persisted = await serializeBackgroundMutation(async () => {
       const currentDb = await readDb();
@@ -7416,15 +7539,21 @@ app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
       model: result.model,
       aiJob: persisted.job,
       billing,
+      daily: billing.daily,
     });
   } catch (err) {
+    try {
+      await releaseSerializedDailyAiAction(dailyReservation);
+    } catch (releaseError) {
+      console.error('[AgentChatDailyRelease]', releaseError);
+    }
     console.error('[AgentChat]', err);
     if (err.status && err.payload) {
       res.status(err.status).json(err.payload);
       return;
     }
     res.status(502).json({
-      error: 'agent_provider_failed',
+      error: 'ai_provider_failed',
       message: IS_PRODUCTION ? 'AI provider request failed. Please try again.' : err.message,
       provider: 'gemini',
     });
@@ -7581,6 +7710,7 @@ app.post('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
 });
 
 app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) => {
+  let dailyReservation = null;
   try {
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
@@ -7602,10 +7732,22 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
       businessBrief || {},
     );
 
+    const reserved = await reserveSerializedDailyAiAction({
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+      action: 'remix',
+    });
+    dailyReservation = reserved.reservation;
     const result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
     const generationId = `remix_generation_${crypto.randomUUID().replaceAll('-', '')}`;
-    res.json({ ...result, generationId });
+    const billing = await readSerializedBilling(req.params.workspaceId, req.authUser);
+    res.json({ ...result, generationId, daily: billing.daily });
   } catch (err) {
+    try {
+      await releaseSerializedDailyAiAction(dailyReservation);
+    } catch (releaseError) {
+      console.error('[RemixDailyRelease]', releaseError);
+    }
     next(err);
   }
 });

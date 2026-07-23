@@ -1,4 +1,5 @@
-const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_API_BASE = process.env.GEMINI_API_BASE
+  || 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_TEXT_MODEL = 'gemini-3.5-flash';
 const {
   normalizeBrandBrain,
@@ -7,6 +8,15 @@ const {
 
 function compactText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function createAgentProviderError(code, status, message, cause) {
+  const error = new Error(code);
+  error.code = code;
+  error.status = status;
+  error.payload = { error: code, message };
+  error.cause = cause;
+  return error;
 }
 
 function buildBusinessContext(workspace = {}, snapshot = {}) {
@@ -137,67 +147,6 @@ Output rules:
 `.trim();
 }
 
-function fallbackAgentReply(message, context) {
-  const brand = context.brand || {};
-  const text = compactText(message);
-  return [
-    `Ок, беру як AI-продюсер Dzhero: ${text || 'потрібен контентний крок'}.`,
-    `Для ${brand.businessType || 'бренду'} я б почав з механіки: проблема аудиторії -> просте рішення -> доказ -> CTA в Direct.`,
-    `Наступний вихід: 1 сценарій Reels, 1 shot-list, caption і CTA під ${brand.location || 'Україну'}.`,
-    'Перед публікацією людина має перевірити обіцянки, юридичні формулювання і тон бренду.',
-  ].join('\n\n');
-}
-
-function fallbackAgentReplyV2(message, context) {
-  const brand = context.brand || {};
-  const text = compactText(message);
-  const signals = context.recentSignals || [];
-  const firstSignal = signals[0] || {};
-  const knownProduct = compactText(brand.product);
-  const knownAudience = compactText(brand.audience);
-  const sourceTitle = compactText(firstSignal.title);
-  const hasThinContext = !sourceTitle && (!knownProduct || knownProduct === 'consultations, launches, content production');
-  const target = knownAudience && knownAudience !== 'Ukrainian Instagram audience'
-    ? knownAudience
-    : 'люди, яким вже цікава тема, але вони ще не бачать простий перший крок';
-
-  if (/аналіз|проаналіз|сторону|сторінц|аккаунт|акаунт|profile|профіль/i.test(text)) {
-    return [
-      hasThinContext
-        ? 'Бачу мало відкритих даних, тому не буду вигадувати “глибокий аудит” з повітря.'
-        : `Беру те, що видно зараз: ${sourceTitle || knownProduct || brand.businessType}.`,
-      'Що вже можна перевірити: чи зрозуміло за 3 секунди, хто це, для кого і який перший результат людина отримає. Якщо цього нема, профіль виглядає як просто ще одна сторінка.',
-      [
-        'Я б дивився в такому порядку:',
-        '1. Шапка профілю: одна конкретна обіцянка, без загальних слів.',
-        '2. Закріплені пости: “з чого почати”, доказ, часте заперечення.',
-        '3. Останні 9 відео: чи є повторювана механіка, чи кожен пост живе окремо.',
-        '4. CTA: що людина має написати/натиснути після перегляду.',
-      ].join('\n'),
-      [
-        '3 безпечні гіпотези для контенту:',
-        `- Проблема -> простий крок: показати одну болючу ситуацію для ${target}.`,
-        '- Помилка новачка: розібрати типову дію, через яку людина не отримує результат.',
-        '- Міні-челендж: 3-7 днів маленьких дій з одним CTA в Direct.',
-      ].join('\n'),
-      'Щоб зробити розбір сильним, скинь 3-5 останніх постів або коротко напиши: що продає людина, кому, і яка головна ціль.',
-    ].join('\n\n');
-  }
-
-  return [
-    `Ок, беру задачу: ${text || 'зібрати наступний контентний крок'}.`,
-    `Для ${brand.businessType || 'бренду'} я б не починав з абстрактної “стратегії”. Почав би з одного видимого болю, одного простого кроку і одного CTA.`,
-    [
-      'Швидкий варіант:',
-      'Ідея: показати ситуацію, де людина застрягла, і дати їй перший крок.',
-      'Hook: “Якщо ти робиш це навмання, ось з чого почати”.',
-      'Shot-list: 1) проблема в кадрі, 2) простий приклад, 3) результат або наступний крок.',
-      'CTA: “Напиши СТАРТ, і я скину короткий план”.',
-    ].join('\n'),
-    'Якщо хочеш точніше, дай мені нішу, продукт і 2-3 приклади контенту, який тобі подобається.',
-  ].join('\n\n');
-}
-
 async function generateAgentReply({
   message,
   history = [],
@@ -210,12 +159,11 @@ async function generateAgentReply({
   const model = process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_TEXT_MODEL;
 
   if (!apiKey) {
-    return {
-      provider: 'fallback',
-      model: 'local-template',
-      text: fallbackAgentReplyV2(message, context),
-      context,
-    };
+    throw createAgentProviderError(
+      'ai_provider_not_configured',
+      503,
+      'AI provider is not configured.',
+    );
   }
 
   const contents = [
@@ -267,30 +215,41 @@ async function generateAgentReply({
     };
   }
 
-  const first = await requestGemini(contents);
-  let text = first.text;
+  try {
+    const first = await requestGemini(contents);
+    let text = first.text;
 
-  if (first.finishReason === 'MAX_TOKENS') {
-    const continuation = await requestGemini([
-      ...contents,
-      {
-        role: 'model',
-        parts: [{ text }],
-      },
-      {
-        role: 'user',
-        parts: [{ text: 'Продовжуй з місця, де зупинився. Не повторюй попередній текст. Заверши відповідь повністю.' }],
-      },
-    ]);
-    text = `${text}\n\n${continuation.text}`.trim();
+    if (first.finishReason === 'MAX_TOKENS') {
+      const continuation = await requestGemini([
+        ...contents,
+        {
+          role: 'model',
+          parts: [{ text }],
+        },
+        {
+          role: 'user',
+          parts: [{ text: 'Продовжуй з місця, де зупинився. Не повторюй попередній текст. Заверши відповідь повністю.' }],
+        },
+      ]);
+      text = `${text}\n\n${continuation.text}`.trim();
+    }
+
+    if (!text) throw new Error('Gemini returned an empty agent reply.');
+    return {
+      provider: 'gemini',
+      model,
+      text,
+      context,
+    };
+  } catch (error) {
+    if (error?.providerAttemptBlocked) throw error;
+    throw createAgentProviderError(
+      'ai_provider_failed',
+      502,
+      'AI provider request failed. Please try again.',
+      error,
+    );
   }
-
-  return {
-    provider: 'gemini',
-    model,
-    text: text || fallbackAgentReplyV2(message, context),
-    context,
-  };
 }
 
 module.exports = {

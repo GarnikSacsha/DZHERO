@@ -97,17 +97,27 @@ await assert.rejects(
     product: 'десерти',
     location: 'Чернівці',
   }),
-  (error) => error.code === 'remix_provider_failed' && error.status === 502,
+  (error) => (
+    error.code === 'ai_provider_failed'
+    && error.status === 502
+    && error.payload?.error === 'ai_provider_failed'
+  ),
 );
 assert.equal(fetchCalls, 2, 'Configured provider must stop after two failed attempts');
 
 delete process.env.GEMINI_API_KEY;
-const fallback = await remixEngine.generateRemix(source, {
-  niche: 'кафе',
-  product: 'десерти',
-  location: 'Чернівці',
-});
-assert.equal(fallback._generation.fallback, true);
+await assert.rejects(
+  remixEngine.generateRemix(source, {
+    niche: 'кафе',
+    product: 'десерти',
+    location: 'Чернівці',
+  }),
+  (error) => (
+    error.code === 'ai_provider_not_configured'
+    && error.status === 503
+    && error.payload?.error === 'ai_provider_not_configured'
+  ),
+);
 
 if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
 else process.env.GEMINI_API_KEY = previousGeminiKey;

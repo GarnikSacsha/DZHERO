@@ -14,6 +14,8 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : async 
 };
 
 const DEFAULT_GEMINI_REMIX_MODEL = 'gemini-3.5-flash';
+const GEMINI_API_BASE = process.env.GEMINI_API_BASE
+  || 'https://generativelanguage.googleapis.com/v1beta';
 const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
@@ -137,16 +139,22 @@ FEW-SHOT QUALITY TARGETS:
 /**
  * Main Remix Engine Generator Function
  */
-function createRemixProviderError(provider, cause) {
-  const error = new Error(`${provider} remix generation failed`);
-  error.code = 'remix_provider_failed';
-  error.status = 502;
-  error.payload = {
-    error: 'remix_provider_failed',
-    message: 'AI-адаптація не завершилась. Спробуй ще раз за хвилину.',
-  };
+function createRemixProviderError(code, status, message, cause) {
+  const error = new Error(code);
+  error.code = code;
+  error.status = status;
+  error.payload = { error: code, message };
   error.cause = cause;
   return error;
+}
+
+function createRemixGenerationFailure(cause) {
+  return createRemixProviderError(
+    'ai_provider_failed',
+    502,
+    'AI adaptation failed. Please try again in a minute.',
+    cause,
+  );
 }
 
 async function generateRemix(globalInsight, businessBrief, options = {}) {
@@ -197,7 +205,8 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       });
     } catch (err) {
       console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
-      throw createRemixProviderError('Gemini', err);
+      if (err?.providerAttemptBlocked) throw err;
+      throw createRemixGenerationFailure(err);
     }
   } else if (openaiApiKey) {
     try {
@@ -210,13 +219,16 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       });
     } catch (err) {
       console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
-      throw createRemixProviderError('OpenAI', err);
+      if (err?.providerAttemptBlocked) throw err;
+      throw createRemixGenerationFailure(err);
     }
   }
 
-  const fallback = generateHighFidelityFallback(globalInsight, enrichedBusinessBrief);
-  fallback._generation = { provider: 'fallback', model: null, attempts: 0, fallback: true };
-  return fallback;
+  throw createRemixProviderError(
+    'ai_provider_not_configured',
+    503,
+    'AI provider is not configured.',
+  );
 }
 
 function parseProviderJson(text) {
@@ -272,6 +284,7 @@ async function generateValidatedProviderResult({
       result = await generate(qualityFeedback);
       lastError = null;
     } catch (error) {
+      if (error?.providerAttemptBlocked) throw error;
       lastError = error;
       qualityFeedback = 'Previous response was not valid complete JSON. Return one complete JSON object only.';
       console.warn(`[RemixEngine] ${provider}/${model} failed on attempt ${attempt}: ${error.message}`);
@@ -297,7 +310,7 @@ async function generateValidatedProviderResult({
  */
 async function generateWithGemini(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
   const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = `
 === BUSINESS BRIEF ===
