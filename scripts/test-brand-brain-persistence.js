@@ -7,12 +7,24 @@ const path = require('node:path');
 
 const {
   hasStoredBrandBrain,
+  isBrandBrainV2Complete,
   shouldChargeBrandBrainSave,
 } = require('../backend/services/brandBrainPersistence.cjs');
 
 assert.equal(hasStoredBrandBrain({}), false);
 assert.equal(hasStoredBrandBrain({ contentRubrics: ['client FAQ'] }), true);
 assert.equal(hasStoredBrandBrain({ updatedAt: '2026-07-13T00:00:00.000Z' }), false);
+assert.equal(isBrandBrainV2Complete({
+  schemaVersion: 2,
+  answers: {
+    profileDescription: 'Coffee and breakfasts',
+    audience: 'Commuters',
+    niche: 'Coffee shop',
+    market: 'Kyiv',
+    instagramUrl: '',
+  },
+}), true);
+assert.equal(isBrandBrainV2Complete({ schemaVersion: 2, answers: { profileDescription: 'Coffee' } }), false);
 assert.equal(hasStoredBrandBrain({ product: 'десерти' }), true);
 assert.equal(hasStoredBrandBrain({ stopTopics: ['не вигадувати цифри'] }), true);
 
