@@ -25,6 +25,17 @@ export function createTelemetry({
 } = {}) {
   let state = enabled ? 'idle' : 'disabled';
   const queue = [];
+  let resolveReady;
+  const readyPromise = new Promise((resolve) => {
+    resolveReady = resolve;
+  });
+  const settleReady = () => {
+    if (!resolveReady) return;
+    const resolve = resolveReady;
+    resolveReady = undefined;
+    resolve(state);
+  };
+  if (state === 'disabled') settleReady();
 
   const invoke = (globalName, args) => {
     if (state === 'disabled' || state === 'failed') return undefined;
@@ -45,6 +56,7 @@ export function createTelemetry({
 
   const flush = () => {
     state = 'ready';
+    settleReady();
     queue.splice(0).forEach(([globalName, args]) => {
       try {
         windowRef?.[globalName]?.(...args);
@@ -54,7 +66,7 @@ export function createTelemetry({
     });
   };
 
-  return {
+  const client = {
     load() {
       if (state !== 'idle' || !documentRef?.head) return;
       state = 'loading';
@@ -69,8 +81,13 @@ export function createTelemetry({
       script.onerror = () => {
         state = 'failed';
         queue.length = 0;
+        settleReady();
       };
       documentRef.head.appendChild(script);
+    },
+    whenReady() {
+      client.load();
+      return readyPromise;
     },
     track(eventType, elementId, options) {
       return invoke('dzheroTrack', [eventType, elementId, options]);
@@ -84,6 +101,7 @@ export function createTelemetry({
       try { return method(); } catch { return undefined; }
     },
   };
+  return client;
 }
 
 
@@ -99,6 +117,19 @@ export async function syncCrmSession({
 } = {}) {
   if (!user || user.provider !== 'google' || !windowRef || typeof fetcher !== 'function') return;
   try {
+    if (typeof telemetryClient.whenReady === 'function') {
+      let timeoutId;
+      try {
+        await Promise.race([
+          telemetryClient.whenReady(),
+          new Promise((resolve) => {
+            timeoutId = globalThis.setTimeout(resolve, 3000);
+          }),
+        ]);
+      } finally {
+        if (timeoutId) globalThis.clearTimeout(timeoutId);
+      }
+    }
     const params = new URLSearchParams(windowRef.location.search);
     const body = {};
     const visitorId = telemetryClient.getVisitorId?.();

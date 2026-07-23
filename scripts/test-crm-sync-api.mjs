@@ -26,11 +26,21 @@ function listen(server) {
 }
 
 const received = [];
+const receivedByIdempotencyKey = new Map();
 const crmServer = http.createServer((request, response) => {
   let body = '';
   request.on('data', (chunk) => { body += chunk; });
   request.on('end', () => {
-    received.push({ method: request.method, url: request.url, headers: request.headers, body: JSON.parse(body || '{}') });
+    const parsedBody = JSON.parse(body || '{}');
+    received.push({ method: request.method, url: request.url, headers: request.headers, body: parsedBody });
+    const previous = receivedByIdempotencyKey.get(parsedBody.idempotency_key);
+    const canonicalBody = JSON.stringify(parsedBody);
+    if (previous && previous !== canonicalBody) {
+      response.writeHead(409, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ detail: 'Idempotency key payload conflict' }));
+      return;
+    }
+    receivedByIdempotencyKey.set(parsedBody.idempotency_key, canonicalBody);
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ status: 'synced', lead_id: 1 }));
   });
@@ -69,6 +79,14 @@ async function request(pathname, options = {}) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
+async function waitForReceivedCount(count) {
+  const deadline = Date.now() + 5000;
+  while (received.length < count && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.ok(received.length >= count, `expected ${count} CRM requests, received ${received.length}`);
+}
+
 try {
   await waitForHealth();
   const registered = await request('/api/auth/register', { method: 'POST', body: JSON.stringify({ name: 'Verified Owner', email: 'owner@example.com', password: 'password-123' }) });
@@ -86,17 +104,26 @@ try {
   assert.equal(empty.status, 200);
   assert.equal(empty.body.has_decisions, false);
   assert.equal(empty.body.product_updates, null);
+  await waitForReceivedCount(1);
+  const automaticSync = received.at(-1).body;
+  assert.equal(automaticSync.visitor_id, undefined);
 
   const forged = await request('/api/account/crm-sync', {
     method: 'POST', headers,
     body: JSON.stringify({ email: 'forged@example.com', google_id: 'forged', visitor_id: 'visitor_12345678', utm_source: 'threads' }),
   });
   assert.equal(forged.status, 202);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(received.at(-1).body.email, 'owner@example.com');
-  assert.equal(received.at(-1).body.google_id, 'google-owner-subject');
-  assert.equal(received.at(-1).body.visitor_id, 'visitor_12345678');
+  await waitForReceivedCount(2);
+  const visitorSync = received.at(-1).body;
+  assert.equal(visitorSync.email, 'owner@example.com');
+  assert.equal(visitorSync.google_id, 'google-owner-subject');
+  assert.equal(visitorSync.visitor_id, 'visitor_12345678');
   assert.equal(received.at(-1).headers['x-dzhero-sync-token'], 'sync-secret');
+  assert.notEqual(
+    visitorSync.idempotency_key,
+    automaticSync.idempotency_key,
+    'adding a trusted visitor mapping must use a distinct idempotency key',
+  );
 
   const saved = await request('/api/account/communication-preferences', {
     method: 'PUT', headers,

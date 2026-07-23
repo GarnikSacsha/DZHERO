@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { syncCrmSession } from '../src/telemetry.mjs';
+import { createTelemetry, syncCrmSession } from '../src/telemetry.mjs';
 
 
 const requests = [];
@@ -38,4 +38,48 @@ assert.equal(replacements[0], '/?utm_source=threads&utm_medium=social&utm_campai
 
 await syncCrmSession({ user: { ...user, provider: 'demo' }, telemetryClient, windowRef, apiBase: '/api', fetcher: async () => { throw new Error('should not call'); } });
 assert.equal(requests.length, 1);
+
+const delayedRequests = [];
+let delayedScript;
+const delayedWindow = {
+  location: { pathname: '/', search: '?auth=google', hash: '' },
+  history: { state: {}, replaceState() {} },
+};
+const delayedDocument = {
+  head: {
+    appendChild(script) {
+      delayedScript = script;
+    },
+  },
+  createElement() {
+    return { dataset: {} };
+  },
+};
+const delayedTelemetry = createTelemetry({
+  windowRef: delayedWindow,
+  documentRef: delayedDocument,
+  enabled: true,
+});
+delayedTelemetry.load();
+
+const delayedSync = syncCrmSession({
+  user,
+  telemetryClient: delayedTelemetry,
+  windowRef: delayedWindow,
+  apiBase: '/api',
+  fetcher: async (url, options) => {
+    delayedRequests.push({ url, options });
+    return { ok: true };
+  },
+});
+delayedWindow.dzheroGetVisitorId = () => 'visitor_delayed_1234';
+delayedScript.onload();
+await delayedSync;
+
+assert.equal(delayedRequests.length, 1);
+assert.equal(
+  JSON.parse(delayedRequests[0].options.body).visitor_id,
+  'visitor_delayed_1234',
+  'verified sign-in must wait for the anonymous tracker visitor ID',
+);
 console.log('telemetry identity contract passed');
