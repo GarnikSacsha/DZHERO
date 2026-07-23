@@ -43,4 +43,23 @@ function reserveUsageCounter(db, {
   return counter;
 }
 
-module.exports = { reserveUsageCounter };
+function releaseUsageCounter(db, {
+  workspaceId,
+  metric,
+  period,
+  amount = 1,
+  now = new Date(),
+}) {
+  const counter = (db.usageCounters || []).find((item) => (
+    item.workspaceId === workspaceId
+    && item.metric === metric
+    && item.period === period
+  ));
+  if (!counter) return null;
+  const units = Math.max(1, Math.trunc(Number(amount || 1)));
+  counter.value = Math.max(0, Number(counter.value || 0) - units);
+  counter.updatedAt = new Date(now).toISOString();
+  return counter;
+}
+
+module.exports = { releaseUsageCounter, reserveUsageCounter };
