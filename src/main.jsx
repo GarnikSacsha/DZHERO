@@ -97,7 +97,12 @@ import {
   createRemixAutoRequest,
   shouldRunRemixAutoRequest,
 } from './remixAutoGeneration.mjs';
-import { isBrandProfileComplete } from './myBrandsState.mjs';
+import {
+  getMissingRequiredBrandFields,
+  isBrandProfileComplete,
+  normalizeEditableBrandBrief,
+  normalizeSourceLinks,
+} from './myBrandsState.mjs';
 
 React.createElement = createLocalizedElement;
 
@@ -898,13 +903,17 @@ function App() {
       return false;
     }
     const payload = buildBrandBrainFromScanReel(reel, language);
+    const requestWorkspaceId = workspaceId;
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/agent/context`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error(await readApiError(response, 'brand_brain_save_failed'));
+      const saved = await response.json().catch(() => ({}));
+      const savedBrief = normalizeEditableBrandBrief(saved?.brief && typeof saved.brief === 'object' ? saved.brief : payload);
+      handleBrandContextSaved(requestWorkspaceId, savedBrief);
       notify('Brand Scan збережено в Brand Brain');
       window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
       setSourcesTab('profile');
@@ -1394,6 +1403,8 @@ function App() {
             workspaceId={workspaceId}
             currentUser={currentUser}
             language={language}
+            initialBrief={brandContext}
+            onBrandSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)}
             activeTab={sourcesTab}
             onTabChange={(nextTab) => {
               setSourcesTab(nextTab);
@@ -3134,9 +3145,9 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
   const ctaLabel = page === 'home'
     ? (language === 'en' ? 'Next: Signals' : 'Далі: Сигнали')
     : page === 'settings'
-      ? (language === 'en' ? 'Back to Brand Brain' : 'До Brand Brain')
+      ? (language === 'en' ? 'Open Signals' : 'Відкрити Сигнали')
       : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
-  const ctaTarget = page === 'home' ? 'viral' : page === 'settings' ? 'home' : 'agent-studio';
+  const ctaTarget = page === 'home' || page === 'settings' ? 'viral' : 'agent-studio';
   const themeTitle = themeMode === 'auto'
     ? (language === 'en' ? 'Auto theme: local time' : 'Автотема: за локальним часом')
     : (language === 'en' ? 'Theme' : 'Тема');
@@ -5812,6 +5823,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
   const { t, translateText } = useI18n();
   const [seed, setSeed] = useState('');
   const createEditableBrief = (source = {}) => ({
+    brandName: '',
     businessType: '',
     product: '',
     audience: '',
@@ -5822,15 +5834,27 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
     stopTopics: '',
     proof: '',
     ...source,
+    sourceLinks: Array.isArray(source.sourceLinks) ? source.sourceLinks.join('\n') : source.sourceLinks || '',
     stopTopics: Array.isArray(source.stopTopics) ? source.stopTopics.join(', ') : source.stopTopics || '',
   });
   const [brief, setBrief] = useState(() => createEditableBrief(initialBrief));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => createEditableBrief(initialBrief));
+  const [mode, setMode] = useState(() => (isBrandProfileComplete(initialBrief) ? 'card' : 'onboarding'));
+  const [missingFields, setMissingFields] = useState([]);
   const [status, setStatus] = useState('loading');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
+  const saveRequestRef = useRef(0);
+  const activeWorkspaceRef = useRef(workspaceId);
 
   useEffect(() => {
+    saveRequestRef.current += 1;
+    activeWorkspaceRef.current = workspaceId;
     if (initialBrief !== undefined) {
-      setBrief(createEditableBrief(initialBrief));
+      const nextBrief = createEditableBrief(initialBrief);
+      setBrief(nextBrief);
+      setSavedSnapshot(nextBrief);
+      setMode(isBrandProfileComplete(nextBrief) ? 'card' : 'onboarding');
+      setMissingFields([]);
       setStatus('ready');
       return undefined;
     }
@@ -5839,7 +5863,12 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted) return;
-        if (payload?.brief) setBrief(createEditableBrief(payload.brief));
+        if (payload?.brief) {
+          const nextBrief = createEditableBrief(payload.brief);
+          setBrief(nextBrief);
+          setSavedSnapshot(nextBrief);
+          setMode(isBrandProfileComplete(nextBrief) ? 'card' : 'onboarding');
+        }
         setStatus('ready');
       })
       .catch(() => setStatus('error'));
@@ -5849,6 +5878,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
   }, [workspaceId, initialBrief]);
 
   const updateField = (field, value) => {
+    setMissingFields([]);
     setBrief((current) => ({ ...current, [field]: value }));
   };
 
@@ -5878,7 +5908,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
       if (!canBuildFromSourceOnly(cleanSeed, metadata)) {
         setBrief((current) => ({
           ...current,
-          sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...submittedSourceLinks])),
+          sourceLinks: normalizeSourceLinks([...normalizeSourceLinks(current.sourceLinks), ...submittedSourceLinks]).join('\n'),
         }));
         setStatus('ready');
         notify?.(translateText('Не вдалося прочитати відкритий профіль. Додай короткий опис бізнесу після посилання, і я заповню Brand Brain без вигадок.'));
@@ -5892,7 +5922,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
       setBrief((current) => ({
         ...current,
         ...nextBrief,
-        sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...(nextBrief.sourceLinks || []), ...submittedSourceLinks])),
+        sourceLinks: normalizeSourceLinks([...normalizeSourceLinks(current.sourceLinks), ...normalizeSourceLinks(nextBrief.sourceLinks), ...submittedSourceLinks]).join('\n'),
         stopTopics: Array.isArray(nextBrief.stopTopics) ? nextBrief.stopTopics.join(', ') : nextBrief.stopTopics || current.stopTopics,
       }));
       setStatus('ready');
@@ -5902,7 +5932,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
     } catch {
       setBrief((current) => ({
         ...current,
-        sourceLinks: Array.from(new Set([...(current.sourceLinks || []), ...submittedSourceLinks])),
+        sourceLinks: normalizeSourceLinks([...normalizeSourceLinks(current.sourceLinks), ...submittedSourceLinks]).join('\n'),
       }));
       setStatus('ready');
       notify?.(translateText('Не вдалося прочитати джерело автоматично. Поточний Brand Brain збережено без припущень.'));
@@ -5911,27 +5941,40 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
   };
 
   const saveBrief = async () => {
+    const nextMissingFields = mode === 'editing' ? getMissingRequiredBrandFields(brief) : [];
+    if (nextMissingFields.length) {
+      setMissingFields(nextMissingFields);
+      return;
+    }
+    const requestWorkspaceId = workspaceId;
+    const requestId = ++saveRequestRef.current;
     setStatus('saving');
-    const payload = {
-      ...brief,
-      stopTopics: String(brief.stopTopics || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-    };
+    const payload = normalizeEditableBrandBrief(brief);
+    payload.stopTopics = String(payload.stopTopics || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/agent/context`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       const saved = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error('save_failed');
-      onSaved?.(saved.brief && typeof saved.brief === 'object' ? saved.brief : payload);
-      setStatus('saved');
-      notify?.(translateText('Brand Brain збережено. Асистент уже використовує цей контекст.'));
-      window.setTimeout(() => setStatus('ready'), 1800);
+      if (saveRequestRef.current !== requestId || activeWorkspaceRef.current !== requestWorkspaceId) return;
+      const savedBrief = normalizeEditableBrandBrief(saved?.brief && typeof saved.brief === 'object' ? saved.brief : payload);
+      setBrief(savedBrief);
+      setSavedSnapshot(savedBrief);
+      setMissingFields([]);
+      if (isBrandProfileComplete(savedBrief)) setMode('card');
+      onSaved?.(savedBrief);
+      setStatus('ready');
+      notify?.(language === 'en'
+        ? 'My Brands saved. Dzhero now uses this context.'
+        : 'Мої бренди збережено. Дзеро вже використовує цей контекст.');
     } catch (error) {
+      if (saveRequestRef.current !== requestId || activeWorkspaceRef.current !== requestWorkspaceId) return;
       setStatus('error');
       notify?.(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
     }
@@ -5951,17 +5994,75 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
     ['proof', 'Докази', 'відгуки, кейси, цифри, фото до/після, 5 років досвіду', 'Чим доводимо, що вам можна вірити: кейси, цифри, відгуки, фото, результати клієнтів.'],
   ];
 
+  const copy = language === 'en'
+    ? {
+      title: 'My Brands', description: 'Keep the facts Dzhero uses across Signals, Studio, scripts, and your content plan.',
+      saveMemory: 'Save memory', saveChanges: 'Save changes', cancel: 'Cancel', editBrand: 'Edit brand',
+      details: 'Additional details', hideDetails: 'Hide details', notSpecified: 'Not specified',
+      required: 'Required fields', sourceLinks: 'Source links', sourceLinksHelp: 'One public link per line. Saved links are normalized automatically.',
+    }
+    : {
+      title: 'Мої бренди', description: 'Зберігай факти, які Дзеро використовує в Сигналах, Студії, сценаріях і контент-плані.',
+      saveMemory: 'Зберегти памʼять', saveChanges: 'Зберегти зміни', cancel: 'Скасувати', editBrand: 'Редагувати бренд',
+      details: 'Додаткові деталі', hideDetails: 'Сховати деталі', notSpecified: 'Не вказано',
+      required: 'Обовʼязкові поля', sourceLinks: 'Посилання на джерела', sourceLinksHelp: 'Одне публічне посилання в рядку. Збережені посилання нормалізуються автоматично.',
+    };
+  const savingLabel = language === 'en' ? 'Saving...' : 'Зберігаю...';
+  const fieldLabels = Object.fromEntries([...mainFields, ...advancedFields].map(([field, label]) => [field, label]));
+  const savedSourceLinks = normalizeSourceLinks(savedSnapshot.sourceLinks);
+  const startEditing = () => {
+    setBrief(createEditableBrief(savedSnapshot));
+    setMissingFields([]);
+    setMode('editing');
+  };
+  const cancelEditing = () => {
+    setBrief(createEditableBrief(savedSnapshot));
+    setSeed('');
+    setMissingFields([]);
+    setIsAdvancedOpen(false);
+    setMode('card');
+  };
+
+  if (mode === 'card') {
+    return (
+      <section className="brand-brain">
+        <article className="brand-card" aria-labelledby="my-brands-card-title">
+          <div className="brand-card-head">
+            <div>
+              <small>My Brands</small>
+              <h3 id="my-brands-card-title">{savedSnapshot.brandName || copy.title}</h3>
+              <p>{copy.description}</p>
+            </div>
+            <button className="icon brand-card-edit" type="button" aria-label={copy.editBrand} title={copy.editBrand} onClick={startEditing}>
+              <Pencil size={16} />
+            </button>
+          </div>
+          <dl className="brand-facts">
+            {mainFields.map(([field, label]) => <div key={field}><dt>{label}</dt><dd>{savedSnapshot[field] || copy.notSpecified}</dd></div>)}
+            {['location', 'proof', 'stopTopics'].map((field) => <div key={field}><dt>{fieldLabels[field]}</dt><dd>{savedSnapshot[field] || copy.notSpecified}</dd></div>)}
+          </dl>
+          <div className="brand-card-sources">
+            <small>{copy.sourceLinks}</small>
+            {savedSourceLinks.length ? <ul>{savedSourceLinks.map((link) => <li key={link}><a href={link} target="_blank" rel="noreferrer">{link}</a></li>)}</ul> : <p>{copy.notSpecified}</p>}
+          </div>
+        </article>
+      </section>
+    );
+  }
+
   return (
     <section className="brand-brain">
       <div className="brand-brain-head">
         <div>
-          <small>Brand Brain</small>
-          <h3>Памʼять агента про бізнес</h3>
-          <p>Встав профіль, сайт або короткий опис. Джеро сам збере чернетку ЦА, офера, CTA і тону, а ти тільки підправиш важливе.</p>
+          <small>My Brands</small>
+          <h3>{copy.title}</h3>
+          <p>{copy.description}</p>
         </div>
-        <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
-          <Database size={16} />{status === 'saving' ? 'Зберігаю...' : 'Зберегти памʼять'}
-        </button>
+        {mode !== 'editing' && (
+          <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
+            <Database size={16} />{status === 'saving' ? savingLabel : copy.saveMemory}
+          </button>
+        )}
       </div>
       <div className="brand-brain-intake">
         <textarea
@@ -5996,6 +6097,11 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
           </label>
         ))}
       </div>
+      {missingFields.length > 0 && (
+        <p className="brand-required-fields" role="alert">
+          <strong>{copy.required}:</strong> {missingFields.map((field) => fieldLabels[field]).join(', ')}
+        </p>
+      )}
       <button className="brand-advanced-toggle" type="button" onClick={() => setIsAdvancedOpen((value) => !value)}>
         <span>{isAdvancedOpen ? 'Сховати деталі' : 'Додаткові правила'}</span>
         <ChevronDown size={16} />
@@ -6015,6 +6121,24 @@ function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSave
               <small>{help}</small>
             </label>
           ))}
+          <label className="brand-field wide">
+            <span>{copy.sourceLinks}</span>
+            <textarea
+              value={brief.sourceLinks || ''}
+              onChange={(event) => updateField('sourceLinks', event.target.value)}
+              placeholder="https://example.com"
+              rows={3}
+            />
+            <small>{copy.sourceLinksHelp}</small>
+          </label>
+        </div>
+      )}
+      {mode === 'editing' && (
+        <div className="brand-edit-actions">
+          <button className="dark" type="button" onClick={saveBrief} disabled={status === 'saving'}>
+            <Database size={16} />{status === 'saving' ? savingLabel : copy.saveChanges}
+          </button>
+          <button type="button" onClick={cancelEditing}>{copy.cancel}</button>
         </div>
       )}
     </section>
@@ -7610,7 +7734,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, activeTab = 'sources', onTabChange, language = 'uk' }) {
+function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, initialBrief, onBrandSaved, activeTab = 'sources', onTabChange, language = 'uk' }) {
   const { translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
@@ -7655,7 +7779,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
     };
   const settingsTabs = [
     ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
-    ['profile', language === 'en' ? 'Brand memory' : 'Памʼять бренду'],
+    ['profile', language === 'en' ? 'My Brands' : 'Мої бренди'],
     ['billing', language === 'en' ? 'Plan and limits' : 'Тариф і ліміти'],
     ['communications', language === 'en' ? 'Email preferences' : 'Листи та згоди'],
     ...(currentUser?.canManageTesters && !currentUser?.isDemo
@@ -7849,7 +7973,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
           </div>
         </div>
       )}
-      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />}
+      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} initialBrief={initialBrief} onSaved={onBrandSaved} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
       {tab === 'communications' && (
         <CommunicationPreferences apiBase={API_BASE} fetcher={authFetch} language={language} mode="settings" />

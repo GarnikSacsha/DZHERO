@@ -227,6 +227,11 @@ await withRuntime({
     'Saved My Brands must not remain a standalone sidebar destination',
   );
   await page.locator('[data-tour="sidebar-settings"]').click();
+  assert.equal(
+    await page.getByRole('button', { name: /back to brand brain/i }).count(),
+    0,
+    'Completed users must not get an onboarding route from Settings',
+  );
   await page.getByRole('button', { name: /my brands|brand memory/i }).click();
   await page.waitForSelector('.brand-brain');
 

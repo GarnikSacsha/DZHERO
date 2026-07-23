@@ -3959,6 +3959,106 @@ textarea:focus {
   line-height: 1.55;
 }
 
+.brand-card {
+  display: grid;
+  gap: 18px;
+}
+
+.brand-card-head {
+  display: flex;
+  gap: 16px;
+  align-items: start;
+  justify-content: space-between;
+}
+
+.brand-card-head small,
+.brand-card-sources > small {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.brand-card-head h3 {
+  margin: 6px 0 8px;
+  color: var(--text);
+  font-size: 22px;
+}
+
+.brand-card-head p,
+.brand-card-sources p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.brand-card-edit {
+  flex: 0 0 auto;
+}
+
+.brand-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.brand-facts div,
+.brand-card-sources {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.brand-facts dt,
+.brand-card-sources > small {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.brand-facts dt {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.brand-facts dd {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.brand-card-sources ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.brand-card-sources a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+}
+
+.brand-required-fields {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 13px;
+}
+
+.brand-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 .brand-help {
   display: grid;
   gap: 8px;
@@ -16634,6 +16734,20 @@ nav button.active::before {
 }
 
 @media (max-width: 760px) {
+  .brand-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-card-head,
+  .brand-edit-actions {
+    align-items: stretch;
+  }
+
+  .brand-edit-actions button {
+    flex: 1 1 160px;
+    justify-content: center;
+  }
+
   .brand-brain-intake {
     grid-template-columns: 1fr;
   }
