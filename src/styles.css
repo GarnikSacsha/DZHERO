@@ -2873,25 +2873,26 @@ h3 { font-size: 16px; }
   z-index: 1;
 }
 
+.video-preview-player,
+.signal-preview-video,
+.video-preview-frame {
+  width: min(100%, 360px);
+  margin: 0 auto;
+  aspect-ratio: 9 / 16;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--radius-sm);
+  background: #030712;
+}
+
 .video-preview-frame {
   position: relative;
   display: grid;
-  min-height: 520px;
   place-items: center;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  background: #111827;
 }
 
 .video-preview-player {
   position: relative;
-  overflow: hidden;
-  width: min(100%, 360px);
-  margin: 0 auto;
-  aspect-ratio: 9 / 16;
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: var(--radius-sm);
-  background: #030712;
 }
 
 .video-preview-player iframe {
@@ -10924,12 +10925,9 @@ button.dark,
 }
 
 .signal-preview-video {
-  width: 100%;
-  max-height: 70vh;
-  aspect-ratio: 9 / 16;
+  display: block;
+  height: 100%;
   object-fit: contain;
-  background: #080b12;
-  border-radius: 8px;
 }
 
 .calendar-day {

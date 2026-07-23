@@ -3698,6 +3698,7 @@ function ViralBank({
   const [sort, setSort] = useState('score');
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
+  const [previewMediaFailed, setPreviewMediaFailed] = useState(false);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
@@ -3806,13 +3807,21 @@ function ViralBank({
     notify(translateText('CSV експорт завантажено'));
   };
   const openPreview = (reel) => {
+    setPreviewMediaFailed(false);
     setPreviewReel(reel);
   };
   const closePreview = () => {
+    setPreviewMediaFailed(false);
     setPreviewReel(null);
   };
   const previewImage = getReelPreviewImage(previewReel);
   const previewVideoSource = getReelVideoSource(previewReel);
+  const previewYoutubeEmbed = getYouTubeEmbedUrl(previewReel);
+  const showDirectVideo = Boolean(
+    previewVideoSource
+    && !previewYoutubeEmbed
+    && !previewMediaFailed
+  );
   const discovery = automation?.discovery || null;
   const isSharedSignalBank = discovery?.access?.mode === 'shared_bank';
   const discoveryState = deriveDiscoveryToolbarStatus(discovery, { language });
@@ -4054,11 +4063,15 @@ function ViralBank({
       {previewReel && (
         <div className="video-preview-backdrop" onClick={closePreview}>
           <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="icon video-preview-close" type="button" onClick={() => setPreviewReel(null)} aria-label={translateText("Закрити прев'ю")}>
+            <button className="icon video-preview-close" type="button" onClick={closePreview} aria-label={translateText("Закрити прев'ю")}>
               <X size={16} />
             </button>
-            {previewVideoSource ? (
-              <video className="signal-preview-video" src={previewVideoSource} poster={previewImage} controls playsInline />
+            {previewYoutubeEmbed ? (
+              <div className="video-preview-player">
+                <iframe src={previewYoutubeEmbed} title={previewReel.title} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen />
+              </div>
+            ) : showDirectVideo ? (
+              <video className="signal-preview-video" src={previewVideoSource} poster={previewImage} controls playsInline preload="metadata" onError={() => setPreviewMediaFailed(true)} />
             ) : (
               <div
                 className={`video-preview-frame market-${previewReel.market} ${previewImage ? 'has-media' : ''}`}
@@ -4081,7 +4094,7 @@ function ViralBank({
               )}
               <p>Прев'ю сигналу для швидкого відбору. Джеро витягує механіку, а не копіює ролик.</p>
             </div>
-            <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); setPreviewReel(null); }}>Адаптувати під мій бренд</button>
+            <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); closePreview(); }}>Адаптувати під мій бренд</button>
           </article>
         </div>
       )}
