@@ -451,6 +451,7 @@ async function main() {
   const controlledGemini = await createControlledGemini();
   let server;
   let providerless;
+  let openAiOnly;
   let reviewServer;
   try {
     server = await startServer(tempDir, {
@@ -469,6 +470,18 @@ async function main() {
     assert.equal(billing.body.plan.limits.aiOperations, 750);
     assert.equal(billing.body.plan.limits.agentChat, 300);
     assert.equal(billing.body.daily.period, CURRENT_KYIV_DAY);
+    for (const pathname of [
+      '/api/workspaces/ws_trial/ai/status',
+      '/api/workspaces/ws_trial/agent/context',
+    ]) {
+      const status = await requestJson(server.baseUrl, pathname);
+      assert.deepEqual(status.body.providers.textAgent, {
+        configured: true,
+        provider: 'gemini',
+        status: 'ready',
+        requiredEnv: ['GEMINI_API_KEY'],
+      });
+    }
 
     const legacyCounterChat = await requestJson(
       server.baseUrl,
@@ -583,6 +596,20 @@ async function main() {
     }
 
     providerless = await startServer(tempDir, { db: createDb() });
+    for (const pathname of [
+      '/api/workspaces/ws_providerless/ai/status',
+      '/api/workspaces/ws_providerless/agent/context',
+    ]) {
+      const status = await requestJson(providerless.baseUrl, pathname, {
+        token: 'providerless_session',
+      });
+      assert.deepEqual(status.body.providers.textAgent, {
+        configured: false,
+        provider: 'not_configured',
+        status: 'configuration_required',
+        requiredEnv: ['GEMINI_API_KEY'],
+      });
+    }
     const providerlessChat = await requestJson(
       providerless.baseUrl,
       '/api/workspaces/ws_providerless/agent/chat',
@@ -624,11 +651,42 @@ async function main() {
     assert.deepEqual(dailyAfterFinalize.body.daily.remix, dailyBeforeFinalize.body.daily.remix);
     assert.deepEqual(dailyAfterFinalize.body.daily.agentChat, dailyBeforeFinalize.body.daily.agentChat);
 
+    openAiOnly = await startServer(tempDir, {
+      db: createDb(),
+      openAiApiKey: 'configured-openai-key',
+    });
+    for (const pathname of [
+      '/api/workspaces/ws_trial/ai/status',
+      '/api/workspaces/ws_trial/agent/context',
+    ]) {
+      const status = await requestJson(openAiOnly.baseUrl, pathname);
+      assert.deepEqual(status.body.providers.textAgent, {
+        configured: false,
+        provider: 'not_configured',
+        status: 'configuration_required',
+        requiredEnv: ['GEMINI_API_KEY'],
+      });
+    }
+
     reviewServer = await startServer(tempDir, {
       db: createDb(),
       geminiBaseUrl: controlledGemini.baseUrl,
       openAiApiKey: 'configured-openai-key',
     });
+    for (const pathname of [
+      '/api/workspaces/ws_url_import/ai/status',
+      '/api/workspaces/ws_url_import/agent/context',
+    ]) {
+      const status = await requestJson(reviewServer.baseUrl, pathname, {
+        token: 'url_import_session',
+      });
+      assert.deepEqual(status.body.providers.textAgent, {
+        configured: true,
+        provider: 'gemini',
+        status: 'ready',
+        requiredEnv: ['GEMINI_API_KEY'],
+      });
+    }
     const controlledImportUrl = 'https://www.tiktok.com:444/@controlled/video/123';
     const imported = await requestJson(
       reviewServer.baseUrl,
@@ -747,9 +805,11 @@ async function main() {
   } finally {
     if (server?.child?.getOutput()?.trim()) console.error(server.child.getOutput().trim());
     if (providerless?.child?.getOutput()?.trim()) console.error(providerless.child.getOutput().trim());
+    if (openAiOnly?.child?.getOutput()?.trim()) console.error(openAiOnly.child.getOutput().trim());
     if (reviewServer?.child?.getOutput()?.trim()) console.error(reviewServer.child.getOutput().trim());
     await Promise.all([
       stopServer(providerless?.child),
+      stopServer(openAiOnly?.child),
       stopServer(reviewServer?.child),
       stopServer(server?.child),
     ]);

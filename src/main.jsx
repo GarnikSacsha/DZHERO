@@ -6077,13 +6077,13 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
         ['01', 'Instagram', providers.instagram?.configured ? 'ready' : 'connect', 'Reels, descriptions, and comments appear after connecting the source.'],
         ['02', 'YouTube Shorts', providers.youtube?.configured ? 'ready' : 'preview', 'Dzhero can use Shorts or channel context for scripts.'],
         ['03', 'Signal analysis', providers.textAgent?.status === 'ready' ? 'ready' : 'draft', 'The assistant evaluates the hook, topic, audience, text risks, and adaptation potential.'],
-        ['04', 'Scripts', providers.textAgent?.provider === 'fallback' ? 'draft' : 'ready', 'Ideas become scripts, shot lists, captions, and Direct CTAs.'],
+        ['04', 'Scripts', providers.textAgent?.status !== 'ready' ? 'draft' : 'ready', 'Ideas become scripts, shot lists, captions, and Direct CTAs.'],
         ['05', 'Video task', providers.videoGeneration?.configured ? 'ready' : 'after approval', 'Approved scenes are saved as production tasks before video generation.'],
       ],
       statusCards: [
         providers.instagram?.configured ? 'Instagram ready' : 'Connect account later',
         providers.youtube?.configured ? 'YouTube ready' : 'YouTube preview',
-        providers.textAgent?.provider === 'fallback' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`,
+        providers.textAgent?.status !== 'ready' ? 'Draft mode' : `${providers.textAgent?.provider || 'agent'} ready`,
         providers.videoGeneration?.configured ? 'Video ready' : 'Manual approval first',
       ],
     }
@@ -6095,13 +6095,13 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
         ['01', 'Instagram', providers.instagram?.configured ? 'готово' : 'підключити', 'Рілси, описи й коментарі зʼявляться після підключення джерела.'],
         ['02', 'YouTube Shorts', providers.youtube?.configured ? 'готово' : 'preview', 'Джеро може брати контекст із Shorts або каналу для сценаріїв.'],
         ['03', 'Розбір сигналу', providers.textAgent?.status === 'ready' ? 'готово' : 'чернетка', 'Асистент оцінює хук, тему, аудиторію, ризики тексту й потенціал UA-адаптації.'],
-        ['04', 'Сценарії', providers.textAgent?.provider === 'fallback' ? 'чернетка' : 'готово', 'Ідеї перетворюються на сценарії, shot-list, caption і CTA в Direct.'],
+        ['04', 'Сценарії', providers.textAgent?.status !== 'ready' ? 'чернетка' : 'готово', 'Ідеї перетворюються на сценарії, shot-list, caption і CTA в Direct.'],
         ['05', 'Video task', providers.videoGeneration?.configured ? 'готово' : 'після апруву', 'Затверджені сцени зберігаються як production-задачі перед генерацією відео.'],
       ],
       statusCards: [
         providers.instagram?.configured ? 'Instagram готовий' : 'Акаунт можна підключити пізніше',
         providers.youtube?.configured ? 'YouTube готовий' : 'YouTube preview',
-        providers.textAgent?.provider === 'fallback' ? 'Режим чернетки' : `${providers.textAgent?.provider || 'агент'} готовий`,
+        providers.textAgent?.status !== 'ready' ? 'Режим чернетки' : `${providers.textAgent?.provider || 'агент'} готовий`,
         providers.videoGeneration?.configured ? 'Відео готове' : 'Спочатку ручний апрув',
       ],
     };

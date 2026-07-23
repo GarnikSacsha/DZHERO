@@ -4148,6 +4148,8 @@ async function requireWorkspaceAccess(req, res, next) {
 app.use('/api/workspaces/:workspaceId', requireWorkspaceAccess);
 
 function getAiProviderStatus() {
+  const geminiConfigured = Boolean(process.env.GEMINI_API_KEY);
+  const openAiConfigured = Boolean(process.env.OPENAI_API_KEY);
   return {
     instagram: {
       configured: Boolean(INSTAGRAM_APP_ID && INSTAGRAM_APP_SECRET),
@@ -4160,9 +4162,16 @@ function getAiProviderStatus() {
       requiredEnv: ['YOUTUBE_API_KEY'],
     },
     textAgent: {
-      configured: Boolean(process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY),
-      provider: process.env.OPENAI_API_KEY ? 'openai' : process.env.GEMINI_API_KEY ? 'gemini' : 'fallback',
-      status: process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY ? 'ready' : 'fallback_mode',
+      configured: geminiConfigured,
+      provider: geminiConfigured ? 'gemini' : 'not_configured',
+      status: geminiConfigured ? 'ready' : 'configuration_required',
+      requiredEnv: ['GEMINI_API_KEY'],
+    },
+    openAiAgents: {
+      configured: openAiConfigured,
+      provider: openAiConfigured ? 'openai' : 'not_configured',
+      status: openAiConfigured ? 'ready' : 'configuration_required',
+      requiredEnv: ['OPENAI_API_KEY'],
     },
     videoGeneration: {
       configured: Boolean(process.env.VIDEO_PROVIDER_API_KEY),
