@@ -143,17 +143,14 @@ async function runAudit(appUrl) {
     await assertEnglishSurface(page, 'Brand Brain');
     const signalsNavigation = page.locator('[data-tour="sidebar-transcript"]');
     if (await signalsNavigation.isDisabled()) {
-      const requiredValues = ['Coffee shop', 'Espresso', 'Commuters', 'Breakfast set', 'Visit today', 'Warm and concise'];
-      const fields = page.locator('.brand-brain-grid textarea');
-      assert.equal(await fields.count(), requiredValues.length, 'Onboarding must expose the six required My Brands fields');
-      for (let index = 0; index < requiredValues.length; index += 1) {
-        await fields.nth(index).fill(requiredValues[index]);
-      }
-      const saveResponse = page.waitForResponse((response) => (
-        response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
-      ));
-      await page.getByRole('button', { name: /save memory/i }).click();
-      assert.equal((await saveResponse).ok(), true, 'My Brands onboarding must persist its completed brief');
+      await page.getByLabel(/profile and product/i).fill('Coffee shop serving espresso');
+      await page.getByRole('button', { name: /continue/i }).click();
+      await page.getByLabel(/target audience/i).fill('Morning commuters');
+      await page.getByRole('button', { name: /continue/i }).click();
+      await page.getByLabel(/^niche$/i).fill('Coffee shop');
+      await page.getByLabel(/^market$/i).fill('Kyiv, Ukraine');
+      await page.getByRole('button', { name: /continue/i }).click();
+      await page.getByRole('button', { name: /skip instagram/i }).click();
       await page.waitForFunction(() => {
         const button = document.querySelector('[data-tour="sidebar-transcript"]');
         return button instanceof HTMLButtonElement && !button.disabled;

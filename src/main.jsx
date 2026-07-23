@@ -50,6 +50,7 @@ import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
 import CommunicationPreferences from './CommunicationPreferences.jsx';
+import BrandBrainWizard from './components/BrandBrainWizard.jsx';
 import { syncCrmSession, telemetry } from './telemetry.mjs';
 import ContentCalendar, {
   fromLocalDateKey,
@@ -413,6 +414,9 @@ function App() {
   const [isSignalsRefreshing, setIsSignalsRefreshing] = useState(false);
   const [brandContext, setBrandContext] = useState({});
   const [brandContextStatus, setBrandContextStatus] = useState('loading');
+  const [brandDraft, setBrandDraft] = useState(null);
+  const [brandEditSuggestion, setBrandEditSuggestion] = useState(null);
+  const [recommendedSignalId, setRecommendedSignalId] = useState('');
   const discoveryRequestRef = useRef(0);
   const reelsRequestRef = useRef(0);
   const signalsRefreshRequestRef = useRef(0);
@@ -460,6 +464,9 @@ function App() {
     activeBrandContextWorkspaceRef.current = nextWorkspaceId;
     redirectCompleteBrandAfterLoadRef.current = false;
     setBrandContext({});
+    setBrandDraft(null);
+    setBrandEditSuggestion(null);
+    setRecommendedSignalId('');
     setBrandContextStatus('loading');
   };
   const activateWorkspace = (nextWorkspaceId) => {
@@ -494,12 +501,16 @@ function App() {
     if (!currentUser || !workspaceId) {
       redirectCompleteBrandAfterLoadRef.current = false;
       setBrandContext({});
+      setBrandDraft(null);
+      setBrandEditSuggestion(null);
+      setRecommendedSignalId('');
       setBrandContextStatus('loading');
       return undefined;
     }
 
     redirectCompleteBrandAfterLoadRef.current = false;
     setBrandContext({});
+    setBrandDraft(null);
     setBrandContextStatus('loading');
     authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then(async (response) => {
@@ -509,8 +520,9 @@ function App() {
       .then((payload) => {
         if (brandContextRequestRef.current !== requestId || activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
         const brief = payload?.brief && typeof payload.brief === 'object' ? payload.brief : {};
-        const isComplete = isBrandProfileComplete(brief);
+        const isComplete = Boolean(payload?.complete ?? isBrandProfileComplete(brief));
         setBrandContext(brief);
+        setBrandDraft(payload?.draft || null);
         setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
         redirectCompleteBrandAfterLoadRef.current = isComplete;
         if (!isComplete) setPage('home');
@@ -518,6 +530,7 @@ function App() {
       .catch(() => {
         if (brandContextRequestRef.current !== requestId || activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
         setBrandContext({});
+        setBrandDraft(null);
         setBrandContextStatus('onboarding');
         setPage('home');
       });
@@ -528,6 +541,7 @@ function App() {
     if (savedWorkspaceId !== activeBrandContextWorkspaceRef.current) return;
     const nextBrief = savedBrief && typeof savedBrief === 'object' ? savedBrief : {};
     setBrandContext(nextBrief);
+    setBrandDraft(null);
     const isComplete = isBrandProfileComplete(nextBrief);
     setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
     redirectCompleteBrandAfterLoadRef.current = false;
@@ -762,7 +776,7 @@ function App() {
     setAssistantAutoPrompt(null);
     setIsAssistantOpen(false);
     setIsSidebarOpen(false);
-    setWorkspaceId(DEMO_WORKSPACES[0].id);
+    activateWorkspace(DEMO_WORKSPACES[0].id);
     setSessionRevision((revision) => revision + 1);
     setAuthStatus('guest');
     notify('Ви вийшли з акаунта');
@@ -794,6 +808,12 @@ function App() {
   }
 
   const selectedReel = remixDraft ?? filtered.reels[0] ?? data.reels[0];
+  const wizardWorkspaceId = workspaceId;
+  const wizardRequestId = brandContextRequestRef.current;
+  const isWizardWorkspaceCurrent = () => (
+    activeBrandContextWorkspaceRef.current === wizardWorkspaceId
+    && brandContextRequestRef.current === wizardRequestId
+  );
   const addCompetitor = (handle) => {
     if (!handle) return;
     setData((current) => ({
@@ -902,12 +922,42 @@ function App() {
       notify('Спочатку відкрий Brand Scan draft.');
       return false;
     }
-    const payload = buildBrandBrainFromScanReel(reel, language);
-    setBrandContext(payload);
+    const scanWorkspaceId = workspaceId;
+    const scanRequestId = brandContextRequestRef.current;
+    const grounded = buildBrandBrainFromScanReel(reel, language);
+    const draft = {
+      currentStep: 1,
+      answers: {
+        profileDescription: grounded.product || '',
+        audience: '',
+        niche: grounded.businessType || '',
+        market: grounded.location || '',
+        instagramUrl: normalizeSourceLinks(grounded.sourceLinks)[0] || '',
+      },
+    };
+    if (brandContextStatus === 'saved') {
+      setBrandEditSuggestion({
+        id: `${workspaceId}:${Date.now()}`,
+        answers: draft.answers,
+      });
+      window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
+      setSourcesTab('profile');
+      setPage('settings');
+      return true;
+    }
+    const response = await authFetch(`${API_BASE}/workspaces/${scanWorkspaceId}/agent/context/draft`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'brand_brain_draft_save_failed');
+    if (activeBrandContextWorkspaceRef.current !== scanWorkspaceId || brandContextRequestRef.current !== scanRequestId) return false;
+    setBrandDraft(payload.draft);
     setBrandContextStatus('onboarding');
     window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
     setSourcesTab('profile');
-    setMvpPage('settings');
+    setPage('home');
     notify('Brand Scan відкрито в My Brands. Додай відсутні факти та збережи їх вручну.');
     return true;
   };
@@ -1359,8 +1409,17 @@ function App() {
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
         <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} navigationLocked={navigationLocked} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
-        {page === 'home' && <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} initialBrief={brandContext} onSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)} navigationLocked={navigationLocked} />}
-        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
+        {page === 'home' && (brandContextStatus === 'onboarding'
+          ? <BrandBrainWizard workspaceId={wizardWorkspaceId} language={language} initialDraft={brandDraft} notify={notify} isWorkspaceCurrent={isWizardWorkspaceCurrent} onComplete={(payload) => {
+            if (!isWizardWorkspaceCurrent()) return;
+            const savedBrief = payload?.brief || {};
+            handleBrandContextSaved(wizardWorkspaceId, savedBrief);
+            setBrandDraft(null);
+            setRecommendedSignalId(payload?.recommendation?.signalId || '');
+            setPage('viral');
+          }} />
+          : <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} initialBrief={brandContext} onSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)} navigationLocked={navigationLocked} />)}
+        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
         {page === 'remix' && (
           selectedReel
             ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />
@@ -3754,6 +3813,8 @@ function ViralBank({
   onRefreshAutomation,
   onToggleAutomation,
   onRunAutomation,
+  initialPreviewSignalId,
+  onInitialPreviewOpened,
 }) {
   const { language, t, translateText } = useI18n();
   const [query, setQuery] = useState('');
@@ -3761,6 +3822,10 @@ function ViralBank({
   const [scoreSortDirection, setScoreSortDirection] = useState('desc');
   const [previewReel, setPreviewReel] = useState(null);
   const [previewMediaFailed, setPreviewMediaFailed] = useState(false);
+  const previewDialogRef = useRef(null);
+  const previewCloseRef = useRef(null);
+  const previewRestoreFocusRef = useRef(null);
+  const signalsPageRef = useRef(null);
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
@@ -3793,6 +3858,23 @@ function ViralBank({
       noResultsText: 'Спробуй інший запит або встав посилання на TikTok, Reels чи YouTube Shorts.',
       noSourceTitle: 'Тут ще немає сигналів',
       noSourceText: 'Встав посилання або додай сигнал вручну. Після імпорту він зʼявиться в цій вкладці.',
+    };
+  const previewCopy = language === 'en'
+    ? {
+      close: 'Close preview',
+      openVideo: 'Open video',
+      openOriginal: 'Open original',
+      views: 'views',
+      description: 'Preview a signal before selecting it. Dzhero extracts the mechanics instead of copying the video.',
+      adapt: 'Adapt for my brand',
+    }
+    : {
+      close: 'Закрити прев’ю',
+      openVideo: 'Відкрити відео',
+      openOriginal: 'Відкрити оригінал',
+      views: 'переглядів',
+      description: 'Прев’ю сигналу для швидкого відбору. Dzhero витягує механіку, а не копіює ролик.',
+      adapt: 'Адаптувати під мій бренд',
     };
   const trimmedQuery = query.trim();
   const pastedReelUrl = isSignalUrl(trimmedQuery) ? normalizeSignalUrl(trimmedQuery) : '';
@@ -3869,13 +3951,48 @@ function ViralBank({
     notify(translateText('CSV експорт завантажено'));
   };
   const openPreview = (reel) => {
+    previewRestoreFocusRef.current = document.activeElement;
     setPreviewMediaFailed(false);
     setPreviewReel(reel);
   };
   const closePreview = () => {
     setPreviewMediaFailed(false);
     setPreviewReel(null);
+    window.requestAnimationFrame(() => {
+      const restoreTarget = previewRestoreFocusRef.current;
+      if (restoreTarget?.isConnected && restoreTarget !== document.body) restoreTarget.focus();
+      else signalsPageRef.current?.focus();
+    });
   };
+  useEffect(() => {
+    if (!initialPreviewSignalId) return;
+    const recommended = reels.find((reel) => reel.id === initialPreviewSignalId);
+    if (!recommended) return;
+    openPreview(recommended);
+    onInitialPreviewOpened?.(recommended);
+  }, [initialPreviewSignalId, reels]);
+  useEffect(() => {
+    if (!previewReel) return undefined;
+    previewCloseRef.current?.focus();
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePreview();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = [...(previewDialogRef.current?.querySelectorAll('button:not([disabled]), a[href], iframe, video[controls]') || [])];
+      if (!focusable.length) return;
+      const index = focusable.indexOf(document.activeElement);
+      const nextIndex = event.shiftKey
+        ? (index <= 0 ? focusable.length - 1 : index - 1)
+        : (index === focusable.length - 1 ? 0 : index + 1);
+      event.preventDefault();
+      focusable[nextIndex].focus();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [previewReel]);
   const previewImage = getReelPreviewImage(previewReel);
   const previewVideoSource = getReelVideoSource(previewReel);
   const previewYoutubeEmbed = getYouTubeEmbedUrl(previewReel);
@@ -3919,7 +4036,7 @@ function ViralBank({
   });
 
   return (
-    <section className="page page-signals">
+    <section className="page page-signals" ref={signalsPageRef} tabIndex={-1}>
       <PageTitle
         title={translateText('Сигнали')}
         subtitle={translateText('Одна стрічка коротких відео, сайтів і робочих механік для адаптації під бренд.')}
@@ -4124,8 +4241,8 @@ function ViralBank({
       )}
       {previewReel && (
         <div className="video-preview-backdrop" onClick={closePreview}>
-          <article className="video-preview-modal" onClick={(event) => event.stopPropagation()}>
-            <button className="icon video-preview-close" type="button" onClick={closePreview} aria-label={translateText("Закрити прев'ю")}>
+          <article className="video-preview-modal" ref={previewDialogRef} role="dialog" aria-modal="true" aria-labelledby="signal-preview-title" onClick={(event) => event.stopPropagation()}>
+            <button ref={previewCloseRef} className="icon video-preview-close" type="button" onClick={closePreview} aria-label={previewCopy.close}>
               <X size={16} />
             </button>
             {previewYoutubeEmbed ? (
@@ -4143,20 +4260,20 @@ function ViralBank({
                 <strong data-i18n-content>{previewReel.handle}</strong>
                 {getSignalSourceUrl(previewReel) && (
                   <a className="video-preview-play-here" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">
-                    Відкрити відео
+                    {previewCopy.openVideo}
                   </a>
                 )}
               </div>
             )}
             <div>
-              <small>{marketLabel(previewReel.market)} · {previewReel.views} переглядів</small>
-              <h3 data-i18n-content>{previewReel.title}</h3>
+              <small>{marketLabel(previewReel.market)} · {previewReel.views} {previewCopy.views}</small>
+              <h3 id="signal-preview-title" data-i18n-content>{previewReel.title}</h3>
               {getSignalSourceUrl(previewReel) && (
-                <a className="video-preview-source" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">Відкрити оригінал</a>
+                <a className="video-preview-source" href={getSignalSourceUrl(previewReel)} target="_blank" rel="noreferrer">{previewCopy.openOriginal}</a>
               )}
-              <p>Прев'ю сигналу для швидкого відбору. Джеро витягує механіку, а не копіює ролик.</p>
+              <p>{previewCopy.description}</p>
             </div>
-            <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); closePreview(); }}>Адаптувати під мій бренд</button>
+            <button className="dark" type="button" onClick={() => { onAdapt?.(previewReel); closePreview(); }}>{previewCopy.adapt}</button>
           </article>
         </div>
       )}

@@ -125,6 +125,10 @@ function startNode(args, env) {
   return child;
 }
 
+async function expectVisible(locator) {
+  await locator.waitFor({ state: 'visible', timeout: 5000 });
+}
+
 async function waitForUrl(url, processHandle, timeoutMs = 30000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -151,27 +155,37 @@ async function stopProcess(processHandle) {
   ]);
 }
 
-function createDatabase(tempDirectory, brief) {
+function createDatabase(tempDirectory, brief, { draft = null, secondaryBrief = {} } = {}) {
   const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
   const workspace = source.workspaces.find((item) => item.id === DEMO_WORKSPACE_ID);
   const demoUser = source.users.find((item) => item.workspaceId === DEMO_WORKSPACE_ID);
   assert.ok(workspace, 'Demo workspace fixture is missing');
   assert.ok(demoUser, 'Demo user fixture is missing');
   workspace.brief = brief;
+  workspace.brandBrainDraft = draft;
+  source.reels.push({
+    id: 'reel_coffee_fixture',
+    workspaceId: DEMO_WORKSPACE_ID,
+    handle: '@coffee_fixture',
+    sourceHandle: '@coffee_fixture',
+    sourceUrl: 'https://www.tiktok.com/@coffee/video/123',
+    sourceStatus: 'fixture',
+    sourceType: 'TikTok',
+    market: 'ua',
+    title: 'Breakfast coffee before the commute',
+    views: 42000,
+    likes: 2100,
+    comments: 84,
+    score: 91,
+    status: ['TikTok', 'Fixture'],
+  });
   demoUser.workspaceIds = [DEMO_WORKSPACE_ID, 'ws_test_secondary'];
   source.workspaces.push({
     id: 'ws_test_secondary',
     name: 'Secondary Test Workspace',
     handle: '@secondary_test',
     type: 'Test',
-    brief: {
-      businessType: 'Coffee shop',
-      product: 'Espresso',
-      audience: 'Commuters',
-      offer: 'Breakfast set',
-      cta: 'Visit today',
-      toneOfVoice: 'Warm',
-    },
+    brief: secondaryBrief,
   });
   source.sessions = [];
   const databasePath = path.join(tempDirectory, 'db.json');
@@ -192,12 +206,12 @@ async function loginDemo(page, appUrl) {
   await page.waitForSelector('.shell', { timeout: 15000 });
 }
 
-async function withRuntime(brief, callback) {
+async function withRuntime(brief, callback, options = {}) {
   const backendPort = await freePort();
   const frontendPort = await freePort();
   const appUrl = `http://127.0.0.1:${frontendPort}/`;
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-my-brands-'));
-  const databasePath = createDatabase(tempDirectory, brief);
+  const databasePath = createDatabase(tempDirectory, brief, options);
   const backend = startNode(['backend/server.js'], {
     PORT: String(backendPort),
     CLIENT_URL: appUrl.slice(0, -1),
@@ -225,41 +239,94 @@ async function withRuntime(brief, callback) {
 }
 
 await withRuntime({}, async (page) => {
-  await assert.doesNotReject(
-    page.getByText(/start here once/i).first().waitFor({ state: 'visible', timeout: 5000 }),
-    'First login must keep the one-time onboarding hint',
-  );
   assert.equal(
     await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
     true,
     'Signals must stay locked until My Brands onboarding is saved',
   );
-  assert.ok(
-    await page.locator('.brand-brain textarea').count() > 0,
-    'Empty My Brands must render onboarding inputs',
-  );
-  let incompleteSaveRequests = 0;
+  await expectVisible(page.getByRole('heading', { name: /describe your profile|опиши профіль/i }));
+  assert.equal(await page.getByText(/1 of 4|1 з 4/i).count(), 1);
+
+  let draftRequests = 0;
   page.on('request', (request) => {
-    if (request.method() === 'PUT' && /\/agent\/context$/.test(request.url())) incompleteSaveRequests += 1;
+    if (request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url())) draftRequests += 1;
   });
-  await page.getByRole('button', { name: /save memory/i }).click();
-  await page.waitForTimeout(300);
-  assert.equal(incompleteSaveRequests, 0, 'Incomplete Brand Brain saves must not reach persisted context');
-  await assert.doesNotReject(
-    page.getByRole('alert').waitFor({ state: 'visible', timeout: 5000 }),
-    'Incomplete Brand Brain saves must show an accessible missing-fields error',
-  );
-  assert.equal(
-    await page.getByRole('button', { name: /continue to signals/i }).isDisabled(),
-    true,
-    'An incomplete successful save must keep Continue to Signals locked',
-  );
-  await page.locator('.user-account-trigger').click();
-  await page.getByRole('button', { name: /secondary test workspace/i }).click();
-  await page.waitForFunction(() => {
-    const signalsButton = document.querySelector('[data-tour="sidebar-transcript"]');
-    return signalsButton instanceof HTMLButtonElement && !signalsButton.disabled;
+  await page.getByLabel(/profile and product|профіль та продукт/i).fill('Specialty coffee and fast breakfasts');
+  const firstDraftResponse = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()));
+  await page.getByRole('button', { name: /continue|продовжити/i }).click();
+  assert.equal((await firstDraftResponse).ok(), true);
+  await page.getByLabel(/target audience|цільова аудиторія/i).fill('Busy Kyiv commuters');
+  const secondDraftResponse = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()));
+  await page.getByRole('button', { name: /continue|продовжити/i }).click();
+  assert.equal((await secondDraftResponse).ok(), true);
+  assert.equal(draftRequests, 2, 'Each completed wizard step must persist its canonical draft');
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('.shell');
+  await expectVisible(page.getByRole('heading', { name: /your niche and market|ніша та ринок/i }));
+  assert.equal(await page.getByLabel(/target audience|цільова аудиторія/i).count(), 0, 'Refresh must resume the saved step');
+
+  await page.getByLabel(/niche|ніша/i).fill('Coffee shop');
+  await page.getByLabel(/market|ринок/i).fill('Kyiv, Ukraine');
+  const thirdDraftResponse = page.waitForResponse((response) => response.request().method() === 'PUT' && /\/agent\/context\/draft$/.test(response.url()));
+  await page.getByRole('button', { name: /continue|продовжити/i }).click();
+  assert.equal((await thirdDraftResponse).ok(), true);
+  assert.equal(await page.getByRole('button', { name: /skip instagram|пропустити instagram/i }).count(), 1);
+  let finalizeRequests = 0;
+  let releaseFinalize;
+  const finalizeGate = new Promise((resolve) => { releaseFinalize = resolve; });
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/finalize', async (route) => {
+    finalizeRequests += 1;
+    await finalizeGate;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        complete: true,
+        brief: {
+          schemaVersion: 2,
+          answers: {
+            profileDescription: 'Specialty coffee and fast breakfasts',
+            audience: 'Busy Kyiv commuters',
+            niche: 'Coffee shop',
+            market: 'Kyiv, Ukraine',
+            instagramUrl: '',
+          },
+          derivedBrief: {},
+          recommendation: {
+            signalId: 'reel_coffee_fixture',
+            reason: 'Best fit',
+            selectionMode: 'deterministic',
+          },
+        },
+        recommendation: {
+          signalId: 'reel_coffee_fixture',
+          reason: 'Best fit',
+          selectionMode: 'deterministic',
+        },
+        signal: {
+          id: 'reel_coffee_fixture',
+          title: 'Breakfast coffee before the commute',
+          sourceUrl: 'https://www.tiktok.com/@coffee/video/123',
+        },
+      }),
+    });
   });
+  const skipInstagram = page.getByRole('button', { name: /skip instagram|пропустити instagram/i });
+  const firstFinalizeRequest = page.waitForRequest((request) => request.method() === 'POST' && /\/agent\/context\/finalize$/.test(request.url()));
+  await skipInstagram.click();
+  await firstFinalizeRequest;
+  assert.equal(await skipInstagram.isDisabled(), true, 'Finish and Skip must lock while finalizing');
+  await skipInstagram.click({ force: true });
+  assert.equal(finalizeRequests, 1, 'Duplicate Skip must issue exactly one finalize request');
+  releaseFinalize();
+  await page.locator('.video-preview-modal').waitFor({ state: 'visible', timeout: 5000 });
+  const previewDialog = page.getByRole('dialog', { name: 'Breakfast coffee before the commute' });
+  assert.equal(await previewDialog.getAttribute('aria-modal'), 'true', 'Automatic preview must be announced as a modal dialog');
+  assert.equal(await page.locator('.video-preview-close').evaluate((element) => document.activeElement === element), true, 'Automatic preview must transfer focus to its close control');
+  assert.equal(await page.locator('.video-preview-modal').getByText('Breakfast coffee before the commute', { exact: true }).count(), 1, 'Finish must open the returned recommendation preview');
+  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), false, 'Finish must unlock Signals');
+  await page.keyboard.press('Escape');
+  await page.locator('.video-preview-modal').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('.page-signals').evaluate((element) => document.activeElement === element), true, 'Closing the automatic preview must restore a meaningful Signals focus target');
 });
 
 await withRuntime({
@@ -359,18 +426,75 @@ await withRuntime({
   await page.getByRole('button', { name: /analyze/i }).click();
   await page.getByRole('button', { name: /open.*studio/i }).click();
   await page.getByRole('button', { name: /brand brain/i }).click();
-  await page.waitForSelector('.brand-brain textarea');
-  assert.equal(brandBrainPuts, 0, 'Sparse Brand Scan must not persist Brand Brain through the Studio save action');
+  await page.waitForSelector('.brand-card');
+  assert.equal(brandBrainPuts, 0, 'Sparse Brand Scan must not overwrite a completed Brand Brain');
   assert.equal(
-    await page.getByLabel(/brand name/i).inputValue(),
-    '@car_finder_',
-    'Sparse Brand Scan must keep the verified handle in the routed My Brands onboarding draft',
+    await page.getByText('Espresso', { exact: true }).count(),
+    1,
+    'Completed Brand Brain must remain unchanged until Settings accepts the transient suggestion',
   );
   assert.equal(
     await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
-    true,
-    'Sparse Brand Scan must route to locked My Brands onboarding until manual completion',
+    false,
+    'A completed workspace must remain unlocked after sparse Brand Scan handoff',
   );
+});
+
+await withRuntime({}, async (page) => {
+  await expectVisible(page.getByRole('heading', { name: /target audience|цільова аудиторія/i }));
+  await page.getByRole('alert').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('textarea[name="audience"]').evaluate((element) => document.activeElement === element), true, 'A resumed draft must rewind and focus the first missing required answer');
+}, {
+  draft: {
+    currentStep: 4,
+    answers: {
+      profileDescription: 'Specialty coffee',
+      audience: '',
+      niche: 'Coffee shop',
+      market: 'Kyiv',
+      instagramUrl: '',
+    },
+  },
+});
+
+await withRuntime({}, async (page) => {
+  let resolveFinalize;
+  const delayedFinalize = new Promise((resolve) => { resolveFinalize = resolve; });
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/finalize', async (route) => {
+    await delayedFinalize;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        complete: true,
+        brief: {
+          schemaVersion: 2,
+          answers: {
+            profileDescription: 'Specialty coffee', audience: 'Commuters', niche: 'Coffee shop', market: 'Kyiv', instagramUrl: '',
+          },
+          recommendation: { signalId: 'reel_coffee_fixture' },
+        },
+        recommendation: { signalId: 'reel_coffee_fixture' },
+      }),
+    });
+  });
+  await page.getByLabel(/profile and product/i).fill('Specialty coffee');
+  await page.getByRole('button', { name: /continue/i }).click();
+  await page.getByLabel(/target audience/i).fill('Commuters');
+  await page.getByRole('button', { name: /continue/i }).click();
+  await page.getByLabel(/^niche$/i).fill('Coffee shop');
+  await page.getByLabel(/^market$/i).fill('Kyiv');
+  await page.getByRole('button', { name: /continue/i }).click();
+  await page.getByRole('button', { name: /skip instagram/i }).click();
+  await page.locator('.user-account-trigger').click();
+  await page.getByRole('button', { name: /secondary test workspace/i }).click();
+  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
+  resolveFinalize();
+  await page.waitForTimeout(250);
+  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), true, 'A stale finalize must not unlock an incomplete workspace B');
+  assert.equal(await page.getByRole('heading', { name: /describe your profile/i }).count(), 1, 'A stale finalize must keep workspace B on onboarding');
+  assert.equal(await page.locator('.video-preview-modal').count(), 0, 'A stale recommendation must not open in workspace B');
+}, {
+  secondaryBrief: {},
 });
 
 console.log('My Brands onboarding and locked-card UI tests passed');
