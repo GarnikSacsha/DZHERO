@@ -107,8 +107,25 @@ async function stopProcess(processHandle) {
 function createDatabase(tempDirectory, brief) {
   const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
   const workspace = source.workspaces.find((item) => item.id === DEMO_WORKSPACE_ID);
+  const demoUser = source.users.find((item) => item.workspaceId === DEMO_WORKSPACE_ID);
   assert.ok(workspace, 'Demo workspace fixture is missing');
+  assert.ok(demoUser, 'Demo user fixture is missing');
   workspace.brief = brief;
+  demoUser.workspaceIds = [DEMO_WORKSPACE_ID, 'ws_test_secondary'];
+  source.workspaces.push({
+    id: 'ws_test_secondary',
+    name: 'Secondary Test Workspace',
+    handle: '@secondary_test',
+    type: 'Test',
+    brief: {
+      businessType: 'Coffee shop',
+      product: 'Espresso',
+      audience: 'Commuters',
+      offer: 'Breakfast set',
+      cta: 'Visit today',
+      toneOfVoice: 'Warm',
+    },
+  });
   source.sessions = [];
   const databasePath = path.join(tempDirectory, 'db.json');
   writeFileSync(databasePath, JSON.stringify(source, null, 2));
@@ -174,6 +191,22 @@ await withRuntime({}, async (page) => {
     await page.locator('.brand-brain textarea').count() > 0,
     'Empty My Brands must render onboarding inputs',
   );
+  const saveResponse = page.waitForResponse((response) => (
+    response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
+  ));
+  await page.getByRole('button', { name: /save memory/i }).click();
+  assert.equal((await saveResponse).ok(), true, 'Incomplete Brand Brain saves must still reach persisted context');
+  assert.equal(
+    await page.getByRole('button', { name: /continue to signals/i }).isDisabled(),
+    true,
+    'An incomplete successful save must keep Continue to Signals locked',
+  );
+  await page.locator('.user-account-trigger').click();
+  await page.getByRole('button', { name: /secondary test workspace/i }).click();
+  await page.waitForFunction(() => {
+    const signalsButton = document.querySelector('[data-tour="sidebar-transcript"]');
+    return signalsButton instanceof HTMLButtonElement && !signalsButton.disabled;
+  });
 });
 
 await withRuntime({
