@@ -72,7 +72,20 @@ function makeActor(id, email) {
 function createDb({ chatOnly = false } = {}) {
   const ids = chatOnly
     ? ['chat_limit']
-    : ['trial', 'reset', 'failure', 'retry', 'capacity', 'owner', 'tester', 'providerless'];
+    : [
+        'trial',
+        'reset',
+        'failure',
+        'retry',
+        'capacity',
+        'owner',
+        'tester',
+        'providerless',
+        'url_import',
+        'url_failure',
+        'old_guard',
+        'expired_pending',
+      ];
   const actors = ids.map((id) => makeActor(
     id,
     id === 'owner' ? 'owner@example.test' : `${id}@example.test`,
@@ -80,6 +93,9 @@ function createDb({ chatOnly = false } = {}) {
   const usageCounters = [];
 
   if (!chatOnly) {
+    const expiredPending = actors.find((actor) => actor.workspace.id === 'ws_expired_pending');
+    expiredPending.subscription.status = 'pending_payment';
+    expiredPending.subscription.trialEndsAt = '2020-01-01T00:00:00.000Z';
     usageCounters.push(
       {
         id: 'usage_legacy_ai_operations',
@@ -102,6 +118,15 @@ function createDb({ chatOnly = false } = {}) {
       {
         id: 'usage_capacity',
         workspaceId: 'ws_capacity',
+        metric: 'trial_provider_attempts_daily',
+        period: CURRENT_KYIV_DAY,
+        value: 250,
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+      {
+        id: 'usage_old_guard_capacity',
+        workspaceId: 'ws_old_guard',
         metric: 'trial_provider_attempts_daily',
         period: CURRENT_KYIV_DAY,
         value: 250,
@@ -149,6 +174,24 @@ function createDb({ chatOnly = false } = {}) {
       updatedAt: NOW,
     }],
     usageCounters,
+    reels: chatOnly ? [] : [{
+      id: 'reel_old_guard',
+      workspaceId: 'ws_old_guard',
+      title: 'Controlled old guard route',
+      sourceUrl: 'https://www.youtube.com/watch?v=controlled-old-guard',
+      importedMetadata: {
+        url: 'https://www.youtube.com/watch?v=controlled-old-guard',
+        source: { label: 'YouTube Shorts', tone: 'shorts' },
+        sourceStatus: 'youtube_oembed',
+        title: 'Controlled old guard route',
+        description: 'Provider attempt must be blocked before Gemini.',
+        youtube: {
+          videoId: 'controlled-old-guard',
+          url: 'https://www.youtube.com/watch?v=controlled-old-guard',
+        },
+      },
+      createdAt: NOW,
+    }],
   };
 }
 
@@ -407,6 +450,7 @@ async function main() {
   const controlledGemini = await createControlledGemini();
   let server;
   let providerless;
+  let reviewServer;
   try {
     server = await startServer(tempDir, {
       db: createDb(),
@@ -579,6 +623,108 @@ async function main() {
     assert.deepEqual(dailyAfterFinalize.body.daily.remix, dailyBeforeFinalize.body.daily.remix);
     assert.deepEqual(dailyAfterFinalize.body.daily.agentChat, dailyBeforeFinalize.body.daily.agentChat);
 
+    reviewServer = await startServer(tempDir, {
+      db: createDb(),
+      geminiBaseUrl: controlledGemini.baseUrl,
+    });
+    const controlledImportUrl = 'https://www.tiktok.com:444/@controlled/video/123';
+    const imported = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_url_import/reels/import-url',
+      {
+        method: 'POST',
+        token: 'url_import_session',
+        body: { url: controlledImportUrl },
+      },
+    );
+    assert.equal(imported.status, 201);
+    assert.equal(imported.body.remix._generation.provider, 'gemini');
+    assert.equal(imported.body.billing.daily.remix.used, 1);
+
+    for (let index = 2; index <= 5; index += 1) {
+      const combined = await requestJson(
+        reviewServer.baseUrl,
+        '/api/workspaces/ws_url_import/remix/generate',
+        {
+          method: 'POST',
+          token: 'url_import_session',
+          body: REMIX_BODY,
+        },
+      );
+      assert.equal(combined.status, 200, `combined URL/Studio adaptation ${index} should be allowed`);
+      assert.equal(combined.body.daily.remix.used, index);
+    }
+    const blockedCombined = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_url_import/remix/generate',
+      {
+        method: 'POST',
+        token: 'url_import_session',
+        body: REMIX_BODY,
+      },
+    );
+    assert.equal(blockedCombined.status, 402);
+    assert.equal(blockedCombined.body.error, 'daily_remix_limit_reached');
+
+    controlledGemini.state.failNextRemix = 2;
+    const failedImport = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_url_failure/reels/import-url',
+      {
+        method: 'POST',
+        token: 'url_failure_session',
+        body: { url: `${controlledImportUrl}?failure=1` },
+      },
+    );
+    assert.equal(failedImport.status, 502);
+    assert.equal(failedImport.body.error, 'ai_provider_failed');
+    const afterFailedImport = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_url_failure/remix/generate',
+      {
+        method: 'POST',
+        token: 'url_failure_session',
+        body: REMIX_BODY,
+      },
+    );
+    assert.equal(afterFailedImport.status, 200);
+    assert.equal(afterFailedImport.body.daily.remix.used, 1);
+
+    const oldGuardCapacity = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_old_guard/reels/reel_old_guard/analyze-ai',
+      {
+        method: 'POST',
+        token: 'old_guard_session',
+        body: {},
+      },
+    );
+    assert.equal(oldGuardCapacity.status, 402);
+    assert.equal(oldGuardCapacity.body.error, 'ai_provider_capacity_reached');
+    assert.equal(oldGuardCapacity.body.limit, 250);
+    assert.equal(oldGuardCapacity.body.period, CURRENT_KYIV_DAY);
+    assert.ok(oldGuardCapacity.body.resetsAt);
+
+    const expiredPendingBilling = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_expired_pending/billing',
+      { token: 'expired_pending_session' },
+    );
+    assert.equal(expiredPendingBilling.status, 200);
+    assert.equal(expiredPendingBilling.body.trial.active, false);
+    assert.equal(expiredPendingBilling.body.trial.expired, true);
+    const expiredPending = await requestJson(
+      reviewServer.baseUrl,
+      '/api/workspaces/ws_expired_pending/agent/chat',
+      {
+        method: 'POST',
+        token: 'expired_pending_session',
+        body: CHAT_BODY,
+      },
+    );
+    assert.equal(expiredPending.status, 402);
+    assert.equal(expiredPending.body.error, 'trial_expired');
+
     await runChatDailyLimit(tempDir, controlledGemini);
 
     console.log(JSON.stringify({
@@ -593,7 +739,12 @@ async function main() {
   } finally {
     if (server?.child?.getOutput()?.trim()) console.error(server.child.getOutput().trim());
     if (providerless?.child?.getOutput()?.trim()) console.error(providerless.child.getOutput().trim());
-    await Promise.all([stopServer(providerless?.child), stopServer(server?.child)]);
+    if (reviewServer?.child?.getOutput()?.trim()) console.error(reviewServer.child.getOutput().trim());
+    await Promise.all([
+      stopServer(providerless?.child),
+      stopServer(reviewServer?.child),
+      stopServer(server?.child),
+    ]);
     await controlledGemini.close();
     await rm(tempDir, { recursive: true, force: true });
   }

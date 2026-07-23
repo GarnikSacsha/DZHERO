@@ -1890,9 +1890,12 @@ function buildEntitlements(db, workspaceId, actorUser = null, now = new Date()) 
   const nowMs = new Date(now).getTime();
   const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
   const testerAccessActive = resolvedAccess.accessSource === 'tester_grant';
+  const hasTrialPlanAccess = !unlimited
+    && !testerAccessActive
+    && subscription.planId === 'trial';
   const trial = {
-    active: !unlimited && !testerAccessActive && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > nowMs),
-    expired: !unlimited && !testerAccessActive && subscription.status === 'trialing' && Boolean(trialEndsAt) && trialEndsAt <= nowMs,
+    active: hasTrialPlanAccess && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > nowMs),
+    expired: hasTrialPlanAccess && Boolean(trialEndsAt) && trialEndsAt <= nowMs,
     endsAt: subscription.trialEndsAt,
     daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - nowMs) / (24 * 60 * 60 * 1000))) : null,
   };
@@ -1964,19 +1967,56 @@ function incrementUsage(db, workspaceId, metric, amount = 1) {
   return counter;
 }
 
+function reserveAiProviderAttempt(db, workspaceId, actorUser, now = new Date()) {
+  const billing = buildEntitlements(db, workspaceId, actorUser, now);
+  assertAiTrialActive(billing);
+  const budget = resolveProviderAttemptBudget(billing, now);
+  try {
+    reserveUsageCounter(db, {
+      workspaceId,
+      metric: budget.metric,
+      period: budget.period,
+      limit: budget.limit,
+      unlimited: budget.unlimited,
+      now,
+    });
+  } catch (error) {
+    if (
+      budget.metric === 'trial_provider_attempts_daily'
+      && error?.payload?.error === 'plan_limit_reached'
+    ) {
+      const capacityError = new Error('ai_provider_capacity_reached');
+      capacityError.status = error.status;
+      capacityError.payload = {
+        error: 'ai_provider_capacity_reached',
+        limit: budget.limit,
+        period: budget.period,
+        resetsAt: billing.daily.resetsAt,
+      };
+      throw capacityError;
+    }
+    if (
+      budget.metric === USAGE_METRICS.aiOperations
+      && error?.payload?.error === 'plan_limit_reached'
+    ) {
+      error.payload.usageKey = 'aiOperations';
+    }
+    throw error;
+  }
+  return { billing, budget };
+}
+
 function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
   let queue = Promise.resolve();
   return () => {
     queue = queue.then(async () => {
-      const billing = buildEntitlements(db, workspaceId, actorUser);
-      reserveUsageCounter(db, {
-        workspaceId,
-        metric: USAGE_METRICS.aiOperations,
-        period: billing.period,
-        limit: billing.plan.limits.aiOperations,
-        unlimited: billing.unlimited,
-      });
-      await writeDb(db);
+      try {
+        reserveAiProviderAttempt(db, workspaceId, actorUser, new Date());
+        await writeDb(db);
+      } catch (error) {
+        error.providerAttemptBlocked = true;
+        throw error;
+      }
     });
     return queue;
   };
@@ -2032,41 +2072,7 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
       try {
         const db = await readDb();
         const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
-        const now = new Date();
-        const billing = buildEntitlements(db, workspaceId, current.actorUser, now);
-        const budget = resolveProviderAttemptBudget(billing, now);
-        try {
-          reserveUsageCounter(db, {
-            workspaceId,
-            metric: budget.metric,
-            period: budget.period,
-            limit: budget.limit,
-            unlimited: budget.unlimited,
-            now,
-          });
-        } catch (error) {
-          if (
-            budget.metric === 'trial_provider_attempts_daily'
-            && error?.payload?.error === 'plan_limit_reached'
-          ) {
-            const capacityError = new Error('ai_provider_capacity_reached');
-            capacityError.status = error.status;
-            capacityError.payload = {
-              error: 'ai_provider_capacity_reached',
-              limit: budget.limit,
-              period: budget.period,
-              resetsAt: billing.daily.resetsAt,
-            };
-            throw capacityError;
-          }
-          if (
-            budget.metric === USAGE_METRICS.aiOperations
-            && error?.payload?.error === 'plan_limit_reached'
-          ) {
-            error.payload.usageKey = 'aiOperations';
-          }
-          throw error;
-        }
+        reserveAiProviderAttempt(db, workspaceId, current.actorUser, new Date());
         await writeDb(db);
       } catch (error) {
         error.providerAttemptBlocked = true;
@@ -6984,6 +6990,7 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
 });
 
 app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next) => {
+  let dailyReservation = null;
   try {
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
@@ -7008,6 +7015,12 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       return;
     }
 
+    const reserved = await reserveSerializedDailyAiAction({
+      workspaceId: req.params.workspaceId,
+      actorUser: req.authUser,
+      action: 'remix',
+    });
+    dailyReservation = reserved.reservation;
     const metadata = await fetchPublicSourceMetadata(url, { beforeProviderAttempt });
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
     const mergedBrief = mergeBusinessBriefWithBrandBrain(
@@ -7092,6 +7105,11 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
       billing: persisted.billing,
     });
   } catch (err) {
+    try {
+      await releaseSerializedDailyAiAction(dailyReservation);
+    } catch (releaseError) {
+      console.error('[UrlImportDailyRelease]', releaseError);
+    }
     next(err);
   }
 });

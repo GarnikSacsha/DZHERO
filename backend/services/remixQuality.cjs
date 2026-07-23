@@ -40,7 +40,11 @@ function assessRemixQuality(result, { globalInsight = {} } = {}) {
     const output = collectRemixText(remix);
     const normalizedOutput = normalizeText(output);
 
-    if (!remix?.title || !remix?.hook || !remix?.cta) {
+    if (
+      !String(remix?.title || '').trim()
+      || !String(remix?.hook || '').trim()
+      || !String(remix?.cta || '').trim()
+    ) {
       reasons.push(`Variant ${number} is missing title, hook, or CTA.`);
     }
     if (flow.length < 3) reasons.push(`Variant ${number} needs at least 3 scene beats.`);
