@@ -79,6 +79,8 @@ function createDatabase(tempDirectory) {
     businessType: 'Test studio',
     product: 'Content production',
     audience: 'Creators',
+    offer: 'A focused content production session',
+    cta: 'Book a production session',
     toneOfVoice: 'Clear',
   };
   source.sessions = [];
