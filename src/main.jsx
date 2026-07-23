@@ -28,6 +28,7 @@ import {
   Moon,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -104,6 +105,10 @@ import {
   normalizeEditableBrandBrief,
   normalizeSourceLinks,
 } from './myBrandsState.mjs';
+import {
+  getMissingWizardAnswers,
+  normalizeWizardAnswers,
+} from './brandBrainWizardState.mjs';
 
 React.createElement = createLocalizedElement;
 
@@ -430,6 +435,7 @@ function App() {
   const brandContextRequestRef = useRef(0);
   const redirectCompleteBrandAfterLoadRef = useRef(false);
   const activeBrandContextWorkspaceRef = useRef(workspaceId);
+  const pendingBrandScanRef = useRef(null);
   const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
     ...createWorkspaceRequestContext(requestWorkspaceId, requestId, signalsWorkspaceRequestRef.current),
   });
@@ -460,9 +466,16 @@ function App() {
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
   };
   const resetBrandContextForWorkspace = (nextWorkspaceId) => {
+    const hadPendingBrandScan = Boolean(pendingBrandScanRef.current);
     brandContextRequestRef.current += 1;
     activeBrandContextWorkspaceRef.current = nextWorkspaceId;
     redirectCompleteBrandAfterLoadRef.current = false;
+    pendingBrandScanRef.current = null;
+    if (hadPendingBrandScan) {
+      setRemixDraft(null);
+      setRemixAutoRequest(null);
+      setPage('home');
+    }
     setBrandContext({});
     setBrandDraft(null);
     setBrandEditSuggestion(null);
@@ -525,7 +538,10 @@ function App() {
         setBrandDraft(payload?.draft || null);
         setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
         redirectCompleteBrandAfterLoadRef.current = isComplete;
-        if (!isComplete) setPage('home');
+        const pendingBrandScan = pendingBrandScanRef.current;
+        const isPendingBrandScanForRequest = pendingBrandScan?.workspaceId === requestWorkspaceId
+          && pendingBrandScan?.generation === requestId;
+        if (!isComplete && !isPendingBrandScanForRequest) setPage('home');
       })
       .catch(() => {
         if (brandContextRequestRef.current !== requestId || activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
@@ -546,6 +562,14 @@ function App() {
     setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
     redirectCompleteBrandAfterLoadRef.current = false;
     if (!isComplete) setPage('home');
+  };
+  const consumeBrandEditSuggestion = (suggestionId) => {
+    setBrandEditSuggestion((current) => (current?.id === suggestionId ? null : current));
+  };
+  const openRecommendedSignal = (signalId) => {
+    if (!signalId) return;
+    setRecommendedSignalId(signalId);
+    setMvpPage('viral');
   };
 
   useEffect(() => {
@@ -740,13 +764,20 @@ function App() {
     try {
       const scan = JSON.parse(pendingScan);
       window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
-      setRemixDraft(buildReelFromBrandScan(scan));
-      setMvpPage('remix');
+      const pendingReel = buildReelFromBrandScan(scan);
+      pendingBrandScanRef.current = {
+        workspaceId,
+        generation: brandContextRequestRef.current,
+        draftId: pendingReel.id,
+      };
+      setRemixAutoRequest(null);
+      setRemixDraft(pendingReel);
+      setPage('remix');
       notify('Brand Scan відкрито в Студії');
     } catch {
       window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
     }
-  }, [currentUser, data, remixDraft]);
+  }, [currentUser, data, remixDraft, workspaceId]);
 
   const handleAuthSuccess = (payload, destination = null) => {
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
@@ -924,6 +955,12 @@ function App() {
     }
     const scanWorkspaceId = workspaceId;
     const scanRequestId = brandContextRequestRef.current;
+    const pendingBrandScan = pendingBrandScanRef.current;
+    if (pendingBrandScan && (
+      pendingBrandScan.workspaceId !== scanWorkspaceId
+      || pendingBrandScan.generation !== scanRequestId
+      || pendingBrandScan.draftId !== reel?.id
+    )) return false;
     const grounded = buildBrandBrainFromScanReel(reel, language);
     const draft = {
       currentStep: 1,
@@ -953,6 +990,15 @@ function App() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'brand_brain_draft_save_failed');
     if (activeBrandContextWorkspaceRef.current !== scanWorkspaceId || brandContextRequestRef.current !== scanRequestId) return false;
+    if (pendingBrandScan) {
+      const currentPendingBrandScan = pendingBrandScanRef.current;
+      if (currentPendingBrandScan?.workspaceId !== pendingBrandScan.workspaceId
+        || currentPendingBrandScan?.generation !== pendingBrandScan.generation
+        || currentPendingBrandScan?.draftId !== pendingBrandScan.draftId) return false;
+      pendingBrandScanRef.current = null;
+      setRemixDraft((current) => (current?.id === pendingBrandScan.draftId ? null : current));
+      setRemixAutoRequest(null);
+    }
     setBrandDraft(payload.draft);
     setBrandContextStatus('onboarding');
     window.localStorage.setItem(SOURCES_TAB_KEY, 'profile');
@@ -1422,7 +1468,7 @@ function App() {
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
         {page === 'remix' && (
           selectedReel
-            ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} />
+            ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} pendingBrandScanOnly={pendingBrandScanRef.current?.workspaceId === workspaceId && pendingBrandScanRef.current?.generation === brandContextRequestRef.current && pendingBrandScanRef.current?.draftId === selectedReel.id} />
             : <StudioEmptyState onOpenSignals={() => setMvpPage('viral')} />
         )}
         {page === 'agent-studio' && agentStudioAvailable && (
@@ -1451,6 +1497,9 @@ function App() {
             language={language}
             initialBrief={brandContext}
             onBrandSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)}
+            brandEditSuggestion={brandEditSuggestion}
+            onBrandEditSuggestionConsumed={consumeBrandEditSuggestion}
+            onOpenRecommendedSignal={openRecommendedSignal}
             activeTab={sourcesTab}
             onTabChange={(nextTab) => {
               setSourcesTab(nextTab);
@@ -3826,6 +3875,7 @@ function ViralBank({
   const previewCloseRef = useRef(null);
   const previewRestoreFocusRef = useRef(null);
   const signalsPageRef = useRef(null);
+  const initialPreviewConsumedRef = useRef('');
   const [isImportingUrl, setIsImportingUrl] = useState(false);
   const [sourceFilter, setSourceFilter] = useState('all');
   const [youtubeRegion, setYoutubeRegion] = useState('UA');
@@ -3965,9 +4015,14 @@ function ViralBank({
     });
   };
   useEffect(() => {
-    if (!initialPreviewSignalId) return;
+    if (!initialPreviewSignalId) {
+      initialPreviewConsumedRef.current = '';
+      return;
+    }
+    if (initialPreviewConsumedRef.current === initialPreviewSignalId) return;
     const recommended = reels.find((reel) => reel.id === initialPreviewSignalId);
     if (!recommended) return;
+    initialPreviewConsumedRef.current = initialPreviewSignalId;
     openPreview(recommended);
     onInitialPreviewOpened?.(recommended);
   }, [initialPreviewSignalId, reels]);
@@ -5547,7 +5602,7 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
   );
 }
 
-function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain }) {
+function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain, pendingBrandScanOnly = false }) {
   const { t, translateText } = useI18n();
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
@@ -5581,6 +5636,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
   const scenario = buildRemixScenario(effectiveReel, sanitizeSourceContext(observedContext));
   const scenarioVariants = scenario.variants;
   const adaptScenario = async () => {
+    if (pendingBrandScanOnly) return;
     setAdaptationState('loading');
     setAdaptationError('');
     notify(translateText('Джеро думає над адаптацією, це вже реальний AI-запит'));
@@ -5609,6 +5665,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
     }
   };
   useEffect(() => {
+    if (pendingBrandScanOnly) return;
     if (!shouldRunRemixAutoRequest({
       request: autoGenerateRequest,
       lastHandledId: autoRemixKeyRef.current,
@@ -5617,7 +5674,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
     autoRemixKeyRef.current = autoGenerateRequest.id;
     onAutoGenerateConsumed?.();
     adaptScenario();
-  }, [autoGenerateRequest, workspaceId]);
+  }, [autoGenerateRequest, pendingBrandScanOnly, workspaceId]);
   const copyScenario = async () => {
     const scenarioText = [
       `Джерело: ${reelHandle}`,
@@ -5672,9 +5729,27 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
     return `${numberValue.toLocaleString('en-US')} ${label}`;
   };
   const addCurrentToPlan = async () => {
+    if (pendingBrandScanOnly) return;
     const ok = await onAddToPlan?.(effectiveReel);
     if (ok !== false) setPage('plan');
   };
+
+  if (pendingBrandScanOnly) {
+    return (
+      <section className="page page-remix-studio" data-pending-brand-scan-only>
+        <PageTitle
+          title={translateText('Студія')}
+          subtitle={translateText('Переглянь контекст Brand Scan і збережи його в Brand Brain.')}
+          actions={<button type="button" onClick={() => setPage('home')}>{translateText('Назад до My Brands')}</button>}
+        />
+        <div className="remix-layout">
+          <div className="analysis-stack">
+            <BrandScanStudioPanel reel={reel} onSaveBrandBrain={saveCurrentBrandBrain} brainStatus={brainStatus} />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="page page-remix-studio">
@@ -5908,7 +5983,238 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
   );
 }
 
-function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSaved }) {
+function projectLegacyBrandAnswers(brief = {}) {
+  const sourceLinks = normalizeSourceLinks(brief.sourceLinks);
+  return normalizeWizardAnswers({
+    profileDescription: brief.product || brief.brandName || brief.businessType || '',
+    audience: brief.audience || '',
+    niche: brief.businessType || '',
+    market: brief.market || brief.location || '',
+    instagramUrl: brief.instagramUrl || sourceLinks.find((link) => /instagram\.com/i.test(link)) || '',
+  });
+}
+
+function BrandBrain({
+  notify,
+  workspaceId,
+  language = 'uk',
+  initialBrief,
+  onSaved,
+  onRecommendationChanged,
+  onOpenRecommendedSignal,
+  brandEditSuggestion,
+  onBrandEditSuggestionConsumed,
+}) {
+  const { t } = useI18n();
+  const isV2Brief = (brief) => Number(brief?.schemaVersion) === 2;
+  const answersFor = (brief) => (isV2Brief(brief)
+    ? normalizeWizardAnswers(brief?.answers || {})
+    : projectLegacyBrandAnswers(brief));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => initialBrief || {});
+  const [editAnswers, setEditAnswers] = useState(() => answersFor(initialBrief));
+  const [mode, setMode] = useState(() => (isBrandProfileComplete(initialBrief) ? 'card' : 'editing'));
+  const [missingFields, setMissingFields] = useState([]);
+  const [status, setStatus] = useState('ready');
+  const [validationMessage, setValidationMessage] = useState('');
+  const [focusRequest, setFocusRequest] = useState({ field: '', nonce: 0 });
+  const activeWorkspaceRef = useRef(workspaceId);
+  const saveRequestRef = useRef(0);
+  const inputRefs = useRef({});
+  const copy = language === 'en'
+    ? {
+      title: 'My Brands', description: 'Keep the facts Dzhero uses across Signals, Studio, scripts, and your content plan.',
+      editBrand: 'Edit brand', saveChanges: 'Save changes', cancel: 'Cancel', saving: 'Saving...',
+      profileDescription: 'Profile and product', audience: 'Target audience', niche: 'Niche', market: 'Market',
+      instagram: 'Instagram URL (optional)', openRecommendedSignal: 'Open recommended signal',
+      required: 'Complete the highlighted required fields before saving.', invalidInstagram: 'Enter a valid Instagram URL or leave it blank.', notSpecified: 'Not specified',
+    }
+    : {
+      title: 'Мої бренди', description: 'Зберігай факти, які Дзеро використовує в Сигналах, Студії, сценаріях і контент-плані.',
+      editBrand: 'Редагувати бренд', saveChanges: 'Зберегти зміни', cancel: 'Скасувати', saving: 'Зберігаємо...',
+      profileDescription: 'Профіль та продукт', audience: 'Цільова аудиторія', niche: 'Ніша', market: 'Ринок',
+      instagram: 'Instagram URL (необов’язково)', openRecommendedSignal: 'Відкрити рекомендований сигнал',
+      required: 'Заповни підсвічені обов’язкові поля перед збереженням.', invalidInstagram: 'Вкажи коректний Instagram URL або залиш поле порожнім.', notSpecified: 'Не вказано',
+    };
+
+  useEffect(() => {
+    activeWorkspaceRef.current = workspaceId;
+    saveRequestRef.current += 1;
+    const nextSnapshot = initialBrief || {};
+    setSavedSnapshot(nextSnapshot);
+    setEditAnswers(answersFor(nextSnapshot));
+    setMissingFields([]);
+    setValidationMessage('');
+    setFocusRequest({ field: '', nonce: 0 });
+    setStatus('ready');
+    setMode(isBrandProfileComplete(nextSnapshot) ? 'card' : 'editing');
+  }, [workspaceId, initialBrief]);
+
+  useEffect(() => {
+    if (!brandEditSuggestion?.id) return;
+    const suggested = normalizeWizardAnswers(brandEditSuggestion.answers);
+    setEditAnswers((current) => Object.fromEntries(
+      Object.entries(current).map(([field, value]) => [field, suggested[field] || value]),
+    ));
+    setMissingFields([]);
+    setValidationMessage('');
+    setMode('editing');
+    onBrandEditSuggestionConsumed?.(brandEditSuggestion.id);
+  }, [brandEditSuggestion?.id]);
+
+  useEffect(() => {
+    if (focusRequest.field) inputRefs.current[focusRequest.field]?.focus();
+  }, [focusRequest]);
+
+  const requestFieldFocus = (field) => {
+    if (!field) return;
+    setFocusRequest((current) => ({ field, nonce: current.nonce + 1 }));
+  };
+
+  const updateAnswer = (field, value) => {
+    setEditAnswers((current) => ({ ...current, [field]: value }));
+    setMissingFields((current) => current.filter((item) => item !== field));
+    if (field === 'instagramUrl' || validationMessage) setValidationMessage('');
+  };
+  const startEditing = () => {
+    setEditAnswers(answersFor(savedSnapshot));
+    setMissingFields([]);
+    setValidationMessage('');
+    setMode('editing');
+  };
+  const cancelEditing = () => {
+    setEditAnswers(answersFor(savedSnapshot));
+    setMissingFields([]);
+    setValidationMessage('');
+    setMode('card');
+  };
+  const saveVersion2 = async () => {
+    const normalizedAnswers = normalizeWizardAnswers(editAnswers);
+    const nextMissingFields = getMissingWizardAnswers(normalizedAnswers);
+    if (nextMissingFields.length) {
+      setMissingFields(nextMissingFields);
+      setValidationMessage(copy.required);
+      requestFieldFocus(nextMissingFields[0]);
+      return;
+    }
+    const rawInstagram = String(editAnswers.instagramUrl || '').trim();
+    if (rawInstagram && !normalizedAnswers.instagramUrl) {
+      setMissingFields(['instagramUrl']);
+      setValidationMessage(copy.invalidInstagram);
+      requestFieldFocus('instagramUrl');
+      return;
+    }
+    const requestWorkspaceId = workspaceId;
+    const requestId = ++saveRequestRef.current;
+    setStatus('saving');
+    try {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/agent/context/finalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: normalizedAnswers }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const responseMissingFields = payload.missingFields || [];
+        setMissingFields(responseMissingFields);
+        setValidationMessage(responseMissingFields.length ? copy.required : '');
+        requestFieldFocus(responseMissingFields[0]);
+        throw new Error(payload.error || 'brand_brain_finalize_failed');
+      }
+      if (saveRequestRef.current !== requestId || activeWorkspaceRef.current !== requestWorkspaceId) return;
+      const savedBrief = payload?.brief && typeof payload.brief === 'object'
+        ? payload.brief
+        : { schemaVersion: 2, answers: normalizedAnswers, recommendation: payload?.recommendation || null };
+      setSavedSnapshot(savedBrief);
+      setEditAnswers(normalizeWizardAnswers(savedBrief.answers));
+      setMissingFields([]);
+      setValidationMessage('');
+      setMode('card');
+      onSaved?.(savedBrief);
+      onRecommendationChanged?.(payload.recommendation || savedBrief.recommendation || null);
+      notify?.(language === 'en' ? 'My Brands saved. Recommendations are refreshed.' : 'Мої бренди збережено. Рекомендації оновлено.');
+    } catch (error) {
+      if (saveRequestRef.current !== requestId || activeWorkspaceRef.current !== requestWorkspaceId) return;
+      if (!missingFields.length) notify?.(localizeInterfaceError(error, t, 'errors.brandBrainSave'));
+    } finally {
+      if (saveRequestRef.current === requestId && activeWorkspaceRef.current === requestWorkspaceId) setStatus('ready');
+    }
+  };
+
+  const isV2 = isV2Brief(savedSnapshot);
+  const savedAnswers = answersFor(savedSnapshot);
+  const authoredCardFields = [
+    ['profileDescription', copy.profileDescription],
+    ['audience', copy.audience],
+    ['niche', copy.niche],
+    ['market', copy.market],
+  ];
+  const legacyCardFields = [
+    ['businessType', copy.niche],
+    ['product', copy.profileDescription],
+    ['audience', copy.audience],
+    ['offer', 'Offer'],
+    ['cta', 'CTA'],
+    ['toneOfVoice', 'Tone of Voice'],
+  ];
+  const instagramUrl = savedAnswers.instagramUrl;
+
+  if (mode === 'card') {
+    return (
+      <section className="brand-brain">
+        <article className="brand-card" aria-labelledby="my-brands-card-title">
+          <div className="brand-card-head">
+            <div>
+              <small>{copy.title}</small>
+              <h3 id="my-brands-card-title">{isV2 ? copy.title : savedSnapshot.brandName || copy.title}</h3>
+              <p>{copy.description}</p>
+            </div>
+            <button className="icon brand-card-edit" type="button" aria-label={copy.editBrand} title={copy.editBrand} onClick={startEditing}>
+              <Pencil size={16} />
+            </button>
+          </div>
+          <dl className={`brand-facts ${isV2 ? 'brand-facts-v2' : ''}`}>
+            {(isV2 ? authoredCardFields : legacyCardFields).map(([field, label]) => (
+              <div key={field}><dt>{label}</dt><dd>{isV2 ? savedAnswers[field] || copy.notSpecified : savedSnapshot[field] || copy.notSpecified}</dd></div>
+            ))}
+          </dl>
+          {isV2 && instagramUrl && <div className="brand-card-instagram"><a href={instagramUrl} target="_blank" rel="noreferrer">{instagramUrl}</a></div>}
+          {isV2 && savedSnapshot?.recommendation?.signalId && (
+            <button type="button" className="dark brand-recommendation-action" onClick={() => onOpenRecommendedSignal?.(savedSnapshot.recommendation.signalId)}>
+              <Play size={16} />{copy.openRecommendedSignal}
+            </button>
+          )}
+        </article>
+      </section>
+    );
+  }
+
+  return (
+    <section className="brand-brain">
+      <div className="brand-brain-head">
+        <div><small>{copy.title}</small><h3>{copy.title}</h3><p>{copy.description}</p></div>
+      </div>
+      {missingFields.length > 0 && <p className="brand-required-fields" role="alert">{validationMessage || copy.required}</p>}
+      <div className="brand-brain-grid brand-brain-v2-fields">
+        {[
+          ['profileDescription', copy.profileDescription, true],
+          ['audience', copy.audience, true],
+          ['niche', copy.niche, false],
+          ['market', copy.market, false],
+          ['instagramUrl', copy.instagram, false],
+        ].map(([field, label, multiline]) => {
+          const Field = multiline ? 'textarea' : 'input';
+          return <label className="brand-field" key={field}><span>{label}</span><Field ref={(element) => { inputRefs.current[field] = element; }} name={field} type={multiline ? undefined : 'text'} value={editAnswers[field] || ''} onChange={(event) => updateAnswer(field, event.target.value)} aria-invalid={missingFields.includes(field)} /></label>;
+        })}
+      </div>
+      <div className="brand-edit-actions">
+        <button className="dark" type="button" onClick={() => void saveVersion2()} disabled={status === 'saving'}><Database size={16} />{status === 'saving' ? copy.saving : copy.saveChanges}</button>
+        <button type="button" onClick={cancelEditing} disabled={status === 'saving'}>{copy.cancel}</button>
+      </div>
+    </section>
+  );
+}
+
+function LegacyBrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSaved }) {
   const { t, translateText } = useI18n();
   const [seed, setSeed] = useState('');
   const createEditableBrief = (source = {}) => ({
@@ -7836,7 +8142,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, initialBrief, onBrandSaved, activeTab = 'sources', onTabChange, language = 'uk' }) {
+function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, initialBrief, onBrandSaved, brandEditSuggestion, onBrandEditSuggestionConsumed, onOpenRecommendedSignal, activeTab = 'sources', onTabChange, language = 'uk' }) {
   const { translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
@@ -8075,7 +8381,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
           </div>
         </div>
       )}
-      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} initialBrief={initialBrief} onSaved={onBrandSaved} />}
+      {tab === 'profile' && <BrandBrain notify={notify} workspaceId={workspaceId} language={language} initialBrief={initialBrief} onSaved={onBrandSaved} brandEditSuggestion={brandEditSuggestion} onBrandEditSuggestionConsumed={onBrandEditSuggestionConsumed} onOpenRecommendedSignal={onOpenRecommendedSignal} />}
       {tab === 'billing' && <BillingSettings workspaceId={workspaceId} notify={notify} language={language} />}
       {tab === 'communications' && (
         <CommunicationPreferences apiBase={API_BASE} fetcher={authFetch} language={language} mode="settings" />

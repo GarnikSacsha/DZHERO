@@ -228,7 +228,17 @@ async function withRuntime(brief, callback, options = {}) {
       VITE_API_URL: `http://127.0.0.1:${backendPort}/api`,
     });
     await waitForUrl(appUrl, frontend);
-    await loginDemo(page, appUrl);
+    await options.beforeLogin?.(page);
+    if (options.skipLogin) {
+      await page.addInitScript(() => {
+        localStorage.setItem('insta-producer-language', 'en');
+        localStorage.removeItem('dzhero-active-workspace');
+        localStorage.removeItem('dzhero-sources-tab');
+      });
+      await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
+    } else {
+      await loginDemo(page, appUrl);
+    }
     await callback(page);
   } finally {
     await browser.close();
@@ -326,20 +336,54 @@ await withRuntime({}, async (page) => {
   assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), false, 'Finish must unlock Signals');
   await page.keyboard.press('Escape');
   await page.locator('.video-preview-modal').waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => document.activeElement === document.querySelector('.page-signals'));
   assert.equal(await page.locator('.page-signals').evaluate((element) => document.activeElement === element), true, 'Closing the automatic preview must restore a meaningful Signals focus target');
 });
 
+let releaseDelayedRecommendationReels = false;
 await withRuntime({
-  brandName: 'North Star Coffee',
-  businessType: 'Neighborhood coffee shop',
-  product: 'Espresso and fresh pastries',
-  audience: 'Morning commuters nearby',
-  location: 'Kyiv',
-  offer: 'Coffee and pastry breakfast',
-  cta: 'Visit before work',
-  toneOfVoice: 'Warm and concise',
-  stopTopics: ['unsupported best-in-city claims'],
-  proof: 'Public menu and customer reviews',
+  schemaVersion: 2,
+  answers: {
+    profileDescription: 'Specialty coffee', audience: 'Commuters', niche: 'Coffee shop', market: 'Kyiv', instagramUrl: '',
+  },
+  recommendation: { signalId: 'reel_coffee_fixture' },
+}, async (page) => {
+  await page.locator('[data-tour="sidebar-settings"]').click();
+  await page.getByRole('button', { name: /my brands|brand memory/i }).click();
+  await page.getByRole('button', { name: /open recommended signal/i }).click();
+  await page.waitForSelector('.page-signals');
+  assert.equal(await page.locator('.video-preview-modal').count(), 0, 'A not-yet-loaded recommendation must not open a wrong preview');
+  releaseDelayedRecommendationReels = true;
+  await page.getByRole('button', { name: /refresh|оновити/i }).click();
+  await page.locator('.video-preview-modal').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.video-preview-modal').getByText('Breakfast coffee before the commute', { exact: true }).count(), 1, 'When reels arrive, the handoff must open only the exact matching signal');
+  await page.keyboard.press('Escape');
+  await page.locator('.video-preview-modal').waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: /refresh|оновити/i }).click();
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('.video-preview-modal').count(), 0, 'Later reel updates must not reopen a consumed recommendation handoff');
+}, {
+  beforeLogin: async (page) => {
+    await page.route('**/api/workspaces/ws_demo_ua/reels', async (route) => {
+      if (!releaseDelayedRecommendationReels) {
+        await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ reels: [] }) });
+        return;
+      }
+      await route.continue();
+    });
+  },
+});
+
+await withRuntime({
+  schemaVersion: 2,
+  answers: {
+    profileDescription: 'Specialty coffee and fast breakfasts',
+    audience: 'Busy Kyiv commuters',
+    niche: 'Coffee shop',
+    market: 'Kyiv, Ukraine',
+    instagramUrl: 'https://instagram.com/northstar',
+  },
+  recommendation: { signalId: 'reel_coffee_fixture' },
 }, async (page) => {
   assert.equal(
     await page.locator('[data-tour="sidebar-home"]').count(),
@@ -354,52 +398,122 @@ await withRuntime({
   );
   await page.getByRole('button', { name: /my brands|brand memory/i }).click();
   await page.waitForSelector('.brand-brain');
-
   assert.equal(
     await page.locator('.brand-brain textarea').count(),
     0,
-    'A saved brand must render as a locked card, not as inputs',
+    'A saved V2 brand must render as a locked card, not as inputs',
   );
+  await expectVisible(page.getByText('Specialty coffee and fast breakfasts'));
+  await expectVisible(page.getByText('Busy Kyiv commuters'));
+  await expectVisible(page.getByText('Coffee shop'));
+  await expectVisible(page.getByText('Kyiv, Ukraine'));
+  assert.equal(await page.getByText(/offer|cta|tone of voice/i).count(), 0, 'Locked V2 cards must not expose derived legacy fields');
+  assert.equal(await page.locator('.brand-facts-v2').evaluate((element) => getComputedStyle(element).gridTemplateColumns.split(' ').length), 2, 'The compact V2 facts card must render two computed columns on desktop');
   const editButton = page.getByRole('button', { name: /edit brand/i });
   assert.equal(await editButton.count(), 1, 'Saved brand card must expose one pencil edit action');
   await editButton.click();
-  assert.ok(
-    await page.locator('.brand-brain textarea').count() > 0,
-    'Pencil action must unlock brand fields',
-  );
+  assert.equal(await page.locator('.brand-brain textarea').count(), 2, 'V2 editing exposes only the two authored long-answer fields');
+  assert.equal(await page.locator('.brand-brain input').count(), 3, 'V2 editing exposes niche, market, and optional Instagram inputs');
+  assert.equal(await page.getByLabel(/offer|cta|tone of voice/i).count(), 0, 'V2 editing must not expose derived legacy fields');
   assert.equal(await page.getByRole('button', { name: /save changes/i }).count(), 1);
   assert.equal(await page.getByRole('button', { name: /cancel/i }).count(), 1);
-  const productInput = page.locator('textarea[name="product"]');
-  await productInput.fill('Unsaved latte');
+  const profileInput = page.locator('textarea[name="profileDescription"]');
+  const audienceInput = page.locator('textarea[name="audience"]');
+  await profileInput.fill('');
+  await audienceInput.fill('');
+  await page.getByRole('button', { name: /save changes/i }).click();
+  await page.getByRole('alert').waitFor({ state: 'visible' });
+  assert.equal(await profileInput.evaluate((element) => document.activeElement === element), true, 'A multi-field validation attempt must focus the first missing answer');
+  await profileInput.type('Sp');
+  assert.equal(await profileInput.evaluate((element) => document.activeElement === element), true, 'Typing into the first missing answer must not jump focus to the next missing field');
+  assert.equal(await audienceInput.evaluate((element) => document.activeElement === element), false, 'The next missing field must not steal focus while the user is typing');
+  await profileInput.fill('Unsaved latte');
   await page.getByRole('button', { name: /cancel/i }).click();
   await page.waitForSelector('.brand-card');
-  assert.equal(await page.getByText('Espresso and fresh pastries', { exact: true }).count(), 1, 'Cancel must restore the saved snapshot');
+  assert.equal(await page.getByText('Specialty coffee and fast breakfasts', { exact: true }).count(), 1, 'Cancel must restore the saved snapshot');
 
+  let settingsFinalizeRequests = 0;
+  let blockInvalidInstagramFinalize = true;
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/finalize', async (route) => {
+    settingsFinalizeRequests += 1;
+    if (blockInvalidInstagramFinalize) {
+      await route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'invalid_finalize_should_not_run' }) });
+      return;
+    }
+    const submitted = route.request().postDataJSON();
+    assert.equal(submitted.answers.market, 'Lviv, Ukraine');
+    assert.equal(submitted.answers.instagramUrl, '');
+    await route.continue();
+  });
   await page.getByRole('button', { name: /edit brand/i }).click();
-  await page.locator('textarea[name="product"]').fill('Iced espresso');
+  await page.locator('input[name="instagramUrl"]').fill('instagram not a url');
+  await page.getByRole('button', { name: /save changes/i }).click();
+  await page.waitForTimeout(150);
+  assert.equal(settingsFinalizeRequests, 0, 'An invalid non-empty Instagram value must block finalize');
+  assert.equal(await page.locator('input[name="instagramUrl"]').evaluate((element) => document.activeElement === element), true, 'An invalid Instagram value must receive focus');
+  await page.getByRole('button', { name: /cancel/i }).click();
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByRole('link', { name: 'https://instagram.com/northstar' }).count(), 1, 'An invalid Instagram attempt must not erase the saved URL');
+
+  blockInvalidInstagramFinalize = false;
+  await page.getByRole('button', { name: /edit brand/i }).click();
+  await page.locator('input[name="instagramUrl"]').fill('');
+  await page.locator('input[name="market"]').fill('Lviv, Ukraine');
   const saveResponse = page.waitForResponse((response) => (
-    response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
+    response.request().method() === 'POST' && /\/agent\/context\/finalize$/.test(response.url())
   ));
   await page.getByRole('button', { name: /save changes/i }).click();
-  assert.equal((await saveResponse).ok(), true, 'Save Changes must receive a successful persisted-context response');
+  assert.equal((await saveResponse).ok(), true, 'Save Changes must receive a successful V2 finalize response');
+  assert.equal(settingsFinalizeRequests, 1, 'Settings must finalize exactly once');
   await page.waitForSelector('.brand-card');
-  assert.equal(await page.getByText('Iced espresso', { exact: true }).count(), 1, 'Save Changes must persist and render the edited value');
+  assert.equal(await page.getByText('Lviv, Ukraine', { exact: true }).count(), 1, 'Save Changes must persist and render the edited market');
+  assert.equal(await page.getByRole('button', { name: /my brands|brand memory/i }).count(), 1, 'Saving Settings must not navigate away');
+  await page.getByRole('button', { name: /open recommended signal/i }).click();
+  await page.locator('.video-preview-modal').waitFor({ state: 'visible' });
+  assert.equal(await page.locator('.video-preview-modal').getByText('Breakfast coffee before the commute', { exact: true }).count(), 1, 'The returned recommendation must open its matching real signal');
+  await page.keyboard.press('Escape');
+  await page.locator('.video-preview-modal').waitFor({ state: 'hidden' });
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.video-preview-modal').count(), 0, 'The one-shot recommendation handoff must not reopen the preview after close');
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.shell');
   await page.locator('[data-tour="sidebar-settings"]').click();
   await page.getByRole('button', { name: /my brands|brand memory/i }).click();
   await page.waitForSelector('.brand-card');
-  assert.equal(await page.getByText('Iced espresso', { exact: true }).count(), 1, 'Reloaded My Brands must render the persisted edited value');
+  assert.equal(await page.getByText('Lviv, Ukraine', { exact: true }).count(), 1, 'Reloaded My Brands must render the persisted edited value');
 });
 
 await withRuntime({
-  brandName: 'Saved Coffee',
+  brandName: 'Legacy Coffee',
   businessType: 'Coffee shop',
-  product: 'Espresso',
-  audience: 'Commuters',
+  product: 'Espresso and fresh pastries',
+  audience: 'Morning commuters',
+  market: 'Legacy market',
   offer: 'Breakfast set',
   cta: 'Visit today',
   toneOfVoice: 'Warm',
+}, async (page) => {
+  await page.locator('[data-tour="sidebar-settings"]').click();
+  await page.getByRole('button', { name: /my brands|brand memory/i }).click();
+  await page.waitForSelector('.brand-card');
+  await expectVisible(page.getByText('Espresso and fresh pastries', { exact: true }));
+  await page.getByRole('button', { name: /edit brand/i }).click();
+  assert.equal(await page.locator('.brand-brain textarea').count(), 2, 'Editing a legacy card must project it into the V2 authored-answer contract');
+  assert.equal(await page.locator('input[name="market"]').inputValue(), 'Legacy market', 'Legacy upgrades must project brief.market before falling back to location');
+  await page.getByRole('button', { name: /save changes/i }).click();
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByText(/offer|cta|tone of voice/i).count(), 0, 'A completed legacy edit must upgrade the card to the locked V2 authored fields');
+});
+
+await withRuntime({
+  schemaVersion: 2,
+  answers: {
+    profileDescription: 'Specialty coffee and fast breakfasts',
+    audience: 'Commuters',
+    niche: 'Coffee shop',
+    market: 'Kyiv',
+    instagramUrl: '',
+  },
 }, async (page) => {
   await page.route('**/api/brand-scan/preview', async (route) => {
     await route.fulfill({
@@ -417,27 +531,38 @@ await withRuntime({
       }),
     });
   });
-  let brandBrainPuts = 0;
+  let draftPuts = 0;
+  let finalizeRequests = 0;
   page.on('request', (request) => {
-    if (request.method() === 'PUT' && /\/agent\/context$/.test(request.url())) brandBrainPuts += 1;
+    if (request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url())) draftPuts += 1;
+    if (request.method() === 'POST' && /\/agent\/context\/finalize$/.test(request.url())) finalizeRequests += 1;
   });
   await page.locator('[data-tour="sidebar-settings"]').click();
   await page.locator('.source-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
   await page.getByRole('button', { name: /analyze/i }).click();
   await page.getByRole('button', { name: /open.*studio/i }).click();
   await page.getByRole('button', { name: /brand brain/i }).click();
-  await page.waitForSelector('.brand-card');
-  assert.equal(brandBrainPuts, 0, 'Sparse Brand Scan must not overwrite a completed Brand Brain');
+  await expectVisible(page.getByRole('button', { name: /save changes/i }));
+  assert.equal(draftPuts, 0, 'Sparse Brand Scan must not write a draft for a completed workspace');
+  assert.equal(finalizeRequests, 0, 'Sparse Brand Scan must not finalize automatically');
   assert.equal(
-    await page.getByText('Espresso', { exact: true }).count(),
-    1,
-    'Completed Brand Brain must remain unchanged until Settings accepts the transient suggestion',
+    await page.getByLabel(/profile and product/i).inputValue(),
+    'Specialty coffee and fast breakfasts',
+    'Sparse Brand Scan must not replace a non-empty authored answer with an empty suggestion',
+  );
+  assert.match(
+    await page.getByLabel(/instagram/i).inputValue(),
+    /instagram\.com\/car_finder_/,
+    'Sparse Brand Scan must copy its non-empty Instagram suggestion into the edit draft',
   );
   assert.equal(
     await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
     false,
     'A completed workspace must remain unlocked after sparse Brand Scan handoff',
   );
+  await page.getByRole('button', { name: /cancel/i }).click();
+  await page.waitForSelector('.brand-card');
+  assert.equal(await page.getByText('Specialty coffee and fast breakfasts', { exact: true }).count(), 1, 'Cancel must restore the unchanged saved card after a sparse suggestion');
 });
 
 await withRuntime({}, async (page) => {
@@ -455,6 +580,121 @@ await withRuntime({}, async (page) => {
       instagramUrl: '',
     },
   },
+});
+
+await withRuntime({}, async (page) => {
+  let releaseDraft;
+  let draftRequests = 0;
+  let finalizeRequests = 0;
+  let forbiddenMutationRequests = 0;
+  const delayedDraft = new Promise((resolve) => { releaseDraft = resolve; });
+  await page.route('**/api/workspaces/ws_demo_ua/agent/context/draft', async (route) => {
+    draftRequests += 1;
+    const body = route.request().postDataJSON();
+    assert.equal(body.currentStep, 1, 'The Studio Brand Scan handoff must save a sparse step-one draft');
+    assert.equal(body.answers.audience, '');
+    assert.equal(body.answers.instagramUrl, 'https://www.instagram.com/car_finder_/');
+    await delayedDraft;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        complete: false,
+        draft: {
+          currentStep: 2,
+          answers: { profileDescription: 'Sparse scan profile', audience: '', niche: '', market: '', instagramUrl: '' },
+        },
+      }),
+    });
+  });
+  page.on('request', (request) => {
+    if (request.method() === 'POST' && /\/agent\/context\/finalize$/.test(request.url())) finalizeRequests += 1;
+    if (/\/remix\/generate$|\/content-plan$/.test(request.url()) && ['POST', 'PUT', 'PATCH'].includes(request.method())) forbiddenMutationRequests += 1;
+  });
+  await page.route('**/api/brand-scan/preview', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {
+          source: { label: 'Instagram', tone: 'instagram' },
+          sourceStatus: 'instagram_web_profile',
+          handle: '@car_finder_',
+          url: 'https://www.instagram.com/car_finder_/',
+          title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
+          description: '',
+          stats: { followers: '1,642', following: '55', posts: '322' },
+        },
+        capabilities: {},
+      }),
+    });
+  });
+  await page.locator('.auth-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
+  await page.getByRole('button', { name: /build content plan/i }).click();
+  await expectVisible(page.getByRole('button', { name: /view demo/i }));
+  await page.getByRole('button', { name: /view demo/i }).click();
+  await page.waitForSelector('.brand-studio-panel');
+  await expectVisible(page.getByRole('button', { name: /save to brand brain/i }));
+  const pendingStudio = page.locator('[data-pending-brand-scan-only]');
+  assert.equal(await pendingStudio.count(), 1, 'Incomplete scans must use the restricted Studio handoff');
+  assert.equal(await pendingStudio.getByRole('button').count(), 2, 'Restricted Studio handoff must expose only Back and Save actions');
+  assert.equal(await pendingStudio.getByRole('button', { name: /generate|перегенерувати/i }).count(), 0, 'Pending incomplete scans must not expose Remix generation');
+  assert.equal(await pendingStudio.getByRole('button', { name: /add to content plan|додати в контент-план/i }).count(), 0, 'Pending incomplete scans must not expose Content Plan mutation');
+  await page.waitForTimeout(100);
+  assert.equal(forbiddenMutationRequests, 0, 'Pending incomplete scans must not call Remix or Content Plan mutations');
+  const firstDraftRequest = page.waitForRequest((request) => request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url()));
+  await page.getByRole('button', { name: /save to brand brain/i }).click();
+  await firstDraftRequest;
+  assert.equal(draftRequests, 1, 'An incomplete source scan must write exactly one draft through the Studio Save to Brand Brain path');
+  assert.equal(finalizeRequests, 0, 'An incomplete source scan must never finalize');
+  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), true, 'The incomplete Studio source scan must remain navigation-locked while its draft saves');
+  await page.locator('.user-account-trigger').click();
+  await page.getByRole('button', { name: /secondary test workspace/i }).click();
+  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
+  releaseDraft();
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), true, 'A stale incomplete draft response must keep workspace B locked');
+  assert.equal(await page.getByRole('heading', { name: /describe your profile/i }).count(), 1, 'A stale incomplete draft response must not advance workspace B');
+  assert.equal(finalizeRequests, 0, 'A stale incomplete draft response must still issue zero finalize requests');
+}, {
+  secondaryBrief: {},
+  skipLogin: true,
+});
+
+await withRuntime({}, async (page) => {
+  let draftRequests = 0;
+  page.on('request', (request) => {
+    if (request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url())) draftRequests += 1;
+  });
+  await page.route('**/api/brand-scan/preview', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        metadata: {
+          source: { label: 'Instagram', tone: 'instagram' },
+          sourceStatus: 'instagram_web_profile',
+          handle: '@car_finder_',
+          url: 'https://www.instagram.com/car_finder_/',
+          title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
+          description: '',
+          stats: { followers: '1,642', following: '55', posts: '322' },
+        },
+        capabilities: {},
+      }),
+    });
+  });
+  await page.locator('.auth-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
+  await page.getByRole('button', { name: /build content plan/i }).click();
+  await page.getByRole('button', { name: /view demo/i }).click();
+  await page.waitForSelector('.brand-studio-panel');
+  await expectVisible(page.getByRole('button', { name: /save to brand brain/i }));
+  await page.locator('.user-account-trigger').click();
+  await page.getByRole('button', { name: /secondary test workspace/i }).click();
+  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
+  assert.equal(await page.locator('.brand-studio-panel').count(), 0, 'A pending scan preview must disappear when switching workspaces before Save');
+  assert.equal(await page.getByRole('button', { name: /save to brand brain/i }).count(), 0, 'Workspace B must not inherit workspace A pending scan actions');
+  assert.equal(draftRequests, 0, 'Switching before Save must not write workspace A scan data into workspace B');
+}, {
+  secondaryBrief: {},
+  skipLogin: true,
 });
 
 await withRuntime({}, async (page) => {
