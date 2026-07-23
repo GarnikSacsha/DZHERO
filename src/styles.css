@@ -15254,6 +15254,10 @@ nav button.active::before {
   outline-offset: 4px;
 }
 
+.app:not(.auth-app):has(.brand-edit-actions) .jeryk-idle-card {
+  pointer-events: none;
+}
+
 @media (min-width: 1180px) {
   .app:not(.auth-app):has(.page-content-plan) .jeryk-idle-card {
     top: 72px;

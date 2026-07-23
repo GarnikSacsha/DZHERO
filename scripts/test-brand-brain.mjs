@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildBrandBrainDraft } from '../src/brandBrain.mjs';
+import { isBrandProfileComplete } from '../src/myBrandsState.mjs';
 
 const draft = buildBrandBrainDraft({
   label: 'fitness / wellness',
@@ -51,6 +52,19 @@ assert.equal(productionFallbackDraft.product, '');
 assert.equal(productionFallbackDraft.audience, '');
 assert.equal(productionFallbackDraft.offer, '');
 assert.equal(productionFallbackDraft.cta, '');
+
+const sparseSocialDraft = buildBrandBrainDraft({
+  label: 'local business',
+  title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
+  description: '',
+  handle: '@car_finder_',
+  stats: { followers: '1,642', following: '55', posts: '322' },
+});
+for (const field of ['businessType', 'product', 'audience', 'offer', 'cta', 'toneOfVoice']) {
+  assert.equal(sparseSocialDraft[field], '', `Sparse social metadata must not synthesize ${field}`);
+}
+assert.match(sparseSocialDraft.proof, /1,642 followers/);
+assert.equal(isBrandProfileComplete(sparseSocialDraft), false, 'Sparse Brand Scan metadata must not unlock navigation');
 
 const clothingDraft = buildBrandBrainDraft({
   label: 'clothing store',

@@ -82,21 +82,47 @@ function cleanSourceText(value = '') {
     .trim();
 }
 
+function stripNonEvidenceIdentifiers(value = '', handle = '') {
+  const cleanHandle = compactText(handle).replace(/^@/, '');
+  const escapedHandle = cleanHandle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return cleanSourceText(value)
+    .replace(/https?:\/\/[^\s<>'"`]+/gi, '')
+    .replace(/\/[a-z0-9._-]+(?:\/|$)/gi, '')
+    .replace(/@[a-z0-9._-]+\b/gi, '')
+    .replace(/\b[a-z0-9.-]*_[a-z0-9._-]*\b/gi, '')
+    .replace(escapedHandle ? new RegExp(`@?${escapedHandle}\\b`, 'gi') : /$^/, '')
+    .trim();
+}
+
 function combinedSourceMaterial({ input = '', metadata = {}, apifySignals = [] } = {}) {
-  return compactText([input, metadata.title, metadata.description, ...summarizeApifySignals(apifySignals).map((signal) => signal.text)]
-    .map(cleanSourceText).filter(Boolean).join(' '), 5000);
+  return compactText([input, metadata.title, metadata.description, metadata.analysisText, ...summarizeApifySignals(apifySignals).map((signal) => signal.text)]
+    .map((value) => stripNonEvidenceIdentifiers(value, metadata.handle)).filter(Boolean).join(' '), 5000);
 }
 
 function buildGeminiBrandBrainPrompt({ input = '', metadata = {}, apifySignals = [] } = {}) {
+  const sanitize = (value) => stripNonEvidenceIdentifiers(value, metadata.handle);
+  const promptMetadata = {
+    title: sanitize(metadata.title),
+    description: sanitize(metadata.description),
+    analysisText: sanitize(metadata.analysisText),
+    stats: metadata.stats || {},
+    sourceStatus: metadata.sourceStatus || '',
+  };
+  const promptSignals = summarizeApifySignals(apifySignals).map((signal) => ({
+    title: sanitize(signal.title),
+    caption: sanitize(signal.caption),
+    text: sanitize(signal.text),
+    stats: signal.stats,
+  }));
   return [
     'You are Dzhero Brand Brain extractor.',
     'Return only valid JSON. Do not wrap it in markdown.',
     'Do not invent facts. Leave unsupported facts empty.',
     'Required JSON keys: brandName, businessType, product, audience, location, offer, cta, toneOfVoice, proof, contentPillars, keywords, stopTopics, confidence, missingFields, evidenceByField.',
     'For every populated required fact (businessType, product, audience, offer, cta, toneOfVoice), evidenceByField must include an exact snippet copied from the submitted source material.',
-    `User input: ${compactText(input, 500)}`,
-    `Public metadata: ${JSON.stringify({ handle: metadata.handle || '', title: metadata.title || '', description: metadata.description || '', stats: metadata.stats || {}, sourceStatus: metadata.sourceStatus || '' })}`,
-    `Apify profile signals: ${JSON.stringify(summarizeApifySignals(apifySignals))}`,
+    `Sanitized user description: ${sanitize(input)}`,
+    `Public metadata: ${JSON.stringify(promptMetadata)}`,
+    `Apify profile signals: ${JSON.stringify(promptSignals)}`,
   ].join('\n');
 }
 

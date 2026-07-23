@@ -56,6 +56,70 @@ async function testGeminiRejectsLabelFirstMetricsAndPlatformBoilerplate() {
   }
 }
 
+async function testGeminiDoesNotTreatSubmittedUrlOrHandleAsEvidence() {
+  const result = await buildBrandBrainEnrichment({
+    input: 'https://www.instagram.com/car_finder_/',
+    metadata: { handle: '@car_finder_', title: 'car_finder_', description: 'Public profile' },
+    geminiClient: async () => JSON.stringify({
+      product: 'car_finder_',
+      evidenceByField: { product: ['car_finder_'] },
+    }),
+  });
+  assert.equal(result.brief.product, '');
+  assert.ok(result.missingFields.includes('product'));
+}
+
+async function testGeminiAcceptsGroundedManualDescriptionEvidence() {
+  const result = await buildBrandBrainEnrichment({
+    input: 'Kyiv coffee shop with breakfasts; book via Direct',
+    metadata: { sourceStatus: 'manual_text' },
+    geminiClient: async () => JSON.stringify({
+      businessType: 'coffee shop',
+      product: 'breakfasts',
+      cta: 'book via Direct',
+      audience: 'office workers',
+      evidenceByField: {
+        businessType: ['Kyiv coffee shop'],
+        product: ['breakfasts'],
+        cta: ['book via Direct'],
+      },
+    }),
+  });
+  assert.equal(result.brief.businessType, 'coffee shop');
+  assert.equal(result.brief.product, 'breakfasts');
+  assert.equal(result.brief.cta, 'book via Direct');
+  assert.equal(result.brief.audience, '');
+}
+
+async function testGeminiUsesSanitizedAnalysisTextAsGroundedEvidence() {
+  let prompt = '';
+  const result = await buildBrandBrainEnrichment({
+    input: 'https://www.instagram.com/car_finder_/',
+    metadata: {
+      handle: '@car_finder_',
+      analysisText: 'Kyiv coffee shop with breakfasts; book via Direct. https://example.com/hidden @car_finder_ car_finder_',
+    },
+    geminiClient: async (candidate) => {
+      prompt = candidate;
+      return JSON.stringify({
+        businessType: 'coffee shop',
+        product: 'breakfasts',
+        cta: 'book via Direct',
+        evidenceByField: {
+          businessType: ['Kyiv coffee shop'],
+          product: ['breakfasts'],
+          cta: ['book via Direct'],
+        },
+      });
+    },
+  });
+  assert.match(prompt, /Kyiv coffee shop with breakfasts; book via Direct/i);
+  assert.doesNotMatch(prompt, /https:\/\/example\.com\/hidden|@car_finder_|car_finder_/i);
+  assert.equal(result.brief.businessType, 'coffee shop');
+  assert.equal(result.brief.product, 'breakfasts');
+  assert.equal(result.brief.cta, 'book via Direct');
+}
+
 function testPromptAndApifyGuards() {
   const prompt = buildGeminiBrandBrainPrompt({ input: '@acme', metadata: { description: 'coffee' } });
   assert.match(prompt, /evidenceByField/);
@@ -70,6 +134,9 @@ function testPromptAndApifyGuards() {
   await testGeminiRequiredFactsNeedSubmittedEvidence();
   await testGeminiRejectsSocialProofAsBusinessFact();
   await testGeminiRejectsLabelFirstMetricsAndPlatformBoilerplate();
+  await testGeminiDoesNotTreatSubmittedUrlOrHandleAsEvidence();
+  await testGeminiAcceptsGroundedManualDescriptionEvidence();
+  await testGeminiUsesSanitizedAnalysisTextAsGroundedEvidence();
   testPromptAndApifyGuards();
   console.log('brand brain extractor tests passed');
 })();
