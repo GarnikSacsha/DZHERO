@@ -3932,6 +3932,73 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
+.brand-wizard {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 24px;
+}
+
+.brand-wizard-progress {
+  display: grid;
+  gap: 8px;
+}
+
+.brand-wizard-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-soft);
+}
+
+.brand-wizard-progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.brand-wizard-fields {
+  display: grid;
+  gap: 16px;
+}
+
+.brand-wizard-fields textarea {
+  min-height: 150px;
+}
+
+.brand-wizard-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.brand-wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.brand-wizard-actions-end {
+  display: flex;
+  gap: 12px;
+}
+
+@media (max-width: 700px) {
+  .brand-wizard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-wizard-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .brand-wizard-actions-end {
+    display: grid;
+  }
+}
+
 .brand-brain-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
