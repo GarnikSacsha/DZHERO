@@ -1,0 +1,18 @@
+{
+  "idempotency_key": "sync:usr_fixture_1:2026-07-22T12:00:00.000Z",
+  "site_id": "dzhero.com.ua",
+  "visitor_id": "visitor_fixture_123",
+  "external_user_id": "usr_fixture_1",
+  "google_id": "google_fixture_1",
+  "email": "fixture.user@example.com",
+  "full_name": "Fixture User",
+  "avatar_url": "https://example.test/avatar.png",
+  "utm_source": "threads",
+  "utm_medium": "social",
+  "utm_campaign": "fixture_campaign",
+  "consents": [
+    {"consent_type": "product_updates", "granted": true, "consent_version": "2026-07-23", "locale": "uk", "source": "settings", "recorded_at": "2026-07-22T12:00:00.000Z"},
+    {"consent_type": "early_bird_offers", "granted": false, "consent_version": "2026-07-23", "locale": "uk", "source": "settings", "recorded_at": "2026-07-22T12:00:00.000Z"},
+    {"consent_type": "research_invites", "granted": true, "consent_version": "2026-07-23", "locale": "uk", "source": "settings", "recorded_at": "2026-07-22T12:00:00.000Z"}
+  ]
+}
