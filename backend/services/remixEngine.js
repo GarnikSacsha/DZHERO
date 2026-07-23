@@ -14,8 +14,7 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : async 
 };
 
 const DEFAULT_GEMINI_REMIX_MODEL = 'gemini-3.5-flash';
-const GEMINI_API_BASE = process.env.GEMINI_API_BASE
-  || 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
@@ -155,6 +154,10 @@ function createRemixGenerationFailure(cause) {
     'AI adaptation failed. Please try again in a minute.',
     cause,
   );
+}
+
+function getGeminiApiBase() {
+  return process.env.GEMINI_API_BASE || DEFAULT_GEMINI_API_BASE;
 }
 
 async function generateRemix(globalInsight, businessBrief, options = {}) {
@@ -310,7 +313,7 @@ async function generateValidatedProviderResult({
  */
 async function generateWithGemini(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
   const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
-  const url = `${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`;
+  const url = `${getGeminiApiBase()}/models/${model}:generateContent?key=${apiKey}`;
 
   const prompt = `
 === BUSINESS BRIEF ===

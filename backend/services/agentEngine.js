@@ -1,5 +1,4 @@
-const GEMINI_API_BASE = process.env.GEMINI_API_BASE
-  || 'https://generativelanguage.googleapis.com/v1beta';
+const DEFAULT_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_GEMINI_TEXT_MODEL = 'gemini-3.5-flash';
 const {
   normalizeBrandBrain,
@@ -17,6 +16,10 @@ function createAgentProviderError(code, status, message, cause) {
   error.payload = { error: code, message };
   error.cause = cause;
   return error;
+}
+
+function getGeminiApiBase() {
+  return process.env.GEMINI_API_BASE || DEFAULT_GEMINI_API_BASE;
 }
 
 function buildBusinessContext(workspace = {}, snapshot = {}) {
@@ -181,7 +184,7 @@ async function generateAgentReply({
     if (typeof beforeProviderAttempt === 'function') {
       await beforeProviderAttempt({ provider: 'gemini', model, operation: 'agent_chat' });
     }
-    const response = await fetch(`${GEMINI_API_BASE}/models/${model}:generateContent?key=${apiKey}`, {
+    const response = await fetch(`${getGeminiApiBase()}/models/${model}:generateContent?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

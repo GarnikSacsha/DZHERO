@@ -42,6 +42,12 @@ const strong = {
 
 assert.equal(assessRemixQuality(strong, { globalInsight: source }).ok, true);
 
+const whitespaceRequiredField = structuredClone(strong);
+whitespaceRequiredField.remixes[0].title = '   ';
+const whitespaceAssessment = assessRemixQuality(whitespaceRequiredField, { globalInsight: source });
+assert.equal(whitespaceAssessment.ok, false);
+assert.match(whitespaceAssessment.reasons.join(' '), /missing title, hook, or CTA/i);
+
 let attempts = 0;
 const meteredAttempts = [];
 let retryFeedback = '';
