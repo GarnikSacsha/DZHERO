@@ -16,9 +16,56 @@ import {
   isBrandProfileComplete,
   normalizeSourceLinks,
 } from '../src/myBrandsState.mjs';
+import {
+  BRAND_BRAIN_WIZARD_STEPS,
+  getMissingWizardAnswers,
+  normalizeWizardAnswers,
+  normalizeWizardDraft,
+  validateWizardStep,
+} from '../src/brandBrainWizardState.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEMO_WORKSPACE_ID = 'ws_demo_ua';
+
+assert.equal(BRAND_BRAIN_WIZARD_STEPS.length, 4);
+assert.deepEqual(
+  getMissingWizardAnswers({
+    profileDescription: 'Coffee',
+    audience: 'Commuters',
+    niche: 'Coffee shop',
+    market: 'Kyiv',
+  }),
+  [],
+);
+assert.deepEqual(validateWizardStep(4, { instagramUrl: '' }), []);
+assert.deepEqual(validateWizardStep(4, { instagramUrl: 'not-a-url' }), ['instagramUrl']);
+assert.equal(normalizeWizardDraft({ currentStep: 7 }).currentStep, 4);
+assert.deepEqual(normalizeWizardAnswers({
+  profileDescription: 123,
+  audience: true,
+  niche: null,
+  market: false,
+}), {
+  profileDescription: '',
+  audience: '',
+  niche: '',
+  market: '',
+  instagramUrl: '',
+});
+assert.deepEqual(normalizeWizardAnswers(null), {
+  profileDescription: '',
+  audience: '',
+  niche: '',
+  market: '',
+  instagramUrl: '',
+});
+assert.equal(normalizeWizardDraft(null).currentStep, 1);
+assert.equal(
+  normalizeWizardAnswers({ instagramUrl: 'https://instagram.com/northstar#about' }).instagramUrl,
+  'https://instagram.com/northstar',
+);
+assert.equal(normalizeWizardAnswers({ instagramUrl: 'https://example.com/northstar' }).instagramUrl, '');
+assert.equal(normalizeWizardAnswers({ instagramUrl: 'ftp://instagram.com/northstar' }).instagramUrl, '');
 
 assert.deepEqual(
   normalizeSourceLinks('https://example.com  https://example.com, ftp://invalid.example\nhttp://valid.example/path not-a-url'),
@@ -31,8 +78,8 @@ assert.deepEqual(
     audience: 'Commuters',
     cta: 'Visit today',
   }),
-  ['product', 'offer', 'toneOfVoice'],
-  'Missing required fields must follow the completion-contract order',
+  ['profileDescription', 'audience', 'niche', 'market'],
+  'Incomplete legacy profiles must use the Version 2 authored-answer contract',
 );
 assert.equal(
   isBrandProfileComplete({

@@ -1,4 +1,14 @@
+const {
+  REQUIRED_BRAND_ANSWER_FIELDS,
+  getMissingBrandAnswers,
+  isBrandBrainV2Complete,
+} = require('./brandBrainV2.cjs');
+
 const BRAND_BRAIN_FIELDS = [
+  'schemaVersion',
+  'answers',
+  'derivedBrief',
+  'recommendation',
   'businessType',
   'niche',
   'product',
@@ -19,7 +29,7 @@ const BRAND_BRAIN_FIELDS = [
   'rawBrandInput',
 ];
 
-const REQUIRED_BRAND_FIELDS = [
+const LEGACY_REQUIRED_BRAND_FIELDS = [
   'businessType',
   'product',
   'audience',
@@ -45,7 +55,10 @@ function shouldChargeBrandBrainSave({ existingBrief = {}, nextBrief = {} } = {})
 
 function getMissingRequiredBrandFields(brief = {}) {
   const source = brief && typeof brief === 'object' ? brief : {};
-  return REQUIRED_BRAND_FIELDS.filter((field) => !String(source[field] || '').trim());
+  if (Number(source.schemaVersion) === 2) {
+    return getMissingBrandAnswers(source.answers);
+  }
+  return LEGACY_REQUIRED_BRAND_FIELDS.filter((field) => !String(source[field] || '').trim());
 }
 
 function normalizeBrandBrainSourceLinks(value) {
@@ -67,7 +80,9 @@ function normalizeBrandBrainSourceLinks(value) {
 
 module.exports = {
   BRAND_BRAIN_FIELDS,
-  REQUIRED_BRAND_FIELDS,
+  REQUIRED_BRAND_FIELDS: LEGACY_REQUIRED_BRAND_FIELDS,
+  REQUIRED_BRAND_ANSWER_FIELDS,
+  isBrandBrainV2Complete,
   hasStoredBrandBrain,
   shouldChargeBrandBrainSave,
   getMissingRequiredBrandFields,
