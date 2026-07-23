@@ -141,6 +141,25 @@ async function runAudit(appUrl) {
     assert.deepEqual(initialCyrillic, [], `Initial English render flashed Cyrillic: ${initialCyrillic.join(' | ')}`);
 
     await assertEnglishSurface(page, 'Brand Brain');
+    const signalsNavigation = page.locator('[data-tour="sidebar-transcript"]');
+    if (await signalsNavigation.isDisabled()) {
+      const requiredValues = ['Coffee shop', 'Espresso', 'Commuters', 'Breakfast set', 'Visit today', 'Warm and concise'];
+      const fields = page.locator('.brand-brain-grid textarea');
+      assert.equal(await fields.count(), requiredValues.length, 'Onboarding must expose the six required My Brands fields');
+      for (let index = 0; index < requiredValues.length; index += 1) {
+        await fields.nth(index).fill(requiredValues[index]);
+      }
+      const saveResponse = page.waitForResponse((response) => (
+        response.request().method() === 'PUT' && /\/agent\/context$/.test(response.url())
+      ));
+      await page.getByRole('button', { name: /save memory/i }).click();
+      assert.equal((await saveResponse).ok(), true, 'My Brands onboarding must persist its completed brief');
+      await page.waitForFunction(() => {
+        const button = document.querySelector('[data-tour="sidebar-transcript"]');
+        return button instanceof HTMLButtonElement && !button.disabled;
+      });
+      await assertEnglishSurface(page, 'Completed My Brands onboarding');
+    }
     for (const [selector, label] of [
       ['[data-tour="sidebar-transcript"]', 'Signals'],
       ['[data-tour="sidebar-remix"]', 'Studio'],
@@ -154,6 +173,8 @@ async function runAudit(appUrl) {
     const settingsTabs = page.locator('.page > .tabs button');
     const settingsTabCount = await settingsTabs.count();
     assert.ok(settingsTabCount >= 3, 'Settings tabs are not reachable by the rendered audit');
+    assert.equal(await page.locator('[data-tour="sidebar-home"]').count(), 0, 'My Brands must not be a permanent sidebar destination');
+    assert.equal(await page.getByRole('button', { name: /my brands/i }).count(), 1, 'Settings must expose the My Brands tab');
     for (let index = 0; index < settingsTabCount; index += 1) {
       await settingsTabs.nth(index).click();
       await assertEnglishSurface(page, `Settings tab ${index + 1}`);
@@ -168,7 +189,7 @@ async function runAudit(appUrl) {
     await page.locator('.language-switch button', { hasText: 'UK' }).first().click();
     await page.waitForTimeout(50);
     assert.equal(await page.locator('html').getAttribute('lang'), 'uk');
-    assert.match(await page.locator('[data-tour="sidebar-home"]').innerText(), /Brand Brain/);
+    assert.equal(await page.locator('[data-tour="sidebar-home"]').count(), 0, 'My Brands must remain outside the sidebar after a language switch');
     await page.evaluate(() => {
       window.__englishSwitchCyrillic = [];
       const observer = new MutationObserver((records) => {
