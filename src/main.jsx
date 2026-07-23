@@ -128,6 +128,43 @@ const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
 const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'TikTok', 'Video', 'Stories'];
+
+function createInterfaceApiError(payload, fallbackCode = 'unknown_error') {
+  const code = extractInterfaceErrorCode(payload, fallbackCode);
+  const error = new Error(code);
+  error.code = code;
+  error.payload = payload;
+  return error;
+}
+
+function mergeDailyAiUsage(current, incoming) {
+  if (!incoming) return null;
+  if (!current) return incoming;
+  if (current.period !== incoming.period) {
+    return String(incoming.period || '') > String(current.period || '')
+      ? incoming
+      : current;
+  }
+  const mergeAction = (currentAction, incomingAction) => {
+    if (!incomingAction) return currentAction || null;
+    const used = Math.max(
+      Number(currentAction?.used) || 0,
+      Number(incomingAction.used) || 0,
+    );
+    const limit = incomingAction.limit;
+    return {
+      ...incomingAction,
+      used,
+      remaining: Number.isFinite(limit) ? Math.max(0, limit - used) : null,
+    };
+  };
+  return {
+    ...incoming,
+    remix: mergeAction(current.remix, incoming.remix),
+    agentChat: mergeAction(current.agentChat, incoming.agentChat),
+  };
+}
+
 const CONTENT_FORMAT_ALIASES = {
   'short-form': 'Video',
   shortform: 'Video',
@@ -402,6 +439,7 @@ function App() {
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
   const [sessionRevision, setSessionRevision] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
+  const [dailyAiUsage, setDailyAiUsage] = useState(null);
   const [consentPromptDismissed, setConsentPromptDismissed] = useState(false);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -436,6 +474,12 @@ function App() {
   const redirectCompleteBrandAfterLoadRef = useRef(false);
   const activeBrandContextWorkspaceRef = useRef(workspaceId);
   const pendingBrandScanRef = useRef(null);
+  const dailyAiUsageRevisionRef = useRef(0);
+  const updateDailyAiUsage = (nextDaily, requestWorkspaceId = workspaceId) => {
+    if (activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
+    dailyAiUsageRevisionRef.current += 1;
+    setDailyAiUsage((current) => mergeDailyAiUsage(current, nextDaily));
+  };
   const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
     ...createWorkspaceRequestContext(requestWorkspaceId, requestId, signalsWorkspaceRequestRef.current),
   });
@@ -485,6 +529,10 @@ function App() {
   const activateWorkspace = (nextWorkspaceId) => {
     if (activeBrandContextWorkspaceRef.current !== nextWorkspaceId) {
       resetBrandContextForWorkspace(nextWorkspaceId);
+    }
+    if (workspaceId !== nextWorkspaceId) {
+      dailyAiUsageRevisionRef.current += 1;
+      setDailyAiUsage(null);
     }
     setWorkspaceId(nextWorkspaceId);
   };
@@ -590,6 +638,37 @@ function App() {
       isMounted = false;
     };
   }, [currentUser, workspaceId]);
+
+  useEffect(() => {
+    const requestWorkspaceId = workspaceId;
+    const requestRevision = ++dailyAiUsageRevisionRef.current;
+    if (!currentUser || !requestWorkspaceId) {
+      setDailyAiUsage(null);
+      return undefined;
+    }
+    let isCurrent = true;
+    setDailyAiUsage(null);
+    authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/billing`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (
+          !isCurrent
+          || dailyAiUsageRevisionRef.current !== requestRevision
+          || activeBrandContextWorkspaceRef.current !== requestWorkspaceId
+        ) return;
+        setDailyAiUsage(payload?.daily || null);
+      })
+      .catch(() => {
+        if (
+          isCurrent
+          && dailyAiUsageRevisionRef.current === requestRevision
+          && activeBrandContextWorkspaceRef.current === requestWorkspaceId
+        ) setDailyAiUsage(null);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentUser?.id, workspaceId]);
 
   useEffect(() => {
     if (!currentUser || !workspaceId) return undefined;
@@ -1033,9 +1112,10 @@ function App() {
   const autoImportReelUrl = async (url) => {
     const cleanUrl = String(url || '').trim();
     if (!cleanUrl) return false;
+    const requestWorkspaceId = workspaceId;
     notify('Імпортуємо сигнал і готуємо UA-адаптацію...');
     try {
-      const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/reels/import-url`, {
+      const response = await authFetch(`${API_BASE}/workspaces/${requestWorkspaceId}/reels/import-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1045,9 +1125,13 @@ function App() {
       });
       if (!response.ok) throw new Error(await readApiError(response, 'auto_import_failed'));
       const payload = await response.json();
+      if (
+        payload?.billing?.daily
+      ) updateDailyAiUsage(payload.billing.daily, requestWorkspaceId);
       const importedReel = {
         ...payload.reel,
         handle: payload.reel?.handle || payload.reel?.sourceHandle || '@instagram.reel',
+        remixResult: payload.remix || payload.reel?.remixResult || null,
       };
       setData((current) => ({ ...current, reels: dedupeSignalReels([importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)]) }));
       setRemixDraft(importedReel);
@@ -1468,7 +1552,9 @@ function App() {
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
         {page === 'remix' && (
           selectedReel
-            ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} pendingBrandScanOnly={pendingBrandScanRef.current?.workspaceId === workspaceId && pendingBrandScanRef.current?.generation === brandContextRequestRef.current && pendingBrandScanRef.current?.draftId === selectedReel.id} />
+            ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} dailyAiUsage={dailyAiUsage} onDailyUsageChanged={(nextDaily) => {
+              updateDailyAiUsage(nextDaily, workspaceId);
+            }} autoGenerateRequest={remixAutoRequest} onAutoGenerateConsumed={() => setRemixAutoRequest(null)} onAddToPlan={addReelToPlan} onSaveBrandBrain={saveBrandScanToBrain} pendingBrandScanOnly={pendingBrandScanRef.current?.workspaceId === workspaceId && pendingBrandScanRef.current?.generation === brandContextRequestRef.current && pendingBrandScanRef.current?.draftId === selectedReel.id} />
             : <StudioEmptyState onOpenSignals={() => setMvpPage('viral')} />
         )}
         {page === 'agent-studio' && agentStudioAvailable && (
@@ -1534,6 +1620,10 @@ function App() {
         workspaceId={workspaceId}
         activeWorkspace={activeWorkspace}
         language={language}
+        dailyAiUsage={dailyAiUsage}
+        onDailyUsageChanged={(nextDaily) => {
+          updateDailyAiUsage(nextDaily, workspaceId);
+        }}
       />
       {toast && <div className="toast">{toast}</div>}
     </div>
@@ -4766,7 +4856,17 @@ function TypewriterText({ text, active }) {
   return <>{renderChatMessageText(visibleText)}</>;
 }
 
-function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeWorkspace, language = 'uk' }) {
+function AssistantDrawer({
+  isOpen,
+  onOpen,
+  onClose,
+  notify,
+  workspaceId,
+  activeWorkspace,
+  language = 'uk',
+  dailyAiUsage,
+  onDailyUsageChanged,
+}) {
   const { t } = useI18n();
   const isEnglishUi = language === 'en';
   const assistantName = isEnglishUi ? 'Jeryk' : 'Джерик';
@@ -4877,13 +4977,22 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
         body: JSON.stringify({ message: clean, history }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || payload.error || 'agent_error');
+      if (!response.ok) throw createInterfaceApiError(payload, 'ai_provider_failed');
       setAgentMeta({ provider: payload.provider || 'agent', model: payload.model || 'dzhero' });
+      if (payload.daily) onDailyUsageChanged?.(payload.daily);
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1 ? ['assistant', payload.reply] : item
       )));
     } catch (error) {
-      setAgentMeta({ provider: 'offline', model: 'fallback' });
+      const code = extractInterfaceErrorCode(error);
+      const providerUnavailable = code === 'ai_provider_not_configured'
+        || code === 'ai_provider_failed';
+      const quotaReached = code === 'daily_agent_chat_limit_reached';
+      setAgentMeta(providerUnavailable
+        ? { provider: 'offline', model: 'unavailable' }
+        : quotaReached
+          ? { provider: 'limit', model: 'daily' }
+          : { provider: 'ready', model: 'dzhero' });
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
           ? ['assistant', localizeInterfaceError(error, t, 'errors.assistant')]
@@ -4961,6 +5070,13 @@ function AssistantDrawer({ isOpen, onOpen, onClose, notify, workspaceId, activeW
         </div>
         <div className="jeryk-context">
           <span data-i18n-content>{activeWorkspace?.name || 'Workspace'}</span>
+          {Number.isFinite(dailyAiUsage?.agentChat?.limit) && (
+            <span className="daily-ai-usage">
+              {language === 'en'
+                ? `Messages today: ${dailyAiUsage.agentChat.used}/${dailyAiUsage.agentChat.limit}`
+                : `Повідомлення сьогодні: ${dailyAiUsage.agentChat.used}/${dailyAiUsage.agentChat.limit}`}
+            </span>
+          )}
           <em>{agentMeta.provider}</em>
         </div>
         <div className="jeryk-thread" ref={threadRef}>
@@ -5602,8 +5718,20 @@ function BrandScanStudioPanel({ reel, onSaveBrandBrain, brainStatus }) {
   );
 }
 
-function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, onAutoGenerateConsumed, onAddToPlan, onSaveBrandBrain, pendingBrandScanOnly = false }) {
-  const { t, translateText } = useI18n();
+function RemixStudio({
+  reel,
+  notify,
+  setPage,
+  workspaceId,
+  dailyAiUsage,
+  onDailyUsageChanged,
+  autoGenerateRequest,
+  onAutoGenerateConsumed,
+  onAddToPlan,
+  onSaveBrandBrain,
+  pendingBrandScanOnly = false,
+}) {
+  const { language, t, translateText } = useI18n();
   const [adaptationState, setAdaptationState] = useState('idle');
   const [brainStatus, setBrainStatus] = useState('idle');
   const [observedContext, setObservedContext] = useState('');
@@ -5633,6 +5761,13 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
       ? `Відео-аналіз: ${cleanVideoSummary.slice(0, 260)}${cleanVideoSummary.length > 260 ? '...' : ''}`
       : 'YouTube не дав транскрипт. Джеро вже може працювати з назвою, метриками й превʼю, а за потреби можна додати коротку нотатку про сюжет.';
   const effectiveReel = generatedRemix ? { ...reel, remixResult: generatedRemix } : reel;
+  const activeRemixResult = generatedRemix || reel.remixResult;
+  const hasRealGeneratedRemix = Boolean(
+    !adaptationError
+    && activeRemixResult?._generation?.provider
+    && activeRemixResult._generation.provider !== 'fallback'
+    && activeRemixResult._generation.fallback !== true
+  );
   const scenario = buildRemixScenario(effectiveReel, sanitizeSourceContext(observedContext));
   const scenarioVariants = scenario.variants;
   const adaptScenario = async () => {
@@ -5649,9 +5784,10 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || payload.error || 'remix_generation_failed');
+      if (!response.ok) throw createInterfaceApiError(payload, 'ai_provider_failed');
       setGeneratedRemix(payload);
       setAdaptationState('ready');
+      if (payload.daily) onDailyUsageChanged?.(payload.daily);
       if (payload.generationId) {
         telemetry.track('generation', 'remix_generation', {
           eventId: `remix_generation:${payload.generationId}`,
@@ -5659,6 +5795,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
       }
       notify(translateText('Підготовлено 3 AI-варіанти адаптації'));
     } catch (error) {
+      setGeneratedRemix(null);
       setAdaptationState('idle');
       setAdaptationError(localizeInterfaceError(error, t, 'errors.remixGeneration'));
       notify(translateText('AI-адаптація не пройшла. Залишив чернетку, можна спробувати ще раз.'));
@@ -5753,7 +5890,21 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
 
   return (
     <section className="page page-remix-studio">
-      <PageTitle title={translateText('Студія')} actions={<button onClick={adaptScenario} disabled={adaptationState === 'loading'}><RefreshCw size={16} />{adaptationState === 'loading' ? 'Генеруємо...' : 'Перегенерувати AI'}</button>} />
+      <PageTitle
+        title={translateText('Студія')}
+        actions={(
+          <>
+            {Number.isFinite(dailyAiUsage?.remix?.limit) && (
+              <span className="daily-ai-usage">
+                {language === 'en'
+                  ? `Adaptations today: ${dailyAiUsage.remix.used}/${dailyAiUsage.remix.limit}`
+                  : `Адаптації сьогодні: ${dailyAiUsage.remix.used}/${dailyAiUsage.remix.limit}`}
+              </span>
+            )}
+            <button onClick={adaptScenario} disabled={adaptationState === 'loading'}><RefreshCw size={16} />{adaptationState === 'loading' ? 'Генеруємо...' : 'Перегенерувати AI'}</button>
+          </>
+        )}
+      />
       <div className="remix-layout">
         <div className="remix-side-panel">
           <div className="phone-card">
@@ -5799,7 +5950,7 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
           <div className="remix-bottom">
             <div className="insight-card">
               <small>Сценарій на 15 секунд</small>
-              {generatedRemix && adaptationState !== 'loading' && <p className="studio-ai-note">AI-адаптація згенерована заново з контексту сигналу.</p>}
+              {hasRealGeneratedRemix && adaptationState !== 'loading' && <p className="studio-ai-note">AI-адаптація згенерована заново з контексту сигналу.</p>}
               {adaptationError && adaptationState !== 'loading' && <p className="studio-error-note">{adaptationError}</p>}
               {adaptationState === 'loading' && (
                 <JerykLoading
@@ -5809,7 +5960,9 @@ function RemixStudio({ reel, notify, setPage, workspaceId, autoGenerateRequest, 
               )}
               {adaptationState !== 'loading' && (
                 <>
-                  <h3>Готова структура</h3>
+                  <h3>{hasRealGeneratedRemix
+                    ? (language === 'en' ? 'Ready structure' : 'Готова структура')
+                    : (language === 'en' ? 'Non-AI draft' : 'Чернетка без AI')}</h3>
                   <div className="remix-script-timeline">
                     {scenario.script.map((step) => (
                       <article key={step.time}>
