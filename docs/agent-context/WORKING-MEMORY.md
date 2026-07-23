@@ -56,3 +56,12 @@ The user considers the core Agent Studio MVP strong: adaptation quality, shot-by
 - The final submission commit, repository access, demo video, `/feedback` ID, and Devpost URL remain user-owned completion fields.
 - All nine deterministic Agent Studio suites and the production build passed on July 20 without external provider calls.
 - The deployed frontend matched the branch-tip build after normalizing the production API URL and Windows/Linux SVG line endings.
+
+## 2026-07-24 Free Trial AI behavior on `main`
+
+- Free Trial remains three days. Each Kyiv calendar day allows 5 successful Studio adaptations and 100 successful Jeryk replies; the reset is at 00:00 `Europe/Kyiv`.
+- Failed provider calls and internal retries do not consume the 5/100 product outcomes. Provider attempts have a separate 250/day safety ceiling.
+- Brand Brain does not consume Studio or Jeryk quotas. Its required answers remain exact user input when AI is unavailable.
+- Studio and Jeryk use real Gemini output only. Missing or failed provider calls return typed errors; any local structure is explicitly labelled as a non-AI draft.
+- Owner and tester access remain unlimited. Finite daily counters are visible in Studio and Jeryk; unlimited accounts do not show numeric caps.
+- Canonical focused verification: `npm.cmd run test:free-trial-ai`.

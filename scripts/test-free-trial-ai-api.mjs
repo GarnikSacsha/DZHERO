@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -332,6 +332,7 @@ async function startServer(tempDir, {
   db,
   dbPath = path.join(tempDir, `db-${Math.random().toString(36).slice(2)}.json`),
   geminiBaseUrl = '',
+  openAiApiKey = '',
 } = {}) {
   const port = await getFreePort();
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -349,7 +350,7 @@ async function startServer(tempDir, {
       CLIENT_URL: baseUrl,
       AUTOMATIC_DISCOVERY_ENABLED: 'false',
       UNLIMITED_ACCESS_EMAILS: 'owner@example.test',
-      OPENAI_API_KEY: '',
+      OPENAI_API_KEY: openAiApiKey,
       GEMINI_API_KEY: geminiBaseUrl ? 'controlled-test-key' : '',
       GEMINI_API_BASE: geminiBaseUrl,
       GEMINI_TEXT_MODEL: 'controlled-model',
@@ -626,6 +627,7 @@ async function main() {
     reviewServer = await startServer(tempDir, {
       db: createDb(),
       geminiBaseUrl: controlledGemini.baseUrl,
+      openAiApiKey: 'configured-openai-key',
     });
     const controlledImportUrl = 'https://www.tiktok.com:444/@controlled/video/123';
     const imported = await requestJson(
@@ -640,6 +642,12 @@ async function main() {
     assert.equal(imported.status, 201);
     assert.equal(imported.body.remix._generation.provider, 'gemini');
     assert.equal(imported.body.billing.daily.remix.used, 1);
+    const persistedImportDb = JSON.parse(await readFile(reviewServer.dbPath, 'utf8'));
+    assert.equal(
+      persistedImportDb.remixes.find((entry) => entry.reelId === imported.body.reel.id)?.provider,
+      'gemini',
+      'persisted URL-import provenance must match the provider that generated the remix',
+    );
 
     for (let index = 2; index <= 5; index += 1) {
       const combined = await requestJson(

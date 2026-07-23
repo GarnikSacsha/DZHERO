@@ -7081,7 +7081,7 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
         workspaceId: req.params.workspaceId,
         reelId: returnedReel.id,
         sourceUrl: metadata.url || url,
-        provider: getAiProviderStatus().textAgent.provider,
+        provider: remixResult?._generation?.provider || getAiProviderStatus().textAgent.provider,
         result: remixResult,
         createdAt: new Date().toISOString(),
       });
