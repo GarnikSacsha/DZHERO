@@ -97,6 +97,7 @@ import {
   createRemixAutoRequest,
   shouldRunRemixAutoRequest,
 } from './remixAutoGeneration.mjs';
+import { isBrandProfileComplete } from './myBrandsState.mjs';
 
 React.createElement = createLocalizedElement;
 
@@ -405,6 +406,8 @@ function App() {
   const [isSignalDiscoveryToggling, setIsSignalDiscoveryToggling] = useState(false);
   const [isSignalDiscoveryRunning, setIsSignalDiscoveryRunning] = useState(false);
   const [isSignalsRefreshing, setIsSignalsRefreshing] = useState(false);
+  const [brandContext, setBrandContext] = useState({});
+  const [brandContextStatus, setBrandContextStatus] = useState('loading');
   const discoveryRequestRef = useRef(0);
   const reelsRequestRef = useRef(0);
   const signalsRefreshRequestRef = useRef(0);
@@ -415,6 +418,9 @@ function App() {
   const initialTelemetryPageRef = useRef(true);
   const visibleSignalsRefreshPromiseRef = useRef(null);
   const reelsWorkspaceRef = useRef('');
+  const brandContextRequestRef = useRef(0);
+  const redirectCompleteBrandAfterLoadRef = useRef(false);
+  const activeBrandContextWorkspaceRef = useRef(workspaceId);
   const createSignalsWorkspaceRequestContext = (requestWorkspaceId = workspaceId, requestId = 0) => ({
     ...createWorkspaceRequestContext(requestWorkspaceId, requestId, signalsWorkspaceRequestRef.current),
   });
@@ -429,8 +435,13 @@ function App() {
   const activeWorkspace = availableWorkspaces.find((workspace) => workspace.id === workspaceId)
     || availableWorkspaces[0]
     || DEMO_WORKSPACES[0];
+  const navigationLocked = brandContextStatus !== 'saved';
   const setMvpPage = (nextPage) => {
     const allowedPages = new Set(['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings']);
+    if (navigationLocked && nextPage !== 'home') {
+      setPage('home');
+      return;
+    }
     if (nextPage === 'agent-studio' && !agentStudioAvailable) {
       setToast(language === 'en' ? 'Agent Studio is coming soon.' : 'Agent Studio — незабаром.');
       window.clearTimeout(window.__toastTimer);
@@ -438,6 +449,19 @@ function App() {
       return;
     }
     setPage(allowedPages.has(nextPage) ? nextPage : 'home');
+  };
+  const resetBrandContextForWorkspace = (nextWorkspaceId) => {
+    brandContextRequestRef.current += 1;
+    activeBrandContextWorkspaceRef.current = nextWorkspaceId;
+    redirectCompleteBrandAfterLoadRef.current = false;
+    setBrandContext({});
+    setBrandContextStatus('loading');
+  };
+  const activateWorkspace = (nextWorkspaceId) => {
+    if (activeBrandContextWorkspaceRef.current !== nextWorkspaceId) {
+      resetBrandContextForWorkspace(nextWorkspaceId);
+    }
+    setWorkspaceId(nextWorkspaceId);
   };
 
   useEffect(() => {
@@ -458,6 +482,52 @@ function App() {
       setPage('home');
     }
   }, [page, agentStudioAvailable]);
+
+  useEffect(() => {
+    const requestWorkspaceId = workspaceId;
+    const requestId = ++brandContextRequestRef.current;
+    if (!currentUser || !workspaceId) {
+      redirectCompleteBrandAfterLoadRef.current = false;
+      setBrandContext({});
+      setBrandContextStatus('loading');
+      return undefined;
+    }
+
+    redirectCompleteBrandAfterLoadRef.current = false;
+    setBrandContext({});
+    setBrandContextStatus('loading');
+    authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
+      .then(async (response) => {
+        if (!response.ok) throw new Error('brand_context_load_failed');
+        return response.json();
+      })
+      .then((payload) => {
+        if (brandContextRequestRef.current !== requestId || activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
+        const brief = payload?.brief && typeof payload.brief === 'object' ? payload.brief : {};
+        const isComplete = isBrandProfileComplete(brief);
+        setBrandContext(brief);
+        setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
+        redirectCompleteBrandAfterLoadRef.current = isComplete;
+        if (!isComplete) setPage('home');
+      })
+      .catch(() => {
+        if (brandContextRequestRef.current !== requestId || activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
+        setBrandContext({});
+        setBrandContextStatus('onboarding');
+        setPage('home');
+      });
+    return undefined;
+  }, [currentUser, workspaceId]);
+
+  const handleBrandContextSaved = (savedWorkspaceId, savedBrief) => {
+    if (savedWorkspaceId !== activeBrandContextWorkspaceRef.current) return;
+    const nextBrief = savedBrief && typeof savedBrief === 'object' ? savedBrief : {};
+    setBrandContext(nextBrief);
+    const isComplete = isBrandProfileComplete(nextBrief);
+    setBrandContextStatus(isComplete ? 'saved' : 'onboarding');
+    redirectCompleteBrandAfterLoadRef.current = false;
+    if (!isComplete) setPage('home');
+  };
 
   useEffect(() => {
     if (!currentUser || !workspaceId) {
@@ -546,14 +616,14 @@ function App() {
         const hasActiveWorkspace = workspaces.some((workspace) => workspace.id === workspaceId);
         const fallbackWorkspaceId = currentUser.workspaceId || workspaces[0]?.id;
         if (!hasActiveWorkspace && fallbackWorkspaceId) {
-          setWorkspaceId(fallbackWorkspaceId);
+          activateWorkspace(fallbackWorkspaceId);
         }
       })
       .catch(() => {
         if (!isMounted) return;
         const fallbackWorkspaceId = currentUser.workspaceId;
         if (fallbackWorkspaceId && fallbackWorkspaceId !== workspaceId) {
-          setWorkspaceId(fallbackWorkspaceId);
+          activateWorkspace(fallbackWorkspaceId);
         }
       });
     return () => {
@@ -570,7 +640,7 @@ function App() {
     setUserWorkspaces(workspaces);
     const primaryWorkspaceId = user?.workspaceId || workspaces[0]?.id || '';
     if (primaryWorkspaceId) {
-      setWorkspaceId(primaryWorkspaceId);
+      activateWorkspace(primaryWorkspaceId);
       window.localStorage.setItem(WORKSPACE_KEY, primaryWorkspaceId);
     }
   };
@@ -616,6 +686,12 @@ function App() {
   }, [filtered, workspaceId]);
 
   useEffect(() => {
+    if (!redirectCompleteBrandAfterLoadRef.current || brandContextStatus !== 'saved' || !data || !filtered) return;
+    redirectCompleteBrandAfterLoadRef.current = false;
+    if (page === 'home') setPage('viral');
+  }, [brandContextStatus, data, filtered, page]);
+
+  useEffect(() => {
     if (!currentUser || page !== 'viral') return undefined;
     let isMounted = true;
     setSignalDiscovery(null);
@@ -646,7 +722,7 @@ function App() {
       const scan = JSON.parse(pendingScan);
       window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
       setRemixDraft(buildReelFromBrandScan(scan));
-      setPage('remix');
+      setMvpPage('remix');
       notify('Brand Scan відкрито в Студії');
     } catch {
       window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
@@ -658,7 +734,7 @@ function App() {
     setSessionRevision((revision) => revision + 1);
     applyAuthPayload(payload);
     if (['home', 'viral', 'remix', 'agent-studio', 'plan', 'settings'].includes(destination)) {
-      setPage(destination === 'agent-studio' && !AGENT_STUDIO_PUBLIC_ENTRY ? 'home' : destination);
+      setMvpPage(destination === 'agent-studio' && !AGENT_STUDIO_PUBLIC_ENTRY ? 'home' : destination);
     }
     setAuthStatus('ready');
     notify('Вхід виконано. Можна працювати з продюсером.');
@@ -666,6 +742,8 @@ function App() {
 
   const handleLogout = async () => {
     setAuthStatus('checking');
+    resetBrandContextForWorkspace(DEMO_WORKSPACES[0].id);
+    setPage('home');
     try {
       await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
     } catch {
@@ -680,7 +758,6 @@ function App() {
     setIsAssistantOpen(false);
     setIsSidebarOpen(false);
     setWorkspaceId(DEMO_WORKSPACES[0].id);
-    setPage('home');
     setSessionRevision((revision) => revision + 1);
     setAuthStatus('guest');
     notify('Ви вийшли з акаунта');
@@ -707,7 +784,7 @@ function App() {
     );
   }
 
-  if (!data || !filtered) {
+  if (brandContextStatus === 'loading' || !data || !filtered) {
     return <div className="loading-screen">Завантажуємо дані продюсера...</div>;
   }
 
@@ -858,7 +935,7 @@ function App() {
     };
     setData((current) => ({ ...current, reels: [manualReel, ...current.reels] }));
     setRemixDraft(manualReel);
-    setPage('remix');
+    setMvpPage('remix');
     notify('Рілс додано вручну і відкрито в ремікс-студії');
   };
   const autoImportReelUrl = async (url) => {
@@ -882,7 +959,7 @@ function App() {
       };
       setData((current) => ({ ...current, reels: dedupeSignalReels([importedReel, ...current.reels.filter((reel) => reel.id !== importedReel.id)]) }));
       setRemixDraft(importedReel);
-      setPage('remix');
+      setMvpPage('remix');
       if (importedReel.id) {
         telemetry.track('generation', 'url_adaptation', {
           eventId: `url_adaptation:${importedReel.id}`,
@@ -1229,7 +1306,7 @@ function App() {
   };
   const pushIdeaToRemix = (idea) => {
     setRemixDraft({ market: idea.market, title: idea.hook, handle: idea.source, score: idea.score, views: '-', likes: '-', comments: '-', status: [idea.status, 'UA-ремікс'], tag: idea.title[0] ?? 'I' });
-    setPage('remix');
+    setMvpPage('remix');
     notify('Ідею відкрито в ремікс-студії');
   };
   const generateFreshIdea = () => {
@@ -1258,8 +1335,10 @@ function App() {
     notify('Зібрано 7 ідей на тиждень за сигналами трендів');
   };
   const switchWorkspace = (nextWorkspaceId) => {
-    const workspace = DEMO_WORKSPACES.find((item) => item.id === nextWorkspaceId) || DEMO_WORKSPACES[0];
-    setWorkspaceId(workspace.id);
+    const workspace = availableWorkspaces.find((item) => item.id === nextWorkspaceId)
+      || DEMO_WORKSPACES.find((item) => item.id === nextWorkspaceId);
+    if (!workspace) return;
+    activateWorkspace(workspace.id);
     setAssistantAutoPrompt(null);
     notify(language === 'en' ? `Switched to ${workspace.name}` : `Перемкнено на ${workspace.name}`);
   };
@@ -1277,13 +1356,14 @@ function App() {
         onWorkspaceChange={switchWorkspace}
         onLogout={handleLogout}
         agentStudioAvailable={agentStudioAvailable}
+        navigationLocked={navigationLocked}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
-        {page === 'home' && <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} />}
+        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} navigationLocked={navigationLocked} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
+        {page === 'home' && <BrandBrainStartPage notify={notify} workspaceId={workspaceId} language={language} setPage={setMvpPage} initialBrief={brandContext} onSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)} navigationLocked={navigationLocked} />}
         {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} />}
         {page === 'remix' && (
           selectedReel
@@ -2906,7 +2986,7 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
   );
 }
 
-function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, agentStudioAvailable = false, isOpen, onClose }) {
+function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, agentStudioAvailable = false, navigationLocked = false, isOpen, onClose }) {
   useI18n();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const accountName = currentUser?.name || currentUser?.email?.split('@')?.[0] || (language === 'en' ? 'Your account' : 'Твій кабінет');
@@ -2943,7 +3023,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       settings: 'Налаштування',
     };
   const primaryItems = [
-    ['home', Database],
     ['viral', Radio],
     ['remix', Wand2],
     ['agent-studio', Bot],
@@ -2962,7 +3041,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
         data-tour={tourTargets[id]}
         key={id}
         onClick={() => selectPage(id)}
-        disabled={isComingSoon}
+        disabled={navigationLocked || isComingSoon}
         title={isComingSoon ? 'Coming soon' : undefined}
         data-coming-soon={isComingSoon ? 'Coming soon' : undefined}
       >
@@ -3011,7 +3090,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
             <span>{providerLabel}</span>
             <span>{activeWorkspace?.type || (language === 'en' ? 'Workspace' : 'Workspace')}</span>
           </div>
-          <button type="button" onClick={() => selectPage('settings')}>
+          <button type="button" onClick={() => selectPage('settings')} disabled={navigationLocked}>
             {language === 'en' ? 'Account, tariff and sources' : 'Кабінет, тариф і джерела'}
           </button>
         </section>
@@ -3032,7 +3111,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
                 <small data-i18n-content>{workspace.handle} · {workspace.type}</small>
               </button>
             ))}
-            <button type="button" onClick={() => { selectPage('settings'); setIsSwitcherOpen(false); }}>
+            <button type="button" onClick={() => { selectPage('settings'); setIsSwitcherOpen(false); }} disabled={navigationLocked}>
               <span>{language === 'en' ? '+ Connect Instagram' : '+ Підключити Instagram'}</span>
               <small>{language === 'en' ? 'Real accounts through connection' : 'Реальні акаунти через підключення'}</small>
             </button>
@@ -3050,7 +3129,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   );
 }
 
-function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, agentStudioAvailable = false, onOpenMenu, onCloseMenu }) {
+function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, agentStudioAvailable = false, navigationLocked = false, onOpenMenu, onCloseMenu }) {
   const { translateText } = useI18n();
   const ctaLabel = page === 'home'
     ? (language === 'en' ? 'Next: Signals' : 'Далі: Сигнали')
@@ -3075,7 +3154,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
           type="button"
           aria-label={ctaLabel}
           title={ctaTarget === 'agent-studio' && !agentStudioAvailable ? 'Coming soon' : ctaLabel}
-          disabled={ctaTarget === 'agent-studio' && !agentStudioAvailable}
+          disabled={navigationLocked || (ctaTarget === 'agent-studio' && !agentStudioAvailable)}
           onClick={() => { onCloseMenu?.(); setPage(ctaTarget); }}
         >
           <Sparkles size={15} />
@@ -3085,7 +3164,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
           <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UK</button>
           <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
         </div>
-        <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
+        <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} disabled={navigationLocked} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
         <button className={themeMode === 'auto' ? 'icon active' : 'icon'} title={themeTitle} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
@@ -5729,10 +5808,10 @@ function AgentPipeline({ workspaceId, language = 'uk' }) {
   );
 }
 
-function BrandBrain({ notify, workspaceId, language = 'uk' }) {
+function BrandBrain({ notify, workspaceId, language = 'uk', initialBrief, onSaved }) {
   const { t, translateText } = useI18n();
   const [seed, setSeed] = useState('');
-  const [brief, setBrief] = useState({
+  const createEditableBrief = (source = {}) => ({
     businessType: '',
     product: '',
     audience: '',
@@ -5742,30 +5821,32 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
     cta: '',
     stopTopics: '',
     proof: '',
+    ...source,
+    stopTopics: Array.isArray(source.stopTopics) ? source.stopTopics.join(', ') : source.stopTopics || '',
   });
+  const [brief, setBrief] = useState(() => createEditableBrief(initialBrief));
   const [status, setStatus] = useState('loading');
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   useEffect(() => {
+    if (initialBrief !== undefined) {
+      setBrief(createEditableBrief(initialBrief));
+      setStatus('ready');
+      return undefined;
+    }
     let isMounted = true;
     authFetch(`${API_BASE}/workspaces/${workspaceId}/agent/context`)
       .then((response) => (response.ok ? response.json() : null))
       .then((payload) => {
         if (!isMounted) return;
-        if (payload?.brief) {
-          setBrief((current) => ({
-            ...current,
-            ...payload.brief,
-            stopTopics: Array.isArray(payload.brief.stopTopics) ? payload.brief.stopTopics.join(', ') : payload.brief.stopTopics || '',
-          }));
-        }
+        if (payload?.brief) setBrief(createEditableBrief(payload.brief));
         setStatus('ready');
       })
       .catch(() => setStatus('error'));
     return () => {
       isMounted = false;
     };
-  }, [workspaceId]);
+  }, [workspaceId, initialBrief]);
 
   const updateField = (field, value) => {
     setBrief((current) => ({ ...current, [field]: value }));
@@ -5844,7 +5925,9 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      const saved = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error('save_failed');
+      onSaved?.(saved.brief && typeof saved.brief === 'object' ? saved.brief : payload);
       setStatus('saved');
       notify?.(translateText('Brand Brain збережено. Асистент уже використовує цей контекст.'));
       window.setTimeout(() => setStatus('ready'), 1800);
@@ -5938,7 +6021,7 @@ function BrandBrain({ notify, workspaceId, language = 'uk' }) {
   );
 }
 
-function BrandBrainStartPage({ notify, workspaceId, language = 'uk', setPage }) {
+function BrandBrainStartPage({ notify, workspaceId, language = 'uk', setPage, initialBrief, onSaved, navigationLocked = false }) {
   useI18n();
   const copy = language === 'en'
     ? {
@@ -5959,14 +6042,14 @@ function BrandBrainStartPage({ notify, workspaceId, language = 'uk', setPage }) 
   return (
     <section className="page page-brand-brain-start">
       <PageTitle title="Brand Brain" subtitle={copy.subtitle} />
-      <BrandBrain notify={notify} workspaceId={workspaceId} language={language} />
+      <BrandBrain notify={notify} workspaceId={workspaceId} language={language} initialBrief={initialBrief} onSaved={onSaved} />
       <div className="brand-brain-next-step">
         <div>
           <small>{copy.eyebrow}</small>
           <strong>{copy.title}</strong>
           <p>{copy.text}</p>
         </div>
-        <button className="dark" type="button" onClick={() => setPage('viral')}>
+        <button className="dark" type="button" onClick={() => setPage('viral')} disabled={navigationLocked}>
           <Radio size={16} /> {copy.action}
         </button>
       </div>
