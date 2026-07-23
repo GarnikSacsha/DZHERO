@@ -1,5 +1,5 @@
-export const TRACKER_URL = 'https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.3.0.min.js';
-export const TRACKER_INTEGRITY = 'sha384-QN3eJBX5Fi2HH/RS9Mqgfnlyd6zQeTXfdI3jmDent/EJEy1ZXL8cIgS9a6w62nfg';
+export const TRACKER_URL = 'https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.4.0.min.js';
+export const TRACKER_INTEGRITY = 'sha384-afTAN1iK3sOdUC+yM3cZ01ZgUXOtEPnUl/4DHQtkhjY63tlo2M6mAEj0j63UKc7e';
 
 
 const viteEnv = import.meta.env || {};
@@ -78,14 +78,10 @@ export function createTelemetry({
     pageView(routeId) {
       return invoke('dzheroPageView', [routeId]);
     },
-    identify(user) {
-      return invoke('dzheroIdentify', [user]);
-    },
-    authSuccess(user) {
-      return invoke('dzheroAuthSuccess', [user]);
-    },
-    logout() {
-      return invoke('dzheroAuthLogout', []);
+    getVisitorId() {
+      const method = windowRef?.dzheroGetVisitorId;
+      if (typeof method !== 'function') return undefined;
+      try { return method(); } catch { return undefined; }
     },
   };
 }
@@ -94,39 +90,34 @@ export function createTelemetry({
 export const telemetry = createTelemetry();
 
 
-export function syncTelemetryIdentity({
+export async function syncCrmSession({
   user,
   telemetryClient = telemetry,
   windowRef = globalThis.window,
+  fetcher = globalThis.fetch,
+  apiBase = '/api',
 } = {}) {
-  if (!user || user.provider !== 'google' || !user.email || !user.id || !windowRef) return;
-  const lead = {
-    email: user.email,
-    google_id: user.id,
-    full_name: user.name,
-    avatar_url: user.avatarUrl,
-  };
+  if (!user || user.provider !== 'google' || !windowRef || typeof fetcher !== 'function') return;
   try {
     const params = new URLSearchParams(windowRef.location.search);
-    if (params.get('auth') !== 'google') {
-      telemetryClient.identify(lead);
-      return;
+    const body = {};
+    const visitorId = telemetryClient.getVisitorId?.();
+    if (visitorId) body.visitor_id = visitorId;
+    for (const key of ['utm_source', 'utm_medium', 'utm_campaign']) {
+      const value = params.get(key);
+      if (value) body[key] = value.slice(0, 100);
     }
-
-    const eventId = `google_login:${user.id}:${user.lastLoginAt || 'current'}`;
-    const storageKey = `dzhero_crm_${eventId}`;
-    if (windowRef.sessionStorage?.getItem(storageKey)) {
-      telemetryClient.identify(lead);
-    } else {
-      telemetryClient.authSuccess({ ...lead, event_id: eventId });
-      windowRef.sessionStorage?.setItem(storageKey, '1');
-    }
-
+    const base = String(apiBase || '/api').replace(/\/$/, '');
+    await fetcher(`${base}/account/crm-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     params.delete('auth');
     const query = params.toString();
     const nextUrl = `${windowRef.location.pathname}${query ? `?${query}` : ''}${windowRef.location.hash || ''}`;
     windowRef.history?.replaceState(windowRef.history.state, '', nextUrl);
   } catch {
-    // Identity telemetry must never interrupt authentication.
+    // CRM synchronization must never interrupt authentication or product access.
   }
 }

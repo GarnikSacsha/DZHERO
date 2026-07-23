@@ -1,70 +1,41 @@
 import assert from 'node:assert/strict';
 
-import { syncTelemetryIdentity } from '../src/telemetry.mjs';
+import { syncCrmSession } from '../src/telemetry.mjs';
 
 
-function makeWindow(url) {
-  const parsed = new URL(url);
-  const stored = new Map();
-  const replacements = [];
-  return {
-    location: {
-      pathname: parsed.pathname,
-      search: parsed.search,
-      hash: parsed.hash,
-    },
-    history: {
-      state: { preserved: true },
-      replaceState(state, title, nextUrl) { replacements.push({ state, title, nextUrl }); },
-    },
-    sessionStorage: {
-      getItem(key) { return stored.get(key) || null; },
-      setItem(key, value) { stored.set(key, String(value)); },
-      dump() { return JSON.stringify(Object.fromEntries(stored)); },
-    },
-    replacements,
-  };
-}
-
-
-const user = {
-  id: 'user_42',
-  provider: 'google',
-  email: 'lead@example.com',
-  name: 'Lead Example',
-  avatarUrl: 'https://images.example/avatar.png',
-  lastLoginAt: '2026-07-22T12:00:00.000Z',
+const requests = [];
+const replacements = [];
+const windowRef = {
+  location: { pathname: '/', search: '?auth=google&utm_source=threads&utm_medium=social&utm_campaign=launch', hash: '#hero' },
+  history: { state: {}, replaceState(state, title, url) { replacements.push(url); } },
 };
+const telemetryClient = { getVisitorId: () => 'visitor_12345678' };
+const user = { id: 'private-user-id', provider: 'google', email: 'private@example.com', name: 'Private Name' };
 
-const calls = [];
-const telemetryClient = {
-  authSuccess: (lead) => calls.push(['authSuccess', lead]),
-  identify: (lead) => calls.push(['identify', lead]),
-};
-const windowRef = makeWindow('https://dzhero.com.ua/?auth=google&utm_source=threads#hero');
-
-syncTelemetryIdentity({ user, telemetryClient, windowRef });
-assert.equal(calls.length, 1);
-assert.equal(calls[0][0], 'authSuccess');
-assert.equal(calls[0][1].google_id, 'user_42');
-assert.equal(calls[0][1].event_id, 'google_login:user_42:2026-07-22T12:00:00.000Z');
-assert.equal(windowRef.replacements[0].nextUrl, '/?utm_source=threads#hero');
-assert.equal(windowRef.sessionStorage.dump().includes('lead@example.com'), false);
-
-syncTelemetryIdentity({ user, telemetryClient, windowRef: makeWindow('https://dzhero.com.ua/') });
-assert.equal(calls.at(-1)[0], 'identify');
-
-const duplicateWindow = makeWindow('https://dzhero.com.ua/?auth=google');
-duplicateWindow.sessionStorage.setItem('dzhero_crm_google_login:user_42:2026-07-22T12:00:00.000Z', '1');
-syncTelemetryIdentity({ user, telemetryClient, windowRef: duplicateWindow });
-assert.equal(calls.at(-1)[0], 'identify');
-
-const beforeDemo = calls.length;
-syncTelemetryIdentity({
-  user: { ...user, provider: 'demo' },
+await syncCrmSession({
+  user,
   telemetryClient,
-  windowRef: makeWindow('https://dzhero.com.ua/?auth=google'),
+  windowRef,
+  apiBase: '/api',
+  fetcher: async (url, options) => {
+    requests.push({ url, options });
+    return { ok: true };
+  },
 });
-assert.equal(calls.length, beforeDemo);
-console.log('telemetry identity contract passed');
 
+assert.equal(requests.length, 1);
+assert.equal(requests[0].url, '/api/account/crm-sync');
+const body = JSON.parse(requests[0].options.body);
+assert.deepEqual(body, {
+  visitor_id: 'visitor_12345678',
+  utm_source: 'threads',
+  utm_medium: 'social',
+  utm_campaign: 'launch',
+});
+assert.equal(JSON.stringify(body).includes('private@example.com'), false);
+assert.equal(JSON.stringify(body).includes('private-user-id'), false);
+assert.equal(replacements[0], '/?utm_source=threads&utm_medium=social&utm_campaign=launch#hero');
+
+await syncCrmSession({ user: { ...user, provider: 'demo' }, telemetryClient, windowRef, apiBase: '/api', fetcher: async () => { throw new Error('should not call'); } });
+assert.equal(requests.length, 1);
+console.log('telemetry identity contract passed');

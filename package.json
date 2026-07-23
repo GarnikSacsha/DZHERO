@@ -22,6 +22,7 @@
     "test:telemetry-integration": "node scripts/test-telemetry-integration.mjs",
     "test:crm-sync": "node scripts/test-crm-sync.cjs",
     "test:crm-sync-api": "node scripts/test-crm-sync-api.mjs",
+    "test:communication-preferences": "node scripts/test-communication-preferences.mjs",
     "audit:ui": "node scripts/audit-ui-ux.mjs",
     "smoke:agent-studio-openai": "node scripts/smoke-agent-studio-openai.cjs",
     "test:youtube-categories": "node scripts/test-youtube-categories.mjs",

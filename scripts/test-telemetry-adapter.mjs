@@ -31,18 +31,23 @@ client.load();
 client.load();
 
 assert.equal(scripts.length, 1);
-assert.equal(scripts[0].src, 'https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.3.0.min.js');
+assert.equal(scripts[0].src, 'https://crmdzhero-production.up.railway.app/static/dzhero-tracker.v1.4.0.min.js');
 assert.equal(scripts[0].async, true);
 assert.equal(scripts[0].crossOrigin, 'anonymous');
-assert.equal(scripts[0].integrity, 'sha384-QN3eJBX5Fi2HH/RS9Mqgfnlyd6zQeTXfdI3jmDent/EJEy1ZXL8cIgS9a6w62nfg');
+assert.equal(scripts[0].integrity, 'sha384-afTAN1iK3sOdUC+yM3cZ01ZgUXOtEPnUl/4DHQtkhjY63tlo2M6mAEj0j63UKc7e');
 assert.equal(scripts[0].dataset.site, 'dzhero.com.ua');
 
 windowRef.dzheroTrack = (...args) => calls.push(args);
+windowRef.dzheroGetVisitorId = () => 'visitor_12345678';
 scripts[0].onload();
 assert.deepEqual(calls, [
   ['click', 'second', undefined],
   ['click', 'third', undefined],
 ]);
+assert.equal(client.getVisitorId(), 'visitor_12345678');
+assert.equal('identify' in client, false);
+assert.equal('authSuccess' in client, false);
+assert.equal('logout' in client, false);
 
 const failedScripts = [];
 const failedClient = createTelemetry({
