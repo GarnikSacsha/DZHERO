@@ -1828,7 +1828,7 @@ function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
     planId,
     status: isDemo ? 'demo' : isTrial ? 'trialing' : 'active',
     provider: 'manual',
-    currentPeriodStart: now.toISOString(),
+    currentPeriodStart: isTrial ? null : now.toISOString(),
     currentPeriodEnd: isTrial
       ? null
       : new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
@@ -2111,6 +2111,15 @@ function dailyActionOptions({ workspaceId, billing, action, now }) {
   };
 }
 
+function logFreeTrialActivation(workspaceId, subscription) {
+  console.info('[FreeTrialActivation]', JSON.stringify({
+    workspaceId,
+    grantVersion: subscription.aiTrialGrantVersion,
+    startedAt: subscription.aiTrialStartedAt,
+    endsAt: subscription.trialEndsAt,
+  }));
+}
+
 async function reserveSerializedDailyAiAction({ workspaceId, actorUser, action }) {
   return serializeBackgroundMutation(async () => {
     const db = await readDb();
@@ -2132,10 +2141,16 @@ async function reserveSerializedDailyAiAction({ workspaceId, actorUser, action }
         now,
       }));
     } catch (error) {
-      if (activated) await writeDb(db);
+      if (activated) {
+        await writeDb(db);
+        logFreeTrialActivation(workspaceId, billing.subscription);
+      }
       throw error;
     }
-    if (activated || reservation) await writeDb(db);
+    if (activated || reservation) {
+      await writeDb(db);
+      if (activated) logFreeTrialActivation(workspaceId, billing.subscription);
+    }
     return {
       reservation,
       billing: reservation
