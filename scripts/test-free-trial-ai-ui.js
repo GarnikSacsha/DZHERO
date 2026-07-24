@@ -398,12 +398,19 @@ async function main() {
           body: JSON.stringify({ error: 'ai_provider_not_configured' }),
         });
       }
-      if (remixRequests === 3) {
+      if (remixRequests === 2) {
+        return route.fulfill({
+          status: 402,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'trial_expired' }),
+        });
+      }
+      if (remixRequests === 4) {
         return new Promise((resolve) => {
           pendingConcurrentRemix = { route, resolve };
         });
       }
-      if (remixRequests === 4) {
+      if (remixRequests === 5) {
         return route.fulfill({
           status: 200,
           contentType: 'application/json',
@@ -443,7 +450,14 @@ async function main() {
           body: JSON.stringify({ error: 'daily_agent_chat_limit_reached' }),
         });
       }
-      if (chatRequests === 4) {
+      if (chatRequests === 3) {
+        return route.fulfill({
+          status: 402,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'trial_expired' }),
+        });
+      }
+      if (chatRequests === 5) {
         return route.fulfill({
           status: 201,
           contentType: 'application/json',
@@ -487,6 +501,24 @@ async function main() {
     });
 
     await page.getByRole('button', { name: /Перегенерувати AI/i }).click();
+    await check('Studio processes the trial-ended error before asserting it', async () => {
+      await page.locator('.studio-error-note').filter({
+        hasText: 'Безкоштовний тестовий період завершився. Обери тариф, щоб продовжити.',
+      }).waitFor({ state: 'visible', timeout: 10_000 });
+    });
+    await check('Studio reports trial expiration without blaming Gemini', async () => {
+      const trialEndedStudioText = await page.locator('.remix-bottom').innerText();
+      assert.match(
+        trialEndedStudioText,
+        /Безкоштовний тестовий період завершився\. Обери тариф, щоб продовжити\./,
+      );
+    });
+    await check('Studio trial expiration does not blame Gemini', async () => {
+      const trialEndedStudioText = await page.locator('.remix-bottom').innerText();
+      assert.doesNotMatch(trialEndedStudioText, /Gemini/);
+    });
+
+    await page.getByRole('button', { name: /Перегенерувати AI/i }).click();
     await page.waitForFunction(() => document.querySelector('.remix-bottom')?.innerText.includes('Готова структура'));
     await check('A real Studio success updates usage and may show the ready state', async () => {
       assert.equal(
@@ -523,6 +555,24 @@ async function main() {
     });
 
     await page.locator('.jeryk-prompts button').nth(2).click();
+    await waitForJeryk(page);
+    await check('Jeryk reports trial expiration without OFFLINE', async () => {
+      const trialThreadText = await page.locator('.jeryk-thread').innerText();
+      assert.match(
+        trialThreadText,
+        /Безкоштовний тестовий період завершився\. Обери тариф, щоб продовжити\./,
+      );
+    });
+    await check('Jeryk trial expiration does not blame Gemini', async () => {
+      const trialThreadText = await page.locator('.jeryk-thread').innerText();
+      assert.doesNotMatch(trialThreadText, /Gemini/);
+    });
+    await check('Jeryk marks trial expiration as trial, never OFFLINE', async () => {
+      assert.match(await page.locator('.jeryk-context em').innerText(), /trial/i);
+      assert.doesNotMatch(await page.locator('.jeryk-context em').innerText(), /offline/i);
+    });
+
+    await page.locator('.jeryk-prompts button').nth(3).click();
     await waitForJeryk(page);
     await check('Jeryk restricts OFFLINE to provider failures', async () => {
       assert.match(await page.locator('.jeryk-context em').innerText(), /offline/i);

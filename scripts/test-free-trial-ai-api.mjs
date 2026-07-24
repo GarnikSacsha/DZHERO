@@ -35,6 +35,8 @@ function previousKyivDayKey(now = new Date()) {
 
 const CURRENT_KYIV_DAY = kyivDayKey();
 const PREVIOUS_KYIV_DAY = previousKyivDayKey();
+const FREE_TRIAL_AI_GRANT_VERSION = '2026-07-24-public-beta-ai-v1';
+const FREE_TRIAL_AI_WINDOW_MS = 72 * 60 * 60 * 1000;
 
 function makeActor(id, email) {
   return {
@@ -85,6 +87,13 @@ function createDb({ chatOnly = false } = {}) {
         'url_failure',
         'old_guard',
         'expired_pending',
+        'historical_activation',
+        'studio_activation',
+        'new_activation',
+        'concurrent_activation',
+        'failed_activation',
+        'invalid_activation',
+        'expired_grant',
       ];
   const actors = ids.map((id) => makeActor(
     id,
@@ -162,7 +171,9 @@ function createDb({ chatOnly = false } = {}) {
     users: actors.map((actor) => actor.user),
     sessions: actors.map((actor) => actor.session),
     workspaces: actors.map((actor) => actor.workspace),
-    subscriptions: actors.map((actor) => actor.subscription),
+    subscriptions: actors
+      .filter((actor) => actor.workspace.id !== 'ws_new_activation')
+      .map((actor) => actor.subscription),
     testerAccessGrants: chatOnly ? [] : [{
       id: 'tester_grant_active',
       email: 'tester@example.test',
@@ -193,6 +204,37 @@ function createDb({ chatOnly = false } = {}) {
       createdAt: NOW,
     }],
   };
+}
+
+function subscriptionFor(db, workspaceId) {
+  return db.subscriptions.find((subscription) => subscription.workspaceId === workspaceId);
+}
+
+function configureLazyActivationFixtures(db) {
+  const historical = subscriptionFor(db, 'ws_historical_activation');
+  historical.trialEndsAt = '2020-01-01T00:00:00.000Z';
+  delete historical.aiTrialGrantVersion;
+  delete historical.aiTrialStartedAt;
+
+  for (const workspaceId of [
+    'ws_concurrent_activation',
+    'ws_failed_activation',
+    'ws_invalid_activation',
+    'ws_studio_activation',
+  ]) {
+    const subscription = subscriptionFor(db, workspaceId);
+    subscription.trialEndsAt = '2020-01-01T00:00:00.000Z';
+    delete subscription.aiTrialGrantVersion;
+    delete subscription.aiTrialStartedAt;
+  }
+
+  const expiredGrant = subscriptionFor(db, 'ws_expired_grant');
+  expiredGrant.aiTrialGrantVersion = FREE_TRIAL_AI_GRANT_VERSION;
+  expiredGrant.aiTrialStartedAt = '2020-01-01T00:00:00.000Z';
+  expiredGrant.trialEndsAt = new Date(
+    Date.parse(expiredGrant.aiTrialStartedAt) + FREE_TRIAL_AI_WINDOW_MS,
+  ).toISOString();
+  return db;
 }
 
 function validRemixResult() {
@@ -243,6 +285,8 @@ async function createControlledGemini() {
     failNextAgent: 0,
     failNextRemix: 0,
     rejectNextRemixQuality: 0,
+    holdNextAgent: 0,
+    pendingAgentResponse: null,
   };
   const server = http.createServer((request, response) => {
     let rawBody = '';
@@ -272,13 +316,22 @@ async function createControlledGemini() {
           text = JSON.stringify(validRemixResult());
         }
       }
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({
+      const successPayload = JSON.stringify({
         candidates: [{
           finishReason: 'STOP',
           content: { parts: [{ text }] },
         }],
-      }));
+      });
+      const sendSuccess = () => {
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(successPayload);
+      };
+      if (!isRemix && state.holdNextAgent > 0) {
+        state.holdNextAgent -= 1;
+        state.pendingAgentResponse = sendSuccess;
+        return;
+      }
+      sendSuccess();
     });
   });
   await new Promise((resolve, reject) => {
@@ -451,6 +504,199 @@ async function runChatDailyLimit(tempDir, controlledGemini) {
     assert.equal(blocked.body.used, 100);
   } finally {
     await stopServer(current?.child);
+  }
+}
+
+async function waitForCondition(predicate, message, timeout = 10_000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(message);
+}
+
+async function runLazyActivationReproduction(tempDir, controlledGemini) {
+  const lazyServer = await startServer(tempDir, {
+    db: configureLazyActivationFixtures(createDb()),
+    geminiBaseUrl: controlledGemini.baseUrl,
+  });
+  try {
+    const historicalBilling = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_historical_activation/billing',
+      { token: 'historical_activation_session' },
+    );
+    assert.equal(historicalBilling.status, 200);
+    assert.equal(
+      historicalBilling.body.trial.pendingActivation,
+      true,
+      'a historical trial without the current grant must await first accepted AI use',
+    );
+    assert.equal(historicalBilling.body.trial.active, false);
+    assert.equal(historicalBilling.body.trial.expired, false);
+
+    const firstHistoricalAction = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_historical_activation/agent/chat',
+      { method: 'POST', token: 'historical_activation_session', body: CHAT_BODY },
+    );
+    assert.equal(firstHistoricalAction.status, 201);
+    const afterHistoricalActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const historicalSubscription = subscriptionFor(afterHistoricalActivation, 'ws_historical_activation');
+    assert.equal(historicalSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(historicalSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(historicalSubscription.trialEndsAt) - Date.parse(historicalSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
+
+    const secondHistoricalAction = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_historical_activation/agent/chat',
+      { method: 'POST', token: 'historical_activation_session', body: CHAT_BODY },
+    );
+    assert.equal(secondHistoricalAction.status, 201);
+    const afterSecondHistoricalAction = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const historicalAfterSecondAction = subscriptionFor(afterSecondHistoricalAction, 'ws_historical_activation');
+    assert.equal(historicalAfterSecondAction.aiTrialStartedAt, historicalSubscription.aiTrialStartedAt);
+    assert.equal(historicalAfterSecondAction.trialEndsAt, historicalSubscription.trialEndsAt);
+
+    const studioActivation = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_studio_activation/remix/generate',
+      { method: 'POST', token: 'studio_activation_session', body: REMIX_BODY },
+    );
+    assert.equal(studioActivation.status, 200);
+    const afterStudioActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const studioSubscription = subscriptionFor(afterStudioActivation, 'ws_studio_activation');
+    assert.equal(studioSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(studioSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(studioSubscription.trialEndsAt) - Date.parse(studioSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+      'the first authenticated Studio adaptation must persist its 72-hour AI window',
+    );
+
+    const newWorkspaceAction = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_new_activation/agent/chat',
+      { method: 'POST', token: 'new_activation_session', body: CHAT_BODY },
+    );
+    assert.equal(newWorkspaceAction.status, 201);
+    const afterNewWorkspaceActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const newWorkspaceSubscription = subscriptionFor(afterNewWorkspaceActivation, 'ws_new_activation');
+    assert.equal(newWorkspaceSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(newWorkspaceSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(newWorkspaceSubscription.trialEndsAt) - Date.parse(newWorkspaceSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
+
+    const agentCallsBeforeConcurrentActivation = controlledGemini.state.agentCalls;
+    controlledGemini.state.holdNextAgent = 1;
+    const firstConcurrentAction = requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_concurrent_activation/agent/chat',
+      { method: 'POST', token: 'concurrent_activation_session', body: CHAT_BODY },
+    );
+    await waitForCondition(
+      () => typeof controlledGemini.state.pendingAgentResponse === 'function',
+      'the first concurrent action did not reach the controlled provider after persistence',
+    );
+    const afterFirstConcurrentActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const firstConcurrentSubscription = subscriptionFor(
+      afterFirstConcurrentActivation,
+      'ws_concurrent_activation',
+    );
+    assert.equal(firstConcurrentSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(firstConcurrentSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(firstConcurrentSubscription.trialEndsAt) - Date.parse(firstConcurrentSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
+
+    const secondConcurrentAction = requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_concurrent_activation/agent/chat',
+      { method: 'POST', token: 'concurrent_activation_session', body: CHAT_BODY },
+    );
+    await waitForCondition(
+      () => controlledGemini.state.agentCalls === agentCallsBeforeConcurrentActivation + 2,
+      'the second concurrent action did not reach the controlled provider',
+    );
+    const afterSecondConcurrentActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const concurrentSubscription = subscriptionFor(afterSecondConcurrentActivation, 'ws_concurrent_activation');
+    assert.equal(concurrentSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.equal(concurrentSubscription.aiTrialStartedAt, firstConcurrentSubscription.aiTrialStartedAt);
+    assert.equal(concurrentSubscription.trialEndsAt, firstConcurrentSubscription.trialEndsAt);
+    assert.equal(
+      Date.parse(concurrentSubscription.trialEndsAt) - Date.parse(concurrentSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
+    controlledGemini.state.pendingAgentResponse();
+    controlledGemini.state.pendingAgentResponse = null;
+    const concurrentActions = await Promise.all([firstConcurrentAction, secondConcurrentAction]);
+    assert.deepEqual(concurrentActions.map((response) => response.status), [201, 201]);
+
+    controlledGemini.state.failNextAgent = 1;
+    const failedActivation = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_failed_activation/agent/chat',
+      { method: 'POST', token: 'failed_activation_session', body: CHAT_BODY },
+    );
+    assert.equal(failedActivation.status, 502);
+    assert.equal(failedActivation.body.error, 'ai_provider_failed');
+    const afterFailedActivation = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    const failedSubscription = subscriptionFor(afterFailedActivation, 'ws_failed_activation');
+    assert.equal(failedSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(failedSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(failedSubscription.trialEndsAt) - Date.parse(failedSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
+    assert.equal(
+      afterFailedActivation.usageCounters.find((counter) => (
+        counter.workspaceId === 'ws_failed_activation'
+        && counter.metric === 'trial_agent_chat_daily'
+        && counter.period === CURRENT_KYIV_DAY
+      ))?.value || 0,
+      0,
+      'a provider failure must release the successful-outcome reservation',
+    );
+
+    const invalidJerykInput = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_invalid_activation/agent/chat',
+      { method: 'POST', token: 'invalid_activation_session', body: { message: '   ' } },
+    );
+    assert.equal(invalidJerykInput.status, 400);
+    const afterInvalidInput = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    assert.equal(subscriptionFor(afterInvalidInput, 'ws_invalid_activation').aiTrialGrantVersion, undefined);
+    const brandBrainFinalize = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_invalid_activation/agent/context/finalize',
+      {
+        method: 'POST',
+        token: 'invalid_activation_session',
+        body: { answers: COMPLETE_BRAND_ANSWERS },
+      },
+    );
+    assert.equal(brandBrainFinalize.status, 200);
+    const afterBrandBrainFinalize = JSON.parse(await readFile(lazyServer.dbPath, 'utf8'));
+    assert.equal(subscriptionFor(afterBrandBrainFinalize, 'ws_invalid_activation').aiTrialGrantVersion, undefined);
+
+    const providerCallsBeforeExpiredGrant = controlledGemini.state.agentCalls;
+    const expiredGrant = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_expired_grant/agent/chat',
+      { method: 'POST', token: 'expired_grant_session', body: CHAT_BODY },
+    );
+    assert.equal(expiredGrant.status, 402);
+    assert.equal(expiredGrant.body.error, 'trial_expired');
+    assert.equal(controlledGemini.state.agentCalls, providerCallsBeforeExpiredGrant);
+  } finally {
+    await stopServer(lazyServer.child);
   }
 }
 
@@ -806,6 +1052,7 @@ async function main() {
       stopServer(server.child),
     ]);
     await runChatDailyLimit(tempDir, controlledGemini);
+    await runLazyActivationReproduction(tempDir, controlledGemini);
 
     console.log(JSON.stringify({
       message: 'Free Trial API regression checks passed.',

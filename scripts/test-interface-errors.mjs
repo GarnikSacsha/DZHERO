@@ -6,6 +6,7 @@ const enT = createTranslator('en');
 const ukT = createTranslator('uk');
 
 assert.equal(extractInterfaceErrorCode({ error: 'plan_limit_reached' }), 'plan_limit_reached');
+assert.equal(extractInterfaceErrorCode({ error: 'trial_expired' }), 'trial_expired');
 assert.equal(extractInterfaceErrorCode(new Error('youtube_popular_failed')), 'youtube_popular_failed');
 assert.equal(extractInterfaceErrorCode({ message: 'SQL connection refused' }, 'unknown_error'), 'unknown_error');
 assert.equal(localizeInterfaceError('youtube_popular_failed', enT), 'Could not load popular YouTube videos.');
@@ -32,5 +33,15 @@ assert.equal(
   localizeInterfaceError('ai_provider_capacity_reached', ukT),
   'Денний технічний ліміт Gemini вичерпано. Спробуй після 00:00 за Києвом.',
 );
+
+assert.equal(
+  localizeInterfaceError('trial_expired', enT),
+  'Your Free Trial has ended. Choose a plan to continue.',
+);
+assert.equal(
+  localizeInterfaceError('trial_expired', ukT),
+  'Безкоштовний тестовий період завершився. Обери тариф, щоб продовжити.',
+);
+assert.doesNotMatch(localizeInterfaceError('trial_expired', ukT), /Gemini/i);
 
 console.log('interface error tests passed');
