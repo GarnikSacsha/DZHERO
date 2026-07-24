@@ -109,6 +109,7 @@ export const en = Object.freeze({
   'errors.remixGeneration': 'Could not generate the adaptation.',
   'errors.dailyRemixLimit': 'You have used 5 of 5 adaptations today. Your daily allowance resets at midnight Kyiv time.',
   'errors.dailyAgentChatLimit': 'You have used 100 of 100 Jeryk messages today. Your daily allowance resets at midnight Kyiv time.',
+  'errors.trialExpired': 'Your Free Trial has ended. Choose a plan to continue.',
   'errors.aiProviderNotConfigured': 'Gemini is not configured on the server.',
   'errors.aiProviderFailed': 'Gemini could not complete the request. Try again shortly.',
   'errors.aiProviderCapacity': 'Gemini daily technical capacity has been reached. Try again after midnight Kyiv time.',
