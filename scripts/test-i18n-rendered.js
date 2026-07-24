@@ -203,7 +203,7 @@ async function runAudit(appUrl) {
     assert.equal(await assistantButton.count(), 1, 'Assistant entry point is not reachable by the rendered audit');
     await assistantButton.click();
     await assertEnglishSurface(page, 'Assistant');
-    await page.locator('.jeryk-backdrop').click();
+    await page.locator('.jeryk-drawer button[aria-label*="Close"]').click();
 
     await page.locator('[data-tour="topbar-settings"]').click();
     await page.getByRole('button', { name: /interface/i }).click();

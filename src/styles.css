@@ -19459,3 +19459,234 @@ nav button.active::before {
     grid-template-columns: 1fr;
   }
 }
+
+/* Docked workspace shell: navigation and Jeryk remain usable beside the page. */
+.app:not(.auth-app) {
+  --workspace-sidebar-width: 240px;
+  --workspace-sidebar-collapsed-width: 76px;
+  --jeryk-panel-width: clamp(380px, 29vw, 430px);
+  grid-template-columns: var(--workspace-sidebar-width) minmax(0, 1fr);
+  transition: grid-template-columns 0.24s ease;
+}
+
+.app:not(.auth-app).sidebar-collapsed {
+  grid-template-columns: var(--workspace-sidebar-collapsed-width) minmax(0, 1fr);
+}
+
+.sidebar-collapse-toggle {
+  position: absolute;
+  top: 40px;
+  right: -15px;
+  z-index: 4;
+  display: grid;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--muted);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+  transition: color 0.18s ease, transform 0.24s ease, border-color 0.18s ease;
+}
+
+.sidebar-collapse-toggle:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  color: var(--accent);
+}
+
+.sidebar.collapsed .sidebar-collapse-toggle {
+  transform: rotate(180deg);
+}
+
+.sidebar.collapsed {
+  padding-inline: 12px !important;
+}
+
+.sidebar.collapsed .brand {
+  justify-content: center;
+  min-height: 52px;
+  padding: 8px !important;
+}
+
+.sidebar.collapsed .brand > div:not(.logo),
+.sidebar.collapsed nav button .nav-label,
+.sidebar.collapsed nav button .nav-coming-soon,
+.sidebar.collapsed .user-account-top > div:not(.avatar),
+.sidebar.collapsed .user-account-top > svg,
+.sidebar.collapsed .user-account-meta {
+  display: none !important;
+}
+
+.sidebar.collapsed nav button {
+  justify-content: center !important;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px !important;
+}
+
+.sidebar.collapsed nav button::before {
+  left: -12px;
+}
+
+.sidebar.collapsed .account-switcher.compact {
+  width: 100%;
+}
+
+.sidebar.collapsed .user-account-card {
+  padding: 8px;
+}
+
+.sidebar.collapsed .user-account-top {
+  display: grid;
+  grid-template-columns: 34px;
+  justify-content: center;
+}
+
+.sidebar.collapsed .workspace-menu {
+  right: auto;
+  bottom: 0;
+  left: calc(100% + 12px);
+  width: min(280px, calc(100vw - 110px));
+}
+
+.jeryk-backdrop {
+  display: none !important;
+}
+
+@media (min-width: 1121px) {
+  .app:not(.auth-app).jeryk-panel-open {
+    grid-template-columns:
+      var(--workspace-sidebar-width)
+      minmax(0, 1fr)
+      var(--jeryk-panel-width);
+  }
+
+  .app:not(.auth-app).sidebar-collapsed.jeryk-panel-open {
+    grid-template-columns:
+      var(--workspace-sidebar-collapsed-width)
+      minmax(0, 1fr)
+      var(--jeryk-panel-width);
+  }
+
+  .app:not(.auth-app).jeryk-panel-open .shell {
+    grid-column: 2;
+    padding-inline: clamp(24px, 3vw, 48px) !important;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer.open {
+    position: sticky;
+    top: 0;
+    right: auto;
+    bottom: auto;
+    grid-column: 3;
+    grid-row: 1;
+    width: 100%;
+    height: 100vh;
+    height: 100svh;
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+    box-shadow: -18px 0 48px rgba(0, 0, 0, 0.14);
+    transform: translateX(0);
+    backdrop-filter: blur(18px) saturate(140%);
+  }
+}
+
+@media (max-width: 1120px) and (min-width: 761px) {
+  .app:not(.auth-app) {
+    --workspace-sidebar-width: 220px;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(420px, calc(100vw - 24px));
+    border-width: 0 0 0 1px;
+    border-radius: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .app:not(.auth-app),
+  .app:not(.auth-app).sidebar-collapsed,
+  .app:not(.auth-app).jeryk-panel-open,
+  .app:not(.auth-app).sidebar-collapsed.jeryk-panel-open {
+    display: block !important;
+  }
+
+  .app:not(.auth-app) .sidebar-collapse-toggle {
+    display: none !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed {
+    padding: 14px 12px calc(14px + env(safe-area-inset-bottom)) !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .brand {
+    justify-content: flex-start;
+    width: calc(100% - 52px) !important;
+    padding: 9px 10px !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .brand > div:not(.logo),
+  .app:not(.auth-app) .sidebar.collapsed .user-account-top > div:not(.avatar) {
+    display: block !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed nav button {
+    justify-content: flex-start !important;
+    padding: 9px 11px !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed nav button::before {
+    left: 0;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed nav button .nav-label {
+    display: inline !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed nav button .nav-coming-soon {
+    display: block !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .user-account-top > svg {
+    display: block !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .user-account-meta {
+    display: flex !important;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .user-account-top {
+    grid-template-columns: 34px minmax(0, 1fr) 14px;
+    justify-content: stretch;
+  }
+
+  .app:not(.auth-app) .sidebar.collapsed .workspace-menu {
+    right: 0;
+    bottom: calc(100% + 8px);
+    left: 0;
+    width: auto;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer {
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: min(100vw, 430px) !important;
+    height: 100svh !important;
+    border-width: 0 0 0 1px !important;
+    border-radius: 0 !important;
+    transform: translateX(105%) !important;
+  }
+
+  .app:not(.auth-app) .jeryk-drawer.open {
+    transform: translateX(0) !important;
+  }
+}

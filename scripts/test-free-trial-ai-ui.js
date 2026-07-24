@@ -529,6 +529,44 @@ async function main() {
     });
 
     await page.locator('.jeryk-idle-card').click();
+    await page.waitForTimeout(320);
+    await check('Jeryk docks beside the workspace without a blocking overlay', async () => {
+      const layout = await page.evaluate(() => {
+        const app = document.querySelector('.app:not(.auth-app)');
+        const shell = document.querySelector('.shell');
+        const drawer = document.querySelector('.jeryk-drawer.open');
+        const shellRect = shell?.getBoundingClientRect();
+        const drawerRect = drawer?.getBoundingClientRect();
+        return {
+          appClass: app?.className || '',
+          backdropCount: document.querySelectorAll('.jeryk-backdrop').length,
+          drawerRole: drawer?.getAttribute('role') || '',
+          shellRight: shellRect?.right || 0,
+          drawerLeft: drawerRect?.left || 0,
+          drawerRight: drawerRect?.right || 0,
+          viewportWidth: window.innerWidth,
+        };
+      });
+      assert.match(layout.appClass, /jeryk-panel-open/);
+      assert.equal(layout.backdropCount, 0);
+      assert.equal(layout.drawerRole, 'complementary');
+      assert.ok(layout.shellRight <= layout.drawerLeft + 1, `workspace overlaps drawer: ${JSON.stringify(layout)}`);
+      assert.ok(Math.abs(layout.drawerRight - layout.viewportWidth) <= 1, `drawer is not docked to the right edge: ${JSON.stringify(layout)}`);
+    });
+    await check('Desktop sidebar collapses and gives its width back to the workspace', async () => {
+      const toggle = page.locator('.sidebar-collapse-toggle');
+      const expandedWidth = await page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width);
+      const expandedShellLeft = await page.locator('.shell').evaluate((element) => element.getBoundingClientRect().left);
+      await toggle.click();
+      await page.waitForTimeout(320);
+      const collapsedWidth = await page.locator('.sidebar').evaluate((element) => element.getBoundingClientRect().width);
+      const collapsedShellLeft = await page.locator('.shell').evaluate((element) => element.getBoundingClientRect().left);
+      assert.ok(collapsedWidth < expandedWidth - 100, `sidebar did not collapse: ${expandedWidth} -> ${collapsedWidth}`);
+      assert.ok(collapsedShellLeft < expandedShellLeft - 100, `workspace did not reclaim sidebar width: ${expandedShellLeft} -> ${collapsedShellLeft}`);
+      assert.equal(await toggle.getAttribute('aria-pressed'), 'true');
+      await toggle.click();
+      await page.waitForTimeout(320);
+    });
     await check('Jeryk shows the initial daily message allowance', async () => {
       assert.equal(
         await optionalText(page.locator('.daily-ai-usage').filter({ hasText: 'Повідомлення сьогодні' })),
@@ -579,7 +617,7 @@ async function main() {
       assert.match(await page.locator('.jeryk-thread').innerText(), /Gemini не зміг виконати запит\. Спробуй ще раз трохи згодом\./);
     });
 
-    await page.locator('.jeryk-backdrop').click();
+    await page.locator('.jeryk-drawer button[aria-label*="Закрити"]').click();
     await page.locator('[data-tour="sidebar-transcript"]').click();
     const signalSearch = page.locator('.page-signals .search-row input');
     await signalSearch.fill('https://www.youtube.com/shorts/controlled-import');
@@ -623,7 +661,7 @@ async function main() {
       );
     });
 
-    await page.locator('.jeryk-backdrop').click();
+    await page.locator('.jeryk-drawer button[aria-label*="Закрити"]').click();
     await page.getByRole('button', { name: /Перегенерувати AI/i }).click();
     await page.waitForFunction(() => !document.querySelector('.page-remix-studio .actions button')?.hasAttribute('disabled'));
     await check('A delayed older daily period cannot replace the current day', async () => {

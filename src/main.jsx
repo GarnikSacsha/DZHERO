@@ -130,6 +130,7 @@ const AGENT_STUDIO_PUBLIC_ENTRY = IS_BUILD_WEEK_HOST || import.meta.env.VITE_ENA
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
 const WORKSPACE_KEY = 'dzhero-active-workspace';
 const BRAND_SCAN_PENDING_KEY = 'dzhero-brand-scan-pending';
+const SIDEBAR_COLLAPSED_KEY = 'dzhero-sidebar-collapsed';
 const JERYK_LOADING_MESSAGE = '__JERYK_LOADING__';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
@@ -440,6 +441,9 @@ function App() {
   const [consentPromptDismissed, setConsentPromptDismissed] = useState(false);
   const [authStatus, setAuthStatus] = useState('checking');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(
+    () => window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1',
+  );
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [assistantAutoPrompt, setAssistantAutoPrompt] = useState(null);
   const [workspaceId, setWorkspaceId] = useState(() => window.localStorage.getItem(WORKSPACE_KEY) || DEMO_WORKSPACES[0].id);
@@ -1556,7 +1560,14 @@ function App() {
   };
 
   return (
-    <div className="app" data-theme={theme}>
+    <div
+      className={[
+        'app',
+        isSidebarCollapsed ? 'sidebar-collapsed' : '',
+        isAssistantOpen ? 'jeryk-panel-open' : '',
+      ].filter(Boolean).join(' ')}
+      data-theme={theme}
+    >
       <CleanSidebar
         key={`sidebar-${language}`}
         page={page}
@@ -1570,6 +1581,14 @@ function App() {
         agentStudioAvailable={agentStudioAvailable}
         navigationLocked={navigationLocked}
         isOpen={isSidebarOpen}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapsed={() => {
+          setIsSidebarCollapsed((current) => {
+            const next = !current;
+            window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+            return next;
+          });
+        }}
         onClose={() => setIsSidebarOpen(false)}
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
@@ -3206,7 +3225,22 @@ function Sidebar({ page, setPage, currentUser, workspaces, activeWorkspace, onWo
   );
 }
 
-function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace, language, onWorkspaceChange, onLogout, agentStudioAvailable = false, navigationLocked = false, isOpen, onClose }) {
+function CleanSidebar({
+  page,
+  setPage,
+  currentUser,
+  workspaces,
+  activeWorkspace,
+  language,
+  onWorkspaceChange,
+  onLogout,
+  agentStudioAvailable = false,
+  navigationLocked = false,
+  isOpen,
+  isCollapsed = false,
+  onToggleCollapsed,
+  onClose,
+}) {
   useI18n();
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
   const accountName = currentUser?.name || currentUser?.email?.split('@')?.[0] || (language === 'en' ? 'Your account' : 'Твій кабінет');
@@ -3269,7 +3303,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   };
 
   return (
-    <aside className={isOpen ? 'sidebar open' : 'sidebar'}>
+    <aside className={`sidebar${isOpen ? ' open' : ''}${isCollapsed ? ' collapsed' : ''}`}>
       <div className="brand">
         <div className="logo">
           <img src={logoImg} alt="Dzhero Logo" />
@@ -3279,6 +3313,17 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
           <span>{language === 'en' ? 'Ukraine + world' : 'Україна + світ'}</span>
         </div>
       </div>
+      <button
+        className="sidebar-collapse-toggle"
+        type="button"
+        aria-label={isCollapsed
+          ? (language === 'en' ? 'Expand sidebar' : 'Розгорнути бічну панель')
+          : (language === 'en' ? 'Collapse sidebar' : 'Згорнути бічну панель')}
+        aria-pressed={isCollapsed}
+        onClick={onToggleCollapsed}
+      >
+        <ChevronLeft size={16} />
+      </button>
       <button className="mobile-menu-close" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={onClose}>
         <X size={18} />
       </button>
@@ -5068,13 +5113,11 @@ function AssistantDrawer({
           </div>
         </button>
       )}
-      {isOpen && <button className="jeryk-backdrop" type="button" aria-label={drawerCopy.closeLabel} onClick={onClose} />}
       <aside
         className={isOpen ? 'jeryk-drawer open' : 'jeryk-drawer'}
         aria-hidden={!isOpen}
         aria-label={assistantName}
-        aria-modal={isOpen ? 'true' : undefined}
-        role="dialog"
+        role="complementary"
       >
         <div className="jeryk-head">
           <div className="jeryk-avatar"><Bot size={24} /></div>
