@@ -1031,8 +1031,11 @@ async function main() {
       { token: 'expired_pending_session' },
     );
     assert.equal(expiredPendingBilling.status, 200);
+    assert.equal(expiredPendingBilling.body.trial.pendingActivation, true);
     assert.equal(expiredPendingBilling.body.trial.active, false);
-    assert.equal(expiredPendingBilling.body.trial.expired, true);
+    assert.equal(expiredPendingBilling.body.trial.expired, false);
+    assert.equal(expiredPendingBilling.body.trial.endsAt, null);
+    assert.equal(expiredPendingBilling.body.trial.daysRemaining, 3);
     const expiredPending = await requestJson(
       reviewServer.baseUrl,
       '/api/workspaces/ws_expired_pending/agent/chat',
@@ -1042,8 +1045,20 @@ async function main() {
         body: CHAT_BODY,
       },
     );
-    assert.equal(expiredPending.status, 402);
-    assert.equal(expiredPending.body.error, 'trial_expired');
+    assert.equal(expiredPending.status, 201);
+    assert.equal(expiredPending.body.provider, 'gemini');
+    const afterExpiredPendingActivation = JSON.parse(await readFile(reviewServer.dbPath, 'utf8'));
+    const expiredPendingSubscription = subscriptionFor(
+      afterExpiredPendingActivation,
+      'ws_expired_pending',
+    );
+    assert.equal(expiredPendingSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
+    assert.ok(expiredPendingSubscription.aiTrialStartedAt);
+    assert.equal(
+      Date.parse(expiredPendingSubscription.trialEndsAt)
+        - Date.parse(expiredPendingSubscription.aiTrialStartedAt),
+      FREE_TRIAL_AI_WINDOW_MS,
+    );
 
     await Promise.all([
       stopServer(providerless.child),
