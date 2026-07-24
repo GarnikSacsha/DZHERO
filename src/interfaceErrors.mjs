@@ -13,6 +13,7 @@ const CODE_TO_KEY = Object.freeze({
   remix_generation_failed: 'errors.remixGeneration',
   daily_remix_limit_reached: 'errors.dailyRemixLimit',
   daily_agent_chat_limit_reached: 'errors.dailyAgentChatLimit',
+  trial_expired: 'errors.trialExpired',
   ai_provider_not_configured: 'errors.aiProviderNotConfigured',
   ai_provider_failed: 'errors.aiProviderFailed',
   ai_provider_capacity_reached: 'errors.aiProviderCapacity',
