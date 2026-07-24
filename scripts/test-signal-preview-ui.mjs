@@ -15,6 +15,7 @@ import { chromium } from 'playwright';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEMO_WORKSPACE_ID = 'ws_demo_ua';
 const BROKEN_TITLE = 'Expired TikTok media preview fixture';
+const MISSING_THUMBNAIL_TITLE = 'Unavailable TikTok thumbnail fixture';
 const YOUTUBE_TITLE = 'YouTube embed preview fixture';
 const POSTER = 'data:image/svg+xml;charset=utf-8,%3Csvg xmlns="http://www.w3.org/2000/svg" width="360" height="640"%3E%3Crect width="360" height="640" fill="%2316263a"/%3E%3Ctext x="24" y="320" fill="white"%3EPreview poster%3C/text%3E%3C/svg%3E';
 
@@ -96,7 +97,7 @@ function createDatabase(tempDirectory) {
       sourceType: 'TikTok',
       market: 'global',
       title: BROKEN_TITLE,
-      image: POSTER,
+      image: 'https://expired-image.test/recoverable.jpeg',
       videoUrl: 'https://expired-media.test/video.mp4',
       views: 402100,
       likes: 39800,
@@ -106,8 +107,33 @@ function createDatabase(tempDirectory) {
       importedMetadata: {
         platform: 'tiktok',
         url: 'https://www.tiktok.com/@preview_fixture/video/1234567890',
-        image: POSTER,
+        image: 'https://expired-image.test/recoverable.jpeg',
         videoUrl: 'https://expired-media.test/video.mp4',
+      },
+      createdAt: '2026-07-23T00:00:00.000Z',
+    },
+    {
+      id: 'reel_missing_thumbnail_fixture',
+      workspaceId: DEMO_WORKSPACE_ID,
+      handle: '@missing_thumbnail',
+      sourceHandle: '@missing_thumbnail',
+      sourceUrl: 'https://www.tiktok.com/@missing_thumbnail/video/9876543210',
+      sourceStatus: 'apify_metadata',
+      scanLabel: 'TikTok',
+      sourceType: 'TikTok',
+      market: 'global',
+      title: MISSING_THUMBNAIL_TITLE,
+      image: 'https://expired-image.test/unavailable.jpeg',
+      videoUrl: '',
+      views: 96000,
+      likes: 8200,
+      comments: 82,
+      score: 90,
+      status: ['TikTok', 'Source', 'Metadata'],
+      importedMetadata: {
+        platform: 'tiktok',
+        url: 'https://www.tiktok.com/@missing_thumbnail/video/9876543210',
+        image: 'https://expired-image.test/unavailable.jpeg',
       },
       createdAt: '2026-07-23T00:00:00.000Z',
     },
@@ -162,8 +188,30 @@ const backend = startNode(['backend/server.js'], {
 let frontend;
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const thumbnailRefreshCounts = new Map();
 
 try {
+  await page.route('https://expired-image.test/**', (route) => route.fulfill({
+    status: 410,
+    contentType: 'text/plain',
+    body: 'expired',
+  }));
+  await page.route('**/thumbnail/refresh', (route) => {
+    const url = route.request().url();
+    thumbnailRefreshCounts.set(url, (thumbnailRefreshCounts.get(url) || 0) + 1);
+    if (url.includes('reel_expired_media_fixture')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ thumbnailUrl: POSTER }),
+      });
+    }
+    return route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'tiktok_thumbnail_unavailable' }),
+    });
+  });
   await page.route('https://expired-media.test/video.mp4', (route) => route.fulfill({
     status: 410,
     contentType: 'text/plain',
@@ -185,6 +233,18 @@ try {
   await page.waitForSelector('.shell', { timeout: 15000 });
   await page.locator('[data-tour="sidebar-transcript"]').click();
   await page.getByText(BROKEN_TITLE).waitFor({ state: 'visible', timeout: 10000 });
+  await page.locator('.reel-row', { hasText: BROKEN_TITLE }).locator('.signal-thumbnail img[src^="data:image"]').waitFor();
+  await page.locator('.reel-row', { hasText: MISSING_THUMBNAIL_TITLE }).locator('.signal-thumbnail-fallback').waitFor();
+  assert.equal(
+    [...thumbnailRefreshCounts.entries()].find(([url]) => url.includes('reel_expired_media_fixture'))?.[1],
+    1,
+    'A failed TikTok thumbnail must be refreshed once',
+  );
+  assert.equal(
+    [...thumbnailRefreshCounts.entries()].find(([url]) => url.includes('reel_missing_thumbnail_fixture'))?.[1],
+    1,
+    'An unavailable TikTok thumbnail must stop after one refresh attempt',
+  );
 
   await page.locator('.reel-row', { hasText: BROKEN_TITLE }).locator('.thumb').click();
   await page.waitForSelector('.video-preview-modal');

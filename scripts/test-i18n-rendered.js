@@ -130,6 +130,8 @@ async function runAudit(appUrl) {
     await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
     if (!(await page.locator('.shell').count())) {
       await assertEnglishSurface(page, 'Authentication');
+      assert.equal(await page.getByRole('button', { name: 'UA', exact: true }).count(), 1, 'Signed-out language switch must label Ukrainian as UA');
+      assert.equal(await page.getByRole('button', { name: 'UK', exact: true }).count(), 0, 'Signed-out language switch must not use UK');
       await page.getByRole('button', { name: /view demo|start with demo/i }).first().click();
       await page.waitForSelector('.shell', { timeout: 15000 });
     }
@@ -161,17 +163,29 @@ async function runAudit(appUrl) {
       ['[data-tour="sidebar-transcript"]', 'Signals'],
       ['[data-tour="sidebar-remix"]', 'Studio'],
       ['[data-tour="sidebar-calendar"]', 'Content plan'],
-      ['[data-tour="sidebar-settings"]', 'Settings'],
+      ['[data-tour="topbar-settings"]', 'Settings'],
     ]) {
       await page.locator(selector).click();
       await assertEnglishSurface(page, label);
     }
 
+    assert.equal(await page.locator('.top-actions .language-switch').count(), 0, 'Authenticated topbar must not expose the language switch');
+    assert.equal(await page.locator('[data-tour="sidebar-settings"]').count(), 0, 'Settings must not be duplicated in sidebar navigation');
     const settingsTabs = page.locator('.page > .tabs button');
     const settingsTabCount = await settingsTabs.count();
     assert.ok(settingsTabCount >= 3, 'Settings tabs are not reachable by the rendered audit');
     assert.equal(await page.locator('[data-tour="sidebar-home"]').count(), 0, 'My Brands must not be a permanent sidebar destination');
     assert.equal(await page.getByRole('button', { name: /my brands/i }).count(), 1, 'Settings must expose the My Brands tab');
+    await page.getByRole('button', { name: /interface/i }).click();
+    assert.equal(await page.locator('.interface-settings').count(), 1, 'Settings must expose Interface controls');
+    assert.equal(await page.getByRole('button', { name: 'UA', exact: true }).count(), 1, 'Interface Settings must label Ukrainian as UA');
+    assert.equal(await page.getByRole('button', { name: 'UK', exact: true }).count(), 0, 'Interface Settings must not use UK');
+    await page.getByRole('button', { name: /^dark$/i }).click();
+    assert.equal(await page.locator('.app').getAttribute('data-theme'), 'dark', 'Manual Dark must override Auto');
+    await page.getByRole('button', { name: /^light$/i }).click();
+    assert.equal(await page.locator('.app').getAttribute('data-theme'), 'light', 'Manual Light must override Auto');
+    await page.getByRole('button', { name: /^auto$/i }).click();
+    assert.equal(await page.getByRole('button', { name: /^auto$/i }).getAttribute('aria-pressed'), 'true', 'Auto must expose selected state');
     for (let index = 0; index < settingsTabCount; index += 1) {
       await settingsTabs.nth(index).click();
       await assertEnglishSurface(page, `Settings tab ${index + 1}`);
@@ -191,17 +205,21 @@ async function runAudit(appUrl) {
     await assertEnglishSurface(page, 'Assistant');
     await page.locator('.jeryk-backdrop').click();
 
-    await page.locator('.language-switch button', { hasText: 'UK' }).first().click();
+    await page.locator('[data-tour="topbar-settings"]').click();
+    await page.getByRole('button', { name: /interface/i }).click();
+    await page.getByRole('button', { name: 'UA', exact: true }).click();
     await page.waitForTimeout(50);
     assert.equal(await page.locator('html').getAttribute('lang'), 'uk');
     assert.equal(await page.locator('[data-tour="sidebar-home"]').count(), 0, 'My Brands must remain outside the sidebar after a language switch');
-    await page.locator('[data-tour="sidebar-settings"]').click();
+    await page.locator('[data-tour="topbar-settings"]').click();
     await page.getByRole('button', { name: /мої бренди/i }).click();
     await page.getByRole('button', { name: /редагувати бренд/i }).click();
     for (const label of [/профіль та продукт/i, /цільова аудиторія/i, /^ніша$/i, /^ринок$/i, /instagram/i]) {
       assert.equal(await page.getByLabel(label).count(), 1, `My Brands V2 is missing its Ukrainian rendered ${label} label`);
     }
     await page.getByRole('button', { name: /скасувати/i }).click();
+    await page.locator('[data-tour="topbar-settings"]').click();
+    await page.getByRole('button', { name: /інтерфейс/i }).click();
     await page.evaluate(() => {
       window.__englishSwitchCyrillic = [];
       const observer = new MutationObserver((records) => {
@@ -227,7 +245,7 @@ async function runAudit(appUrl) {
       observer.observe(document.getElementById('root'), { childList: true, characterData: true, subtree: true });
       window.__englishSwitchObserver = observer;
     });
-    await page.locator('.language-switch button', { hasText: 'EN' }).first().click();
+    await page.getByRole('button', { name: 'EN', exact: true }).click();
     await page.waitForTimeout(300);
     const switchedCyrillic = await page.evaluate(() => {
       window.__englishSwitchObserver.disconnect();

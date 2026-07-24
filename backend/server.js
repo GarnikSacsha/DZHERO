@@ -67,6 +67,7 @@ const {
   buildSharedSignalBankReels,
   isSharedSignalBankPlan,
 } = require('./services/sharedSignalBank.cjs');
+const { fetchTikTokThumbnail } = require('./services/tiktokThumbnail.cjs');
 const { normalizeContentPlanBody } = require('./services/contentPlanPostBody.cjs');
 const {
   getYouTubeShortsSearchQueries,
@@ -2039,6 +2040,16 @@ function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
   return dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBank.reels]);
 }
 
+function resolveCanonicalAccessibleSignal(db, workspaceId, authUser, reelId) {
+  const accessible = getAccessibleWorkspaceSignals(db, workspaceId, authUser)
+    .find((reel) => reel.id === reelId);
+  if (!accessible) return null;
+  const canonicalId = accessible.sharedBank && accessible.sharedSourceId
+    ? accessible.sharedSourceId
+    : accessible.id;
+  return db.reels.find((reel) => reel.id === canonicalId) || null;
+}
+
 function getCurrentActor(db, actorUser) {
   if (!actorUser?.id) return actorUser || null;
   return db.users.find((user) => user.id === actorUser.id) || null;
@@ -3771,6 +3782,7 @@ function usesLongRunningExternalWork(req) {
   return [
     /^\/brand-scan\/preview\/?$/,
     /^\/workspaces\/[^/]+\/reels\/import-url\/?$/,
+    /^\/workspaces\/[^/]+\/reels\/[^/]+\/thumbnail\/refresh\/?$/,
     /^\/workspaces\/[^/]+\/agent\/chat\/?$/,
     /^\/workspaces\/[^/]+\/agent\/context\/finalize\/?$/,
     /^\/workspaces\/[^/]+\/remix\/generate\/?$/,
@@ -6686,6 +6698,61 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
       signalCount: sharedBankReels.length,
     },
   });
+});
+
+app.post('/api/workspaces/:workspaceId/reels/:reelId/thumbnail/refresh', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const reel = resolveCanonicalAccessibleSignal(
+      db,
+      req.params.workspaceId,
+      req.authUser,
+      req.params.reelId,
+    );
+    if (!reel) {
+      const error = new Error('signal_not_found');
+      error.status = 404;
+      error.payload = { error: 'signal_not_found' };
+      throw error;
+    }
+
+    const thumbnailUrl = await fetchTikTokThumbnail(
+      reel.sourceUrl || reel.importedMetadata?.url,
+      process.env.NODE_ENV === 'test' && process.env.TIKTOK_OEMBED_BASE_URL
+        ? { oEmbedOrigin: process.env.TIKTOK_OEMBED_BASE_URL }
+        : {},
+    );
+
+    await withAutomaticDiscoveryStateLock(req.params.workspaceId, async (currentDb) => {
+      const current = assertCurrentWorkspaceAccess(
+        currentDb,
+        req.params.workspaceId,
+        req.authUser,
+      );
+      const currentReel = resolveCanonicalAccessibleSignal(
+        currentDb,
+        req.params.workspaceId,
+        current.actorUser,
+        req.params.reelId,
+      );
+      if (!currentReel) {
+        const error = new Error('signal_not_found');
+        error.status = 404;
+        error.payload = { error: 'signal_not_found' };
+        throw error;
+      }
+      currentReel.image = thumbnailUrl;
+      currentReel.importedMetadata = {
+        ...(currentReel.importedMetadata || {}),
+        image: thumbnailUrl,
+      };
+      currentReel.updatedAt = new Date().toISOString();
+    });
+
+    res.json({ thumbnailUrl });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.get('/api/workspaces/:workspaceId/signals/discovery', async (req, res) => {

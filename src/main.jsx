@@ -52,6 +52,7 @@ import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
 import CommunicationPreferences from './CommunicationPreferences.jsx';
 import BrandBrainWizard from './components/BrandBrainWizard.jsx';
+import SignalThumbnail from './components/SignalThumbnail.jsx';
 import { syncCrmSession, telemetry } from './telemetry.mjs';
 import ContentCalendar, {
   fromLocalDateKey,
@@ -84,6 +85,12 @@ import {
   getSignalSourceGroup,
   parseMetric,
 } from './signalFeedUtils.mjs';
+import {
+  getAutoTheme,
+  getInitialThemeMode,
+  getNextThemeMode,
+  persistThemeMode,
+} from './themePreferences.mjs';
 import {
   buildCalendarPostSourceKey,
   buildCalendarRemixScenario,
@@ -198,10 +205,6 @@ const CONTENT_FORMAT_ALIASES = {
   post: 'Post',
   video: 'Video',
 };
-const THEME_MODE_KEY = 'insta-producer-theme-mode-v1';
-const LEGACY_THEME_KEY = 'insta-producer-theme-v2';
-const DAY_THEME_START_HOUR = 7;
-const NIGHT_THEME_START_HOUR = 21;
 const DEMO_WORKSPACES = [
   { id: 'ws_demo_ua', name: 'Demo Brand', handle: '@demo_brand', type: 'Базовий' },
   { id: 'ws_demo_cafe', name: 'Кафе Central', handle: '@central.cafe', type: 'Кафе' },
@@ -209,25 +212,6 @@ const DEMO_WORKSPACES = [
   { id: 'ws_demo_beauty', name: 'Beauty Room', handle: '@beauty.room', type: 'Beauty' },
   { id: 'ws_demo_expert', name: 'Expert Lab', handle: '@expert.lab', type: 'Експерт' },
 ];
-
-function getAutoTheme(date = new Date()) {
-  const hour = date.getHours();
-  return hour >= NIGHT_THEME_START_HOUR || hour < DAY_THEME_START_HOUR ? 'dark' : 'light';
-}
-
-function getInitialThemeMode() {
-  const savedMode = window.localStorage.getItem(THEME_MODE_KEY);
-  if (['auto', 'dark', 'light'].includes(savedMode)) return savedMode;
-  const legacyTheme = window.localStorage.getItem(LEGACY_THEME_KEY);
-  if (['dark', 'light'].includes(legacyTheme)) return legacyTheme;
-  return 'auto';
-}
-
-function getNextThemeMode(themeMode) {
-  if (themeMode === 'auto') return 'dark';
-  if (themeMode === 'dark') return 'light';
-  return 'auto';
-}
 
 function getAuthHeaders(extraHeaders = {}) {
   return extraHeaders;
@@ -447,8 +431,8 @@ function App() {
   const [toast, setToast] = useState('');
   const [remixDraft, setRemixDraft] = useState(null);
   const [remixAutoRequest, setRemixAutoRequest] = useState(null);
-  const [themeMode, setThemeMode] = useState(getInitialThemeMode);
-  const [autoTheme, setAutoTheme] = useState(getAutoTheme);
+  const [themeMode, setThemeMode] = useState(() => getInitialThemeMode(window.localStorage));
+  const [autoTheme, setAutoTheme] = useState(() => getAutoTheme());
   const theme = themeMode === 'auto' ? autoTheme : themeMode;
   const [sessionRevision, setSessionRevision] = useState(0);
   const [currentUser, setCurrentUser] = useState(null);
@@ -475,6 +459,7 @@ function App() {
   const [recommendedSignalId, setRecommendedSignalId] = useState('');
   const discoveryRequestRef = useRef(0);
   const reelsRequestRef = useRef(0);
+  const thumbnailRecoveryRef = useRef(new Map());
   const signalsRefreshRequestRef = useRef(0);
   const signalDiscoveryToggleRequestRef = useRef(0);
   const signalDiscoveryRunRequestRef = useRef(0);
@@ -698,9 +683,8 @@ function App() {
   }, [currentUser, workspaceId]);
 
   useEffect(() => {
-    window.localStorage.setItem(THEME_MODE_KEY, themeMode);
-    window.localStorage.setItem(LEGACY_THEME_KEY, theme);
-  }, [themeMode, theme]);
+    persistThemeMode(window.localStorage, themeMode);
+  }, [themeMode]);
 
   useEffect(() => {
     if (themeMode !== 'auto') return undefined;
@@ -847,6 +831,45 @@ function App() {
     setToast(translateText(message));
     window.clearTimeout(window.__toastTimer);
     window.__toastTimer = window.setTimeout(() => setToast(''), 2600);
+  };
+
+  const refreshSignalThumbnail = (reel) => {
+    const requestWorkspaceId = workspaceId;
+    const recoveryKey = `${requestWorkspaceId}:${reel.id}`;
+    const existingRecovery = thumbnailRecoveryRef.current.get(recoveryKey);
+    if (existingRecovery) return existingRecovery;
+    const recovery = (async () => {
+      const response = await authFetch(
+        `${API_BASE}/workspaces/${requestWorkspaceId}/reels/${encodeURIComponent(reel.id)}/thumbnail/refresh`,
+        { method: 'POST' },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw createInterfaceApiError(payload, 'tiktok_thumbnail_unavailable');
+      const thumbnailUrl = String(payload.thumbnailUrl || '').trim();
+      if (!thumbnailUrl) throw createInterfaceApiError({}, 'tiktok_thumbnail_unavailable');
+      if (reelsWorkspaceRef.current === requestWorkspaceId) {
+        setData((current) => current
+          ? {
+              ...current,
+              reels: current.reels.map((item) => (
+                item.id === reel.id
+                  ? {
+                      ...item,
+                      image: thumbnailUrl,
+                      importedMetadata: {
+                        ...(item.importedMetadata || {}),
+                        image: thumbnailUrl,
+                      },
+                    }
+                  : item
+              )),
+            }
+          : current);
+      }
+      return thumbnailUrl;
+    })();
+    thumbnailRecoveryRef.current.set(recoveryKey, recovery);
+    return recovery;
   };
 
   useEffect(() => {
@@ -1551,7 +1574,7 @@ function App() {
       />
       {isSidebarOpen && <button className="mobile-menu-backdrop" type="button" aria-label={language === 'en' ? 'Close menu' : 'Закрити меню'} onClick={() => setIsSidebarOpen(false)} />}
       <main className="shell" key={`shell-${language}`}>
-        <Topbar theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} navigationLocked={navigationLocked} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
+        <Topbar language={language} setPage={setMvpPage} page={page} agentStudioAvailable={agentStudioAvailable} navigationLocked={navigationLocked} onOpenMenu={() => setIsSidebarOpen(true)} onCloseMenu={() => setIsSidebarOpen(false)} />
         {page === 'home' && (brandContextStatus === 'onboarding'
           ? <BrandBrainWizard workspaceId={wizardWorkspaceId} language={language} initialDraft={brandDraft} notify={notify} isWorkspaceCurrent={isWizardWorkspaceCurrent} onComplete={(payload) => {
             if (!isWizardWorkspaceCurrent()) return;
@@ -1562,7 +1585,7 @@ function App() {
             setPage('viral');
           }} />
           : <HomeDashboard data={filtered} market={market} notify={notify} onFreshIdea={() => setMvpPage('viral')} setPage={setMvpPage} workspaceId={workspaceId} />)}
-        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
+        {page === 'viral' && <ViralBank reels={workspaceScopedSignalsReels} competitors={filtered.competitors} market={market} notify={notify} openModal={setModal} onImportUrl={autoImportReelUrl} onImportApifySignals={importApifySignals} onPullYouTubePopular={pullYouTubePopular} onRefreshThumbnail={refreshSignalThumbnail} onAdapt={(reel) => { setRemixDraft(reel); setRemixAutoRequest((current) => createRemixAutoRequest(current?.id, reel)); setMvpPage('remix'); notify('Сигнал відкрито в Студії'); }} setPage={setMvpPage} automation={{ discovery: signalDiscovery, error: signalDiscoveryError, isLoading: isSignalDiscoveryLoading, isRefreshing: isSignalsRefreshing, isToggling: isSignalDiscoveryToggling, isRunning: isSignalDiscoveryRunning }} onRefreshAutomation={() => void refreshSignalsWorkspaceState({ silent: false })} onToggleAutomation={toggleSignalDiscoveryEnabled} onRunAutomation={runSignalDiscoveryNow} initialPreviewSignalId={recommendedSignalId} onInitialPreviewOpened={() => setRecommendedSignalId('')} />}
         {page === 'remix' && (
           selectedReel
             ? <RemixStudio reel={selectedReel} notify={notify} setPage={setMvpPage} workspaceId={workspaceId} dailyAiUsage={dailyAiUsage} onDailyUsageChanged={(nextDaily) => {
@@ -1594,6 +1617,9 @@ function App() {
             workspaceId={workspaceId}
             currentUser={currentUser}
             language={language}
+            setLanguage={setLanguage}
+            themeMode={themeMode}
+            setThemeMode={setThemeMode}
             initialBrief={brandContext}
             onBrandSaved={(savedBrief) => handleBrandContextSaved(workspaceId, savedBrief)}
             brandEditSuggestion={brandEditSuggestion}
@@ -2799,7 +2825,7 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
             </div>
             <div className="auth-top-controls">
               <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
-                <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UK</button>
+                <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
                 <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
               </div>
               <button className={themeMode === 'auto' ? 'icon active' : 'icon'} type="button" title={themeMode === 'auto' ? 'Auto theme' : 'Тема'} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
@@ -3197,7 +3223,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
     remix: 'sidebar-remix',
     'agent-studio': 'sidebar-agent-studio',
     plan: 'sidebar-calendar',
-    settings: 'sidebar-settings',
   };
   const labels = language === 'en'
     ? {
@@ -3206,7 +3231,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       remix: 'Studio',
       'agent-studio': 'Agent Studio · Beta',
       plan: 'Content plan',
-      settings: 'Settings',
     }
     : {
       home: 'Brand Brain',
@@ -3214,14 +3238,12 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
       remix: 'Студія',
       'agent-studio': 'Agent Studio · Beta',
       plan: 'Контент-план',
-      settings: 'Налаштування',
     };
   const primaryItems = [
     ['viral', Radio],
     ['remix', Wand2],
     ['agent-studio', Bot],
     ['plan', CalendarDays],
-    ['settings', Settings],
   ];
   const selectPage = (id) => {
     setPage(id);
@@ -3284,9 +3306,6 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
             <span>{providerLabel}</span>
             <span>{activeWorkspace?.type || (language === 'en' ? 'Workspace' : 'Workspace')}</span>
           </div>
-          <button type="button" onClick={() => selectPage('settings')} disabled={navigationLocked}>
-            {language === 'en' ? 'Account, tariff and sources' : 'Кабінет, тариф і джерела'}
-          </button>
         </section>
         {isSwitcherOpen && (
           <div className="workspace-menu">
@@ -3323,7 +3342,7 @@ function CleanSidebar({ page, setPage, currentUser, workspaces, activeWorkspace,
   );
 }
 
-function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage, page, agentStudioAvailable = false, navigationLocked = false, onOpenMenu, onCloseMenu }) {
+function Topbar({ language, setPage, page, agentStudioAvailable = false, navigationLocked = false, onOpenMenu, onCloseMenu }) {
   const { translateText } = useI18n();
   const ctaLabel = page === 'home'
     ? (language === 'en' ? 'Next: Signals' : 'Далі: Сигнали')
@@ -3331,10 +3350,6 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
       ? (language === 'en' ? 'Open Signals' : 'Відкрити Сигнали')
       : (language === 'en' ? 'Generate plan' : 'Згенерувати план');
   const ctaTarget = page === 'home' || page === 'settings' ? 'viral' : 'agent-studio';
-  const themeTitle = themeMode === 'auto'
-    ? (language === 'en' ? 'Auto theme: local time' : 'Автотема: за локальним часом')
-    : (language === 'en' ? 'Theme' : 'Тема');
-
   return (
     <header className="topbar">
       <div className="topbar-title">
@@ -3354,14 +3369,7 @@ function Topbar({ theme, themeMode, setThemeMode, language, setLanguage, setPage
           <Sparkles size={15} />
           <span>{ctaLabel}</span>
         </button>
-        <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
-          <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UK</button>
-          <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
-        </div>
         <button className={page === 'settings' ? 'icon active' : 'icon'} data-tour="topbar-settings" title={language === 'en' ? 'Settings' : 'Налаштування'} disabled={navigationLocked} onClick={() => { onCloseMenu?.(); setPage('settings'); }}><Settings size={16} /></button>
-        <button className={themeMode === 'auto' ? 'icon active' : 'icon'} title={themeTitle} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
-          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-        </button>
       </div>
     </header>
   );
@@ -3959,6 +3967,7 @@ function ViralBank({
   onImportUrl,
   onImportApifySignals,
   onPullYouTubePopular,
+  onRefreshThumbnail,
   onAdapt,
   setPage,
   automation = null,
@@ -4336,6 +4345,7 @@ function ViralBank({
             scoreSortDirection={scoreSortDirection}
             onToggleScoreSort={toggleScoreSort}
             onOpenPreview={openPreview}
+            onRefreshThumbnail={onRefreshThumbnail}
             onAdapt={onAdapt}
             hasActiveFilters={hasActiveFilters}
             automationEnabled={automationEnabled}
@@ -5240,7 +5250,7 @@ function formatUsdAmount(value) {
   }).format(numeric);
 }
 
-function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, onToggleScoreSort, onOpenPreview, onAdapt, emptyState = null }) {
+function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, onToggleScoreSort, onOpenPreview, onRefreshThumbnail, onAdapt, emptyState = null }) {
   const { language, translateText } = useI18n();
   const tableCopy = language === 'en'
     ? { signal: 'Signal', score: 'Score', views: 'Views', likes: 'Likes', market: 'Market', tags: 'Tags', opening: 'Opening...', adapt: 'Adapt' }
@@ -5280,8 +5290,15 @@ function ReelsTable({ reels, sort = 'score', scoreSortDirection, onSortChange, o
               type="button"
               onClick={() => onOpenPreview(reel)}
               aria-label={translateText(`Відкрити прев'ю ${reel.title}`)}
-              style={previewImage ? { backgroundImage: `linear-gradient(180deg, rgba(3, 7, 18, 0), rgba(3, 7, 18, 0.18)), url("${previewImage}")` } : undefined}
             >
+              <SignalThumbnail
+                src={previewImage}
+                alt=""
+                fallbackLabel={getSignalSourceGroup(reel) === 'tiktok' ? 'TikTok' : 'Signal'}
+                onRecover={getSignalSourceGroup(reel) === 'tiktok' && reel.id
+                  ? () => onRefreshThumbnail?.(reel)
+                  : undefined}
+              />
               <span>{viewsLabel}</span>
               <i className="thumb-play" aria-hidden="true" />
             </button>
@@ -5316,6 +5333,7 @@ function SignalsReelsTable({
   scoreSortDirection,
   onToggleScoreSort,
   onOpenPreview,
+  onRefreshThumbnail,
   onAdapt,
   emptyState = null,
   hasActiveFilters = false,
@@ -5427,6 +5445,7 @@ function SignalsReelsTable({
       scoreSortDirection={scoreSortDirection}
       onToggleScoreSort={onToggleScoreSort}
       onOpenPreview={onOpenPreview}
+      onRefreshThumbnail={onRefreshThumbnail}
       onAdapt={onAdapt}
       emptyState={emptyState}
     />
@@ -8303,7 +8322,7 @@ function BillingSettings({ workspaceId, notify, language = 'uk' }) {
   );
 }
 
-function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, initialBrief, onBrandSaved, brandEditSuggestion, onBrandEditSuggestionConsumed, onOpenRecommendedSignal, activeTab = 'sources', onTabChange, language = 'uk' }) {
+function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandScan, initialBrief, onBrandSaved, brandEditSuggestion, onBrandEditSuggestionConsumed, onOpenRecommendedSignal, activeTab = 'sources', onTabChange, language = 'uk', setLanguage, themeMode = 'auto', setThemeMode }) {
   const { translateText } = useI18n();
   const tab = activeTab;
   const setTab = onTabChange || (() => {});
@@ -8347,6 +8366,7 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
       firstDraft: 'Перша генерація',
     };
   const settingsTabs = [
+    ['interface', language === 'en' ? 'Interface' : 'Інтерфейс'],
     ['sources', language === 'en' ? 'Sources Hub' : 'Джерела'],
     ['profile', language === 'en' ? 'My Brands' : 'Мої бренди'],
     ['billing', language === 'en' ? 'Plan and limits' : 'Тариф і ліміти'],
@@ -8420,6 +8440,48 @@ function DataSources({ sources, notify, workspaceId, currentUser, onOpenBrandSca
         onChange={setTab}
         items={settingsTabs}
       />
+      {tab === 'interface' && (
+        <div className="interface-settings">
+          <article>
+            <div>
+              <small>{language === 'en' ? 'Language' : 'Мова'}</small>
+              <h2>{language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}</h2>
+            </div>
+            <div className="interface-choice" role="group" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
+              <button type="button" className={language === 'uk' ? 'active' : ''} aria-pressed={language === 'uk'} onClick={() => setLanguage?.('uk')}>UA</button>
+              <button type="button" className={language === 'en' ? 'active' : ''} aria-pressed={language === 'en'} onClick={() => setLanguage?.('en')}>EN</button>
+            </div>
+          </article>
+          <article>
+            <div>
+              <small>{language === 'en' ? 'Appearance' : 'Вигляд'}</small>
+              <h2>{language === 'en' ? 'Theme' : 'Тема'}</h2>
+              <p>
+                {language === 'en'
+                  ? 'Auto follows local time: light from 07:00, dark after 21:00.'
+                  : 'Авто працює за локальним часом: світла з 07:00, темна після 21:00.'}
+              </p>
+            </div>
+            <div className="interface-choice" role="group" aria-label={language === 'en' ? 'Theme' : 'Тема'}>
+              {[
+                ['auto', language === 'en' ? 'Auto' : 'Авто'],
+                ['light', language === 'en' ? 'Light' : 'Світла'],
+                ['dark', language === 'en' ? 'Dark' : 'Темна'],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={themeMode === mode ? 'active' : ''}
+                  aria-pressed={themeMode === mode}
+                  onClick={() => setThemeMode?.(mode)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </article>
+        </div>
+      )}
       {tab === 'sources' && (
         <div className="sources-hub">
           <div className="sources-command">
