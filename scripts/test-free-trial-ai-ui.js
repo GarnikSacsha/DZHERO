@@ -557,15 +557,15 @@ async function main() {
     await page.locator('.jeryk-prompts button').nth(2).click();
     await waitForJeryk(page);
     await check('Jeryk reports trial expiration without OFFLINE', async () => {
-      const trialThreadText = await page.locator('.jeryk-thread').innerText();
+      const trialReplyText = await page.locator('.jeryk-message.assistant').last().innerText();
       assert.match(
-        trialThreadText,
+        trialReplyText,
         /Безкоштовний тестовий період завершився\. Обери тариф, щоб продовжити\./,
       );
     });
     await check('Jeryk trial expiration does not blame Gemini', async () => {
-      const trialThreadText = await page.locator('.jeryk-thread').innerText();
-      assert.doesNotMatch(trialThreadText, /Gemini/);
+      const trialReplyText = await page.locator('.jeryk-message.assistant').last().innerText();
+      assert.doesNotMatch(trialReplyText, /Gemini/);
     });
     await check('Jeryk marks trial expiration as trial, never OFFLINE', async () => {
       assert.match(await page.locator('.jeryk-context em').innerText(), /trial/i);
