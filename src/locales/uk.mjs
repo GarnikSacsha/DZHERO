@@ -109,6 +109,7 @@ export const uk = Object.freeze({
   'errors.remixGeneration': 'Не вдалося згенерувати адаптацію.',
   'errors.dailyRemixLimit': 'Сьогодні використано 5 із 5 адаптацій. Новий ліміт буде доступний після 00:00 за Києвом.',
   'errors.dailyAgentChatLimit': 'Сьогодні використано 100 із 100 повідомлень Джерика. Новий ліміт буде доступний після 00:00 за Києвом.',
+  'errors.trialExpired': 'Безкоштовний тестовий період завершився. Обери тариф, щоб продовжити.',
   'errors.aiProviderNotConfigured': 'Gemini не налаштований на сервері.',
   'errors.aiProviderFailed': 'Gemini не зміг виконати запит. Спробуй ще раз трохи згодом.',
   'errors.aiProviderCapacity': 'Денний технічний ліміт Gemini вичерпано. Спробуй після 00:00 за Києвом.',

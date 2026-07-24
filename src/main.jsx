@@ -137,6 +137,19 @@ function createInterfaceApiError(payload, fallbackCode = 'unknown_error') {
   return error;
 }
 
+function jerykErrorMeta(code) {
+  if (code === 'ai_provider_not_configured' || code === 'ai_provider_failed') {
+    return { provider: 'offline', model: 'unavailable' };
+  }
+  if (code === 'daily_agent_chat_limit_reached') {
+    return { provider: 'limit', model: 'daily' };
+  }
+  if (code === 'trial_expired') {
+    return { provider: 'trial', model: 'ended' };
+  }
+  return { provider: 'ready', model: 'dzhero' };
+}
+
 function mergeDailyAiUsage(current, incoming) {
   if (!incoming) return null;
   if (!current) return incoming;
@@ -4985,14 +4998,7 @@ function AssistantDrawer({
       )));
     } catch (error) {
       const code = extractInterfaceErrorCode(error);
-      const providerUnavailable = code === 'ai_provider_not_configured'
-        || code === 'ai_provider_failed';
-      const quotaReached = code === 'daily_agent_chat_limit_reached';
-      setAgentMeta(providerUnavailable
-        ? { provider: 'offline', model: 'unavailable' }
-        : quotaReached
-          ? { provider: 'limit', model: 'daily' }
-          : { provider: 'ready', model: 'dzhero' });
+      setAgentMeta(jerykErrorMeta(code));
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
           ? ['assistant', localizeInterfaceError(error, t, 'errors.assistant')]
@@ -6893,14 +6899,15 @@ function CreatorAssistant({ notify, workspaceId, activeWorkspace, autoPrompt, on
         body: JSON.stringify({ message: clean, history }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.message || payload.error || 'agent_error');
+      if (!response.ok) throw createInterfaceApiError(payload, 'agent_error');
       setAgentMeta({ provider: payload.provider || 'agent', model: payload.model || 'unknown' });
       setLastIdeaId('');
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1 ? ['assistant', payload.reply] : item
       )));
     } catch (agentError) {
-      setAgentMeta({ provider: 'offline', model: 'fallback' });
+      const code = extractInterfaceErrorCode(agentError);
+      setAgentMeta(jerykErrorMeta(code));
       setMessages((current) => current.map((item, index) => (
         index === current.length - 1
           ? ['assistant', localizeInterfaceError(agentError, t, 'errors.assistant')]
