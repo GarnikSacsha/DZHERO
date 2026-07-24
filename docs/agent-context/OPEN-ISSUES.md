@@ -45,6 +45,10 @@ Last updated: **2026-07-24**
 - Configure a real `GEMINI_API_KEY` in the public Railway service. Model/base overrides are optional and should only be set intentionally; missing or failed Gemini now returns an honest typed 503/502 instead of mock success.
 - Monitor provider cost against the Free Trial safety ceiling of 250 provider attempts per Kyiv day per workspace.
 - Daily quota reservations use the current single-process serialized JSONB state model. Revisit atomic reservation storage before running multiple application replicas.
+- After deploying the lazy AI-trial activation commit, smoke-test one historical
+  Free Trial workspace: confirm the first Studio or Jeryk action persists one
+  72-hour window, reaches Gemini, preserves any `pending_payment` state, and a
+  second action does not move `trialEndsAt`.
 
 ## Repository hygiene
 

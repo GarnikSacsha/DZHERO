@@ -65,3 +65,12 @@ The user considers the core Agent Studio MVP strong: adaptation quality, shot-by
 - Studio and Jeryk use real Gemini output only. Missing or failed provider calls return typed errors; any local structure is explicitly labelled as a non-AI draft.
 - Owner and tester access remain unlimited. Finite daily counters are visible in Studio and Jeryk; unlimited accounts do not show numeric caps.
 - Canonical focused verification: `npm.cmd run test:free-trial-ai`.
+- The public-beta AI grant is versioned and lazy: every trial workspace gets one
+  72-hour window beginning with its first accepted Studio or Jeryk action.
+  Historical subscriptions migrate on first use; persisted start/end timestamps
+  never extend on retries or later actions.
+- Trial activation preserves billing workflow state such as
+  `pending_payment`. Provider failures keep the activation but still release the
+  successful-outcome quota reservation.
+- `trial_expired` has dedicated English/Ukrainian copy and never marks Gemini or
+  Jeryk `OFFLINE`.
