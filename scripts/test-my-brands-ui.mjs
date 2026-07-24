@@ -256,6 +256,82 @@ async function withRuntime(brief, callback, options = {}) {
   }
 }
 
+async function runReportedBrandScanRegressions() {
+  const failures = [];
+
+  try {
+    await withRuntime({}, async (page) => {
+      const frontendOrigin = new URL(page.url()).origin;
+      await page.route('**/api/auth/google/start', async (route) => {
+        await route.fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({ authUrl: `${frontendOrigin}/oauth-placeholder` }),
+        });
+      });
+      assert.equal(await page.locator('.auth-scan-form').count(), 0, 'The signed-out start page must not expose guest Brand Scan');
+      assert.equal(await page.getByRole('button', { name: /build content plan/i }).count(), 0, 'The signed-out start page must not generate a guest preview');
+      await expectVisible(page.getByRole('heading', { name: /sign in to dzhero/i }));
+      await page.getByRole('button', { name: /sign in with google/i }).click();
+      await page.waitForURL('**/oauth-placeholder');
+      assert.equal(
+        await page.evaluate(() => localStorage.getItem('dzhero-brand-scan-pending')),
+        null,
+        'A generic Google sign-in must not stage guest Brand Scan data',
+      );
+    }, {
+      skipLogin: true,
+    });
+  } catch (error) {
+    failures.push(new Error(`Signed-out entry point: ${error.message}`, { cause: error }));
+  }
+
+  try {
+    await withRuntime({}, async (page) => {
+      await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
+      assert.equal(await page.locator('[data-pending-brand-scan-only]').count(), 0, 'A stale guest Brand Scan must never open inside Studio');
+      assert.equal(await page.locator('.brand-studio-panel').count(), 0, 'A stale guest Brand Scan must not create a Studio draft');
+      assert.equal(await page.getByRole('button', { name: /save to brand brain/i }).count(), 0, 'A stale guest Brand Scan must not expose a Brand Brain save action');
+      assert.equal(
+        await page.evaluate(() => localStorage.getItem('dzhero-brand-scan-pending')),
+        null,
+        'Legacy guest Brand Scan state must be cleared after sign-in',
+      );
+    }, {
+      beforeLogin: async (page) => {
+        await page.addInitScript((scan) => {
+          localStorage.setItem('dzhero-brand-scan-pending', JSON.stringify(scan));
+        }, {
+          source: 'coffee shop',
+          sourceType: 'Business description',
+          sourceStatus: 'manual_text',
+          label: 'Café / food',
+          ideas: ['customer problem', 'product proof', 'clear CTA'],
+          cards: [['Summary', 'Coffee shop']],
+          plan: [['Mon', 'Short-form: customer problem and solution']],
+          example: {
+            title: 'Generation example',
+            hook: 'Show one real customer problem and offer a simple next step.',
+            script: [['0-2s', 'Open with the customer problem.']],
+            caption: 'One practical step.',
+          },
+        });
+      },
+    });
+  } catch (error) {
+    failures.push(new Error(`Legacy guest Brand Scan isolation: ${error.message}`, { cause: error }));
+  }
+
+  if (failures.length) {
+    throw new AggregateError(failures, 'Reported Brand Scan regressions remain');
+  }
+}
+
+if (process.env.DZHERO_BRAND_SCAN_REPRO_ONLY === '1') {
+  await runReportedBrandScanRegressions();
+  console.log('Reported Brand Scan regression tests passed');
+  process.exit(0);
+}
+
 await withRuntime({}, async (page) => {
   assert.equal(
     await page.locator('[data-tour="sidebar-transcript"]').isDisabled(),
@@ -725,121 +801,6 @@ await withRuntime({}, async (page) => {
 });
 
 await withRuntime({}, async (page) => {
-  let releaseDraft;
-  let draftRequests = 0;
-  let finalizeRequests = 0;
-  let forbiddenMutationRequests = 0;
-  const delayedDraft = new Promise((resolve) => { releaseDraft = resolve; });
-  await page.route('**/api/workspaces/ws_demo_ua/agent/context/draft', async (route) => {
-    draftRequests += 1;
-    const body = route.request().postDataJSON();
-    assert.equal(body.currentStep, 1, 'The Studio Brand Scan handoff must save a sparse step-one draft');
-    assert.equal(body.answers.audience, '');
-    assert.equal(body.answers.instagramUrl, 'https://www.instagram.com/car_finder_/');
-    await delayedDraft;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        complete: false,
-        draft: {
-          currentStep: 2,
-          answers: { profileDescription: 'Sparse scan profile', audience: '', niche: '', market: '', instagramUrl: '' },
-        },
-      }),
-    });
-  });
-  page.on('request', (request) => {
-    if (request.method() === 'POST' && /\/agent\/context\/finalize$/.test(request.url())) finalizeRequests += 1;
-    if (/\/remix\/generate$|\/content-plan$/.test(request.url()) && ['POST', 'PUT', 'PATCH'].includes(request.method())) forbiddenMutationRequests += 1;
-  });
-  await page.route('**/api/brand-scan/preview', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        metadata: {
-          source: { label: 'Instagram', tone: 'instagram' },
-          sourceStatus: 'instagram_web_profile',
-          handle: '@car_finder_',
-          url: 'https://www.instagram.com/car_finder_/',
-          title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
-          description: '',
-          stats: { followers: '1,642', following: '55', posts: '322' },
-        },
-        capabilities: {},
-      }),
-    });
-  });
-  await page.locator('.auth-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
-  await page.getByRole('button', { name: /build content plan/i }).click();
-  await expectVisible(page.getByRole('button', { name: /view demo/i }));
-  await page.getByRole('button', { name: /view demo/i }).click();
-  await page.waitForSelector('.brand-studio-panel');
-  await expectVisible(page.getByRole('button', { name: /save to brand brain/i }));
-  const pendingStudio = page.locator('[data-pending-brand-scan-only]');
-  assert.equal(await pendingStudio.count(), 1, 'Incomplete scans must use the restricted Studio handoff');
-  assert.equal(await pendingStudio.getByRole('button').count(), 2, 'Restricted Studio handoff must expose only Back and Save actions');
-  assert.equal(await pendingStudio.getByRole('button', { name: /generate|перегенерувати/i }).count(), 0, 'Pending incomplete scans must not expose Remix generation');
-  assert.equal(await pendingStudio.getByRole('button', { name: /add to content plan|додати в контент-план/i }).count(), 0, 'Pending incomplete scans must not expose Content Plan mutation');
-  await page.waitForTimeout(100);
-  assert.equal(forbiddenMutationRequests, 0, 'Pending incomplete scans must not call Remix or Content Plan mutations');
-  const firstDraftRequest = page.waitForRequest((request) => request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url()));
-  await page.getByRole('button', { name: /save to brand brain/i }).click();
-  await firstDraftRequest;
-  assert.equal(draftRequests, 1, 'An incomplete source scan must write exactly one draft through the Studio Save to Brand Brain path');
-  assert.equal(finalizeRequests, 0, 'An incomplete source scan must never finalize');
-  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), true, 'The incomplete Studio source scan must remain navigation-locked while its draft saves');
-  await page.locator('.user-account-trigger').click();
-  await page.getByRole('button', { name: /secondary test workspace/i }).click();
-  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
-  releaseDraft();
-  await page.waitForTimeout(200);
-  assert.equal(await page.locator('[data-tour="sidebar-transcript"]').isDisabled(), true, 'A stale incomplete draft response must keep workspace B locked');
-  assert.equal(await page.getByRole('heading', { name: /describe your profile/i }).count(), 1, 'A stale incomplete draft response must not advance workspace B');
-  assert.equal(finalizeRequests, 0, 'A stale incomplete draft response must still issue zero finalize requests');
-}, {
-  secondaryBrief: {},
-  skipLogin: true,
-});
-
-await withRuntime({}, async (page) => {
-  let draftRequests = 0;
-  page.on('request', (request) => {
-    if (request.method() === 'PUT' && /\/agent\/context\/draft$/.test(request.url())) draftRequests += 1;
-  });
-  await page.route('**/api/brand-scan/preview', async (route) => {
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        metadata: {
-          source: { label: 'Instagram', tone: 'instagram' },
-          sourceStatus: 'instagram_web_profile',
-          handle: '@car_finder_',
-          url: 'https://www.instagram.com/car_finder_/',
-          title: '1,642 Followers, 55 Following, 322 Posts - See Instagram photos and videos',
-          description: '',
-          stats: { followers: '1,642', following: '55', posts: '322' },
-        },
-        capabilities: {},
-      }),
-    });
-  });
-  await page.locator('.auth-scan-form textarea').fill('https://www.instagram.com/car_finder_/');
-  await page.getByRole('button', { name: /build content plan/i }).click();
-  await page.getByRole('button', { name: /view demo/i }).click();
-  await page.waitForSelector('.brand-studio-panel');
-  await expectVisible(page.getByRole('button', { name: /save to brand brain/i }));
-  await page.locator('.user-account-trigger').click();
-  await page.getByRole('button', { name: /secondary test workspace/i }).click();
-  await expectVisible(page.getByRole('heading', { name: /describe your profile/i }));
-  assert.equal(await page.locator('.brand-studio-panel').count(), 0, 'A pending scan preview must disappear when switching workspaces before Save');
-  assert.equal(await page.getByRole('button', { name: /save to brand brain/i }).count(), 0, 'Workspace B must not inherit workspace A pending scan actions');
-  assert.equal(draftRequests, 0, 'Switching before Save must not write workspace A scan data into workspace B');
-}, {
-  secondaryBrief: {},
-  skipLogin: true,
-});
-
-await withRuntime({}, async (page) => {
   let resolveFinalize;
   const delayedFinalize = new Promise((resolve) => { resolveFinalize = resolve; });
   await page.route('**/api/workspaces/ws_demo_ua/agent/context/finalize', async (route) => {
@@ -878,5 +839,7 @@ await withRuntime({}, async (page) => {
 }, {
   secondaryBrief: {},
 });
+
+await runReportedBrandScanRegressions();
 
 console.log('My Brands onboarding and locked-card UI tests passed');

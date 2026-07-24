@@ -877,26 +877,9 @@ function App() {
   };
 
   useEffect(() => {
-    if (!currentUser || !data || remixDraft) return;
-    const pendingScan = window.localStorage.getItem(BRAND_SCAN_PENDING_KEY);
-    if (!pendingScan) return;
-    try {
-      const scan = JSON.parse(pendingScan);
-      window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
-      const pendingReel = buildReelFromBrandScan(scan);
-      pendingBrandScanRef.current = {
-        workspaceId,
-        generation: brandContextRequestRef.current,
-        draftId: pendingReel.id,
-      };
-      setRemixAutoRequest(null);
-      setRemixDraft(pendingReel);
-      setPage('remix');
-      notify('Brand Scan відкрито в Студії');
-    } catch {
-      window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
-    }
-  }, [currentUser, data, remixDraft, workspaceId]);
+    if (!currentUser) return;
+    window.localStorage.removeItem(BRAND_SCAN_PENDING_KEY);
+  }, [currentUser]);
 
   const handleAuthSuccess = (payload, destination = null) => {
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
@@ -947,7 +930,7 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app auth-app" data-theme={theme}>
-        <BrandScanGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
+        <AuthGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -2995,10 +2978,9 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
   );
 }
 
-function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
+function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, setLanguage }) {
   useI18n();
   const [error, setError] = useState('');
-  const [instagramConfig, setInstagramConfig] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const authCopy = language === 'en'
     ? {
@@ -3006,60 +2988,59 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
       eyebrow: 'Signals -> scripts -> weekly plan',
       headline: 'Find the signal. Write the script. Put it into the plan.',
       subheadline: 'Dzhero turns short-form content mechanics into original ideas, scripts, weekly plans, and Direct prompts for your brand.',
-      creator: 'Creator or Business',
-      panelEyebrow: 'Workspace preview',
-      panelTitle: 'Start with Instagram',
+      panelEyebrow: 'Your workspace',
+      panelTitle: 'Sign in to Dzhero',
       themeTitle: 'Theme',
-      instagramLoading: 'Preparing Instagram Login...',
-      instagramButton: 'Log in with Instagram',
-      pendingTitle: 'Instagram connection pending',
-      pendingText: 'The connection is ready in the interface, but the backend is still waiting for Meta App keys. Users do not enter keys: they simply log in through Instagram after App Review.',
-      personalRejected: 'Personal accounts are not supported',
+      googleLoading: 'Opening Google...',
+      googleButton: 'Sign in with Google',
       demoButton: 'Start with demo',
-      setupError: 'Instagram Login is still being configured. A real connection requires Meta App keys on the backend.',
-      setupNotice: 'Instagram Login is ready in the UI, but Meta App keys are required.',
+      googleError: 'Google sign-in is temporarily unavailable.',
+      googleNotice: 'Check the Google Login configuration in Railway.',
       demoError: 'Demo login did not work. Check the server connection.',
       serverError: 'The server is not responding. Check the Railway deployment or local backend.',
+      terms: 'Terms',
+      privacy: 'Privacy',
+      outcomes: [
+        'Signals from Reels and short-form content',
+        'Ukrainian adaptation without copying',
+        'Scripts, calendar, and Direct CTAs',
+      ],
     }
     : {
       brandSub: 'AI-продюсер для України і глобальних трендів',
       eyebrow: 'Сигнали -> сценарії -> план',
       headline: 'Знайти сигнал. Написати сценарій. Поставити в план.',
       subheadline: 'Dzhero перетворює short-form механіки у власні ідеї, сценарії, тижневий план та Direct-підказки для бренду.',
-      creator: 'Creator або Business',
-      panelEyebrow: 'Перегляд workspace',
-      panelTitle: 'Почати з Instagram',
+      panelEyebrow: 'Твій workspace',
+      panelTitle: 'Увійти в Dzhero',
       themeTitle: 'Тема',
-      instagramLoading: 'Готуємо Instagram Login...',
-      instagramButton: 'Увійти через Instagram',
-      pendingTitle: 'Instagram connection pending',
-      pendingText: 'Підключення готове в інтерфейсі, але backend ще чекає Meta App keys. Користувачам не треба вводити ключі: вони просто логіняться через Instagram після App Review.',
-      personalRejected: 'Personal не підходить',
+      googleLoading: 'Відкриваємо Google...',
+      googleButton: 'Увійти через Google',
       demoButton: 'Почати з демо',
-      setupError: 'Instagram Login ще налаштовується. Для реального підключення потрібні ключі Meta App у backend.',
-      setupNotice: 'Instagram Login готовий у UI, але потрібні ключі Meta App',
+      googleError: 'Google-вхід тимчасово недоступний.',
+      googleNotice: 'Перевір налаштування Google Login у Railway.',
       demoError: 'Демо-вхід не спрацював. Перевір підключення до сервера.',
       serverError: 'Сервер не відповідає. Перевір Railway deploy або локальний backend.',
+      terms: 'Умови',
+      privacy: 'Приватність',
+      outcomes: [
+        'Сигнали з Reels і short-form контенту',
+        'UA-адаптація без копіювання',
+        'Сценарій, календар і CTA в Direct',
+      ],
     };
 
-  const startInstagramLogin = async () => {
+  const startGoogleLogin = async () => {
     setError('');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/auth/meta/start`, { credentials: 'include' });
-      const payload = await response.json();
-      if (!response.ok) {
-        if (payload.error === 'meta_not_configured') {
-          setInstagramConfig(payload);
-        }
-        throw new Error(payload.error || 'meta_not_configured');
-      }
+      const response = await fetch(`${API_BASE}/auth/google/start`, { credentials: 'include' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;
-    } catch (authError) {
-      if (authError.message !== 'meta_not_configured') {
-        setError(authCopy.setupError);
-      }
-      notify(authCopy.setupNotice);
+    } catch {
+      setError(authCopy.googleError);
+      notify(authCopy.googleNotice);
     } finally {
       setIsLoading(false);
     }
@@ -3098,9 +3079,7 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
           <h1>{authCopy.headline}</h1>
           <p className="auth-lead">{authCopy.subheadline}</p>
           <div className="auth-outcomes">
-            <span>Сигнали з Reels і short-form контенту</span>
-            <span>UA-адаптація без копіювання</span>
-            <span>Сценарій, календар і CTA в Direct</span>
+            {authCopy.outcomes.map((outcome) => <span key={outcome}>{outcome}</span>)}
           </div>
         </div>
         <form className="auth-panel" onSubmit={(event) => event.preventDefault()}>
@@ -3109,22 +3088,29 @@ function AuthGate({ onAuth, notify, theme, setTheme, language, setLanguage }) {
               <small>{authCopy.panelEyebrow}</small>
               <h2>{authCopy.panelTitle}</h2>
             </div>
-            <button className="icon" type="button" title={authCopy.themeTitle} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+            <div className="auth-top-controls">
+              <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
+                <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+              </div>
+              <button className={themeMode === 'auto' ? 'icon active' : 'icon'} type="button" title={authCopy.themeTitle} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              </button>
+            </div>
+          </div>
+          <div className="auth-access-card">
+            <button className="google-auth-button" type="button" data-dzhero-track="btn_google_signin" onClick={startGoogleLogin} disabled={isLoading}>
+              <GoogleIcon />
+              {isLoading ? authCopy.googleLoading : authCopy.googleButton}
+            </button>
+            <button className="auth-demo secondary" type="button" data-dzhero-track="btn_demo_entry" onClick={enterDemo} disabled={isLoading}>
+              {authCopy.demoButton}
             </button>
           </div>
-          <button className="auth-submit auth-meta-button primary" type="button" onClick={startInstagramLogin} disabled={isLoading}>
-            {isLoading ? authCopy.instagramLoading : authCopy.instagramButton}
-          </button>
-          <button className="auth-demo secondary" type="button" data-dzhero-track="btn_demo_entry" onClick={enterDemo} disabled={isLoading}>
-            {authCopy.demoButton}
-          </button>
-          {instagramConfig && (
-            <div className="instagram-pending">
-              <strong>{authCopy.pendingTitle}</strong>
-              <p>{authCopy.pendingText}</p>
-            </div>
-          )}
+          <div className="auth-simple-links">
+            <a href="/terms" target="_blank" rel="noreferrer">{authCopy.terms}</a>
+            <a href="/privacy" target="_blank" rel="noreferrer">{authCopy.privacy}</a>
+          </div>
           {error && <div className="auth-error">{error}</div>}
         </form>
       </section>
