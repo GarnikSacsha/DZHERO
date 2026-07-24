@@ -33,7 +33,7 @@
       "scripts/test-free-trial-ai-api.mjs"
     ],
     "cwd": "C:\\Users\\\u0414\u0435\u043d\u0438\u0441\\Desktop\\\u0412\u0441\u044f\u043a\u043e\u0435 \u0432\u0430\u0439\u0431\u043a\u043e\u0434\u0438\u043d\u0433\\insta-producer-redesign-work\\.worktrees\\free-trial-lazy-ai-activation",
-    "runtime": "Python 3.14.6 on Windows AMD64",
+    "runtime": "Node.js v24.11.1 on Windows x64",
     "duration_ms": 16927.675,
     "exit_code": 0,
     "timed_out": false,
