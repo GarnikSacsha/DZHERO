@@ -349,6 +349,8 @@ async function startServer(tempDir, {
       DATABASE_URL: '',
       CLIENT_URL: baseUrl,
       AUTOMATIC_DISCOVERY_ENABLED: 'false',
+      API_RATE_LIMIT_PER_MINUTE: '1000',
+      EXPENSIVE_RATE_LIMIT_PER_MINUTE: '1000',
       UNLIMITED_ACCESS_EMAILS: 'owner@example.test',
       OPENAI_API_KEY: openAiApiKey,
       GEMINI_API_KEY: geminiBaseUrl ? 'controlled-test-key' : '',
@@ -364,7 +366,13 @@ async function startServer(tempDir, {
   child.stdout.on('data', (chunk) => { output += chunk.toString(); });
   child.stderr.on('data', (chunk) => { output += chunk.toString(); });
   child.getOutput = () => output;
-  await waitForServer(baseUrl, child);
+  try {
+    await waitForServer(baseUrl, child);
+  } catch (error) {
+    await stopServer(child);
+    error.message = `${error.message}\n${output.trim()}`.trim();
+    throw error;
+  }
   return { baseUrl, child, dbPath };
 }
 
@@ -420,7 +428,7 @@ async function runChatDailyLimit(tempDir, controlledGemini) {
       assert.equal(response.status, 201, `chat ${index} should be allowed`);
       assert.equal(response.body.provider, 'gemini');
       assert.equal(response.body.daily.agentChat.used, index);
-      if (index % 20 === 0 && index < 100) {
+      if (index === 50) {
         await stopServer(current.child);
         current = await startServer(tempDir, {
           dbPath: current.dbPath,
@@ -791,6 +799,12 @@ async function main() {
     assert.equal(expiredPending.status, 402);
     assert.equal(expiredPending.body.error, 'trial_expired');
 
+    await Promise.all([
+      stopServer(providerless.child),
+      stopServer(openAiOnly.child),
+      stopServer(reviewServer.child),
+      stopServer(server.child),
+    ]);
     await runChatDailyLimit(tempDir, controlledGemini);
 
     console.log(JSON.stringify({

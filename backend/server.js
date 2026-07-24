@@ -171,6 +171,8 @@ const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
 const MAX_ACTIVE_SESSIONS_PER_USER = Math.min(50, Math.max(1, Number(process.env.MAX_ACTIVE_SESSIONS_PER_USER || 8) || 8));
 const REGISTER_RATE_LIMIT_PER_HOUR = Math.min(100, Math.max(1, Number(process.env.REGISTER_RATE_LIMIT_PER_HOUR || 10) || 10));
+const API_RATE_LIMIT_PER_MINUTE = Math.min(10_000, Math.max(1, Number(process.env.API_RATE_LIMIT_PER_MINUTE || 180) || 180));
+const EXPENSIVE_RATE_LIMIT_PER_MINUTE = Math.min(10_000, Math.max(1, Number(process.env.EXPENSIVE_RATE_LIMIT_PER_MINUTE || 20) || 20));
 const OAUTH_STATE_TTL_MS = Number(process.env.OAUTH_STATE_TTL_MINUTES || 10) * 60 * 1000;
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const CLIENT_DIST_PATH = path.join(__dirname, '..', 'dist');
@@ -505,14 +507,14 @@ const oauthLimiter = rateLimit({
 
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 180,
+  limit: API_RATE_LIMIT_PER_MINUTE,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const expensiveLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 20,
+  limit: EXPENSIVE_RATE_LIMIT_PER_MINUTE,
   standardHeaders: true,
   legacyHeaders: false,
 });
