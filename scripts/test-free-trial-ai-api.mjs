@@ -1052,6 +1052,11 @@ async function main() {
       afterExpiredPendingActivation,
       'ws_expired_pending',
     );
+    assert.equal(
+      expiredPendingSubscription.status,
+      'pending_payment',
+      'lazy AI activation must not replace an existing pending-payment subscription status',
+    );
     assert.equal(expiredPendingSubscription.aiTrialGrantVersion, FREE_TRIAL_AI_GRANT_VERSION);
     assert.ok(expiredPendingSubscription.aiTrialStartedAt);
     assert.equal(
