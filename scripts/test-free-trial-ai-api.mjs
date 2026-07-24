@@ -80,6 +80,7 @@ function createDb({ chatOnly = false } = {}) {
         'failure',
         'retry',
         'capacity',
+        'paid',
         'owner',
         'tester',
         'providerless',
@@ -94,6 +95,8 @@ function createDb({ chatOnly = false } = {}) {
         'failed_activation',
         'invalid_activation',
         'expired_grant',
+        'malformed_null_end',
+        'malformed_invalid_end',
       ];
   const actors = ids.map((id) => makeActor(
     id,
@@ -105,6 +108,14 @@ function createDb({ chatOnly = false } = {}) {
     const expiredPending = actors.find((actor) => actor.workspace.id === 'ws_expired_pending');
     expiredPending.subscription.status = 'pending_payment';
     expiredPending.subscription.trialEndsAt = '2020-01-01T00:00:00.000Z';
+    const paid = actors.find((actor) => actor.workspace.id === 'ws_paid');
+    paid.subscription.planId = 'starter';
+    paid.subscription.status = 'active';
+    paid.subscription.currentPeriodStart = '2026-07-01T00:00:00.000Z';
+    paid.subscription.currentPeriodEnd = '2026-08-01T00:00:00.000Z';
+    paid.subscription.trialEndsAt = null;
+    delete paid.subscription.aiTrialGrantVersion;
+    delete paid.subscription.aiTrialStartedAt;
     usageCounters.push(
       {
         id: 'usage_legacy_ai_operations',
@@ -234,7 +245,25 @@ function configureLazyActivationFixtures(db) {
   expiredGrant.trialEndsAt = new Date(
     Date.parse(expiredGrant.aiTrialStartedAt) + FREE_TRIAL_AI_WINDOW_MS,
   ).toISOString();
+
+  const malformedNullEnd = subscriptionFor(db, 'ws_malformed_null_end');
+  malformedNullEnd.aiTrialGrantVersion = FREE_TRIAL_AI_GRANT_VERSION;
+  malformedNullEnd.aiTrialStartedAt = '2026-07-24T00:00:00.000Z';
+  malformedNullEnd.trialEndsAt = null;
+
+  const malformedInvalidEnd = subscriptionFor(db, 'ws_malformed_invalid_end');
+  malformedInvalidEnd.aiTrialGrantVersion = FREE_TRIAL_AI_GRANT_VERSION;
+  malformedInvalidEnd.aiTrialStartedAt = '2026-07-24T00:00:00.000Z';
+  malformedInvalidEnd.trialEndsAt = 'not-a-valid-timestamp';
   return db;
+}
+
+function activationEventsFor(child, workspaceId) {
+  return child.getOutput()
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith('[FreeTrialActivation] '))
+    .map((line) => JSON.parse(line.slice('[FreeTrialActivation] '.length)))
+    .filter((event) => event.workspaceId === workspaceId);
 }
 
 function validRemixResult() {
@@ -522,6 +551,28 @@ async function runLazyActivationReproduction(tempDir, controlledGemini) {
     geminiBaseUrl: controlledGemini.baseUrl,
   });
   try {
+    for (const fixture of ['malformed_null_end', 'malformed_invalid_end']) {
+      const billing = await requestJson(
+        lazyServer.baseUrl,
+        `/api/workspaces/ws_${fixture}/billing`,
+        { token: `${fixture}_session` },
+      );
+      assert.equal(billing.status, 200);
+      assert.equal(billing.body.trial.pendingActivation, false);
+      assert.equal(billing.body.trial.active, false);
+      assert.equal(billing.body.trial.expired, true);
+
+      const providerCallsBeforeMalformedGrant = controlledGemini.state.agentCalls;
+      const blocked = await requestJson(
+        lazyServer.baseUrl,
+        `/api/workspaces/ws_${fixture}/agent/chat`,
+        { method: 'POST', token: `${fixture}_session`, body: CHAT_BODY },
+      );
+      assert.equal(blocked.status, 402);
+      assert.equal(blocked.body.error, 'trial_expired');
+      assert.equal(controlledGemini.state.agentCalls, providerCallsBeforeMalformedGrant);
+    }
+
     const historicalBilling = await requestJson(
       lazyServer.baseUrl,
       '/api/workspaces/ws_historical_activation/billing',
@@ -550,6 +601,19 @@ async function runLazyActivationReproduction(tempDir, controlledGemini) {
       Date.parse(historicalSubscription.trialEndsAt) - Date.parse(historicalSubscription.aiTrialStartedAt),
       FREE_TRIAL_AI_WINDOW_MS,
     );
+    await waitForCondition(
+      () => activationEventsFor(lazyServer.child, 'ws_historical_activation').length === 1,
+      'the persisted trial activation event was not emitted',
+    );
+    assert.deepEqual(
+      activationEventsFor(lazyServer.child, 'ws_historical_activation'),
+      [{
+        workspaceId: 'ws_historical_activation',
+        grantVersion: FREE_TRIAL_AI_GRANT_VERSION,
+        startedAt: historicalSubscription.aiTrialStartedAt,
+        endsAt: historicalSubscription.trialEndsAt,
+      }],
+    );
 
     const secondHistoricalAction = await requestJson(
       lazyServer.baseUrl,
@@ -561,6 +625,7 @@ async function runLazyActivationReproduction(tempDir, controlledGemini) {
     const historicalAfterSecondAction = subscriptionFor(afterSecondHistoricalAction, 'ws_historical_activation');
     assert.equal(historicalAfterSecondAction.aiTrialStartedAt, historicalSubscription.aiTrialStartedAt);
     assert.equal(historicalAfterSecondAction.trialEndsAt, historicalSubscription.trialEndsAt);
+    assert.equal(activationEventsFor(lazyServer.child, 'ws_historical_activation').length, 1);
 
     const studioActivation = await requestJson(
       lazyServer.baseUrl,
@@ -577,6 +642,18 @@ async function runLazyActivationReproduction(tempDir, controlledGemini) {
       FREE_TRIAL_AI_WINDOW_MS,
       'the first authenticated Studio adaptation must persist its 72-hour AI window',
     );
+
+    const newWorkspaceBilling = await requestJson(
+      lazyServer.baseUrl,
+      '/api/workspaces/ws_new_activation/billing',
+      { token: 'new_activation_session' },
+    );
+    assert.equal(newWorkspaceBilling.status, 200);
+    assert.equal(newWorkspaceBilling.body.trial.pendingActivation, true);
+    assert.equal(newWorkspaceBilling.body.subscription.currentPeriodStart, null);
+    assert.equal(newWorkspaceBilling.body.subscription.currentPeriodEnd, null);
+    assert.equal(newWorkspaceBilling.body.subscription.aiTrialStartedAt, null);
+    assert.equal(newWorkspaceBilling.body.subscription.trialEndsAt, null);
 
     const newWorkspaceAction = await requestJson(
       lazyServer.baseUrl,
@@ -827,6 +904,31 @@ async function main() {
     assert.equal(capacity.body.limit, 250);
     assert.equal(capacity.body.period, CURRENT_KYIV_DAY);
     assert.ok(capacity.body.resetsAt);
+
+    const beforePaidActions = JSON.parse(await readFile(server.dbPath, 'utf8'));
+    const paidBefore = subscriptionFor(beforePaidActions, 'ws_paid');
+    const paidChat = await requestJson(
+      server.baseUrl,
+      '/api/workspaces/ws_paid/agent/chat',
+      { method: 'POST', token: 'paid_session', body: CHAT_BODY },
+    );
+    assert.equal(paidChat.status, 201);
+    assert.equal(paidChat.body.billing.plan.dailyLimits, null);
+    assert.equal(paidChat.body.daily.agentChat.limit, null);
+    const paidRemix = await requestJson(
+      server.baseUrl,
+      '/api/workspaces/ws_paid/remix/generate',
+      { method: 'POST', token: 'paid_session', body: REMIX_BODY },
+    );
+    assert.equal(paidRemix.status, 200);
+    assert.equal(paidRemix.body.daily.remix.limit, null);
+    const afterPaidActions = JSON.parse(await readFile(server.dbPath, 'utf8'));
+    const paidAfter = subscriptionFor(afterPaidActions, 'ws_paid');
+    assert.equal(paidAfter.planId, 'starter');
+    assert.equal(paidAfter.status, 'active');
+    assert.equal(paidAfter.aiTrialGrantVersion, paidBefore.aiTrialGrantVersion);
+    assert.equal(paidAfter.aiTrialStartedAt, paidBefore.aiTrialStartedAt);
+    assert.equal(paidAfter.trialEndsAt, paidBefore.trialEndsAt);
 
     for (const actor of ['owner', 'tester']) {
       const token = `${actor}_session`;

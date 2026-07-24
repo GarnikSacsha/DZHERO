@@ -50,7 +50,7 @@ function buildFreeTrialState(subscription = {}, { hasTrialPlanAccess = false, no
   return {
     pendingActivation: false,
     active: hasValidEnd && endsAtMs > nowMs,
-    expired: hasValidEnd && endsAtMs <= nowMs,
+    expired: !hasValidEnd || endsAtMs <= nowMs,
     endsAt: subscription.trialEndsAt || null,
     daysRemaining: hasValidEnd
       ? Math.max(0, Math.ceil((endsAtMs - nowMs) / (24 * 60 * 60 * 1000)))
