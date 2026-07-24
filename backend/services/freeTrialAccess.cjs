@@ -17,7 +17,6 @@ function activateFreeTrialAiWindow(subscription, { now = new Date(), eligible = 
   subscription.aiTrialGrantVersion = FREE_TRIAL_AI_GRANT_VERSION;
   subscription.aiTrialStartedAt = startedAt;
   subscription.trialEndsAt = endsAt;
-  subscription.status = 'trialing';
   subscription.currentPeriodStart = startedAt;
   subscription.currentPeriodEnd = endsAt;
   subscription.updatedAt = startedAt;
@@ -50,7 +49,7 @@ function buildFreeTrialState(subscription = {}, { hasTrialPlanAccess = false, no
   const hasValidEnd = Number.isFinite(endsAtMs);
   return {
     pendingActivation: false,
-    active: subscription.status === 'trialing' && hasValidEnd && endsAtMs > nowMs,
+    active: hasValidEnd && endsAtMs > nowMs,
     expired: hasValidEnd && endsAtMs <= nowMs,
     endsAt: subscription.trialEndsAt || null,
     daysRemaining: hasValidEnd
