@@ -110,6 +110,11 @@ const {
   reserveDailyTrialAction,
   resolveProviderAttemptBudget,
 } = require('./services/dailyTrialQuota.cjs');
+const {
+  FREE_TRIAL_AI_GRANT_VERSION,
+  activateFreeTrialAiWindow,
+  buildFreeTrialState,
+} = require('./services/freeTrialAccess.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
 const {
   buildLeadSyncPayload,
@@ -1816,8 +1821,7 @@ function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
   const planId = options.planId || getDefaultPlanId(workspaceId);
   const isDemo = planId === 'demo';
   const isTrial = planId === 'trial';
-  const trialDays = Number(options.trialDays || 3);
-  const periodDays = isTrial ? trialDays : 30;
+  const periodDays = 30;
   const subscription = {
     id: createId('sub'),
     workspaceId,
@@ -1825,8 +1829,12 @@ function ensureWorkspaceSubscription(db, workspaceId, options = {}) {
     status: isDemo ? 'demo' : isTrial ? 'trialing' : 'active',
     provider: 'manual',
     currentPeriodStart: now.toISOString(),
-    currentPeriodEnd: new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
-    trialEndsAt: isTrial ? new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000).toISOString() : null,
+    currentPeriodEnd: isTrial
+      ? null
+      : new Date(now.getTime() + periodDays * 24 * 60 * 60 * 1000).toISOString(),
+    aiTrialGrantVersion: isTrial ? FREE_TRIAL_AI_GRANT_VERSION : undefined,
+    aiTrialStartedAt: isTrial ? null : undefined,
+    trialEndsAt: null,
     cancelAtPeriodEnd: false,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -1889,18 +1897,11 @@ function buildEntitlements(db, workspaceId, actorUser = null, now = new Date()) 
       return [key, Number.isFinite(limit) ? Math.max(0, limit - usage[key]) : null];
     })
   );
-  const nowMs = new Date(now).getTime();
-  const trialEndsAt = subscription.trialEndsAt ? Date.parse(subscription.trialEndsAt) : null;
   const testerAccessActive = resolvedAccess.accessSource === 'tester_grant';
   const hasTrialPlanAccess = !unlimited
     && !testerAccessActive
     && subscription.planId === 'trial';
-  const trial = {
-    active: hasTrialPlanAccess && subscription.status === 'trialing' && (!trialEndsAt || trialEndsAt > nowMs),
-    expired: hasTrialPlanAccess && Boolean(trialEndsAt) && trialEndsAt <= nowMs,
-    endsAt: subscription.trialEndsAt,
-    daysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt - nowMs) / (24 * 60 * 60 * 1000))) : null,
-  };
+  const trial = buildFreeTrialState(subscription, { hasTrialPlanAccess, now });
   return {
     plan: publicPlan(plan),
     subscription,
@@ -2115,15 +2116,26 @@ async function reserveSerializedDailyAiAction({ workspaceId, actorUser, action }
     const db = await readDb();
     const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
     const now = new Date();
-    const billing = buildEntitlements(db, workspaceId, current.actorUser, now);
-    assertAiTrialActive(billing);
-    const reservation = reserveDailyTrialAction(db, dailyActionOptions({
-      workspaceId,
-      billing,
-      action,
+    let billing = buildEntitlements(db, workspaceId, current.actorUser, now);
+    const activated = activateFreeTrialAiWindow(billing.subscription, {
       now,
-    }));
-    if (reservation) await writeDb(db);
+      eligible: billing.trial.pendingActivation,
+    });
+    if (activated) billing = buildEntitlements(db, workspaceId, current.actorUser, now);
+    assertAiTrialActive(billing);
+    let reservation;
+    try {
+      reservation = reserveDailyTrialAction(db, dailyActionOptions({
+        workspaceId,
+        billing,
+        action,
+        now,
+      }));
+    } catch (error) {
+      if (activated) await writeDb(db);
+      throw error;
+    }
+    if (activated || reservation) await writeDb(db);
     return {
       reservation,
       billing: reservation
