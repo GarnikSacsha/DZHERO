@@ -65,9 +65,11 @@ assert.equal(isBrandContextComplete({
 
 const draft = normalizeBrandBrainDraft({
   currentStep: 9,
+  workspaceName: '  North Star Coffee  ',
   answers: { profileDescription: 'Coffee', instagramUrl: 'not-a-url' },
 });
 assert.equal(draft.currentStep, 4);
+assert.equal(draft.workspaceName, 'North Star Coffee');
 assert.equal(draft.answers.instagramUrl, '');
 assert.equal(isBrandContextComplete({ brandBrainDraft: draft }), false);
 

@@ -13,3 +13,11 @@ pnpm-debug.log*
 Thumbs.db
 .worktrees/
 .superpowers/
+audit/evidence/*
+audit/screenshots/*
+audit/traces/*
+audit/logs/*
+!audit/evidence/README.md
+!audit/screenshots/README.md
+!audit/traces/README.md
+!audit/logs/README.md

@@ -24,13 +24,32 @@ const workspaces = [{
   marketFocus: [],
 }];
 
-function apiPayload(pathname) {
+function apiPayload(pathname, method = 'GET', requestBody = {}) {
   if (pathname === '/api/auth/me') return { user, workspaces };
   if (pathname === '/api/workspaces') return { workspaces };
   if (pathname.endsWith('/reels')) return { reels: [] };
   if (pathname.endsWith('/ideas')) return { ideas: [] };
   if (pathname.endsWith('/content-plan')) return { posts: [] };
-  if (pathname.endsWith('/agent/context')) return { brief: {} };
+  if (pathname.endsWith('/agent/context/draft') && method === 'PUT') {
+    return { complete: false, draft: requestBody };
+  }
+  if (pathname.endsWith('/agent/context')) {
+    return {
+      complete: false,
+      brief: {},
+      draft: {
+        currentStep: 1,
+        workspaceName: '',
+        answers: {
+          profileDescription: '',
+          audience: '',
+          niche: '',
+          market: '',
+          instagramUrl: '',
+        },
+      },
+    };
+  }
   if (pathname === '/api/auth/meta/status') return { connectedAccounts: [] };
   return {};
 }
@@ -44,13 +63,18 @@ try {
   const page = await browser.newPage();
   const runtimeErrors = [];
   page.on('pageerror', (error) => runtimeErrors.push(error.message));
+  await page.addInitScript(() => {
+    window.localStorage.setItem('insta-producer-language', 'en');
+  });
 
   await page.route('**/api/**', async (route) => {
-    const url = new URL(route.request().url());
+    const request = route.request();
+    const url = new URL(request.url());
+    const requestBody = request.postDataJSON?.() || {};
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(apiPayload(url.pathname)),
+      body: JSON.stringify(apiPayload(url.pathname, request.method(), requestBody)),
     });
   });
 
@@ -59,19 +83,15 @@ try {
     timeout: 30_000,
   });
 
-  const bodyText = await page.locator('body').innerText();
   assert.deepEqual(runtimeErrors, []);
-  assert.match(bodyText, /Brand Brain/);
-  assert.equal(await page.locator('.page-brand-brain-start .brand-brain').count(), 1);
+  await page.getByRole('heading', { name: /what’s your workspace called/i }).waitFor();
+  await page.getByLabel(/workspace name/i).fill('Google Empty Brand');
+  await page.getByRole('button', { name: /continue setup/i }).click();
+  await page.getByRole('heading', { name: /describe your profile/i }).waitFor();
+  assert.equal(await page.locator('.page-brand-brain-start .brand-wizard').count(), 1);
   const agentStudioNav = page.locator('[data-tour="sidebar-agent-studio"]');
   assert.equal(await agentStudioNav.isDisabled(), true);
   assert.match(await agentStudioNav.innerText(), /Coming soon/i);
-  await page.getByRole('button', { name: 'Студія' }).click();
-  await page.getByText('Спочатку додайте сигнал', { exact: true }).waitFor({ timeout: 5_000 });
-
-  const studioText = await page.locator('main.shell').innerText();
-  assert.match(studioText, /Спочатку додайте сигнал/);
-  assert.match(studioText, /Відкрити Сигнали/);
   assert.deepEqual(runtimeErrors, []);
 
   console.log('google auth empty workspace regression passed');

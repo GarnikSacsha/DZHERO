@@ -50,6 +50,7 @@ function isBrandBrainV2Complete(value = {}) {
 function normalizeBrandBrainDraft(value = {}) {
   return {
     currentStep: Math.min(4, Math.max(1, Number(value.currentStep) || 1)),
+    workspaceName: compactText(value.workspaceName).slice(0, 80),
     answers: normalizeBrandAnswers(value.answers),
     updatedAt: compactText(value.updatedAt),
   };

@@ -160,20 +160,32 @@ async function stopServer(child) {
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'agent-studio-api-'));
 const dbPath = path.join(tempDir, 'db.json');
 const providerPath = path.join(tempDir, 'agent-studio-provider.cjs');
+const providerCallsPath = path.join(tempDir, 'agent-studio-provider-calls.ndjson');
 const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 
 await writeFile(dbPath, `${JSON.stringify(createDb(), null, 2)}\n`, 'utf8');
 await writeFile(providerPath, `'use strict';
+const { appendFileSync } = require('node:fs');
 const fixture = require(process.env.AGENT_STUDIO_TEST_FIXTURE);
 const criticCalls = new Map();
+
+function recordProviderCall(entry) {
+  appendFileSync(
+    process.env.AGENT_STUDIO_TEST_CALLS_PATH,
+    JSON.stringify(entry) + '\\n',
+    'utf8',
+  );
+}
 
 module.exports = {
   async uploadVideo({ bytes, mimeType, displayName }) {
     if (!bytes || !bytes.length) throw new Error('test upload missing bytes');
+    recordProviderCall({ kind: 'uploadVideo', operation: 'provider_file_upload' });
     return { name: 'files/test-upload', uri: 'https://gemini.example/files/test-upload', mimeType, originalName: displayName };
   },
   async analyzeVideo({ input, uploadedFile, onUsage, phase, invocationId }) {
+    recordProviderCall({ kind: 'analyzeVideo', operation: 'video_analysis', phase, invocationId });
     if (typeof onUsage === 'function') {
       await onUsage({
         callId: invocationId + ':gemini-test',
@@ -217,6 +229,7 @@ module.exports = {
     return fixture.evidence;
   },
   async runAgent({ agentId, groupId }) {
+    recordProviderCall({ kind: 'runAgent', operation: 'agent', agentId, groupId });
     if (agentId === 'trend_analyst') return fixture.selectedTrend;
     if (agentId === 'brand_strategist') return fixture.brandStrategy;
     if (agentId === 'creative_producer') return fixture.creative;
@@ -248,6 +261,7 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     AUTOMATIC_DISCOVERY_ENABLED: 'false',
     AGENT_STUDIO_TEST_PROVIDER: providerPath,
     AGENT_STUDIO_TEST_FIXTURE: FIXTURE_PATH,
+    AGENT_STUDIO_TEST_CALLS_PATH: providerCallsPath,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -267,9 +281,16 @@ try {
     body: JSON.stringify({ experience: 'agent_studio' }),
   });
   assert.equal(agentStudioDemo.response.status, 200);
-  assert.equal(agentStudioDemo.body.user.email, 'agent-studio-demo@dzhero.app');
-  assert.equal(agentStudioDemo.body.user.workspaceId, 'ws_demo_agent_studio_coffee');
-  const agentStudioDemoBrief = await requestJson(baseUrl, '/api/workspaces/ws_demo_agent_studio_coffee/brief', {
+  assert.match(
+    agentStudioDemo.body.user.email,
+    /^agent-studio-demo\+[a-f0-9]{16}@dzhero\.app$/,
+  );
+  assert.match(
+    agentStudioDemo.body.user.workspaceId,
+    /^ws_demo_agent_studio_coffee_[a-f0-9]{16}$/,
+  );
+  const agentStudioDemoWorkspaceId = agentStudioDemo.body.user.workspaceId;
+  const agentStudioDemoBrief = await requestJson(baseUrl, `/api/workspaces/${agentStudioDemoWorkspaceId}/brief`, {
     headers: { authorization: `Bearer ${agentStudioDemo.body.token}` },
   });
   assert.equal(agentStudioDemoBrief.response.status, 200);
@@ -500,6 +521,33 @@ try {
   assert.equal(meteredRun.usage.schemaVersion, 1);
   assert.equal(meteredRun.usage.calls.some((call) => call.provider === 'gemini'), true);
   assert.equal(JSON.stringify(completed).includes('invocationId'), false);
+
+  const providerCalls = (await readFile(providerCallsPath, 'utf8'))
+    .trim()
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  const agentCalls = providerCalls.filter((call) => call.kind === 'runAgent');
+  const videoAnalysisCalls = providerCalls.filter((call) => call.kind === 'analyzeVideo');
+  const providerFileUploads = providerCalls.filter((call) => call.kind === 'uploadVideo');
+  const billableProviderCalls = [...agentCalls, ...videoAnalysisCalls];
+  assert.equal(agentCalls.length, 28);
+  assert.equal(videoAnalysisCalls.length, 6);
+  assert.equal(providerFileUploads.length, 2);
+  assert.equal(
+    providerCalls.length,
+    billableProviderCalls.length + providerFileUploads.length,
+    'Provider file uploads are classified separately from billable model attempts.',
+  );
+  const providerAttemptCounter = persisted.usageCounters.find((counter) => (
+    counter.workspaceId === 'ws_1'
+    && counter.metric === 'trial_provider_attempts_daily'
+  ));
+  assert.equal(
+    Number(providerAttemptCounter?.value || 0),
+    billableProviderCalls.length,
+    'docs/BACKEND.md requires one persisted provider-attempt reservation per paid AI provider attempt.',
+  );
 
   console.log('Agent Studio API checks passed.');
 } catch (error) {

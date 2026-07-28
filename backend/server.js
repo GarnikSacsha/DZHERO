@@ -175,6 +175,10 @@ const DZHERO_CRM_SYNC_TOKEN = String(process.env.DZHERO_CRM_SYNC_TOKEN || '').tr
 const ALLOW_DEMO_LOGIN = process.env.ALLOW_DEMO_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_DAYS = Number(process.env.SESSION_TTL_DAYS || 30);
 const SESSION_TTL_MS = SESSION_TTL_DAYS * 24 * 60 * 60 * 1000;
+const AGENT_STUDIO_DEMO_TTL_MS = Math.min(
+  SESSION_TTL_MS,
+  Math.max(60 * 60 * 1000, Number(process.env.AGENT_STUDIO_DEMO_TTL_HOURS || 24) * 60 * 60 * 1000),
+);
 const MAX_ACTIVE_SESSIONS_PER_USER = Math.min(50, Math.max(1, Number(process.env.MAX_ACTIVE_SESSIONS_PER_USER || 8) || 8));
 const REGISTER_RATE_LIMIT_PER_HOUR = Math.min(100, Math.max(1, Number(process.env.REGISTER_RATE_LIMIT_PER_HOUR || 10) || 10));
 const API_RATE_LIMIT_PER_MINUTE = Math.min(10_000, Math.max(1, Number(process.env.API_RATE_LIMIT_PER_MINUTE || 180) || 180));
@@ -3702,7 +3706,7 @@ function buildGlobalInsightFromReelMetadata(metadata) {
   };
 }
 
-function createSession(db, userId) {
+function createSession(db, userId, { ttlMs = SESSION_TTL_MS } = {}) {
   const now = Date.now();
   const activeSessions = db.sessions
     .filter((item) => Date.parse(item.expiresAt || '') > now)
@@ -3716,26 +3720,104 @@ function createSession(db, userId) {
     token: crypto.randomBytes(32).toString('hex'),
     userId,
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
+    expiresAt: new Date(now + ttlMs).toISOString(),
   };
   db.sessions.unshift(session);
   return session;
 }
 
+function pruneExpiredAgentStudioDemoVisitors(db, now = Date.now()) {
+  const legacyUserIds = new Set((db.users || [])
+    .filter((user) => user.email === 'agent-studio-demo@dzhero.app')
+    .map((user) => user.id));
+  const legacyWorkspaceIds = new Set(['ws_demo_agent_studio_coffee']);
+  const demoUsers = (db.users || []).filter((user) => (
+    user.demoVisitor === true && user.demoExperience === 'agent_studio'
+  ));
+  const activeUserIds = new Set((db.sessions || [])
+    .filter((session) => !session.expiresAt || Date.parse(session.expiresAt) > now)
+    .map((session) => session.userId));
+  const staleUserIds = new Set([
+    ...legacyUserIds,
+    ...demoUsers
+    .filter((user) => {
+      const createdAt = Date.parse(user.createdAt || '');
+      const expiredByAge = !Number.isFinite(createdAt) || createdAt + AGENT_STUDIO_DEMO_TTL_MS <= now;
+      return expiredByAge || !activeUserIds.has(user.id);
+    })
+    .map((user) => user.id),
+  ]);
+
+  const staleWorkspaceIds = new Set((db.workspaces || [])
+    .filter((workspace) => (
+      legacyWorkspaceIds.has(workspace.id)
+      || staleUserIds.has(workspace.ownerUserId)
+      || (workspace.demoVisitor === true
+        && workspace.demoExperience === 'agent_studio'
+        && !activeUserIds.has(workspace.ownerUserId))
+    ))
+    .map((workspace) => workspace.id));
+  if (!staleUserIds.size && !staleWorkspaceIds.size) {
+    return { changed: false, geminiFileNames: [] };
+  }
+
+  const geminiFileNames = (db.agentStudioUploads || [])
+    .filter((item) => staleWorkspaceIds.has(item.workspaceId))
+    .map((item) => String(item.file?.name || '').trim())
+    .filter(Boolean);
+  db.users = (db.users || []).filter((user) => !staleUserIds.has(user.id));
+  db.sessions = (db.sessions || []).filter((session) => !staleUserIds.has(session.userId));
+  db.workspaces = (db.workspaces || []).filter((workspace) => !staleWorkspaceIds.has(workspace.id));
+
+  for (const key of [
+    'competitors',
+    'reels',
+    'ideas',
+    'leads',
+    'syncJobs',
+    'discoveryRuns',
+    'sources',
+    'instagramAccounts',
+    'tiktokAccounts',
+    'aiMemory',
+    'aiJobs',
+    'remixes',
+    'contentPlanItems',
+    'videoJobs',
+    'subscriptions',
+    'usageCounters',
+    'demoSessions',
+    'agentStudioRuns',
+    'agentStudioUploads',
+  ]) {
+    db[key] = (db[key] || []).filter((item) => !staleWorkspaceIds.has(item.workspaceId));
+  }
+  return { changed: true, geminiFileNames };
+}
+
+function scheduleGeminiFileCleanup(fileNames = []) {
+  if (!GEMINI_API_KEY || !fileNames.length) return;
+  for (const fileName of new Set(fileNames)) {
+    setImmediate(() => {
+      void deleteGeminiFile({ fileName, apiKey: GEMINI_API_KEY });
+    });
+  }
+}
+
 const SESSION_COOKIE_NAME = 'dzhero_session';
 
-function getSessionCookieOptions() {
+function getSessionCookieOptions(maxAgeMs = SESSION_TTL_MS) {
   return [
     'Path=/',
     'HttpOnly',
     'SameSite=Lax',
-    `Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`,
+    `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
     ...(IS_PRODUCTION ? ['Secure'] : []),
   ].join('; ');
 }
 
-function setSessionCookie(res, token) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${getSessionCookieOptions()}`);
+function setSessionCookie(res, token, maxAgeMs = SESSION_TTL_MS) {
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; ${getSessionCookieOptions(maxAgeMs)}`);
 }
 
 function clearSessionCookie(res) {
@@ -3786,6 +3868,7 @@ function usesLongRunningExternalWork(req) {
     /^\/workspaces\/[^/]+\/agent\/chat\/?$/,
     /^\/workspaces\/[^/]+\/agent\/context\/finalize\/?$/,
     /^\/workspaces\/[^/]+\/remix\/generate\/?$/,
+    /^\/workspaces\/[^/]+\/agent-studio\/uploads\/?$/,
   ].some((pattern) => pattern.test(req.path));
 }
 
@@ -4325,7 +4408,7 @@ function getAgentStudioRunLanguage(run = {}) {
 }
 
 function isAgentStudioDemoWorkspace(workspaceId) {
-  return String(workspaceId || '') === 'ws_demo_agent_studio_coffee';
+  return String(workspaceId || '').startsWith('ws_demo_agent_studio_coffee');
 }
 
 function buildAgentStudioCoffeeDemoRun({ workspaceId, userId, language = 'en', now = new Date().toISOString() }) {
@@ -4739,12 +4822,15 @@ function scheduleAgentStudioHybrid(runId) {
 async function recoverInterruptedAgentStudioRunsOnStartup() {
   const db = await readDb();
   let changed = false;
+  const demoCleanup = pruneExpiredAgentStudioDemoVisitors(db);
+  if (demoCleanup.changed) changed = true;
   db.agentStudioRuns = (db.agentStudioRuns || []).map((run) => {
     if (!ACTIVE_AGENT_STUDIO_STATUSES.has(run.status)) return run;
     changed = true;
     return recoverInterruptedAgentStudioRun(run, { now: new Date().toISOString() });
   });
   if (changed) await writeDb(db);
+  scheduleGeminiFileCleanup(demoCleanup.geminiFileNames);
 }
 
 function normalizeChecklistItems(items = []) {
@@ -5242,9 +5328,9 @@ app.get('/api/auth/meta/callback', async (req, res) => {
   }
   try {
     const db = await readDb();
-    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'instagram');
+    const stateRecord = findValidOAuthState(db, String(req.query.state || ''), 'meta');
     if (!stateRecord) {
-      res.status(400).send('Instagram Login state is invalid or expired.');
+      res.status(400).send('Meta Login state is invalid or expired.');
       return;
     }
     const workspaceId = stateRecord.workspaceId;
@@ -5598,17 +5684,40 @@ app.post('/api/auth/demo', async (req, res, next) => {
     stage = 'read';
     const db = await readDb();
     const agentStudioExperience = ENABLE_AGENT_STUDIO && req.body?.experience === 'agent_studio';
-    const demoEmail = agentStudioExperience ? 'agent-studio-demo@dzhero.app' : 'demo@dzhero.app';
-    const demoWorkspaceId = agentStudioExperience ? 'ws_demo_agent_studio_coffee' : 'ws_demo_ua';
+    const demoCleanup = agentStudioExperience
+      ? pruneExpiredAgentStudioDemoVisitors(db)
+      : { changed: false, geminiFileNames: [] };
+    const currentSession = agentStudioExperience
+      ? findAuthSession(db, req, SESSION_COOKIE_NAME)
+      : null;
+    const currentDemoUser = currentSession
+      ? db.users.find((item) => (
+        item.id === currentSession.userId
+        && item.demoVisitor === true
+        && item.demoExperience === 'agent_studio'
+      ))
+      : null;
+    const demoVisitorId = agentStudioExperience && !currentDemoUser
+      ? crypto.randomUUID().replaceAll('-', '').slice(0, 16)
+      : '';
+    const demoEmail = agentStudioExperience
+      ? currentDemoUser?.email || `agent-studio-demo+${demoVisitorId}@dzhero.app`
+      : 'demo@dzhero.app';
+    const demoWorkspaceId = agentStudioExperience
+      ? currentDemoUser?.workspaceId || `ws_demo_agent_studio_coffee_${demoVisitorId}`
+      : 'ws_demo_ua';
     stage = 'seed';
     if (agentStudioExperience) {
       const coffeeWorkspace = {
       id: demoWorkspaceId,
       name: 'Reset Coffee Kyiv',
       owner: 'Coffee Demo User',
+      ownerUserId: null,
       mode: 'own_business',
       marketFocus: ['ua'],
       createdAt: new Date().toISOString(),
+      demoVisitor: true,
+      demoExperience: 'agent_studio',
       brief: {
         businessType: 'Independent neighborhood coffee shop',
         product: 'Espresso drinks and fresh pastries',
@@ -5640,22 +5749,34 @@ app.post('/api/auth/demo', async (req, res, next) => {
         email: demoEmail,
         role: 'owner',
         workspaceId: demoWorkspaceId,
+        demoVisitor: agentStudioExperience,
+        demoExperience: agentStudioExperience ? 'agent_studio' : undefined,
         passwordHash: hashPassword(crypto.randomBytes(12).toString('hex')),
         createdAt: new Date().toISOString(),
       };
       db.users.unshift(user);
-    } else if (agentStudioExperience) {
-      user.workspaceId = demoWorkspaceId;
-      user.name = 'Coffee Demo User';
+    }
+    if (agentStudioExperience) {
+      const workspace = db.workspaces.find((item) => item.id === demoWorkspaceId);
+      if (workspace) workspace.ownerUserId = user.id;
     }
     stage = 'subscription';
     ensureWorkspaceSubscription(db, user.workspaceId, { planId: 'demo' });
     stage = 'session';
-    const session = createSession(db, user.id);
+    const session = currentDemoUser && currentSession
+      ? currentSession
+      : createSession(db, user.id, {
+        ttlMs: agentStudioExperience ? AGENT_STUDIO_DEMO_TTL_MS : SESSION_TTL_MS,
+      });
     stage = 'write';
     await writeDb(db);
+    scheduleGeminiFileCleanup(demoCleanup.geminiFileNames);
     stage = 'response';
-    setSessionCookie(res, session.token);
+    setSessionCookie(
+      res,
+      session.token,
+      agentStudioExperience ? AGENT_STUDIO_DEMO_TTL_MS : SESSION_TTL_MS,
+    );
     res.json({ ...buildAuthPayload(db, user), token: session.token });
   } catch (error) {
     error.status = Number(error.status || 500);
@@ -6100,30 +6221,44 @@ app.get('/api/workspaces/:workspaceId/agent-studio/config', async (req, res) => 
 });
 
 app.post('/api/workspaces/:workspaceId/agent-studio/uploads', expensiveLimiter, agentStudioVideoBody, async (req, res, next) => {
+  let file = null;
+  let persisted = false;
   try {
     if (!requireAgentStudioEnabled(res)) return;
-    const db = await readDb();
-    const workspace = requireWorkspace(db, req.params.workspaceId, res);
-    if (!workspace) return;
-    const file = await uploadAgentStudioVideo(req);
-    const now = Date.now();
-    const upload = {
-      id: `agent_upload_${crypto.randomUUID().replaceAll('-', '')}`,
-      workspaceId: workspace.id,
-      userId: req.authUser.id,
-      file,
-      createdAt: new Date(now).toISOString(),
-      expiresAt: new Date(now + (45 * 60 * 1000)).toISOString(),
-    };
-    db.agentStudioUploads = (db.agentStudioUploads || [])
-      .filter((item) => Date.parse(item.expiresAt || '') > now);
-    db.agentStudioUploads.push(upload);
-    await writeDb(db);
+    file = await uploadAgentStudioVideo(req);
+    const committed = await serializeBackgroundMutation(async () => {
+      const db = await readDb();
+      const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+      const now = Date.now();
+      const existingUploads = db.agentStudioUploads || [];
+      const expiredFileNames = existingUploads
+        .filter((item) => !(Date.parse(item.expiresAt || '') > now))
+        .map((item) => String(item.file?.name || '').trim())
+        .filter(Boolean);
+      const upload = {
+        id: `agent_upload_${crypto.randomUUID().replaceAll('-', '')}`,
+        workspaceId: current.workspace.id,
+        userId: current.actorUser.id,
+        file,
+        createdAt: new Date(now).toISOString(),
+        expiresAt: new Date(now + (45 * 60 * 1000)).toISOString(),
+      };
+      db.agentStudioUploads = existingUploads
+        .filter((item) => Date.parse(item.expiresAt || '') > now);
+      db.agentStudioUploads.push(upload);
+      await writeDb(db);
+      return { upload, expiredFileNames };
+    });
+    persisted = true;
+    scheduleGeminiFileCleanup(committed.expiredFileNames);
     res.status(201).json({
-      uploadId: upload.id,
+      uploadId: committed.upload.id,
       file: { name: file.originalName, size: file.size, mimeType: file.mimeType },
     });
   } catch (error) {
+    if (file?.name && !persisted) {
+      scheduleGeminiFileCleanup([file.name]);
+    }
     if (error?.status) {
       res.status(error.status).json({ error: error.message, message: error.message });
       return;
@@ -7415,8 +7550,12 @@ app.put('/api/workspaces/:workspaceId/agent/context/draft', async (req, res) => 
     res.status(409).json({ error: 'brand_brain_already_complete' });
     return;
   }
+  const normalizedDraft = normalizeBrandBrainDraft(req.body);
+  if (normalizedDraft.workspaceName) {
+    workspace.name = normalizedDraft.workspaceName;
+  }
   workspace.brandBrainDraft = {
-    ...normalizeBrandBrainDraft(req.body),
+    ...normalizedDraft,
     updatedAt: new Date().toISOString(),
   };
   await writeDb(db);

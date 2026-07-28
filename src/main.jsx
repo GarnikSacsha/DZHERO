@@ -51,7 +51,11 @@ import logoImg from './logo-mark.svg';
 import TesterAccessPanel from './TesterAccessPanel.jsx';
 import AgentStudioPage from './AgentStudioPage.jsx';
 import CommunicationPreferences from './CommunicationPreferences.jsx';
+import AudienceOnboarding from './components/AudienceOnboarding.jsx';
+import BrandDescriptionOnboarding from './components/BrandDescriptionOnboarding.jsx';
 import BrandBrainWizard from './components/BrandBrainWizard.jsx';
+import ProductHomePreview from './components/ProductHomePreview.jsx';
+import WorkspaceNameOnboarding from './components/WorkspaceNameOnboarding.jsx';
 import SignalThumbnail from './components/SignalThumbnail.jsx';
 import { syncCrmSession, telemetry } from './telemetry.mjs';
 import ContentCalendar, {
@@ -459,6 +463,7 @@ function App() {
   const [brandContext, setBrandContext] = useState({});
   const [brandContextStatus, setBrandContextStatus] = useState('loading');
   const [brandDraft, setBrandDraft] = useState(null);
+  const [onboardingPreviewDraft, setOnboardingPreviewDraft] = useState(null);
   const [brandEditSuggestion, setBrandEditSuggestion] = useState(null);
   const [recommendedSignalId, setRecommendedSignalId] = useState('');
   const discoveryRequestRef = useRef(0);
@@ -490,6 +495,11 @@ function App() {
   };
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
+  const localPreviewPage = isLocalPage
+    ? new URLSearchParams(window.location.search).get('preview')
+    : '';
+  const onboardingPreview = localPreviewPage === 'onboarding';
+  const productPreview = localPreviewPage === 'product';
   const availableWorkspaces = currentUser
     ? (userWorkspaces.length ? userWorkspaces : DEMO_WORKSPACES.filter((workspace) => workspace.id === currentUser.workspaceId))
     : [];
@@ -894,13 +904,18 @@ function App() {
 
   const handleLogout = async () => {
     setAuthStatus('checking');
+    try {
+      const response = await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+      if (!response.ok) throw new Error('logout_failed');
+    } catch {
+      setAuthStatus('ready');
+      notify(language === 'en'
+        ? 'Log out failed. Your session is still active. Please try again.'
+        : 'Не вдалося вийти. Сесія все ще активна. Спробуйте ще раз.');
+      return;
+    }
     resetBrandContextForWorkspace(DEMO_WORKSPACES[0].id);
     setPage('home');
-    try {
-      await authFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
-    } catch {
-      // Keep the UI logout deterministic even if the network hiccups.
-    }
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
     window.localStorage.removeItem(WORKSPACE_KEY);
     setCurrentUser(null);
@@ -923,6 +938,77 @@ function App() {
     return <MobilePreviewFrame src={mobilePreviewUrl} />;
   }
 
+  if (productPreview) {
+    return (
+      <div className="app product-preview-app" data-theme={theme}>
+        <ProductHomePreview
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+          onExit={() => window.location.assign('/')}
+        />
+      </div>
+    );
+  }
+
+  if (onboardingPreview) {
+    return (
+      <div className={`app ${Number(onboardingPreviewDraft?.currentStep) >= 3 ? 'product-preview-app' : 'onboarding-app'}`} data-theme={theme}>
+        {!onboardingPreviewDraft?.workspaceName ? (
+          <WorkspaceNameOnboarding
+            workspaceId="local-onboarding-preview"
+            initialDraft={onboardingPreviewDraft}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+            previewMode
+            onComplete={({ draft }) => setOnboardingPreviewDraft(draft)}
+            onExit={() => window.location.assign('/')}
+          />
+        ) : Number(onboardingPreviewDraft.currentStep) <= 1 ? (
+          <BrandDescriptionOnboarding
+            workspaceId="local-onboarding-preview"
+            initialDraft={onboardingPreviewDraft}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+            previewMode
+            onComplete={({ draft }) => setOnboardingPreviewDraft(draft)}
+            onBack={() => setOnboardingPreviewDraft(null)}
+            onExit={() => window.location.assign('/')}
+          />
+        ) : Number(onboardingPreviewDraft.currentStep) === 2 ? (
+          <AudienceOnboarding
+            workspaceId="local-onboarding-preview"
+            initialDraft={onboardingPreviewDraft}
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+            previewMode
+            onComplete={({ draft }) => setOnboardingPreviewDraft(draft)}
+            onBack={() => setOnboardingPreviewDraft((current) => ({
+              ...current,
+              currentStep: 1,
+            }))}
+            onExit={() => window.location.assign('/')}
+          />
+        ) : (
+          <ProductHomePreview
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+            onExit={() => window.location.assign('/')}
+          />
+        )}
+      </div>
+    );
+  }
+
   if (authStatus === 'checking') {
     return <div className="loading-screen">Перевіряємо сесію...</div>;
   }
@@ -930,7 +1016,113 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app auth-app" data-theme={theme}>
-        <AuthGate key={language} onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
+        <AuthGate onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
+  const needsWorkspaceNameSetup = currentUser.provider === 'google'
+    && brandContextStatus === 'onboarding'
+    && !brandDraft?.workspaceName;
+  const needsBrandDescriptionSetup = currentUser.provider === 'google'
+    && brandContextStatus === 'onboarding'
+    && Boolean(brandDraft?.workspaceName)
+    && (!brandDraft?.answers?.profileDescription || Number(brandDraft?.currentStep) <= 1);
+  const needsAudienceSetup = currentUser.provider === 'google'
+    && brandContextStatus === 'onboarding'
+    && Boolean(brandDraft?.workspaceName)
+    && Boolean(brandDraft?.answers?.profileDescription)
+    && (!brandDraft?.answers?.audience || Number(brandDraft?.currentStep) === 2);
+
+  if (needsWorkspaceNameSetup) {
+    const setupWorkspaceId = workspaceId;
+    const setupRequestId = brandContextRequestRef.current;
+    const isSetupWorkspaceCurrent = () => (
+      activeBrandContextWorkspaceRef.current === setupWorkspaceId
+      && brandContextRequestRef.current === setupRequestId
+    );
+    return (
+      <div className="app onboarding-app" data-theme={theme}>
+        <WorkspaceNameOnboarding
+          workspaceId={setupWorkspaceId}
+          initialDraft={brandDraft}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+          notify={notify}
+          isWorkspaceCurrent={isSetupWorkspaceCurrent}
+          onComplete={(payload) => {
+            if (!isSetupWorkspaceCurrent()) return;
+            setBrandDraft(payload.draft);
+            setUserWorkspaces((current) => current.map((workspace) => (
+              workspace.id === setupWorkspaceId
+                ? { ...workspace, name: payload.workspaceName }
+                : workspace
+            )));
+          }}
+        />
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
+  if (needsBrandDescriptionSetup) {
+    const setupWorkspaceId = workspaceId;
+    const setupRequestId = brandContextRequestRef.current;
+    const isSetupWorkspaceCurrent = () => (
+      activeBrandContextWorkspaceRef.current === setupWorkspaceId
+      && brandContextRequestRef.current === setupRequestId
+    );
+    return (
+      <div className="app onboarding-app" data-theme={theme}>
+        <BrandDescriptionOnboarding
+          workspaceId={setupWorkspaceId}
+          initialDraft={brandDraft}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+          notify={notify}
+          isWorkspaceCurrent={isSetupWorkspaceCurrent}
+          onComplete={(payload) => {
+            if (!isSetupWorkspaceCurrent()) return;
+            setBrandDraft(payload.draft);
+          }}
+        />
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
+  if (needsAudienceSetup) {
+    const setupWorkspaceId = workspaceId;
+    const setupRequestId = brandContextRequestRef.current;
+    const isSetupWorkspaceCurrent = () => (
+      activeBrandContextWorkspaceRef.current === setupWorkspaceId
+      && brandContextRequestRef.current === setupRequestId
+    );
+    return (
+      <div className="app onboarding-app" data-theme={theme}>
+        <AudienceOnboarding
+          workspaceId={setupWorkspaceId}
+          initialDraft={brandDraft}
+          language={language}
+          setLanguage={setLanguage}
+          theme={theme}
+          onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
+          notify={notify}
+          isWorkspaceCurrent={isSetupWorkspaceCurrent}
+          onBack={() => setBrandDraft((current) => ({
+            ...current,
+            currentStep: 1,
+          }))}
+          onComplete={(payload) => {
+            if (!isSetupWorkspaceCurrent()) return;
+            setBrandDraft(payload.draft);
+          }}
+        />
         {toast && <div className="toast">{toast}</div>}
       </div>
     );
@@ -2979,141 +3171,420 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
 }
 
 function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, setLanguage }) {
-  useI18n();
+  const { t } = useI18n();
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const authCopy = language === 'en'
-    ? {
-      brandSub: 'AI producer for Ukraine and global trends',
-      eyebrow: 'Signals -> scripts -> weekly plan',
-      headline: 'Find the signal. Write the script. Put it into the plan.',
-      subheadline: 'Dzhero turns short-form content mechanics into original ideas, scripts, weekly plans, and Direct prompts for your brand.',
-      panelEyebrow: 'Your workspace',
-      panelTitle: 'Sign in to Dzhero',
-      themeTitle: 'Theme',
-      googleLoading: 'Opening Google...',
-      googleButton: 'Sign in with Google',
-      demoButton: 'Start with demo',
-      googleError: 'Google sign-in is temporarily unavailable.',
-      googleNotice: 'Check the Google Login configuration in Railway.',
-      demoError: 'Demo login did not work. Check the server connection.',
-      serverError: 'The server is not responding. Check the Railway deployment or local backend.',
-      terms: 'Terms',
-      privacy: 'Privacy',
-      outcomes: [
-        'Signals from Reels and short-form content',
-        'Ukrainian adaptation without copying',
-        'Scripts, calendar, and Direct CTAs',
-      ],
-    }
-    : {
-      brandSub: 'AI-продюсер для України і глобальних трендів',
-      eyebrow: 'Сигнали -> сценарії -> план',
-      headline: 'Знайти сигнал. Написати сценарій. Поставити в план.',
-      subheadline: 'Dzhero перетворює short-form механіки у власні ідеї, сценарії, тижневий план та Direct-підказки для бренду.',
-      panelEyebrow: 'Твій workspace',
-      panelTitle: 'Увійти в Dzhero',
-      themeTitle: 'Тема',
-      googleLoading: 'Відкриваємо Google...',
-      googleButton: 'Увійти через Google',
-      demoButton: 'Почати з демо',
-      googleError: 'Google-вхід тимчасово недоступний.',
-      googleNotice: 'Перевір налаштування Google Login у Railway.',
-      demoError: 'Демо-вхід не спрацював. Перевір підключення до сервера.',
-      serverError: 'Сервер не відповідає. Перевір Railway deploy або локальний backend.',
-      terms: 'Умови',
-      privacy: 'Приватність',
-      outcomes: [
-        'Сигнали з Reels і short-form контенту',
-        'UA-адаптація без копіювання',
-        'Сценарій, календар і CTA в Direct',
-      ],
-    };
+  const [pendingAuthAction, setPendingAuthAction] = useState(null);
+  const [authView, setAuthView] = useState('landing');
+  const [authIntent, setAuthIntent] = useState('login');
+  const isLoading = pendingAuthAction !== null;
+  const authCopy = {
+    brandSub: t('landing.auth.brandSub'),
+    eyebrow: t('landing.auth.eyebrow'),
+    headline: t('landing.auth.headline'),
+    subheadline: t('landing.auth.subheadline'),
+    panelEyebrow: t('landing.auth.panelEyebrow'),
+    panelTitle: t('landing.auth.panelTitle'),
+    themeTitle: t('landing.auth.themeTitle'),
+    googleLoading: t('landing.auth.googleLoading'),
+    demoLoading: t('landing.auth.demoLoading'),
+    googleButton: t('landing.login.google'),
+    demoButton: t('landing.actions.getStarted'),
+    googleUnavailable: t('landing.auth.googleUnavailable'),
+    demoDisabled: t('landing.auth.demoDisabled'),
+    demoFailed: t('landing.auth.demoFailed'),
+    networkError: t('landing.auth.networkError'),
+    terms: t('landing.auth.terms'),
+    privacy: t('landing.auth.privacy'),
+    outcomes: [
+      t('landing.auth.outcomeSignals'),
+      t('landing.auth.outcomeAdaptation'),
+      t('landing.auth.outcomePlan'),
+    ],
+  };
 
   const startGoogleLogin = async () => {
     setError('');
-    setIsLoading(true);
+    setPendingAuthAction('google');
     try {
       const response = await fetch(`${API_BASE}/auth/google/start`, { credentials: 'include' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;
-    } catch {
-      setError(authCopy.googleError);
-      notify(authCopy.googleNotice);
+    } catch (authError) {
+      const message = authError instanceof Error && authError.message === 'google_not_configured'
+        ? authCopy.googleUnavailable
+        : authCopy.networkError;
+      setError(message);
+      notify(message);
     } finally {
-      setIsLoading(false);
+      setPendingAuthAction(null);
     }
   };
 
   const enterDemo = async () => {
     setError('');
-    setIsLoading(true);
+    setPendingAuthAction('demo');
     try {
       const response = await fetch(`${API_BASE}/auth/demo`, { method: 'POST', credentials: 'include' });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || 'demo_error');
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'demo_login_failed');
       onAuth(payload);
     } catch (authError) {
-      setError(authCopy.demoError);
-      notify(authCopy.serverError);
+      const code = authError instanceof Error ? authError.message : '';
+      const message = code === 'demo_login_disabled'
+        ? authCopy.demoDisabled
+        : code === 'demo_login_failed'
+          ? authCopy.demoFailed
+          : authCopy.networkError;
+      setError(message);
+      notify(message);
     } finally {
-      setIsLoading(false);
+      setPendingAuthAction(null);
     }
   };
 
-  return (
-    <main className="auth-page">
-      <section className="auth-shell">
-        <div className="auth-copy">
-          <div className="brand auth-brand">
-            <div className="logo">
-              <img src={logoImg} alt="Dzhero Logo" />
+  const scrollToSection = (sectionId) => {
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const howSteps = [
+    [Search, t('landing.how.find.title'), t('landing.how.find.description')],
+    [Database, t('landing.how.collect.title'), t('landing.how.collect.description')],
+    [Lightbulb, t('landing.how.understand.title'), t('landing.how.understand.description')],
+    [Wand2, t('landing.how.adapt.title'), t('landing.how.adapt.description')],
+    [Video, t('landing.how.create.title'), t('landing.how.create.description')],
+  ];
+  const valueItems = [
+    [Sparkles, t('landing.value.adaptive.title'), t('landing.value.adaptive.description')],
+    [Target, t('landing.value.hooks.title'), t('landing.value.hooks.description')],
+    [CalendarDays, t('landing.value.planning.title'), t('landing.value.planning.description')],
+  ];
+  const audiences = [
+    [BriefcaseBusiness, t('landing.built.smallBusiness.title'), t('landing.built.smallBusiness.description')],
+    [Video, t('landing.built.creators.title'), t('landing.built.creators.description')],
+    [UsersRound, t('landing.built.smm.title'), t('landing.built.smm.description')],
+  ];
+  const demoSteps = [
+    t('landing.demo.stepFound'),
+    t('landing.demo.stepAnalyzed'),
+    t('landing.demo.stepAdapted'),
+    t('landing.demo.stepReady'),
+  ];
+  const loginWorkflow = [
+    [Gauge, t('landing.login.workflow.viralTitle'), t('landing.login.workflow.viralDescription')],
+    [BarChart3, t('landing.login.workflow.analysisTitle'), t('landing.login.workflow.analysisDescription')],
+    [Sparkles, t('landing.login.workflow.brandTitle'), t('landing.login.workflow.brandDescription')],
+    [Rocket, t('landing.login.workflow.readyTitle'), t('landing.login.workflow.readyDescription')],
+  ];
+  const openAuth = (intent) => {
+    setError('');
+    setAuthIntent(intent);
+    setAuthView('login');
+  };
+  const isSignup = authIntent === 'signup';
+
+  if (authView === 'login') {
+    return (
+      <main className="marketing-login-page">
+        <section className="marketing-login-form-side">
+          <div className="marketing-login-controls">
+            <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
+              <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+              <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
             </div>
-            <div>
-              <strong>Dzhero</strong>
-              <span>{authCopy.brandSub}</span>
-            </div>
-          </div>
-          <small>{authCopy.eyebrow}</small>
-          <h1>{authCopy.headline}</h1>
-          <p className="auth-lead">{authCopy.subheadline}</p>
-          <div className="auth-outcomes">
-            {authCopy.outcomes.map((outcome) => <span key={outcome}>{outcome}</span>)}
-          </div>
-        </div>
-        <form className="auth-panel" onSubmit={(event) => event.preventDefault()}>
-          <div className="auth-panel-head">
-            <div>
-              <small>{authCopy.panelEyebrow}</small>
-              <h2>{authCopy.panelTitle}</h2>
-            </div>
-            <div className="auth-top-controls">
-              <div className="language-switch" aria-label={language === 'en' ? 'Interface language' : 'Мова інтерфейсу'}>
-                <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
-                <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
-              </div>
-              <button className={themeMode === 'auto' ? 'icon active' : 'icon'} type="button" title={authCopy.themeTitle} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
-                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-              </button>
-            </div>
-          </div>
-          <div className="auth-access-card">
-            <button className="google-auth-button" type="button" data-dzhero-track="btn_google_signin" onClick={startGoogleLogin} disabled={isLoading}>
-              <GoogleIcon />
-              {isLoading ? authCopy.googleLoading : authCopy.googleButton}
+            <button className="marketing-theme-toggle" type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            <button className="auth-demo secondary" type="button" data-dzhero-track="btn_demo_entry" onClick={enterDemo} disabled={isLoading}>
+            <button className="marketing-login-close" type="button" title={t('landing.login.close')} aria-label={t('landing.login.close')} onClick={() => {
+              setError('');
+              setAuthView('landing');
+            }}>
+              <X size={18} />
+            </button>
+          </div>
+          <div className="marketing-login-form">
+            <div className="marketing-login-brand">
+              <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+              <strong>{t('landing.brand.name')}</strong>
+            </div>
+            <span className="marketing-login-badge">{t('landing.login.badge')}</span>
+            <h1>{t(isSignup ? 'landing.login.signupTitle' : 'landing.login.title')}</h1>
+            <p className="marketing-login-description">{t(isSignup ? 'landing.login.signupDescription' : 'landing.login.description')}</p>
+            <div className="marketing-login-actions">
+              <button className="marketing-google-button" type="button" data-dzhero-track="btn_google_signin" onClick={startGoogleLogin} disabled={isLoading}>
+                <GoogleIcon />
+                {pendingAuthAction === 'google' ? authCopy.googleLoading : authCopy.googleButton}
+              </button>
+              <button className="marketing-login-demo-button" type="button" data-dzhero-track="btn_demo_entry" onClick={enterDemo} disabled={isLoading}>
+                <span className="marketing-login-demo-icon"><Play size={19} fill="currentColor" /></span>
+                <span>
+                  <strong>{pendingAuthAction === 'demo' ? authCopy.demoLoading : t(isSignup ? 'landing.login.signupDemoTitle' : 'landing.login.demoTitle')}</strong>
+                  <small>{t('landing.login.demoDescription')}</small>
+                </span>
+                <span className="marketing-login-demo-arrow" aria-hidden="true">→</span>
+              </button>
+              <p className="marketing-login-demo-helper"><CircleCheck size={14} />{t('landing.login.demoHelper')}</p>
+              {isLocalPage && (
+                <button className="marketing-login-preview-button" type="button" onClick={() => window.location.assign('/?preview=onboarding')}>
+                  <Sparkles size={15} />{t('landing.login.previewOnboarding')}
+                </button>
+              )}
+            </div>
+            {error && <div className="marketing-auth-error" role="alert">{error}</div>}
+            <p className="marketing-login-legal">
+              <span>{t('landing.login.legalPrefix')}</span>
+              <a href="/terms" target="_blank" rel="noreferrer">{authCopy.terms}</a>
+              <span aria-hidden="true">·</span>
+              <a href="/privacy" target="_blank" rel="noreferrer">{authCopy.privacy}</a>
+            </p>
+          </div>
+        </section>
+
+        <section className="marketing-login-visual-side" aria-label={t('landing.login.previewAria')}>
+          <div className="marketing-login-glow one" aria-hidden="true" />
+          <div className="marketing-login-glow two" aria-hidden="true" />
+          <div className="marketing-login-workflow-window">
+            <div className="marketing-login-window-bar" aria-hidden="true">
+              <span><i /><i /><i /></span>
+              <i />
+            </div>
+            <div className="marketing-login-workflow">
+              {loginWorkflow.map(([Icon, title, description], index) => (
+                <React.Fragment key={title}>
+                  <article className={index === loginWorkflow.length - 1 ? 'ready' : ''} style={{ '--login-step': index }}>
+                    <span><Icon size={20} /></span>
+                    <div><strong>{title}</strong><p>{description}</p></div>
+                    <CircleCheck size={20} />
+                  </article>
+                  {index < loginWorkflow.length - 1 && <i className="marketing-login-connector" style={{ '--login-step': index }} aria-hidden="true" />}
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+          <aside className="marketing-login-score">
+            <span>{t('landing.login.viralScore')}</span>
+            <strong>98%</strong>
+            <i aria-hidden="true"><b /></i>
+          </aside>
+        </section>
+      </main>
+    );
+  }
+
+  return (
+    <main className="marketing-landing" id="landing-top">
+      <header className="marketing-header">
+        <a className="marketing-brand" href="#landing-top" aria-label={t('landing.brand.ariaLabel')}>
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <nav className="marketing-nav" aria-label={t('landing.nav.ariaLabel')}>
+          <a href="#built-for">{t('landing.nav.whoFor')}</a>
+          <a href="#how-it-works">{t('landing.nav.howItWorks')}</a>
+          <a href="#resources">{t('landing.nav.resources')}</a>
+        </nav>
+        <div className="marketing-header-actions">
+          <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
+            <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+          </div>
+          <button className="marketing-theme-toggle" type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <button className="marketing-login-button" type="button" onClick={() => openAuth('login')}>
+            {t('landing.actions.login')}
+          </button>
+          <button className="marketing-button compact primary" type="button" data-dzhero-track="btn_signup_entry" onClick={() => openAuth('signup')}>
+            {authCopy.demoButton}
+          </button>
+        </div>
+      </header>
+
+      <section className="marketing-hero">
+        <div className="marketing-hero-copy">
+          <span className="marketing-eyebrow"><Sparkles size={14} />{t('landing.hero.badge')}</span>
+          <h1>{t('landing.hero.title')}</h1>
+          <p>{t('landing.hero.description')}</p>
+          <div className="marketing-hero-actions">
+            <button className="marketing-button primary" type="button" onClick={() => openAuth('signup')}>
               {authCopy.demoButton}
             </button>
+            <button className="marketing-button secondary" type="button" onClick={() => scrollToSection('product-demo')}>
+              <Play size={16} fill="currentColor" />{t('landing.actions.watchDemo')}
+            </button>
           </div>
-          <div className="auth-simple-links">
-            <a href="/terms" target="_blank" rel="noreferrer">{authCopy.terms}</a>
-            <a href="/privacy" target="_blank" rel="noreferrer">{authCopy.privacy}</a>
+          {error && <div className="marketing-auth-error" role="alert">{error}</div>}
+        </div>
+
+        <div className="marketing-hero-demo" id="product-demo" aria-label={t('landing.demo.ariaLabel')}>
+          <div className="marketing-demo-toolbar">
+            <div className="marketing-window-dots" aria-hidden="true"><i /><i /><i /></div>
+            <span>{t('landing.demo.example')}</span>
+            <div className="marketing-demo-toolbar-actions" aria-hidden="true"><i /><i /></div>
           </div>
-          {error && <div className="auth-error">{error}</div>}
-        </form>
+          <div className="marketing-demo-stage">
+            <div className="marketing-demo-transform">
+              <article className="marketing-demo-idea original">
+                <small>{t('landing.demo.original')}</small>
+                <div className="marketing-demo-thumbnail"><Play size={18} fill="currentColor" /></div>
+                <strong>{t('landing.demo.signalTitle')}</strong>
+              </article>
+              <span className="marketing-demo-arrow" aria-hidden="true">→</span>
+              <article className="marketing-demo-idea adapted">
+                <small>{t('landing.demo.adapted')}</small>
+                <div className="marketing-demo-copy-lines" aria-hidden="true"><i /><i /><i /></div>
+                <strong>{t('landing.demo.adaptedTitle')}</strong>
+              </article>
+            </div>
+            <div className="marketing-demo-calendar">
+              <div className="marketing-demo-calendar-head">
+                <strong>{t('landing.demo.calendar')}</strong>
+                <span aria-hidden="true"><i /><i /></span>
+              </div>
+              <div className="marketing-demo-calendar-grid">
+                {Array.from({ length: 14 }, (_, index) => (
+                  <span className={index === 8 ? 'active' : ''} key={index}>
+                    <small>{index + 1}</small>
+                    {index === 8 && <i />}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <button className="marketing-demo-plan-button" type="button" onClick={() => scrollToSection('how-it-works')}>
+              {t('landing.demo.addToPlan')}
+            </button>
+          </div>
+          <div className="marketing-demo-progress">
+            {demoSteps.map((step, index) => (
+              <span key={step} style={{ '--marketing-step': index }}>
+                <i>{index + 1}</i>{step}
+              </span>
+            ))}
+          </div>
+        </div>
       </section>
+
+      <section className="marketing-section marketing-how" id="how-it-works">
+        <div className="marketing-section-heading centered">
+          <h2>{t('landing.how.title')}</h2>
+          <p>{t('landing.how.subtitle')}</p>
+        </div>
+        <div className="marketing-how-grid">
+          {howSteps.map(([Icon, title, description], index) => (
+            <article key={title}>
+              <span className="marketing-step-number">{index + 1}</span>
+              <h3>{title}</h3>
+              <p>{description}</p>
+              <Icon size={20} />
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="marketing-section marketing-value">
+        <div className="marketing-value-copy">
+          <h2>{t('landing.value.title')}</h2>
+          <div className="marketing-value-list">
+            {valueItems.map(([Icon, title, description]) => (
+              <article key={title}>
+                <span><Icon size={17} /></span>
+                <div><h3>{title}</h3><p>{description}</p></div>
+              </article>
+            ))}
+          </div>
+        </div>
+        <div className="marketing-product-mockup">
+          <div className="marketing-mockup-top">
+            <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+            <strong>{t('landing.mockup.workspace')}</strong>
+            <i aria-hidden="true" />
+          </div>
+          <div className="marketing-mockup-grid">
+            <article className="marketing-mockup-source">
+              <small>{t('landing.mockup.source')}</small>
+              <div className="marketing-mockup-video"><Play size={24} fill="currentColor" /></div>
+              <strong>{t('landing.mockup.sourceTitle')}</strong>
+              <div><span>{t('landing.mockup.views')}</span><span>{t('landing.mockup.saves')}</span></div>
+            </article>
+            <article className="marketing-mockup-analysis">
+              <small>{t('landing.mockup.analysis')}</small>
+              <ul>
+                <li><CircleCheck size={14} />{t('landing.mockup.analysisOne')}</li>
+                <li><CircleCheck size={14} />{t('landing.mockup.analysisTwo')}</li>
+                <li><CircleCheck size={14} />{t('landing.mockup.analysisThree')}</li>
+              </ul>
+            </article>
+            <div className="marketing-mockup-output">
+              <article>
+                <small>{t('landing.mockup.brandBrain')}</small>
+                <strong>{t('landing.mockup.brandTone')}</strong>
+              </article>
+              <article className="marketing-mockup-script">
+                <div><small>{t('landing.mockup.script')}</small><span>{t('landing.mockup.ready')}</span></div>
+                <p>{t('landing.mockup.scriptLine')}</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="marketing-section marketing-built" id="built-for">
+        <div className="marketing-section-heading centered">
+          <h2>{t('landing.built.title')}</h2>
+        </div>
+        <div className="marketing-built-grid">
+          {audiences.map(([Icon, title, description]) => (
+            <article key={title}>
+              <Icon size={32} />
+              <h3>{title}</h3>
+              <p>{description}</p>
+              <button type="button" onClick={() => scrollToSection('how-it-works')}>{t('landing.built.learnMore')} →</button>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="marketing-section marketing-final-cta">
+        <h2>{t('landing.cta.title')}</h2>
+        <p>{t('landing.cta.description')}</p>
+        <button className="marketing-button inverse" type="button" onClick={() => openAuth('signup')}>
+          {t('landing.cta.action')}
+        </button>
+      </section>
+
+      <footer className="marketing-footer" id="resources">
+        <div className="marketing-footer-main">
+          <div className="marketing-footer-brand">
+            <a className="marketing-brand" href="#landing-top">
+              <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+              <strong>{t('landing.brand.name')}</strong>
+            </a>
+            <p>{t('landing.footer.tagline')}</p>
+          </div>
+          <div className="marketing-footer-links">
+            <div>
+              <strong>{t('landing.footer.product')}</strong>
+              <a href="#how-it-works">{t('landing.footer.howItWorks')}</a>
+              <a href="#product-demo">{t('landing.footer.productTour')}</a>
+              <a href="#built-for">{t('landing.footer.builtFor')}</a>
+            </div>
+            <div>
+              <strong>{t('landing.footer.company')}</strong>
+              <a href="#landing-top">{t('landing.footer.about')}</a>
+              <a href="#resources">{t('landing.footer.contact')}</a>
+              <button type="button" onClick={() => openAuth('login')}>{t('landing.actions.loginWithGoogle')}</button>
+            </div>
+            <div>
+              <strong>{t('landing.footer.legal')}</strong>
+              <a href="/privacy" target="_blank" rel="noreferrer">{t('landing.footer.privacy')}</a>
+              <a href="/terms" target="_blank" rel="noreferrer">{t('landing.footer.terms')}</a>
+            </div>
+          </div>
+        </div>
+        <div className="marketing-footer-bottom">
+          <span>{t('landing.footer.rights')}</span>
+          <span>{t('landing.footer.location')}</span>
+        </div>
+      </footer>
     </main>
   );
 }
@@ -7327,6 +7798,8 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     done: false,
   })));
   const postsRef = useRef(posts);
+  const contentPlanSavingRef = useRef(false);
+  const [isSavingPosts, setIsSavingPosts] = useState(false);
   const modalDate = fromLocalDateKey(modalDateKey);
   const modalDateLabel = modalDate
     ? modalDate.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
@@ -7386,14 +7859,49 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
     };
   }, [workspaceId]);
   const savePosts = async (nextPosts) => {
+    const response = await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ posts: nextPosts }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw createInterfaceApiError(payload, 'content_plan_save_failed');
+    }
+    return payload;
+  };
+  const persistPosts = async (nextPosts, successMessage = '') => {
+    if (contentPlanSavingRef.current) {
+      notify(language === 'en'
+        ? 'Please wait until the current calendar change is saved.'
+        : 'Зачекайте, поки поточна зміна календаря збережеться.');
+      return false;
+    }
+    contentPlanSavingRef.current = true;
+    setIsSavingPosts(true);
     try {
-      await authFetch(`${API_BASE}/workspaces/${workspaceId}/content-plan`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posts: nextPosts }),
-      });
+      const payload = await savePosts(nextPosts);
+      const canonicalPosts = Array.isArray(payload?.posts)
+        ? payload.posts.map((post) => {
+          const date = resolveContentPostDate(post, today);
+          return {
+            ...post,
+            day: date.getDate(),
+            date: toLocalDateKey(date),
+            format: normalizeContentFormat(post.format, 'Post'),
+          };
+        })
+        : nextPosts;
+      postsRef.current = canonicalPosts;
+      setPosts(canonicalPosts);
+      if (successMessage) notify(successMessage);
+      return true;
     } catch (error) {
       notify(localizeInterfaceError(error, t, 'errors.contentPlanSave'));
+      return false;
+    } finally {
+      contentPlanSavingRef.current = false;
+      setIsSavingPosts(false);
     }
   };
   const closePostModal = () => {
@@ -7420,7 +7928,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       }
       : { title: '', body: '', format: 'Reels', time: time || '10:00' });
   };
-  const savePost = () => {
+  const savePost = async () => {
     if (!draft.title.trim()) return;
     const cleanDraft = {
       title: draft.title.trim(),
@@ -7442,20 +7950,19 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
         ...cleanDraft,
         done: false,
       }];
-    setPosts(nextPosts);
-    savePosts(nextPosts);
-    closePostModal();
-    notify(translateText(editingPostId ? 'Подію оновлено в календарі' : 'Подію додано в календар'));
+    const saved = await persistPosts(
+      nextPosts,
+      translateText(editingPostId ? 'Подію оновлено в календарі' : 'Подію додано в календар'),
+    );
+    if (saved) closePostModal();
   };
-  const deletePost = () => {
+  const deletePost = async () => {
     if (!editingPostId) return;
     const nextPosts = postsRef.current.filter((post) => post.id !== editingPostId);
-    setPosts(nextPosts);
-    savePosts(nextPosts);
-    closePostModal();
-    notify(translateText('Подію видалено з календаря'));
+    const saved = await persistPosts(nextPosts, translateText('Подію видалено з календаря'));
+    if (saved) closePostModal();
   };
-  const movePost = (postId, dateInput) => {
+  const movePost = async (postId, dateInput) => {
     const date = dateInput instanceof Date
       ? dateInput
       : fromLocalDateKey(dateInput) || new Date(calendarDate.getFullYear(), calendarDate.getMonth(), Number(dateInput) || 1);
@@ -7464,18 +7971,18 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       day: date.getDate(),
       date: toLocalDateKey(date),
     } : post));
-    setPosts(nextPosts);
-    savePosts(nextPosts);
-    notify(language === 'en'
-      ? `Post moved to ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`
-      : `Пост перенесено на ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`);
+    await persistPosts(
+      nextPosts,
+      language === 'en'
+        ? `Post moved to ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`
+        : `Пост перенесено на ${date.toLocaleDateString(locale, { day: 'numeric', month: 'short' })}`,
+    );
   };
-  const toggleDone = (postId) => {
+  const toggleDone = async (postId) => {
     const nextPosts = postsRef.current.map((post) => (post.id === postId ? { ...post, done: !post.done } : post));
-    setPosts(nextPosts);
-    savePosts(nextPosts);
+    await persistPosts(nextPosts);
   };
-  const addIdeaToPlan = (idea, index) => {
+  const addIdeaToPlan = async (idea, index) => {
     const title = String(idea?.title || idea?.hook || 'Ідея для контенту').trim();
     const targetDate = new Date(today);
     targetDate.setDate(today.getDate() + postsRef.current.length);
@@ -7490,9 +7997,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
       source: idea?.source || 'notes',
     };
     const nextPosts = [...postsRef.current, nextPost];
-    setPosts(nextPosts);
-    savePosts(nextPosts);
-    notify(translateText('Ідею додано в контент-план'));
+    await persistPosts(nextPosts, translateText('Ідею додано в контент-план'));
   };
   const addManualNote = (event) => {
     event.preventDefault();
@@ -7635,7 +8140,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
           {(isPlanQueueExpanded ? posts : posts.slice(0, 5)).map((post) => (
             <article className={post.done ? 'mini-card plan-task done' : 'mini-card plan-task'} key={post.id}>
               <label>
-                <input type="checkbox" checked={post.done} onChange={() => toggleDone(post.id)} />
+                <input type="checkbox" checked={post.done} disabled={isSavingPosts} onChange={() => toggleDone(post.id)} />
                 <span />
               </label>
               <div>
@@ -7715,7 +8220,7 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                       <button className="ghost danger icon" type="button" onClick={() => deleteContentNote(idea)} aria-label={translateText('Видалити note')}>
                         <X size={14} />
                       </button>
-                      <button type="button" onClick={() => addIdeaToPlan(idea, index)}>
+                      <button type="button" disabled={isSavingPosts} onClick={() => addIdeaToPlan(idea, index)}>
                         <CalendarDays size={15} />{language === 'en' ? 'Add to plan' : 'Додати в план'}
                       </button>
                     </>
@@ -7787,12 +8292,12 @@ function ContentPlan({ plans, ideas = [], openModal, notify, setPage, workspaceI
                   <strong>{language === 'en' ? 'Delete event' : 'Видалити подію'}</strong>
                   <span>{language === 'en' ? 'Removes this item only from the calendar. Its source and Studio draft remain available.' : 'Прибере цей матеріал тільки з календаря. Джерело або Studio draft не видаляються.'}</span>
                 </div>
-                <button className="danger" type="button" onClick={deletePost}>{language === 'en' ? 'Delete' : 'Видалити'}</button>
+                <button className="danger" type="button" disabled={isSavingPosts} onClick={deletePost}>{language === 'en' ? 'Delete' : 'Видалити'}</button>
               </div>
             )}
             <div className="modal-actions">
               <button onClick={closePostModal}>{language === 'en' ? 'Cancel' : 'Скасувати'}</button>
-              <button className="dark" onClick={savePost}>
+              <button className="dark" disabled={isSavingPosts} onClick={savePost}>
                 {editingPostId
                   ? (language === 'en' ? 'Save changes' : 'Зберегти зміни')
                   : (language === 'en' ? 'Add to calendar' : 'Додати в календар')}

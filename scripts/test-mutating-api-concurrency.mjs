@@ -78,7 +78,23 @@ const db = {
     { token: 'session_b', userId: 'usr_b', createdAt: now, expiresAt: '2030-01-01T00:00:00.000Z' },
   ],
   workspaces: [
-    { id: 'ws_a', name: 'Workspace A', owner: 'Owner A', brief: {}, contentPlanPosts: [], createdAt: now },
+    {
+      id: 'ws_a',
+      name: 'Workspace A',
+      owner: 'Owner A',
+      brief: {
+        schemaVersion: 2,
+        answers: {
+          profileDescription: 'Specialty coffee and fast breakfasts',
+          audience: 'Busy Kyiv commuters',
+          niche: 'Coffee shop',
+          market: 'Kyiv, Ukraine',
+          instagramUrl: '',
+        },
+      },
+      contentPlanPosts: [],
+      createdAt: now,
+    },
     { id: 'ws_b', name: 'Workspace B', owner: 'Owner B', brief: {}, contentPlanPosts: [], createdAt: now },
   ],
   subscriptions: [
@@ -154,7 +170,14 @@ try {
   const quickResponse = await fetch(`${baseUrl}/api/workspaces/ws_b/brief`, {
     method: 'PUT',
     headers: { ...trustedHeaders, authorization: 'Bearer session_b' },
-    body: JSON.stringify({ businessType: 'Independent audit workspace' }),
+    body: JSON.stringify({
+      businessType: 'Independent audit workspace',
+      product: 'Independent audit service',
+      audience: 'Teams validating concurrent writes',
+      offer: 'Focused concurrency review',
+      cta: 'Request an audit',
+      toneOfVoice: 'Clear and technical',
+    }),
   });
   const quickDurationMs = Date.now() - quickStartedAt;
   const slowResponse = await slowRequest;

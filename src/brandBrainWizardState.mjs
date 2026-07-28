@@ -61,6 +61,7 @@ export function normalizeWizardDraft(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
   return {
     currentStep: Math.min(4, Math.max(1, Number(source.currentStep) || 1)),
+    workspaceName: compactText(source.workspaceName).slice(0, 80),
     answers: normalizeWizardAnswers(source.answers || source),
     updatedAt: compactText(source.updatedAt),
   };

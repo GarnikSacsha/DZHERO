@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 const { spawn } = require('node:child_process');
-const { copyFileSync, mkdtempSync, rmSync } = require('node:fs');
+const { copyFileSync, mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
@@ -8,6 +8,36 @@ const { chromium } = require('playwright');
 
 const ROOT = path.resolve(__dirname, '..');
 const CYRILLIC = /[А-Яа-яІіЇїЄєҐґ]/;
+const authSource = readFileSync(path.join(ROOT, 'src', 'main.jsx'), 'utf8');
+const englishCatalog = readFileSync(path.join(ROOT, 'src', 'locales', 'en.mjs'), 'utf8');
+const ukrainianCatalog = readFileSync(path.join(ROOT, 'src', 'locales', 'uk.mjs'), 'utf8');
+
+for (const key of [
+  'landing.auth.brandSub',
+  'landing.auth.headline',
+  'landing.auth.googleLoading',
+  'landing.auth.demoLoading',
+  'landing.auth.googleUnavailable',
+  'landing.auth.demoDisabled',
+  'landing.auth.demoFailed',
+  'landing.auth.networkError',
+  'landing.login.title',
+  'landing.login.google',
+  'landing.login.demoTitle',
+  'landing.login.demoHelper',
+  'landing.login.workflow.readyTitle',
+]) {
+  assert.ok(englishCatalog.includes(`'${key}'`), `English catalog is missing ${key}`);
+  assert.ok(ukrainianCatalog.includes(`'${key}'`), `Ukrainian catalog is missing ${key}`);
+}
+
+assert.ok(authSource.includes("const [pendingAuthAction, setPendingAuthAction] = useState(null);"));
+assert.ok(authSource.includes("pendingAuthAction === 'google' ? authCopy.googleLoading : authCopy.googleButton"));
+assert.ok(authSource.includes("pendingAuthAction === 'demo' ? authCopy.demoLoading : t(isSignup ?"));
+assert.ok(authSource.includes("setPendingAuthAction('google')"));
+assert.ok(authSource.includes("setPendingAuthAction('demo')"));
+assert.ok(authSource.includes("code === 'demo_login_disabled'"));
+assert.ok(authSource.includes("code === 'demo_login_failed'"));
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -132,7 +162,10 @@ async function runAudit(appUrl) {
       await assertEnglishSurface(page, 'Authentication');
       assert.equal(await page.getByRole('button', { name: 'UA', exact: true }).count(), 1, 'Signed-out language switch must label Ukrainian as UA');
       assert.equal(await page.getByRole('button', { name: 'UK', exact: true }).count(), 0, 'Signed-out language switch must not use UK');
-      await page.getByRole('button', { name: /view demo|start with demo/i }).first().click();
+      await page.getByRole('button', { name: 'Log in', exact: true }).click();
+      await page.waitForSelector('.marketing-login-page');
+      assert.equal(await page.getByRole('heading', { name: 'Welcome back.', exact: true }).count(), 1, 'Log in must open the dedicated authentication screen');
+      await page.getByRole('button', { name: /explore the demo workspace|start with demo/i }).first().click();
       await page.waitForSelector('.shell', { timeout: 15000 });
     }
 

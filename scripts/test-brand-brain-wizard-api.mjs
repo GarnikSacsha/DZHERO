@@ -115,6 +115,7 @@ async function testDraftFinalizeAndSharedBankAccess() {
       cookie,
       body: {
         currentStep: 2,
+        workspaceName: 'North Star Coffee',
         answers: {
           profileDescription: 'Coffee and breakfasts',
           audience: '',
@@ -126,6 +127,12 @@ async function testDraftFinalizeAndSharedBankAccess() {
     });
     assert.equal(draftResponse.status, 200);
     assert.equal(draftResponse.body.complete, false);
+    assert.equal(draftResponse.body.draft.workspaceName, 'North Star Coffee');
+    const persistedDraftDatabase = JSON.parse(readFileSync(databasePath, 'utf8'));
+    assert.equal(
+      persistedDraftDatabase.workspaces.find((item) => item.id === workspaceId).name,
+      'North Star Coffee',
+    );
 
     const incomplete = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/agent/context/finalize`, {
       method: 'POST',
