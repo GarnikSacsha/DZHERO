@@ -4079,6 +4079,14 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
               <a href="/resources#contact">{t('landing.footer.contactUs')}</a>
             </div>
             <div>
+              <strong>{t('landing.footer.socials')}</strong>
+              {['x', 'instagram', 'threads', 'linkedin', 'youtube'].map((social) => (
+                <span className="marketing-footer-placeholder" title={t('landing.footer.socialsPlaceholder')} key={social}>
+                  {t(`landing.footer.social.${social}`)}
+                </span>
+              ))}
+            </div>
+            <div>
               <strong>{t('landing.footer.legal')}</strong>
               <a href="/privacy" target="_blank" rel="noreferrer">{t('landing.footer.privacy')}</a>
               <a href="/terms" target="_blank" rel="noreferrer">{t('landing.footer.terms')}</a>

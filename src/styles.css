@@ -21911,7 +21911,7 @@ nav button.active::before {
 
 .marketing-footer-links {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 36px;
 }
 
@@ -21932,10 +21932,15 @@ nav button.active::before {
 }
 
 .marketing-footer-links a,
-.marketing-footer-links button {
+.marketing-footer-links button,
+.marketing-footer-placeholder {
   padding: 0;
   color: var(--marketing-muted);
   font-size: 11px;
+}
+
+.marketing-footer-placeholder {
+  cursor: default;
 }
 
 .marketing-footer-links a:hover,
