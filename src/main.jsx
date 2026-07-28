@@ -280,6 +280,7 @@ function getPublicPage() {
   const path = window.location.pathname.replace(/\/$/, '');
   return {
     '/about': 'about',
+    '/resources': 'resources',
     '/privacy': 'privacy',
     '/terms': 'terms',
     '/data-deletion': 'dataDeletion',
@@ -434,6 +435,136 @@ function PublicAboutPage({ theme, themeMode, setThemeMode, setLanguage }) {
           <strong>{t('landing.brand.name')}</strong>
         </a>
         <p>{t('about.footer')}</p>
+        <span>{t('landing.footer.rights')}</span>
+      </footer>
+    </main>
+  );
+}
+
+function PublicResourcesPage({ theme, themeMode, setThemeMode, setLanguage }) {
+  const { t, language } = useI18n();
+  const resourceLinks = [
+    ['documentation', t('resources.nav.documentation')],
+    ['roadmap', t('resources.nav.roadmap')],
+    ['blog', t('resources.nav.blog')],
+    ['contact', t('resources.nav.contact')],
+  ];
+  const documentationSteps = [
+    [Search, t('product.nav.discover'), t('resources.documentation.discover.body'), t('product.filters.aiMatch')],
+    [BarChart3, t('product.nav.studio'), t('resources.documentation.studio.body'), t('landing.mockup.brandBrain')],
+    [CalendarDays, t('product.plan.title'), t('resources.documentation.plan.body'), t('resources.documentation.plan.label')],
+  ];
+  const roadmapItems = [
+    [Bot, t('resources.roadmap.status.next'), t('resources.roadmap.agent.title'), t('resources.roadmap.agent.body')],
+    [Link2, t('resources.roadmap.status.planned'), t('resources.roadmap.instagram.title'), t('resources.roadmap.instagram.body')],
+  ];
+
+  return (
+    <main className="public-resources marketing-landing">
+      <header className="marketing-header public-resources-header">
+        <a className="marketing-brand" href="/" aria-label={t('landing.brand.ariaLabel')}>
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <nav className="marketing-nav public-resources-nav" aria-label={t('resources.nav.ariaLabel')}>
+          {resourceLinks.map(([id, label]) => <a href={`#${id}`} key={id}>{label}</a>)}
+        </nav>
+        <div className="marketing-header-actions">
+          <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
+            <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+          </div>
+          <button className="marketing-theme-toggle" type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <a className="public-legal-back" href="/">{t('legal.backToSite')}</a>
+        </div>
+      </header>
+
+      <section className="public-resources-hero">
+        <div>
+          <span>{t('resources.eyebrow')}</span>
+          <h1>{t('resources.hero.title')}</h1>
+          <p>{t('resources.hero.subtitle')}</p>
+        </div>
+        <nav className="public-resources-index" aria-label={t('resources.index.title')}>
+          <strong>{t('resources.index.title')}</strong>
+          {resourceLinks.map(([id, label], index) => (
+            <a href={`#${id}`} key={id}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <strong>{label}</strong>
+              <i aria-hidden="true">→</i>
+            </a>
+          ))}
+        </nav>
+      </section>
+
+      <section className="public-resources-documentation" id="documentation">
+        <header>
+          <span>{t('resources.documentation.eyebrow')}</span>
+          <div>
+            <h2>{t('resources.documentation.title')}</h2>
+            <p>{t('resources.documentation.intro')}</p>
+          </div>
+        </header>
+        <div className="public-resources-workflow">
+          {documentationSteps.map(([Icon, title, body, label], index) => (
+            <article key={title}>
+              <div>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <Icon size={19} />
+              </div>
+              <h3>{title}</h3>
+              <p>{body}</p>
+              <small>{label}</small>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-resources-roadmap" id="roadmap">
+        <div className="public-resources-section-copy">
+          <span>{t('resources.roadmap.eyebrow')}</span>
+          <h2>{t('resources.roadmap.title')}</h2>
+          <p>{t('resources.roadmap.intro')}</p>
+        </div>
+        <div className="public-resources-roadmap-list">
+          {roadmapItems.map(([Icon, status, title, body], index) => (
+            <article key={title}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <Icon size={21} />
+              <div>
+                <small>{status}</small>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-resources-updates">
+        <article id="blog">
+          <span>{t('resources.blog.eyebrow')}</span>
+          <h2>{t('resources.blog.title')}</h2>
+          <p>{t('resources.blog.body')}</p>
+          <small>{t('resources.blog.status')}</small>
+        </article>
+        <article id="contact">
+          <span>{t('resources.contact.eyebrow')}</span>
+          <h2>{t('resources.contact.title')}</h2>
+          <p>{t('resources.contact.body')}</p>
+          <small>{t('resources.contact.emailLabel')}</small>
+          <a href={`mailto:${t('resources.contact.email')}`}><Send size={16} />{t('resources.contact.email')}</a>
+        </article>
+      </section>
+
+      <footer className="public-legal-footer public-resources-footer">
+        <a className="marketing-brand" href="/">
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <p>{t('resources.footer')}</p>
         <span>{t('landing.footer.rights')}</span>
       </footer>
     </main>
@@ -1153,6 +1284,13 @@ function App() {
       <div className="auth-app" data-theme={theme}>
         {publicPage === 'about' ? (
           <PublicAboutPage
+            theme={theme}
+            themeMode={themeMode}
+            setThemeMode={setThemeMode}
+            setLanguage={setLanguage}
+          />
+        ) : publicPage === 'resources' ? (
+          <PublicResourcesPage
             theme={theme}
             themeMode={themeMode}
             setThemeMode={setThemeMode}
@@ -3635,7 +3773,7 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
         <nav className="marketing-nav" aria-label={t('landing.nav.ariaLabel')}>
           <a href="#built-for">{t('landing.nav.whoFor')}</a>
           <a href="#how-it-works">{t('landing.nav.howItWorks')}</a>
-          <a href="#resources">{t('landing.nav.resources')}</a>
+          <a href="/resources">{t('landing.nav.resources')}</a>
         </nav>
         <div className="marketing-header-actions">
           <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
@@ -3931,8 +4069,14 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
             <div>
               <strong>{t('landing.footer.company')}</strong>
               <a href="/about">{t('landing.footer.about')}</a>
-              <a href="#resources">{t('landing.footer.contact')}</a>
               <button type="button" onClick={() => openAuth('login')}>{t('landing.actions.loginWithGoogle')}</button>
+            </div>
+            <div>
+              <strong>{t('landing.footer.resources')}</strong>
+              <a href="/resources#documentation">{t('landing.footer.documentation')}</a>
+              <a href="/resources#roadmap">{t('landing.footer.roadmap')}</a>
+              <a href="/resources#blog">{t('landing.footer.blog')}</a>
+              <a href="/resources#contact">{t('landing.footer.contactUs')}</a>
             </div>
             <div>
               <strong>{t('landing.footer.legal')}</strong>
