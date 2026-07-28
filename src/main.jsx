@@ -289,7 +289,7 @@ function getInitialAppPage() {
   return window.location.pathname.replace(/\/$/, '') === '/admin/dev-roadmap' ? 'roadmap' : 'home';
 }
 
-function PublicLegalPage({ page }) {
+function PublicLegalPage({ page, theme, themeMode, setThemeMode, setLanguage }) {
   const { t, language } = useI18n();
   const [deletionForm, setDeletionForm] = useState({ email: '', instagramHandle: '', reason: '' });
   const [deletionResult, setDeletionResult] = useState(null);
@@ -356,47 +356,114 @@ function PublicLegalPage({ page }) {
       ],
     },
   };
-  const content = pages[page];
+  const sectionIds = {
+    privacy: ['who', 'collect', 'crm', 'tiktok', 'use', 'ai', 'sharing', 'security', 'retention', 'contact'],
+    terms: ['use', 'access', 'platforms', 'ai', 'ownership', 'acceptable', 'availability', 'termination'],
+    dataDeletion: ['request', 'disconnect', 'processing'],
+  };
+  const content = {
+    title: t(`legal.${page}.title`),
+    subtitle: t(`legal.${page}.subtitle`),
+    sections: sectionIds[page].map((sectionId) => [
+      t(`legal.${page}.${sectionId}.title`),
+      t(`legal.${page}.${sectionId}.body`),
+    ]),
+  };
+  const legalNavigation = [
+    ['privacy', '/privacy', t('legal.nav.privacy')],
+    ['terms', '/terms', t('legal.nav.terms')],
+    ['dataDeletion', '/data-deletion', t('legal.nav.dataDeletion')],
+  ];
   return (
-    <main className="public-legal">
-      <a className="public-brand" href="/">
-        <span className="logo">D</span>
-        <strong>Dzhero</strong>
-      </a>
-      <article>
-        <small>Dzhero legal document</small>
-        <h1>{content.title}</h1>
-        <p>{content.subtitle}</p>
-        {content.sections.map(([title, text]) => (
-          <section key={title}>
-            <h2>{title}</h2>
-            <p>{text}</p>
-          </section>
-        ))}
-        {page === 'dataDeletion' && (
-          <form className="deletion-form" onSubmit={submitDeletionRequest}>
-            <h2>Submit deletion request</h2>
-            <label>
-              <span>Email</span>
-              <input value={deletionForm.email} onChange={(event) => setDeletionForm((current) => ({ ...current, email: event.target.value }))} placeholder="you@example.com" type="email" />
-            </label>
-            <label>
-              <span>Instagram handle</span>
-              <input value={deletionForm.instagramHandle} onChange={(event) => setDeletionForm((current) => ({ ...current, instagramHandle: event.target.value }))} placeholder="@username" />
-            </label>
-            <label>
-              <span>Reason or details</span>
-              <textarea value={deletionForm.reason} onChange={(event) => setDeletionForm((current) => ({ ...current, reason: event.target.value }))} placeholder="Tell us which account/workspace should be deleted." rows={4} />
-            </label>
-            <button className="dark" type="submit" disabled={deletionStatus === 'loading'}>{deletionStatus === 'loading' ? 'Submitting...' : 'Request deletion'}</button>
-            {deletionResult && (
-              <p className={deletionResult.error ? 'deletion-result error' : 'deletion-result'}>
-                {deletionResult.error || `Request received. Confirmation code: ${deletionResult.confirmationCode}`}
-              </p>
-            )}
-          </form>
-        )}
-      </article>
+    <main className="public-legal marketing-landing">
+      <header className="marketing-header public-legal-header">
+        <a className="marketing-brand" href="/" aria-label={t('landing.brand.ariaLabel')}>
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <nav className="public-legal-tabs" aria-label={t('legal.nav.ariaLabel')}>
+          {legalNavigation.map(([id, href, label]) => (
+            <a className={page === id ? 'active' : ''} href={href} key={id}>{label}</a>
+          ))}
+        </nav>
+        <div className="marketing-header-actions public-legal-actions">
+          <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
+            <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+          </div>
+          <button className="marketing-theme-toggle" type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <a className="public-legal-back" href="/">{t('legal.backToSite')}</a>
+        </div>
+      </header>
+
+      <div className="public-legal-shell">
+        <aside className="public-legal-intro">
+          <span>{t('legal.eyebrow')}</span>
+          <h1>{content.title}</h1>
+          <p>{content.subtitle}</p>
+          <small>{t('legal.updated')}</small>
+          <nav aria-label={t('legal.contents')}>
+            <strong>{t('legal.contents')}</strong>
+            {content.sections.map(([title], index) => (
+              <a href={`#legal-section-${index + 1}`} key={title}>
+                <span>{String(index + 1).padStart(2, '0')}</span>{title}
+              </a>
+            ))}
+          </nav>
+        </aside>
+
+        <article className="public-legal-document">
+          {content.sections.map(([title, text], index) => (
+            <section id={`legal-section-${index + 1}`} key={title}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <div>
+                <h2>{title}</h2>
+                <p>{text}</p>
+              </div>
+            </section>
+          ))}
+          {page === 'dataDeletion' && (
+            <form className="deletion-form" onSubmit={submitDeletionRequest}>
+              <div>
+                <small>{t('legal.dataDeletion.form.eyebrow')}</small>
+                <h2>{t('legal.dataDeletion.form.title')}</h2>
+                <p>{t('legal.dataDeletion.form.description')}</p>
+              </div>
+              <label>
+                <span>{t('legal.dataDeletion.form.email')}</span>
+                <input value={deletionForm.email} onChange={(event) => setDeletionForm((current) => ({ ...current, email: event.target.value }))} placeholder="you@example.com" type="email" />
+              </label>
+              <label>
+                <span>{t('legal.dataDeletion.form.instagram')}</span>
+                <input value={deletionForm.instagramHandle} onChange={(event) => setDeletionForm((current) => ({ ...current, instagramHandle: event.target.value }))} placeholder="@username" />
+              </label>
+              <label>
+                <span>{t('legal.dataDeletion.form.details')}</span>
+                <textarea value={deletionForm.reason} onChange={(event) => setDeletionForm((current) => ({ ...current, reason: event.target.value }))} placeholder={t('legal.dataDeletion.form.placeholder')} rows={4} />
+              </label>
+              <button className="marketing-button primary" type="submit" disabled={deletionStatus === 'loading'}>
+                {t(deletionStatus === 'loading' ? 'legal.dataDeletion.form.submitting' : 'legal.dataDeletion.form.submit')}
+              </button>
+              {deletionResult && (
+                <p className={deletionResult.error ? 'deletion-result error' : 'deletion-result'}>
+                  {deletionResult.error || t('legal.dataDeletion.form.received', { code: deletionResult.confirmationCode })}
+                </p>
+              )}
+            </form>
+          )}
+        </article>
+      </div>
+
+      <footer className="public-legal-footer">
+        <a className="marketing-brand" href="/">
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <p>{t('legal.footer')}</p>
+        <span>{t('landing.footer.rights')}</span>
+      </footer>
     </main>
   );
 }
@@ -931,7 +998,17 @@ function App() {
   };
 
   if (publicPage) {
-    return <PublicLegalPage page={publicPage} />;
+    return (
+      <div className="auth-app" data-theme={theme}>
+        <PublicLegalPage
+          page={publicPage}
+          theme={theme}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          setLanguage={setLanguage}
+        />
+      </div>
+    );
   }
 
   if (mobilePreviewUrl) {
