@@ -3259,9 +3259,27 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
     [CalendarDays, t('landing.value.planning.title'), t('landing.value.planning.description')],
   ];
   const audiences = [
-    [BriefcaseBusiness, t('landing.built.smallBusiness.title'), t('landing.built.smallBusiness.description')],
-    [Video, t('landing.built.creators.title'), t('landing.built.creators.description')],
-    [UsersRound, t('landing.built.smm.title'), t('landing.built.smm.description')],
+    [
+      BriefcaseBusiness,
+      t('landing.built.smallBusiness.title'),
+      t('landing.built.smallBusiness.description'),
+      t('landing.built.smallBusiness.exampleLabel'),
+      t('landing.built.smallBusiness.exampleValue'),
+    ],
+    [
+      Video,
+      t('landing.built.creators.title'),
+      t('landing.built.creators.description'),
+      t('landing.built.creators.exampleLabel'),
+      t('landing.built.creators.exampleValue'),
+    ],
+    [
+      UsersRound,
+      t('landing.built.smm.title'),
+      t('landing.built.smm.description'),
+      t('landing.built.smm.exampleLabel'),
+      t('landing.built.smm.exampleValue'),
+    ],
   ];
   const demoSteps = [
     t('landing.demo.stepFound'),
@@ -3408,7 +3426,7 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
             <button className="marketing-button primary" type="button" onClick={() => openAuth('signup')}>
               {authCopy.demoButton}
             </button>
-            <button className="marketing-button secondary" type="button" onClick={() => scrollToSection('product-demo')}>
+            <button className="marketing-text-action" type="button" onClick={() => scrollToSection('product-demo')}>
               <Play size={16} fill="currentColor" />{t('landing.actions.watchDemo')}
             </button>
           </div>
@@ -3421,37 +3439,73 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
             <span>{t('landing.demo.example')}</span>
             <div className="marketing-demo-toolbar-actions" aria-hidden="true"><i /><i /></div>
           </div>
-          <div className="marketing-demo-stage">
-            <div className="marketing-demo-transform">
-              <article className="marketing-demo-idea original">
-                <small>{t('landing.demo.original')}</small>
-                <div className="marketing-demo-thumbnail"><Play size={18} fill="currentColor" /></div>
-                <strong>{t('landing.demo.signalTitle')}</strong>
+          <div className="marketing-demo-stage marketing-workflow-canvas">
+            <div className="marketing-workflow-track" aria-hidden="true">
+              {demoSteps.map((step, index) => <i key={step} style={{ '--marketing-step': index }} />)}
+            </div>
+            <div className="marketing-workflow-panels">
+              <article className="marketing-workflow-panel discover" style={{ '--marketing-step': 0 }}>
+                <header>
+                  <span>{t('product.nav.discover')}</span>
+                  <strong>{t('product.filters.aiMatch')} 94%</strong>
+                </header>
+                <div className="marketing-signal-visual">
+                  <span><Play size={18} fill="currentColor" /></span>
+                  <small>00:18</small>
+                </div>
+                <div className="marketing-signal-author">
+                  <span>MK</span>
+                  <div><strong>@maker.daily</strong><small>Instagram Reels</small></div>
+                </div>
+                <p>{t('landing.demo.signalTitle')}</p>
+                <footer><span>{t('landing.mockup.views')}</span><span>{t('landing.mockup.saves')}</span></footer>
               </article>
-              <span className="marketing-demo-arrow" aria-hidden="true">→</span>
-              <article className="marketing-demo-idea adapted">
-                <small>{t('landing.demo.adapted')}</small>
-                <div className="marketing-demo-copy-lines" aria-hidden="true"><i /><i /><i /></div>
-                <strong>{t('landing.demo.adaptedTitle')}</strong>
+
+              <article className="marketing-workflow-panel analyze" style={{ '--marketing-step': 1 }}>
+                <header>
+                  <span>{t('landing.mockup.analysis')}</span>
+                  <strong>{t('landing.preview.signalAnalysis')}</strong>
+                </header>
+                <div className="marketing-transcript-lines">
+                  <p><time>00:00</time>{t('landing.preview.transcriptOne')}</p>
+                  <p><time>00:06</time>{t('landing.preview.transcriptTwo')}</p>
+                </div>
+                <ul>
+                  <li><CircleCheck size={13} />{t('landing.mockup.analysisOne')}</li>
+                  <li><CircleCheck size={13} />{t('landing.mockup.analysisTwo')}</li>
+                </ul>
+              </article>
+
+              <article className="marketing-workflow-panel adapt" style={{ '--marketing-step': 2 }}>
+                <header>
+                  <span>{t('landing.demo.adapted')}</span>
+                  <strong>{t('landing.mockup.brandBrain')}</strong>
+                </header>
+                <div className="marketing-brand-brain-line">
+                  <Sparkles size={15} />
+                  <span>{t('landing.mockup.brandTone')}</span>
+                </div>
+                <strong className="marketing-adapted-hook">{t('landing.demo.adaptedTitle')}</strong>
+                <p>{t('landing.mockup.scriptLine')}</p>
+              </article>
+
+              <article className="marketing-workflow-panel plan" style={{ '--marketing-step': 3 }}>
+                <header>
+                  <span>{t('product.plan.title')}</span>
+                  <strong>{t('landing.preview.planReady')}</strong>
+                </header>
+                <div className="marketing-mini-week">
+                  {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day, index) => (
+                    <span className={index === 3 ? 'active' : ''} key={day}>
+                      <small>{t(`product.plan.weekdays.${day}`)}</small>
+                      <b>{28 + index}</b>
+                      {index === 3 && <i />}
+                    </span>
+                  ))}
+                </div>
+                <div className="marketing-plan-result"><CalendarDays size={15} />{t('landing.demo.addToPlan')}</div>
               </article>
             </div>
-            <div className="marketing-demo-calendar">
-              <div className="marketing-demo-calendar-head">
-                <strong>{t('landing.demo.calendar')}</strong>
-                <span aria-hidden="true"><i /><i /></span>
-              </div>
-              <div className="marketing-demo-calendar-grid">
-                {Array.from({ length: 14 }, (_, index) => (
-                  <span className={index === 8 ? 'active' : ''} key={index}>
-                    <small>{index + 1}</small>
-                    {index === 8 && <i />}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <button className="marketing-demo-plan-button" type="button" onClick={() => scrollToSection('how-it-works')}>
-              {t('landing.demo.addToPlan')}
-            </button>
           </div>
           <div className="marketing-demo-progress">
             {demoSteps.map((step, index) => (
@@ -3464,80 +3518,150 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
       </section>
 
       <section className="marketing-section marketing-how" id="how-it-works">
-        <div className="marketing-section-heading centered">
+        <div className="marketing-section-heading">
           <h2>{t('landing.how.title')}</h2>
           <p>{t('landing.how.subtitle')}</p>
         </div>
         <div className="marketing-how-grid">
           {howSteps.map(([Icon, title, description], index) => (
             <article key={title}>
-              <span className="marketing-step-number">{index + 1}</span>
-              <h3>{title}</h3>
-              <p>{description}</p>
-              <Icon size={20} />
+              <div className="marketing-step-marker">
+                <span className="marketing-step-number">{index + 1}</span>
+                <Icon size={18} />
+              </div>
+              <div>
+                <h3>{title}</h3>
+                <p>{description}</p>
+              </div>
             </article>
           ))}
         </div>
       </section>
 
       <section className="marketing-section marketing-value">
-        <div className="marketing-value-copy">
+        <div className="marketing-value-heading">
           <h2>{t('landing.value.title')}</h2>
-          <div className="marketing-value-list">
-            {valueItems.map(([Icon, title, description]) => (
-              <article key={title}>
-                <span><Icon size={17} /></span>
-                <div><h3>{title}</h3><p>{description}</p></div>
-              </article>
-            ))}
-          </div>
+          <p>{t('landing.value.subtitle')}</p>
         </div>
-        <div className="marketing-product-mockup">
-          <div className="marketing-mockup-top">
-            <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
-            <strong>{t('landing.mockup.workspace')}</strong>
-            <i aria-hidden="true" />
-          </div>
-          <div className="marketing-mockup-grid">
-            <article className="marketing-mockup-source">
-              <small>{t('landing.mockup.source')}</small>
-              <div className="marketing-mockup-video"><Play size={24} fill="currentColor" /></div>
-              <strong>{t('landing.mockup.sourceTitle')}</strong>
-              <div><span>{t('landing.mockup.views')}</span><span>{t('landing.mockup.saves')}</span></div>
-            </article>
-            <article className="marketing-mockup-analysis">
-              <small>{t('landing.mockup.analysis')}</small>
-              <ul>
-                <li><CircleCheck size={14} />{t('landing.mockup.analysisOne')}</li>
-                <li><CircleCheck size={14} />{t('landing.mockup.analysisTwo')}</li>
-                <li><CircleCheck size={14} />{t('landing.mockup.analysisThree')}</li>
-              </ul>
-            </article>
-            <div className="marketing-mockup-output">
-              <article>
-                <small>{t('landing.mockup.brandBrain')}</small>
-                <strong>{t('landing.mockup.brandTone')}</strong>
-              </article>
-              <article className="marketing-mockup-script">
-                <div><small>{t('landing.mockup.script')}</small><span>{t('landing.mockup.ready')}</span></div>
-                <p>{t('landing.mockup.scriptLine')}</p>
-              </article>
+
+        <div className="marketing-product-stories">
+          <article className="marketing-product-story discover">
+            <div className="marketing-product-copy">
+              <span><Search size={16} />{t('product.nav.discover')}</span>
+              <h3>{valueItems[0][1]}</h3>
+              <p>{valueItems[0][2]}</p>
+              <button type="button" onClick={() => scrollToSection('product-demo')}>{t('landing.built.learnMore')} <span aria-hidden="true">→</span></button>
             </div>
-          </div>
+            <div className="marketing-discover-preview" aria-label={t('landing.preview.discoverAria')}>
+              <header>
+                <div><strong>{t('product.nav.discover')}</strong><small>{t('landing.preview.discoverSubtitle')}</small></div>
+                <span><Sparkles size={13} />{t('product.filters.aiMatch')}</span>
+              </header>
+              <div className="marketing-content-cards">
+                {[
+                  ['AR', 'landing.mockup.sourceTitle', '94%', '1.2M'],
+                  ['LM', 'landing.preview.signalTwo', '91%', '842K'],
+                  ['NV', 'landing.preview.signalThree', '88%', '516K'],
+                ].map(([author, titleKey, match, views], index) => (
+                  <article key={author}>
+                    <div className={`marketing-content-thumbnail tone-${index + 1}`}>
+                      <span><Play size={15} fill="currentColor" /></span>
+                      <small>00:{18 + index * 4}</small>
+                    </div>
+                    <div className="marketing-content-author"><span>{author}</span><small>@{author.toLowerCase()}.studio</small></div>
+                    <strong>{t(titleKey)}</strong>
+                    <footer><span>{views}</span><b>{t('product.filters.aiMatch')} {match}</b></footer>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </article>
+
+          <article className="marketing-product-story studio reverse">
+            <div className="marketing-studio-preview" aria-label={t('landing.preview.studioAria')}>
+              <header>
+                <strong>{t('product.nav.studio')}</strong>
+                <nav>
+                  <span>{t('product.studio.tabs.transcript')}</span>
+                  <span className="active">{t('product.studio.tabs.analysis')}</span>
+                  <span>{t('product.studio.tabs.adaptation')}</span>
+                </nav>
+              </header>
+              <div className="marketing-studio-columns">
+                <article className="transcript">
+                  <small>{t('product.studio.tabs.transcript')}</small>
+                  <p><time>00:00</time>{t('landing.preview.transcriptOne')}</p>
+                  <p><time>00:06</time>{t('landing.preview.transcriptTwo')}</p>
+                  <p><time>00:14</time>{t('landing.preview.transcriptThree')}</p>
+                </article>
+                <article className="analysis">
+                  <small>{t('landing.preview.signalAnalysis')}</small>
+                  <strong>94% {t('product.filters.aiMatch')}</strong>
+                  <ul>
+                    <li><CircleCheck size={12} />{t('landing.mockup.analysisOne')}</li>
+                    <li><CircleCheck size={12} />{t('landing.mockup.analysisTwo')}</li>
+                    <li><CircleCheck size={12} />{t('landing.mockup.analysisThree')}</li>
+                  </ul>
+                </article>
+                <article className="adaptation">
+                  <small>{t('landing.demo.adapted')}</small>
+                  <span><Sparkles size={13} />{t('product.studio.adaptation.label')}</span>
+                  <strong>{t('landing.demo.adaptedTitle')}</strong>
+                  <p>{t('landing.mockup.scriptLine')}</p>
+                </article>
+              </div>
+            </div>
+            <div className="marketing-product-copy">
+              <span><BarChart3 size={16} />{t('product.nav.studio')}</span>
+              <h3>{valueItems[1][1]}</h3>
+              <p>{valueItems[1][2]}</p>
+              <button type="button" onClick={() => scrollToSection('product-demo')}>{t('landing.built.learnMore')} <span aria-hidden="true">→</span></button>
+            </div>
+          </article>
+
+          <article className="marketing-product-story plan">
+            <div className="marketing-product-copy">
+              <span><CalendarDays size={16} />{t('product.plan.title')}</span>
+              <h3>{valueItems[2][1]}</h3>
+              <p>{valueItems[2][2]}</p>
+              <button type="button" onClick={() => scrollToSection('product-demo')}>{t('landing.built.learnMore')} <span aria-hidden="true">→</span></button>
+            </div>
+            <div className="marketing-plan-preview" aria-label={t('landing.preview.planAria')}>
+              <header>
+                <div><strong>{t('product.plan.title')}</strong><small>{t('landing.preview.planSubtitle')}</small></div>
+                <span>{t('landing.preview.planReady')}</span>
+              </header>
+              <div className="marketing-plan-weekdays">
+                {['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'].map((day) => <span key={day}>{t(`product.plan.weekdays.${day}`)}</span>)}
+              </div>
+              <div className="marketing-plan-grid">
+                {Array.from({ length: 14 }, (_, index) => (
+                  <div className={index === 8 ? 'active' : ''} key={index}>
+                    <small>{index + 1}</small>
+                    {[1, 4, 8, 10, 12].includes(index) && (
+                      <span className={`format-${index % 3}`}>
+                        <b>{index === 8 ? '11:30' : '10:00'}</b>
+                        {t(index === 8 ? 'landing.preview.planPostAdapted' : 'landing.preview.planPostSignal')}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </article>
         </div>
       </section>
 
       <section className="marketing-section marketing-built" id="built-for">
-        <div className="marketing-section-heading centered">
+        <div className="marketing-section-heading">
           <h2>{t('landing.built.title')}</h2>
         </div>
         <div className="marketing-built-grid">
-          {audiences.map(([Icon, title, description]) => (
+          {audiences.map(([Icon, title, description, exampleLabel, exampleValue]) => (
             <article key={title}>
-              <Icon size={32} />
-              <h3>{title}</h3>
+              <div className="marketing-built-title"><Icon size={20} /><h3>{title}</h3></div>
               <p>{description}</p>
-              <button type="button" onClick={() => scrollToSection('how-it-works')}>{t('landing.built.learnMore')} →</button>
+              <aside><small>{exampleLabel}</small><strong>{exampleValue}</strong></aside>
             </article>
           ))}
         </div>
