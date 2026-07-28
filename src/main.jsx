@@ -279,6 +279,7 @@ function normalizeContentFormat(format, fallback = 'Post') {
 function getPublicPage() {
   const path = window.location.pathname.replace(/\/$/, '');
   return {
+    '/about': 'about',
     '/privacy': 'privacy',
     '/terms': 'terms',
     '/data-deletion': 'dataDeletion',
@@ -287,6 +288,156 @@ function getPublicPage() {
 
 function getInitialAppPage() {
   return window.location.pathname.replace(/\/$/, '') === '/admin/dev-roadmap' ? 'roadmap' : 'home';
+}
+
+function PublicAboutPage({ theme, themeMode, setThemeMode, setLanguage }) {
+  const { t, language } = useI18n();
+  const processSteps = [
+    [Search, t('about.what.finds')],
+    [BarChart3, t('about.what.understands')],
+    [Wand2, t('about.what.adapts')],
+    [Video, t('about.what.generates')],
+    [CalendarDays, t('about.what.organizes')],
+  ];
+  const audiences = [
+    [BriefcaseBusiness, t('about.built.smallBusiness')],
+    [Video, t('about.built.creators')],
+    [UsersRound, t('about.built.marketingTeams')],
+    [Database, t('about.built.agencies')],
+  ];
+  const visionPrinciples = [
+    t('about.vision.explainable'),
+    t('about.vision.brandFit'),
+    t('about.vision.productionReady'),
+  ];
+
+  return (
+    <main className="public-about marketing-landing">
+      <header className="marketing-header public-about-header">
+        <a className="marketing-brand" href="/" aria-label={t('landing.brand.ariaLabel')}>
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <nav className="marketing-nav public-about-nav" aria-label={t('about.nav.ariaLabel')}>
+          <a href="#about-story">{t('about.nav.story')}</a>
+          <a href="#about-product">{t('about.nav.product')}</a>
+          <a href="#about-philosophy">{t('about.nav.philosophy')}</a>
+          <a href="#about-vision">{t('about.nav.vision')}</a>
+        </nav>
+        <div className="marketing-header-actions">
+          <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
+            <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
+            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
+          </div>
+          <button className="marketing-theme-toggle" type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={() => setThemeMode(getNextThemeMode(themeMode))}>
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <a className="public-legal-back" href="/">{t('legal.backToSite')}</a>
+        </div>
+      </header>
+
+      <section className="public-about-hero" id="about-story">
+        <div className="public-about-copy">
+          <span>{t('about.eyebrow')}</span>
+          <h1>{t('about.story.title')}</h1>
+          <div>
+            <p>{t('about.story.blankPage')}</p>
+            <p>{t('about.story.betterStart')}</p>
+            <p>{t('about.story.explanation')}</p>
+          </div>
+        </div>
+        <aside className="public-about-origin" aria-label={t('about.preview.ariaLabel')}>
+          <header>
+            <strong>{t('landing.brand.name')}</strong>
+            <span><Sparkles size={13} />{t('product.filters.aiMatch')} 94%</span>
+          </header>
+          <div className="public-about-origin-signal">
+            <div><Play size={20} fill="currentColor" /><small>00:18</small></div>
+            <span>{t('about.preview.provenSignal')}</span>
+          </div>
+          <div className="public-about-origin-path">
+            <article><small>01</small><strong>{t('about.preview.mechanic')}</strong></article>
+            <i aria-hidden="true">→</i>
+            <article><small>02</small><strong>{t('landing.mockup.brandBrain')}</strong></article>
+            <i aria-hidden="true">→</i>
+            <article><small>03</small><strong>{t('landing.mockup.script')}</strong></article>
+          </div>
+          <footer><CalendarDays size={15} />{t('about.preview.plan')}</footer>
+        </aside>
+      </section>
+
+      <section className="public-about-what" id="about-product">
+        <header>
+          <span>{t('about.section.product')}</span>
+          <h2>{t('about.what.title')}</h2>
+        </header>
+        <div className="public-about-process">
+          {processSteps.map(([Icon, label], index) => (
+            <article key={label}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <Icon size={19} />
+              <strong>{label}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-about-built">
+        <div>
+          <span>{t('about.section.audience')}</span>
+          <h2>{t('about.built.title')}</h2>
+          <p>{t('about.built.intro')}</p>
+        </div>
+        <div className="public-about-audiences">
+          {audiences.map(([Icon, label], index) => (
+            <article key={label}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <Icon size={20} />
+              <strong>{label}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="public-about-philosophy" id="about-philosophy">
+        <div className="public-about-philosophy-copy">
+          <span>{t('about.section.belief')}</span>
+          <h2>{t('about.philosophy.title')}</h2>
+        </div>
+        <div className="public-about-philosophy-text">
+          <p>{t('about.philosophy.zero')}</p>
+          <p>{t('about.philosophy.understanding')}</p>
+          <p>{t('about.philosophy.focus')}</p>
+        </div>
+      </section>
+
+      <section className="public-about-vision" id="about-vision">
+        <div>
+          <span>{t('about.section.direction')}</span>
+          <h2>{t('about.vision.title')}</h2>
+          <p>{t('about.vision.intro')}</p>
+        </div>
+        <div className="public-about-principles">
+          {visionPrinciples.map((principle, index) => (
+            <article key={principle}>
+              <span>{String(index + 1).padStart(2, '0')}</span>
+              <CircleCheck size={18} />
+              <strong>{principle}</strong>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <footer className="public-legal-footer public-about-footer">
+        <a className="marketing-brand" href="/">
+          <span className="marketing-brand-mark"><img src={logoImg} alt="" /></span>
+          <strong>{t('landing.brand.name')}</strong>
+        </a>
+        <p>{t('about.footer')}</p>
+        <span>{t('landing.footer.rights')}</span>
+      </footer>
+    </main>
+  );
 }
 
 function PublicLegalPage({ page, theme, themeMode, setThemeMode, setLanguage }) {
@@ -1000,13 +1151,22 @@ function App() {
   if (publicPage) {
     return (
       <div className="auth-app" data-theme={theme}>
-        <PublicLegalPage
-          page={publicPage}
-          theme={theme}
-          themeMode={themeMode}
-          setThemeMode={setThemeMode}
-          setLanguage={setLanguage}
-        />
+        {publicPage === 'about' ? (
+          <PublicAboutPage
+            theme={theme}
+            themeMode={themeMode}
+            setThemeMode={setThemeMode}
+            setLanguage={setLanguage}
+          />
+        ) : (
+          <PublicLegalPage
+            page={publicPage}
+            theme={theme}
+            themeMode={themeMode}
+            setThemeMode={setThemeMode}
+            setLanguage={setLanguage}
+          />
+        )}
       </div>
     );
   }
@@ -3770,7 +3930,7 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
             </div>
             <div>
               <strong>{t('landing.footer.company')}</strong>
-              <a href="#landing-top">{t('landing.footer.about')}</a>
+              <a href="/about">{t('landing.footer.about')}</a>
               <a href="#resources">{t('landing.footer.contact')}</a>
               <button type="button" onClick={() => openAuth('login')}>{t('landing.actions.loginWithGoogle')}</button>
             </div>
