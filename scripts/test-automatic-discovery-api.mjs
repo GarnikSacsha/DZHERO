@@ -326,6 +326,7 @@ try {
       id: 'youtube_duplicate_weak',
       workspaceId,
       title: 'Same YouTube Short',
+      curationStatus: 'approved',
       sourceUrl: 'https://www.youtube.com/shorts/abc123',
       views: 0,
       likes: 0,
@@ -340,6 +341,7 @@ try {
       id: 'youtube_duplicate_strong',
       workspaceId,
       title: 'Same YouTube Short',
+      curationStatus: 'approved',
       sourceUrl: 'https://www.youtube.com/watch?v=abc123',
       views: '60M',
       likes: '472K',
@@ -354,6 +356,7 @@ try {
       id: 'instagram_unique',
       workspaceId,
       title: 'Unique Instagram Reel',
+      curationStatus: 'approved',
       sourceUrl: 'https://www.instagram.com/reel/xyz/',
       importedMetadata: {
         provider: 'apify',

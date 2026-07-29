@@ -5,6 +5,7 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const {
   buildSharedSignalBankReels,
+  isApprovedSharedSignal,
   isSharedSignalBankPlan,
   resolveSharedSignalBankWorkspace,
 } = require('../backend/services/sharedSignalBank.cjs');
@@ -20,8 +21,24 @@ const db = {
   ],
   reels: [
     { id: 'one', workspaceId: 'ws_small', title: 'Small bank signal', score: 99 },
-    { id: 'two', workspaceId: 'ws_large', title: 'Public signal two', score: 82, remixResult: { private: true } },
-    { id: 'three', workspaceId: 'ws_large', title: 'Public signal three', score: 94, privateNotes: 'do not share' },
+    {
+      id: 'two',
+      workspaceId: 'ws_large',
+      title: 'Public signal two',
+      score: 82,
+      curationStatus: 'approved',
+      remixResult: { private: true },
+    },
+    {
+      id: 'three',
+      workspaceId: 'ws_large',
+      title: 'Public signal three',
+      score: 94,
+      curationStatus: 'APPROVED',
+      privateNotes: 'do not share',
+    },
+    { id: 'legacy', workspaceId: 'ws_large', title: 'Legacy unreviewed signal', score: 100 },
+    { id: 'archived', workspaceId: 'ws_large', title: 'Archived signal', score: 100, curationStatus: 'archived' },
   ],
 };
 
@@ -30,6 +47,9 @@ assert.equal(resolveSharedSignalBankWorkspace(db, { workspaceId: 'ws_small', own
 assert.equal(resolveSharedSignalBankWorkspace(db, { ownerEmail: 'missing@example.com' }), '');
 assert.equal(isSharedSignalBankPlan({ plan: { id: 'trial' } }), true);
 assert.equal(isSharedSignalBankPlan({ plan: { id: 'tester_pro' } }), false);
+assert.equal(isApprovedSharedSignal({ curationStatus: ' approved ' }), true);
+assert.equal(isApprovedSharedSignal({ curationStatus: 'archived' }), false);
+assert.equal(isApprovedSharedSignal({}), false);
 
 const shared = buildSharedSignalBankReels(db, {
   targetWorkspaceId: 'ws_trial',
@@ -38,10 +58,14 @@ const shared = buildSharedSignalBankReels(db, {
 });
 assert.equal(shared.sourceWorkspaceId, 'ws_large');
 assert.deepEqual(shared.reels.map((reel) => reel.id), ['shared_three', 'shared_two']);
+assert.equal(shared.sourceSignalCount, 4);
+assert.equal(shared.archivedSignalCount, 2);
+assert.equal(db.reels.filter((reel) => reel.workspaceId === 'ws_large').length, 4);
 assert.ok(shared.reels.every((reel) => reel.workspaceId === 'ws_trial'));
 assert.ok(shared.reels.every((reel) => reel.sharedBank === true));
 assert.ok(shared.reels.every((reel) => !Object.hasOwn(reel, 'remixResult')));
 assert.ok(shared.reels.every((reel) => !Object.hasOwn(reel, 'privateNotes')));
+assert.ok(shared.reels.every((reel) => !Object.hasOwn(reel, 'curationStatus')));
 
 const root = path.resolve(__dirname, '..');
 const serverSource = readFileSync(path.join(root, 'backend', 'server.js'), 'utf8');

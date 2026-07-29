@@ -1,5 +1,7 @@
 'use strict';
 
+const SHARED_SIGNAL_CURATION_APPROVED = 'approved';
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -43,6 +45,11 @@ function isSharedSignalBankPlan(entitlements = {}) {
   return entitlements?.plan?.id === 'trial';
 }
 
+function isApprovedSharedSignal(reel = {}) {
+  return String(reel.curationStatus || '').trim().toLowerCase()
+    === SHARED_SIGNAL_CURATION_APPROVED;
+}
+
 function projectSharedSignal(reel = {}, targetWorkspaceId = '') {
   const sharedSourceId = String(reel.id || '').trim();
   const stableId = sharedSourceId || String(reel.sourceUrl || reel.title || 'signal')
@@ -61,6 +68,7 @@ function projectSharedSignal(reel = {}, targetWorkspaceId = '') {
   delete projected.remixResult;
   delete projected.workspaceNotes;
   delete projected.privateNotes;
+  delete projected.curationStatus;
   return projected;
 }
 
@@ -68,11 +76,18 @@ function buildSharedSignalBankReels(db = {}, options = {}) {
   const targetWorkspaceId = String(options.targetWorkspaceId || '').trim();
   const sourceWorkspaceId = resolveSharedSignalBankWorkspace(db, options);
   if (!targetWorkspaceId || !sourceWorkspaceId || sourceWorkspaceId === targetWorkspaceId) {
-    return { sourceWorkspaceId, reels: [] };
+    return {
+      sourceWorkspaceId,
+      reels: [],
+      sourceSignalCount: 0,
+      archivedSignalCount: 0,
+    };
   }
   const limit = normalizeLimit(options.limit);
-  const reels = (Array.isArray(db.reels) ? db.reels : [])
-    .filter((reel) => reel.workspaceId === sourceWorkspaceId)
+  const sourceReels = (Array.isArray(db.reels) ? db.reels : [])
+    .filter((reel) => reel.workspaceId === sourceWorkspaceId);
+  const approvedReels = sourceReels.filter(isApprovedSharedSignal);
+  const reels = approvedReels
     .sort((left, right) => {
       const scoreDelta = (Number(right.score) || 0) - (Number(left.score) || 0);
       if (scoreDelta) return scoreDelta;
@@ -81,11 +96,18 @@ function buildSharedSignalBankReels(db = {}, options = {}) {
     })
     .slice(0, limit)
     .map((reel) => projectSharedSignal(reel, targetWorkspaceId));
-  return { sourceWorkspaceId, reels };
+  return {
+    sourceWorkspaceId,
+    reels,
+    sourceSignalCount: sourceReels.length,
+    archivedSignalCount: sourceReels.length - approvedReels.length,
+  };
 }
 
 module.exports = {
+  SHARED_SIGNAL_CURATION_APPROVED,
   buildSharedSignalBankReels,
+  isApprovedSharedSignal,
   isSharedSignalBankPlan,
   normalizeLimit,
   projectSharedSignal,

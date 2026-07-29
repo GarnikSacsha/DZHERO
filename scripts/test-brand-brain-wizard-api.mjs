@@ -65,6 +65,7 @@ function seedWizardFixture(database) {
       market: 'Kyiv',
       platform: 'tiktok',
       score: 91,
+      curationStatus: 'approved',
     },
     {
       id: 'reel_unrelated_fixture',
@@ -74,6 +75,7 @@ function seedWizardFixture(database) {
       market: 'Lviv',
       platform: 'youtube',
       score: 99,
+      curationStatus: 'approved',
     },
   );
   database.usageCounters = (database.usageCounters || []).filter((item) => item.workspaceId !== workspace.id);
