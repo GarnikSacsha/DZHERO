@@ -26317,35 +26317,122 @@ nav button.active::before {
   background: var(--product-primary);
 }
 
-.product-channel-filters {
+.product-channel-toolbar {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  margin: 16px 0 22px;
+  margin: 16px 0;
 }
 
-.product-channel-filters button {
+.product-channel-toolbar > button,
+.product-channel-toolbar > label {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 38px;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   padding: 0 11px;
   border: 1px solid var(--product-border);
-  border-radius: 999px;
+  border-radius: 10px;
   background: var(--product-surface);
-  color: var(--product-muted);
+  color: var(--product-text);
   font-family: var(--font-sans);
   font-size: 10px;
+  font-weight: 850;
+}
+
+.product-channel-toolbar > button.active {
+  border-color: var(--product-accent);
+  color: var(--product-accent);
+}
+
+.product-channel-toolbar > button em {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--product-primary);
+  color: var(--product-primary-text);
+  font-size: 8px;
+  font-style: normal;
+}
+
+.product-channel-toolbar > label > span,
+.product-channel-toolbar > label > svg {
+  color: var(--product-muted);
+}
+
+.product-channel-toolbar > label > span {
+  white-space: nowrap;
+}
+
+.product-channel-toolbar select,
+.product-channel-filter-panel select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--product-text);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.product-channel-toolbar select:disabled,
+.product-channel-filter-panel select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.product-channel-filter-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 15px;
+  border: 1px solid var(--product-border);
+  border-radius: 14px;
+  background: var(--product-surface);
+}
+
+.product-channel-filter-panel label {
+  display: grid;
+  gap: 6px;
+}
+
+.product-channel-filter-panel label > span {
+  color: var(--product-muted);
+  font-size: 9px;
   font-weight: 800;
 }
 
-.product-channel-filters button:hover {
-  border-color: var(--product-text);
-  color: var(--product-text);
+.product-channel-filter-panel select {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 9px;
+  border: 1px solid var(--product-border);
+  border-radius: 9px;
+  background: var(--product-bg);
 }
 
-.product-channel-filters button span {
-  font-size: 13px;
+.product-channel-filter-panel > p {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+  color: var(--product-muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.product-channel-filter-panel > button {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 8px;
+  color: var(--product-accent);
+  font-size: 9px;
+  font-weight: 850;
 }
 
 .product-channel-added-notice {
@@ -26388,6 +26475,47 @@ nav button.active::before {
   border-radius: 16px;
   background: var(--product-surface);
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.product-channel-card-live {
+  min-height: 350px;
+}
+
+.product-channel-card-live .product-channel-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.product-channel-match-reason {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 9px;
+  margin-top: 22px;
+  padding: 13px;
+  border-radius: 11px;
+  background: var(--product-soft);
+}
+
+.product-channel-match-reason > svg {
+  color: var(--product-muted);
+}
+
+.product-channel-match-reason > div {
+  display: grid;
+  gap: 4px;
+}
+
+.product-channel-match-reason small {
+  color: var(--product-muted);
+  font-size: 8px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.product-channel-match-reason strong {
+  color: var(--product-text);
+  font-size: 10px;
 }
 
 .product-channel-card:hover {
@@ -26590,18 +26718,125 @@ nav button.active::before {
   color: var(--product-primary-text);
 }
 
+.product-channel-card-live > footer > button,
+.product-channel-card-live > footer > a {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--product-border);
+  border-radius: 9px;
+  background: var(--product-surface);
+  color: var(--product-text);
+  font-size: 9px;
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.product-channel-card-live > footer > button.tracking {
+  border-color: color-mix(in srgb, var(--product-accent) 42%, var(--product-border));
+  background: color-mix(in srgb, var(--product-accent) 10%, var(--product-surface));
+  color: var(--product-accent);
+}
+
 .product-channel-empty {
   display: grid;
   min-height: 260px;
+  max-width: 620px;
+  justify-items: center;
   place-items: center;
   align-content: center;
   gap: 12px;
+  margin: 34px auto 0;
+  padding: 36px;
+  border: 1px dashed var(--product-border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--product-surface) 72%, transparent);
   color: var(--product-muted);
+  text-align: center;
 }
 
 .product-channel-empty p {
+  max-width: 480px;
   margin: 0;
-  font-size: 13px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.product-channel-empty strong {
+  color: var(--product-text);
+  font-size: 15px;
+}
+
+.product-channel-empty ul {
+  display: grid;
+  gap: 7px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.product-channel-empty li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--product-muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.product-channel-pending {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 14px;
+  border: 1px solid var(--product-border);
+  border-radius: 13px;
+  background: var(--product-surface);
+}
+
+.product-channel-pending > header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--product-text);
+  font-size: 10px;
+}
+
+.product-channel-pending > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  background: var(--product-soft);
+}
+
+.product-channel-pending > div > span {
+  overflow: hidden;
+  color: var(--product-text);
+  font-size: 9px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-channel-pending > div > small {
+  color: var(--product-muted);
+  font-size: 8px;
+}
+
+.product-channel-pending > div > button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--product-muted);
 }
 
 .product-channel-audit-layer,
@@ -27207,8 +27442,14 @@ nav button.active::before {
     padding: 26px 18px;
   }
 
+  .product-channel-filter-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-channel-tabs {
     gap: 24px;
+    padding-right: 28px;
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 28px), transparent 100%);
   }
 
   .product-channel-grid {
@@ -27280,6 +27521,33 @@ nav button.active::before {
   .product-channel-card {
     min-height: 395px;
     padding: 18px;
+  }
+
+  .product-channel-toolbar {
+    align-items: stretch;
+  }
+
+  .product-channel-toolbar > button,
+  .product-channel-toolbar > label {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .product-channel-toolbar select {
+    width: 100%;
+  }
+
+  .product-channel-filter-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .product-channel-pending > div {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .product-channel-pending > div > small {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .product-channel-audit-body {

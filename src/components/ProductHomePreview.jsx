@@ -213,6 +213,8 @@ function ProductTopbar({
   signalSearchStatus,
   onSignalUrlChange,
   onSignalUrlSubmit,
+  channelQuery,
+  onChannelQueryChange,
   notificationsOpen,
   onToggleNotifications,
   onCloseNotifications,
@@ -272,13 +274,17 @@ function ProductTopbar({
       ) : !isPlan && !isSettings && (
         <label className="product-search">
           <Search size={18} />
-          <input type="search" placeholder={t(isChannels ? 'product.channels.search' : isStudio ? 'product.studio.search' : 'product.search.placeholder')} />
+          <input
+            type="search"
+            value={isChannels ? channelQuery : undefined}
+            aria-label={isChannels ? t('product.channels.searchLabel') : undefined}
+            placeholder={t(isChannels ? 'product.channels.search' : isStudio ? 'product.studio.search' : 'product.search.placeholder')}
+            onChange={isChannels ? (event) => onChannelQueryChange(event.target.value) : undefined}
+          />
         </label>
       )}
       {isChannels ? (
         <div className="product-topbar-actions product-channel-topbar-actions">
-          <button className="secondary" type="button"><Filter size={16} />{t('product.channels.actions.filters')}</button>
-          <button className="secondary" type="button"><ArrowUpDown size={16} />{t('product.channels.actions.sort')}</button>
           {notifications}
           <button className="create" type="button" onClick={onAddChannel}><Plus size={17} />{t('product.channels.actions.add')}</button>
         </div>
@@ -657,6 +663,7 @@ export default function ProductHomePreview({
   const [addChannelOpen, setAddChannelOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [signalUrl, setSignalUrl] = useState('');
+  const [channelQuery, setChannelQuery] = useState('');
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
     messageKey: '',
@@ -737,6 +744,8 @@ export default function ProductHomePreview({
           signalSearchStatus={directSearch.status}
           onSignalUrlChange={changeSignalUrl}
           onSignalUrlSubmit={submitDirectSearch}
+          channelQuery={channelQuery}
+          onChannelQueryChange={setChannelQuery}
           notificationsOpen={notificationsOpen}
           onToggleNotifications={() => setNotificationsOpen((open) => !open)}
           onCloseNotifications={() => setNotificationsOpen(false)}
@@ -749,7 +758,13 @@ export default function ProductHomePreview({
             onClearDirectSearch={clearDirectSearch}
           />
         )}
-        {activeTab === 'channels' && <ProductChannelsPreview addOpen={addChannelOpen} onCloseAdd={() => setAddChannelOpen(false)} />}
+        {activeTab === 'channels' && (
+          <ProductChannelsPreview
+            addOpen={addChannelOpen}
+            onCloseAdd={() => setAddChannelOpen(false)}
+            query={channelQuery}
+          />
+        )}
         {activeTab === 'studio' && <ProductStudioPreview />}
         {activeTab === 'plan' && <ProductContentPlanPreview />}
         {activeTab === 'settings' && <ProductSettingsPreview language={language} setLanguage={setLanguage} theme={theme} onToggleTheme={onToggleTheme} />}

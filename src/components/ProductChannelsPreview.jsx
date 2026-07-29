@@ -1,16 +1,27 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowUpRight,
+  ArrowUpDown,
   BarChart3,
   Check,
-  Eye,
+  Clock3,
+  Database,
+  ExternalLink,
+  Filter,
   Heart,
-  Lightbulb,
-  Play,
   Plus,
+  Radio,
+  Sparkles,
   X,
 } from 'lucide-react';
 
+import {
+  DEFAULT_CHANNEL_FILTERS,
+  buildChannelRecommendations,
+  filterChannelRecords,
+  isCollectedChannel,
+  readStoredChannelIds,
+  sortChannelRecords,
+} from '../channelViewState.mjs';
 import { useI18n } from '../i18nProvider.mjs';
 
 const CHANNEL_TABS = Object.freeze([
@@ -21,83 +32,47 @@ const CHANNEL_TABS = Object.freeze([
   { id: 'trending', label: 'product.channels.tabs.trending' },
 ]);
 
-const CHANNEL_FILTERS = Object.freeze([
-  'platform',
-  'country',
-  'category',
-  'language',
-  'aiMatch',
-  'followers',
-  'avgViews',
-]);
+const EMPTY_CHANNELS = Object.freeze([]);
+const TRACKED_CHANNELS_STORAGE_KEY = 'dzhero-preview-tracked-channels-v1';
+const FAVORITE_CHANNELS_STORAGE_KEY = 'dzhero-preview-favorite-channels-v1';
+const PENDING_CHANNEL_URLS_STORAGE_KEY = 'dzhero-preview-pending-channel-urls-v1';
 
-const CHANNELS = Object.freeze([
-  {
-    id: 'alex',
-    initials: 'AT',
-    tone: 'blue',
-    name: 'product.channels.cards.alex.name',
-    handle: 'product.channels.cards.alex.handle',
-    meta: 'product.channels.cards.alex.meta',
-    followers: '1.2M',
-    views: '450K',
-    match: '98%',
-    latest: 'product.channels.cards.alex.latest',
-    time: 'product.channels.cards.alex.time',
-    status: 'tracking',
-    recommended: true,
-    trending: true,
-  },
-  {
-    id: 'sarah',
-    initials: 'SN',
-    tone: 'peach',
-    name: 'product.channels.cards.sarah.name',
-    handle: 'product.channels.cards.sarah.handle',
-    meta: 'product.channels.cards.sarah.meta',
-    followers: '840K',
-    views: '210K',
-    match: '84%',
-    latest: 'product.channels.cards.sarah.latest',
-    time: 'product.channels.cards.sarah.time',
-    status: 'idle',
-    recommended: true,
-    trending: false,
-  },
-  {
-    id: 'marcus',
-    initials: 'FM',
-    tone: 'violet',
-    name: 'product.channels.cards.marcus.name',
-    handle: 'product.channels.cards.marcus.handle',
-    meta: 'product.channels.cards.marcus.meta',
-    followers: '3.5M',
-    views: '1.8M',
-    match: '76%',
-    latest: 'product.channels.cards.marcus.latest',
-    time: 'product.channels.cards.marcus.time',
-    status: 'tracking',
-    recommended: false,
-    trending: true,
-  },
-]);
+function readPendingChannelUrls() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(PENDING_CHANNEL_URLS_STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed.filter((value) => typeof value === 'string' && value.trim()) : [];
+  } catch {
+    return [];
+  }
+}
 
-function ChannelCard({ channel, favorite, onToggleFavorite, onAudit }) {
-  const { t } = useI18n();
+function ChannelCard({
+  channel,
+  tracked,
+  favorite,
+  recommendationReason,
+  onToggleTracked,
+  onToggleFavorite,
+}) {
+  const { t, formatNumber } = useI18n();
+  const matchReason = recommendationReason
+    ? t(`product.channels.recommendation.reason.${recommendationReason}`)
+    : t('product.channels.recommendation.pending');
 
   return (
-    <article className="product-channel-card">
+    <article className="product-channel-card product-channel-card-live">
       <header>
-        <div className={`product-channel-avatar ${channel.tone}`}>{channel.initials}</div>
+        <div className="product-channel-avatar blue">{channel.initials || channel.name?.slice(0, 2).toUpperCase()}</div>
         <div>
-          <h3>{t(channel.name)}</h3>
-          <p>{t(channel.handle)}</p>
-          <small>{t(channel.meta)}</small>
+          <h3>{channel.name}</h3>
+          <p>{channel.handle}</p>
+          <small>{[channel.platform, channel.niche].filter(Boolean).join(' · ')}</small>
         </div>
         <button
           className={favorite ? 'favorite' : ''}
           type="button"
           aria-label={favorite ? t('product.channels.actions.removeFavorite') : t('product.channels.actions.addFavorite')}
+          aria-pressed={favorite}
           onClick={() => onToggleFavorite(channel.id)}
         >
           <Heart size={20} fill={favorite ? 'currentColor' : 'none'} />
@@ -105,94 +80,40 @@ function ChannelCard({ channel, favorite, onToggleFavorite, onAudit }) {
       </header>
 
       <div className="product-channel-stats">
-        <div><span>{t('product.channels.labels.followers')}</span><strong>{channel.followers}</strong></div>
-        <div><span>{t('product.channels.labels.avgViews')}</span><strong>{channel.views}</strong></div>
-        <div><span>{t('product.channels.labels.aiMatch')}</span><strong>{channel.match}</strong></div>
+        <div>
+          <span>{t('product.channels.labels.avgViews')}</span>
+          <strong>{Number.isFinite(channel.avgViewsValue) ? formatNumber(channel.avgViewsValue, { notation: 'compact' }) : t('product.channels.values.unknown')}</strong>
+        </div>
+        <div>
+          <span>{t('product.channels.labels.aiMatch')}</span>
+          <strong>{Number.isFinite(channel.aiMatchValue) ? `${channel.aiMatchValue}%` : t('product.channels.values.pending')}</strong>
+        </div>
       </div>
 
-      <section className="product-channel-latest">
-        <small>{t('product.channels.labels.latest')}</small>
-        <strong>{t(channel.latest)}</strong>
-        <span>{t(channel.time)}</span>
+      <section className="product-channel-match-reason">
+        <Sparkles size={15} />
+        <div>
+          <small>{t('product.channels.recommendation.why')}</small>
+          <strong>{matchReason}</strong>
+        </div>
       </section>
 
       <footer>
-        <span className={channel.status}>
-          <i />{t(`product.channels.status.${channel.status}`)}
-        </span>
-        <div>
-          <button type="button" aria-label={t('product.channels.actions.preview')}><Eye size={18} /></button>
-          <button type="button" onClick={() => onAudit(channel)}>{t('product.channels.actions.audit')}</button>
-        </div>
+        <button
+          className={tracked ? 'tracking' : ''}
+          type="button"
+          aria-pressed={tracked}
+          onClick={() => onToggleTracked(channel.id)}
+        >
+          <Radio size={15} />{t(tracked ? 'product.channels.actions.tracking' : 'product.channels.actions.track')}
+        </button>
+        {channel.profileUrl && (
+          <a href={channel.profileUrl} target="_blank" rel="noreferrer">
+            {t('product.channels.actions.openProfile')}<ExternalLink size={15} />
+          </a>
+        )}
       </footer>
     </article>
-  );
-}
-
-function ChannelAudit({ channel, onClose }) {
-  const { t } = useI18n();
-
-  if (!channel) return null;
-
-  return (
-    <div className="product-channel-audit-layer">
-      <button className="product-channel-audit-backdrop" type="button" aria-label={t('product.channels.audit.close')} onClick={onClose} />
-      <aside className="product-channel-audit" role="dialog" aria-modal="true" aria-label={t('product.channels.audit.title')}>
-        <header>
-          <div>
-            <h2>{t('product.channels.audit.title')}</h2>
-            <p>{t('product.channels.audit.subtitle')}</p>
-          </div>
-          <button type="button" aria-label={t('product.channels.audit.close')} onClick={onClose}><X size={20} /></button>
-        </header>
-
-        <div className="product-channel-audit-body">
-          <section className="product-channel-audit-profile">
-            <div className={`product-channel-avatar ${channel.tone}`}>{channel.initials}</div>
-            <div>
-              <h3>{t(channel.name)}</h3>
-              <p>{t(channel.meta)}</p>
-              <div><span>{t('product.channels.audit.tagFirst')}</span><span>{t('product.channels.audit.tagSecond')}</span></div>
-            </div>
-          </section>
-
-          <section className="product-channel-audit-summary">
-            <div><small>{t('product.channels.audit.niche')}</small><p>{t('product.channels.audit.nicheValue')}</p></div>
-            <div><small>{t('product.channels.audit.audience')}</small><p>{t('product.channels.audit.audienceValue')}</p></div>
-          </section>
-
-          <section className="product-channel-audit-metrics">
-            <h3>{t('product.channels.audit.performance')}</h3>
-            <div>
-              <p><small>{t('product.channels.audit.frequency')}</small><strong>3.2 / week</strong></p>
-              <p><small>{t('product.channels.audit.avgPerformance')}</small><strong>+14%</strong></p>
-              <p><small>{t('product.channels.audit.bestFormat')}</small><strong>{t('product.channels.audit.bestFormatValue')}</strong></p>
-            </div>
-          </section>
-
-          <section className="product-channel-audit-strategy">
-            <div><Lightbulb size={19} /><h3>{t('product.channels.audit.strategy')}</h3></div>
-            <small>{t('product.channels.audit.hooks')}</small>
-            <ul>
-              <li><Check size={16} />{t('product.channels.audit.hookFirst')}</li>
-              <li><Check size={16} />{t('product.channels.audit.hookSecond')}</li>
-            </ul>
-            <small>{t('product.channels.audit.topics')}</small>
-            <div>
-              <span>{t('product.channels.audit.topicFirst')}</span>
-              <span>{t('product.channels.audit.topicSecond')}</span>
-              <span>{t('product.channels.audit.topicThird')}</span>
-            </div>
-          </section>
-
-          <section className="product-channel-audit-videos">
-            <h3>{t('product.channels.audit.videos')}</h3>
-            <article><span><Play size={18} /></span><div><strong>{t('product.channels.audit.videoFirst')}</strong><small>1.2M · 2 weeks ago</small></div><ArrowUpRight size={17} /></article>
-            <article><span><Play size={18} /></span><div><strong>{t('product.channels.audit.videoSecond')}</strong><small>890K · 1 month ago</small></div><ArrowUpRight size={17} /></article>
-          </section>
-        </div>
-      </aside>
-    </div>
   );
 }
 
@@ -209,9 +130,10 @@ function AddChannelModal({ open, onClose, onAdded }) {
         className="product-channel-modal"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!value.trim()) return;
+          const nextValue = value.trim();
+          if (!nextValue) return;
+          onAdded(nextValue);
           setValue('');
-          onAdded();
         }}
       >
         <header>
@@ -221,7 +143,13 @@ function AddChannelModal({ open, onClose, onAdded }) {
         </header>
         <label>
           <span>{t('product.channels.add.label')}</span>
-          <input value={value} onChange={(event) => setValue(event.target.value)} placeholder={t('product.channels.add.placeholder')} autoFocus />
+          <input
+            type="url"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder={t('product.channels.add.placeholder')}
+            autoFocus
+          />
         </label>
         <footer>
           <button type="button" onClick={onClose}>{t('product.channels.add.cancel')}</button>
@@ -232,23 +160,104 @@ function AddChannelModal({ open, onClose, onAdded }) {
   );
 }
 
-export default function ProductChannelsPreview({ addOpen, onCloseAdd }) {
+function ChannelEmptyState({ activeTab, filtered, recommendationsReady }) {
   const { t } = useI18n();
+  const state = filtered
+    ? { icon: BarChart3, title: 'product.channels.empty.filteredTitle', body: 'product.channels.empty.filteredBody' }
+    : activeTab === 'following'
+      ? { icon: Radio, title: 'product.channels.empty.followingTitle', body: 'product.channels.empty.followingBody' }
+      : activeTab === 'favorites'
+        ? { icon: Heart, title: 'product.channels.empty.favoritesTitle', body: 'product.channels.empty.favoritesBody' }
+        : activeTab === 'recommended'
+          ? {
+            icon: Sparkles,
+            title: recommendationsReady ? 'product.channels.empty.recommendedNoMatchTitle' : 'product.channels.empty.recommendedTitle',
+            body: recommendationsReady ? 'product.channels.empty.recommendedNoMatchBody' : 'product.channels.empty.recommendedBody',
+          }
+          : activeTab === 'trending'
+            ? { icon: Clock3, title: 'product.channels.empty.trendingTitle', body: 'product.channels.empty.trendingBody' }
+            : { icon: Database, title: 'product.channels.empty.allTitle', body: 'product.channels.empty.allBody' };
+  const Icon = state.icon;
+
+  return (
+    <div className={`product-channel-empty product-channel-empty-${activeTab}`}>
+      <Icon size={25} />
+      <strong>{t(state.title)}</strong>
+      <p>{t(state.body)}</p>
+      {activeTab === 'recommended' && !recommendationsReady && (
+        <ul>
+          <li><Check size={14} />{t('product.channels.empty.recommendedRequirementChannels')}</li>
+          <li><Check size={14} />{t('product.channels.empty.recommendedRequirementBrain')}</li>
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export default function ProductChannelsPreview({
+  addOpen,
+  onCloseAdd,
+  query = '',
+  channels = EMPTY_CHANNELS,
+  brandBrain = null,
+}) {
+  const { t } = useI18n();
+  const collectedChannels = useMemo(() => channels.filter(isCollectedChannel), [channels]);
+  const allowedIds = useMemo(() => collectedChannels.map(({ id }) => id), [collectedChannels]);
   const [activeTab, setActiveTab] = useState('all');
-  const [favorites, setFavorites] = useState(() => new Set(['alex']));
-  const [auditChannel, setAuditChannel] = useState(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filters, setFilters] = useState(DEFAULT_CHANNEL_FILTERS);
+  const [sort, setSort] = useState('newest');
+  const [trackedIds, setTrackedIds] = useState(() => readStoredChannelIds(window.localStorage, TRACKED_CHANNELS_STORAGE_KEY, allowedIds));
+  const [favoriteIds, setFavoriteIds] = useState(() => readStoredChannelIds(window.localStorage, FAVORITE_CHANNELS_STORAGE_KEY, allowedIds));
+  const [pendingUrls, setPendingUrls] = useState(readPendingChannelUrls);
   const [addedNotice, setAddedNotice] = useState(false);
 
-  const filteredChannels = useMemo(() => CHANNELS.filter((channel) => {
-    if (activeTab === 'following') return channel.status === 'tracking';
-    if (activeTab === 'favorites') return favorites.has(channel.id);
-    if (activeTab === 'recommended') return channel.recommended;
-    if (activeTab === 'trending') return channel.trending;
-    return true;
-  }), [activeTab, favorites]);
+  useEffect(() => {
+    setTrackedIds((current) => new Set([...current].filter((id) => allowedIds.includes(id))));
+    setFavoriteIds((current) => new Set([...current].filter((id) => allowedIds.includes(id))));
+  }, [allowedIds]);
+  useEffect(() => {
+    window.localStorage.setItem(TRACKED_CHANNELS_STORAGE_KEY, JSON.stringify([...trackedIds]));
+  }, [trackedIds]);
+  useEffect(() => {
+    window.localStorage.setItem(FAVORITE_CHANNELS_STORAGE_KEY, JSON.stringify([...favoriteIds]));
+  }, [favoriteIds]);
+  useEffect(() => {
+    window.localStorage.setItem(PENDING_CHANNEL_URLS_STORAGE_KEY, JSON.stringify(pendingUrls));
+  }, [pendingUrls]);
 
-  const toggleFavorite = (channelId) => {
-    setFavorites((current) => {
+  const recommendationState = useMemo(
+    () => buildChannelRecommendations(collectedChannels, brandBrain),
+    [brandBrain, collectedChannels],
+  );
+  const recommendationIds = useMemo(
+    () => new Set(recommendationState.recommendations.map(({ channelId }) => channelId)),
+    [recommendationState],
+  );
+  const recommendationReasons = useMemo(
+    () => Object.fromEntries(recommendationState.recommendations.map(({ channelId, reason }) => [channelId, reason])),
+    [recommendationState],
+  );
+  const visibleChannels = useMemo(
+    () => sortChannelRecords(filterChannelRecords(collectedChannels, filters, {
+      activeTab,
+      query,
+      trackedIds,
+      favoriteIds,
+      recommendedIds: recommendationIds,
+    }), sort),
+    [activeTab, collectedChannels, favoriteIds, filters, query, recommendationIds, sort, trackedIds],
+  );
+  const activeFilterCount = Object.values(filters).filter((value) => value !== 'all').length;
+  const filtered = Boolean(query.trim() || activeFilterCount);
+  const controlsDisabled = collectedChannels.length === 0;
+
+  const updateFilter = (key, value) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
+  const toggleId = (setter, channelId) => {
+    setter((current) => {
       const next = new Set(current);
       if (next.has(channelId)) next.delete(channelId);
       else next.add(channelId);
@@ -271,11 +280,38 @@ export default function ProductChannelsPreview({ addOpen, onCloseAdd }) {
         ))}
       </div>
 
-      <div className="product-channel-filters">
-        {CHANNEL_FILTERS.map((filter) => (
-          <button type="button" key={filter}>{t(`product.channels.filters.${filter}`)}<span>⌄</span></button>
-        ))}
+      <div className="product-channel-toolbar">
+        <button
+          className={filtersOpen || activeFilterCount ? 'active' : ''}
+          type="button"
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <Filter size={16} />{t('product.channels.actions.filters')}
+          {activeFilterCount > 0 && <em>{activeFilterCount}</em>}
+        </button>
+        <label>
+          <ArrowUpDown size={16} />
+          <span>{t('product.channels.actions.sort')}</span>
+          <select value={sort} disabled={controlsDisabled} onChange={(event) => setSort(event.target.value)}>
+            <option value="newest">{t('product.channels.sort.newest')}</option>
+            <option value="avgViews">{t('product.channels.sort.avgViews')}</option>
+            <option value="aiMatch">{t('product.channels.sort.aiMatch')}</option>
+            <option value="name">{t('product.channels.sort.name')}</option>
+          </select>
+        </label>
       </div>
+
+      {filtersOpen && (
+        <div className="product-channel-filter-panel">
+          <label><span>{t('product.channels.filters.platform')}</span><select disabled={controlsDisabled} value={filters.platform} onChange={(event) => updateFilter('platform', event.target.value)}><option value="all">{t('product.channels.values.all')}</option><option value="youtube">YouTube</option><option value="instagram">Instagram</option><option value="tiktok">TikTok</option></select></label>
+          <label><span>{t('product.channels.filters.niche')}</span><select disabled={controlsDisabled} value={filters.niche} onChange={(event) => updateFilter('niche', event.target.value)}><option value="all">{t('product.channels.values.all')}</option><option value="technology">{t('product.signals.values.technology')}</option><option value="lifestyle">{t('product.signals.values.lifestyle')}</option><option value="food">{t('product.signals.values.food')}</option><option value="fitness">{t('product.channels.values.fitness')}</option></select></label>
+          <label><span>{t('product.channels.filters.aiMatch')}</span><select disabled={controlsDisabled} value={filters.aiMatch} onChange={(event) => updateFilter('aiMatch', event.target.value)}><option value="all">{t('product.channels.values.any')}</option><option value="match80">{t('product.signals.values.match80')}</option><option value="match90">{t('product.signals.values.match90')}</option></select></label>
+          <label><span>{t('product.channels.filters.avgViews')}</span><select disabled={controlsDisabled} value={filters.avgViews} onChange={(event) => updateFilter('avgViews', event.target.value)}><option value="all">{t('product.channels.values.any')}</option><option value="views100k">{t('product.channels.values.views100k')}</option><option value="views500k">{t('product.channels.values.views500k')}</option></select></label>
+          {controlsDisabled && <p>{t('product.channels.filters.disabled')}</p>}
+          {activeFilterCount > 0 && <button type="button" onClick={() => setFilters(DEFAULT_CHANNEL_FILTERS)}>{t('product.signals.filters.clear')}</button>}
+        </div>
+      )}
 
       {addedNotice && (
         <div className="product-channel-added-notice" role="status">
@@ -284,27 +320,46 @@ export default function ProductChannelsPreview({ addOpen, onCloseAdd }) {
         </div>
       )}
 
-      <div className="product-channel-grid">
-        {filteredChannels.map((channel) => (
-          <ChannelCard
-            key={channel.id}
-            channel={channel}
-            favorite={favorites.has(channel.id)}
-            onToggleFavorite={toggleFavorite}
-            onAudit={setAuditChannel}
-          />
-        ))}
-      </div>
-
-      {filteredChannels.length === 0 && (
-        <div className="product-channel-empty"><BarChart3 size={24} /><p>{t('product.channels.empty')}</p></div>
+      {pendingUrls.length > 0 && activeTab === 'all' && (
+        <section className="product-channel-pending">
+          <header><Clock3 size={16} /><strong>{t('product.channels.pending.title')}</strong></header>
+          {pendingUrls.map((url) => (
+            <div key={url}>
+              <span>{url}</span>
+              <small>{t('product.channels.pending.status')}</small>
+              <button type="button" aria-label={t('product.channels.pending.remove')} onClick={() => setPendingUrls((current) => current.filter((value) => value !== url))}><X size={15} /></button>
+            </div>
+          ))}
+        </section>
       )}
 
-      <ChannelAudit channel={auditChannel} onClose={() => setAuditChannel(null)} />
+      {visibleChannels.length > 0 ? (
+        <div className="product-channel-grid">
+          {visibleChannels.map((channel) => (
+            <ChannelCard
+              key={channel.id}
+              channel={channel}
+              tracked={trackedIds.has(channel.id)}
+              favorite={favoriteIds.has(channel.id)}
+              recommendationReason={recommendationReasons[channel.id]}
+              onToggleTracked={(channelId) => toggleId(setTrackedIds, channelId)}
+              onToggleFavorite={(channelId) => toggleId(setFavoriteIds, channelId)}
+            />
+          ))}
+        </div>
+      ) : (
+        <ChannelEmptyState
+          activeTab={activeTab}
+          filtered={filtered}
+          recommendationsReady={recommendationState.status === 'ready'}
+        />
+      )}
+
       <AddChannelModal
         open={addOpen}
         onClose={onCloseAdd}
-        onAdded={() => {
+        onAdded={(url) => {
+          setPendingUrls((current) => current.includes(url) ? current : [...current, url]);
           onCloseAdd();
           setAddedNotice(true);
         }}
