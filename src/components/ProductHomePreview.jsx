@@ -19,11 +19,9 @@ import {
   Plus,
   Search,
   Settings,
-  SlidersHorizontal,
   Sparkles,
   Sun,
   TrendingUp,
-  Wand2,
   X,
   Zap,
 } from 'lucide-react';
@@ -96,7 +94,6 @@ function ProductSidebar({
   setLanguage,
   theme,
   onToggleTheme,
-  onExit,
   mobileOpen,
   setMobileOpen,
 }) {
@@ -153,20 +150,14 @@ function ProductSidebar({
             <button type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={onToggleTheme}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            {onExit && (
-              <button type="button" title={t('product.actions.exitPreview')} aria-label={t('product.actions.exitPreview')} onClick={onExit}>
-                <X size={17} />
-              </button>
-            )}
           </div>
-          <button className="product-user-card" type="button">
+          <div className="product-user-card">
             <span>AR</span>
             <div>
               <strong>{t('product.mock.userName')}</strong>
               <small>{t('product.mock.userRole')}</small>
             </div>
-            <Settings size={17} />
-          </button>
+          </div>
         </div>
       </aside>
       {mobileOpen && <button className="product-sidebar-backdrop" type="button" aria-label={t('product.actions.closeMenu')} onClick={() => setMobileOpen(false)} />}
@@ -186,10 +177,12 @@ function ProductTopbar({ activeTab, setMobileOpen, onAddChannel }) {
       <button className="product-mobile-menu" type="button" aria-label={t('product.actions.openMenu')} onClick={() => setMobileOpen(true)}>
         <Menu size={20} />
       </button>
-      <label className="product-search">
-        <Search size={18} />
-        <input type="search" placeholder={t(isChannels ? 'product.channels.search' : isSettings ? 'product.settings.search' : (isStudio || isPlan) ? 'product.studio.search' : 'product.search.placeholder')} />
-      </label>
+      {!isPlan && !isSettings && (
+        <label className="product-search">
+          <Search size={18} />
+          <input type="search" placeholder={t(isChannels ? 'product.channels.search' : isStudio ? 'product.studio.search' : 'product.search.placeholder')} />
+        </label>
+      )}
       {isChannels ? (
         <div className="product-topbar-actions product-channel-topbar-actions">
           <button className="secondary" type="button"><Filter size={16} />{t('product.channels.actions.filters')}</button>
@@ -199,7 +192,7 @@ function ProductTopbar({ activeTab, setMobileOpen, onAddChannel }) {
       ) : (isStudio || isPlan || isSettings) ? (
         <div className="product-topbar-actions studio-topbar-actions">
           <button className="icon" type="button" aria-label={t('product.actions.notifications')}><Bell size={18} /><i /></button>
-          <button className="secondary studio-export-button" type="button">{t('product.studio.export')}</button>
+          {isPlan && <button className="secondary studio-export-button" type="button">{t('product.studio.export')}</button>}
         </div>
       ) : (
         <>
@@ -210,8 +203,6 @@ function ProductTopbar({ activeTab, setMobileOpen, onAddChannel }) {
           </div>
           <div className="product-topbar-actions">
             <button className="icon" type="button" aria-label={t('product.actions.notifications')}><Bell size={18} /><i /></button>
-            <button className="icon" type="button" aria-label={t('product.actions.sort')}><SlidersHorizontal size={18} /></button>
-            <button className="create" type="button"><Plus size={17} />{t('product.actions.createSignal')}</button>
           </div>
         </>
       )}
@@ -239,7 +230,6 @@ function SignalCard({ card, onOpenStudio }) {
             <strong>{t(card.creator)}</strong>
             <small>{t(card.handle)}</small>
           </div>
-          <button type="button" aria-label={t('product.actions.more')}>•••</button>
         </div>
         <h3>{t(card.title)}</h3>
         <div className="product-signal-metrics">
@@ -261,12 +251,6 @@ function ProductUtilityRail() {
 
   return (
     <aside className="product-utility-rail">
-      <section className="product-ai-insight">
-        <div><Wand2 size={18} /><strong>{t('product.insight.title')}</strong></div>
-        <p>{t('product.insight.body')}</p>
-        <button type="button">{t('product.insight.action')}</button>
-      </section>
-
       <section className="product-rail-section">
         <header><strong>{t('product.creators.title')}</strong><button type="button">{t('product.actions.seeAll')}</button></header>
         <div className="product-creators-list">
@@ -284,11 +268,6 @@ function ProductUtilityRail() {
         </div>
       </section>
 
-      <section className="product-rail-section product-activity">
-        <header><strong>{t('product.activity.title')}</strong></header>
-        <p><i /><span>{t('product.activity.saved')}</span><small>{t('product.activity.savedTime')}</small></p>
-        <p><i /><span>{t('product.activity.analyzed')}</span><small>{t('product.activity.analyzedTime')}</small></p>
-      </section>
     </aside>
   );
 }
@@ -338,7 +317,6 @@ export default function ProductHomePreview({
   setLanguage,
   theme,
   onToggleTheme,
-  onExit,
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
@@ -359,7 +337,6 @@ export default function ProductHomePreview({
         setLanguage={setLanguage}
         theme={theme}
         onToggleTheme={onToggleTheme}
-        onExit={onExit}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
       />
@@ -368,7 +345,7 @@ export default function ProductHomePreview({
         {activeTab === 'discover' && <DiscoverHome onOpenStudio={() => setActiveTab('studio')} />}
         {activeTab === 'channels' && <ProductChannelsPreview addOpen={addChannelOpen} onCloseAdd={() => setAddChannelOpen(false)} />}
         {activeTab === 'studio' && <ProductStudioPreview />}
-        {activeTab === 'plan' && <ProductContentPlanPreview onOpenStudio={() => setActiveTab('studio')} />}
+        {activeTab === 'plan' && <ProductContentPlanPreview />}
         {activeTab === 'settings' && <ProductSettingsPreview language={language} setLanguage={setLanguage} theme={theme} onToggleTheme={onToggleTheme} />}
         {!['discover', 'channels', 'studio', 'plan', 'settings'].includes(activeTab) && <EmptyProductTab activeTab={activeTab} />}
       </section>

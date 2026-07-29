@@ -214,7 +214,6 @@ export default function ProductStudioPreview() {
           <p>{t('product.nav.discover')} <span>/</span> {t('product.nav.studio')}</p>
           <h1>{t('product.studio.title')}</h1>
         </div>
-        <span className="studio-engine-badge"><Sparkles size={16} />{t('product.studio.engine')}</span>
       </header>
 
       <div className="studio-workspace">

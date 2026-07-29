@@ -13,7 +13,6 @@ import {
   LogOut,
   Moon,
   Palette,
-  PanelsTopLeft,
   Pencil,
   Plus,
   ShieldCheck,
@@ -86,12 +85,9 @@ function SettingsNotice({ children, onClose }) {
 
 function InterfaceSettings({ language, setLanguage, theme, onToggleTheme }) {
   const { t } = useI18n();
-  const [density, setDensity] = useState('standard');
-  const [saved, setSaved] = useState(false);
 
   return (
     <section className="settings-interface-panel">
-      {saved && <SettingsNotice onClose={() => setSaved(false)}>{t('product.settings.interface.saved')}</SettingsNotice>}
       <article className="settings-option-row">
         <span><Languages size={23} /></span>
         <div><h2>{t('product.settings.interface.language')}</h2><p>{t('product.settings.interface.languageBody')}</p></div>
@@ -108,21 +104,6 @@ function InterfaceSettings({ language, setLanguage, theme, onToggleTheme }) {
           <button className={theme === 'dark' ? 'active' : ''} type="button" onClick={() => theme !== 'dark' && onToggleTheme()}><Moon size={17} />{t('product.settings.interface.dark')}</button>
         </div>
       </article>
-      <article className="settings-density-card">
-        <header><span><PanelsTopLeft size={23} /></span><div><h2>{t('product.settings.interface.density')}</h2><p>{t('product.settings.interface.densityBody')}</p></div></header>
-        <div>
-          {['relaxed', 'standard', 'compact'].map((option, index) => (
-            <button className={density === option ? 'active' : ''} type="button" key={option} onClick={() => setDensity(option)}>
-              <i>{Array.from({ length: index + 2 }, (_, line) => <span key={line} />)}</i>
-              <strong>{t(`product.settings.interface.${option}`)}</strong>
-            </button>
-          ))}
-        </div>
-      </article>
-      <footer>
-        <button type="button" onClick={() => setDensity('standard')}>{t('product.settings.interface.discard')}</button>
-        <button className="primary" type="button" onClick={() => setSaved(true)}>{t('product.settings.interface.save')}</button>
-      </footer>
     </section>
   );
 }
@@ -206,7 +187,6 @@ function PlanSettings() {
         <article className="settings-limits-card">
           <h3>{t('product.settings.plan.limits')}</h3>
           <div><p><span>{t('product.settings.plan.seats')}</span><strong>3/5</strong></p><i><span style={{ width: '60%' }} /></i></div>
-          <div><p><span>{t('product.settings.plan.hours')}</span><strong>12.4/20</strong></p><i><span style={{ width: '62%' }} /></i></div>
         </article>
       </div>
       <article className="settings-table-card">

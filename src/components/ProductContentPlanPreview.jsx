@@ -7,10 +7,8 @@ import {
   Clock3,
   FileText,
   Plus,
-  RefreshCw,
   Sparkles,
   Trash2,
-  WandSparkles,
   X,
 } from 'lucide-react';
 
@@ -221,7 +219,7 @@ function ScheduleView({ posts, visibleFormats, onSelectPost }) {
   );
 }
 
-export default function ProductContentPlanPreview({ onOpenStudio }) {
+export default function ProductContentPlanPreview() {
   const { t, language } = useI18n();
   const [calendarDate, setCalendarDate] = useState(new Date(2026, 6, 1));
   const [view, setView] = useState('month');
@@ -230,7 +228,6 @@ export default function ProductContentPlanPreview({ onOpenStudio }) {
   const [selectedDay, setSelectedDay] = useState(28);
   const [editingPost, setEditingPost] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [generated, setGenerated] = useState(false);
   const cells = useMemo(() => buildMonthCells(calendarDate.getFullYear(), calendarDate.getMonth()), [calendarDate]);
   const doneCount = posts.filter((post) => post.done).length;
   const pendingCount = posts.length - doneCount;
@@ -264,20 +261,6 @@ export default function ProductContentPlanPreview({ onOpenStudio }) {
     setEditorOpen(false);
   };
 
-  const generatePlan = () => {
-    if (!generated) {
-      setPosts((current) => [...current, {
-        id: 'generated-1',
-        day: 29,
-        time: '11:30',
-        format: 'Reels',
-        title: 'product.plan.posts.generated',
-        done: false,
-      }]);
-    }
-    setGenerated(true);
-  };
-
   const changeMonth = (direction) => {
     setCalendarDate((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1));
   };
@@ -288,13 +271,6 @@ export default function ProductContentPlanPreview({ onOpenStudio }) {
         <div>
           <h1>{t('product.plan.title')}</h1>
           <p>{t('product.plan.subtitle')}</p>
-        </div>
-        <div>
-          <button className="secondary" type="button" onClick={onOpenStudio}><WandSparkles size={17} />{t('product.plan.actions.studio')}</button>
-          <button className="generate" type="button" onClick={generatePlan}>
-            {generated ? <Check size={17} /> : <RefreshCw size={17} />}
-            {t(generated ? 'product.plan.actions.generated' : 'product.plan.actions.generate')}
-          </button>
         </div>
       </header>
 
