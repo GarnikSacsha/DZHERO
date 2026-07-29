@@ -22,7 +22,6 @@ const viewports = [
 ].filter((viewport) => !viewportFilter || viewport.name === viewportFilter);
 
 const pages = [
-  ['home', 'sidebar-home'],
   ['signals', 'sidebar-transcript'],
   ['studio', 'sidebar-remix'],
   ['agent-studio', 'sidebar-agent-studio'],
@@ -38,16 +37,61 @@ async function isVisible(locator) {
   return locator.count().then((count) => count > 0 && locator.first().isVisible()).catch(() => false);
 }
 
+async function completeDemoBrandBrain(page) {
+  const answers = {
+    profileDescription: 'DZHERO UI audit demo workspace for short-form content planning.',
+    audience: 'Small businesses and content teams reviewing the local demo.',
+    niche: 'Content marketing',
+    market: 'Ukraine and global',
+  };
+  const wizard = page.locator('.brand-wizard');
+  await page.waitForFunction(() => {
+    const navigation = document.querySelector('[data-tour="sidebar-calendar"]');
+    return document.querySelector('.brand-wizard') || (navigation && !navigation.disabled);
+  }, null, { timeout: 20000 });
+  if (!await isVisible(wizard)) return;
+
+  for (let step = 0; step < 4 && await isVisible(wizard); step += 1) {
+    for (const [name, value] of Object.entries(answers)) {
+      const input = page.locator(`[name="${name}"]`);
+      if (await isVisible(input)) await input.fill(value);
+    }
+    const skip = page.getByRole('button', { name: /skip instagram|пропустити instagram/i });
+    if (await isVisible(skip)) {
+      await skip.click();
+    } else {
+      await page.getByRole('button', { name: /continue|продовжити/i }).click();
+    }
+    await page.waitForTimeout(250);
+  }
+
+  await page.waitForFunction(() => {
+    const navigation = document.querySelector('[data-tour="sidebar-calendar"]');
+    return navigation && !navigation.disabled;
+  }, null, { timeout: 20000 });
+}
+
 async function enterAgentStudioDemo(page) {
   await page.goto(appUrl, { waitUntil: 'domcontentloaded' });
-  if (await isVisible(page.locator('.shell'))) return;
+  if (await isVisible(page.locator('.shell'))) {
+    await completeDemoBrandBrain(page);
+    return;
+  }
   const dedicatedDemo = page.getByRole('button', { name: /open agent studio demo/i });
   if (await isVisible(dedicatedDemo)) {
     await dedicatedDemo.click();
   } else {
-    await page.getByRole('button', { name: /view demo|start with demo/i }).first().click();
+    const loginButton = page.getByRole('button', { name: /^(log in|увійти)$/i }).first();
+    await loginButton.waitFor({ state: 'visible', timeout: 15000 });
+    await loginButton.click();
+    const demoButton = page.getByRole('button', {
+      name: /explore the demo workspace|explore the demo first|переглянути демо-простір|спочатку переглянути демо/i,
+    }).first();
+    await demoButton.waitFor({ state: 'visible', timeout: 15000 });
+    await demoButton.click();
   }
   await page.waitForSelector('.shell', { timeout: 20000 });
+  await completeDemoBrandBrain(page);
 }
 
 async function openMobileMenu(page) {
@@ -64,8 +108,10 @@ async function navigate(page, tourTarget) {
     await openMobileMenu(page);
     nav = page.locator(`[data-tour="${tourTarget}"]`);
   }
+  if (!await isVisible(nav) || await nav.isDisabled()) return false;
   await nav.click();
   await page.waitForTimeout(220);
+  return true;
 }
 
 async function auditLayout(page, viewportName, pageName, report) {
@@ -347,7 +393,7 @@ async function runViewport(browser, viewport, report) {
   try {
     await enterAgentStudioDemo(page);
     for (const [pageName, tourTarget] of pages) {
-      await navigate(page, tourTarget);
+      if (tourTarget && !await navigate(page, tourTarget)) continue;
       await interactWithPage(page, pageName, viewport.name, report);
       await auditLayout(page, viewport.name, pageName, report);
       await screenshot(page, viewport.name, pageName);

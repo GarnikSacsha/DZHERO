@@ -257,8 +257,15 @@ async function stopProcess(child) {
 }
 
 async function enterDemo(page) {
-  if (await page.locator('.shell').count()) return;
-  await page.getByRole('button', { name: /demo|демо/i }).first().click();
+  if (await page.locator('.shell').isVisible()) return;
+  const loginButton = page.getByRole('button', { name: /^(log in|увійти)$/i }).first();
+  await loginButton.waitFor({ state: 'visible', timeout: 15_000 });
+  await loginButton.click();
+  const demoButton = page.getByRole('button', {
+    name: /explore the demo workspace|explore the demo first|переглянути демо-простір|спочатку переглянути демо/i,
+  }).first();
+  await demoButton.waitFor({ state: 'visible', timeout: 15_000 });
+  await demoButton.click();
   await page.waitForSelector('.shell', { timeout: 20_000 });
 }
 
