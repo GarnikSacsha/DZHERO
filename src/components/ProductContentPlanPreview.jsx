@@ -219,11 +219,24 @@ function ScheduleView({ posts, visibleFormats, onSelectPost }) {
   );
 }
 
-export default function ProductContentPlanPreview() {
+export default function ProductContentPlanPreview({ incomingPost = null }) {
   const { t, language } = useI18n();
   const [calendarDate, setCalendarDate] = useState(new Date(2026, 6, 1));
   const [view, setView] = useState('month');
-  const [posts, setPosts] = useState(() => INITIAL_POSTS.map((post) => ({ ...post })));
+  const [posts, setPosts] = useState(() => [
+    ...INITIAL_POSTS.map((post) => ({ ...post })),
+    ...(incomingPost?.title ? [{
+      id: `studio-${incomingPost.sourceSignalId || Date.now()}`,
+      day: 28,
+      time: '10:00',
+      format: 'Reels',
+      customTitle: incomingPost.title,
+      script: incomingPost.body || '',
+      done: false,
+      source: 'studio',
+      sourceUrl: incomingPost.sourceUrl || '',
+    }] : []),
+  ]);
   const [visibleFormats, setVisibleFormats] = useState(() => [...FORMAT_OPTIONS]);
   const [selectedDay, setSelectedDay] = useState(28);
   const [editingPost, setEditingPost] = useState(null);

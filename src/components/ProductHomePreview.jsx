@@ -271,15 +271,15 @@ function ProductTopbar({
             <ArrowRight size={16} />
           </button>
         </form>
-      ) : !isPlan && !isSettings && (
+      ) : isChannels && (
         <label className="product-search">
           <Search size={18} />
           <input
             type="search"
-            value={isChannels ? channelQuery : undefined}
-            aria-label={isChannels ? t('product.channels.searchLabel') : undefined}
-            placeholder={t(isChannels ? 'product.channels.search' : isStudio ? 'product.studio.search' : 'product.search.placeholder')}
-            onChange={isChannels ? (event) => onChannelQueryChange(event.target.value) : undefined}
+            value={channelQuery}
+            aria-label={t('product.channels.searchLabel')}
+            placeholder={t('product.channels.search')}
+            onChange={(event) => onChannelQueryChange(event.target.value)}
           />
         </label>
       )}
@@ -664,6 +664,8 @@ export default function ProductHomePreview({
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [signalUrl, setSignalUrl] = useState('');
   const [channelQuery, setChannelQuery] = useState('');
+  const [studioSignal, setStudioSignal] = useState(null);
+  const [studioPlanDraft, setStudioPlanDraft] = useState(null);
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
     messageKey: '',
@@ -752,7 +754,10 @@ export default function ProductHomePreview({
         />
         {activeTab === 'discover' && (
           <DiscoverHome
-            onOpenStudio={() => setActiveTab('studio')}
+            onOpenStudio={(signal) => {
+              setStudioSignal(signal);
+              setActiveTab('studio');
+            }}
             onOpenChannels={() => setActiveTab('channels')}
             directSearch={directSearch}
             onClearDirectSearch={clearDirectSearch}
@@ -765,8 +770,22 @@ export default function ProductHomePreview({
             query={channelQuery}
           />
         )}
-        {activeTab === 'studio' && <ProductStudioPreview />}
-        {activeTab === 'plan' && <ProductContentPlanPreview />}
+        {activeTab === 'studio' && (
+          <ProductStudioPreview
+            signal={studioSignal}
+            onChooseSignal={() => setActiveTab('discover')}
+            onAddToPlan={(draft) => {
+              setStudioPlanDraft({
+                ...draft,
+                sourceSignalId: studioSignal?.id || '',
+                sourceTitle: studioSignal?.title || '',
+                sourceUrl: studioSignal?.sourceUrl || '',
+              });
+              setActiveTab('plan');
+            }}
+          />
+        )}
+        {activeTab === 'plan' && <ProductContentPlanPreview incomingPost={studioPlanDraft} />}
         {activeTab === 'settings' && <ProductSettingsPreview language={language} setLanguage={setLanguage} theme={theme} onToggleTheme={onToggleTheme} />}
         {!['discover', 'channels', 'studio', 'plan', 'settings'].includes(activeTab) && <EmptyProductTab activeTab={activeTab} />}
       </section>
