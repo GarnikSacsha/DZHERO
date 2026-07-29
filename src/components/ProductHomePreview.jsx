@@ -6,22 +6,25 @@ import {
   Bookmark,
   Bot,
   CalendarDays,
+  Clock3,
   Compass,
   Eye,
   Filter,
   FolderKanban,
+  Gauge,
   Globe2,
   Grid2X2,
   Heart,
+  Info,
   List,
   Menu,
   Moon,
   Plus,
+  Radio,
   Search,
   Settings,
   Sparkles,
   Sun,
-  TrendingUp,
   X,
   Zap,
 } from 'lucide-react';
@@ -35,6 +38,7 @@ import {
   getSupportedSignalPlatform,
   sortSignalCards,
 } from '../productSignalsViewState.mjs';
+import { buildSignalStrengthEvidence } from '../signalIntelligenceState.mjs';
 import ProductChannelsPreview from './ProductChannelsPreview.jsx';
 import ProductContentPlanPreview from './ProductContentPlanPreview.jsx';
 import ProductSettingsPreview from './ProductSettingsPreview.jsx';
@@ -55,8 +59,7 @@ const SIGNAL_CARDS = Object.freeze([
   {
     id: 'agents',
     visual: 'agents',
-    match: '98%',
-    matchValue: 98,
+    creatorId: 'techinsights-ai',
     country: 'USA',
     platform: 'YouTube',
     platformId: 'youtube',
@@ -68,7 +71,6 @@ const SIGNAL_CARDS = Object.freeze([
     viewsValue: 1_200_000,
     likes: '45K',
     likesValue: 45_000,
-    trend: '9.8',
     ageHours: 2,
     publishedOrder: 3,
     sourceUrl: 'https://youtube.com/shorts/dzhero-agents',
@@ -77,8 +79,7 @@ const SIGNAL_CARDS = Object.freeze([
   {
     id: 'minimalism',
     visual: 'minimalism',
-    match: '89%',
-    matchValue: 89,
+    creatorId: 'luxeliving',
     country: 'UK',
     platform: 'Instagram',
     platformId: 'instagram',
@@ -90,7 +91,6 @@ const SIGNAL_CARDS = Object.freeze([
     viewsValue: 850_000,
     likes: '120K',
     likesValue: 120_000,
-    trend: '8.4',
     ageHours: 5,
     publishedOrder: 2,
     sourceUrl: 'https://instagram.com/reel/dzhero-minimalism',
@@ -99,8 +99,7 @@ const SIGNAL_CARDS = Object.freeze([
   {
     id: 'markets',
     visual: 'markets',
-    match: '74%',
-    matchValue: 74,
+    creatorId: 'tokyoeat',
     country: 'JP',
     platform: 'TikTok',
     platformId: 'tiktok',
@@ -112,7 +111,6 @@ const SIGNAL_CARDS = Object.freeze([
     viewsValue: 4_100_000,
     likes: '890K',
     likesValue: 890_000,
-    trend: '7.2',
     ageHours: 28,
     publishedOrder: 1,
     sourceUrl: 'https://tiktok.com/@dzhero/video/7400000000000000000',
@@ -215,12 +213,41 @@ function ProductTopbar({
   signalSearchStatus,
   onSignalUrlChange,
   onSignalUrlSubmit,
+  notificationsOpen,
+  onToggleNotifications,
+  onCloseNotifications,
 }) {
   const { t } = useI18n();
   const isChannels = activeTab === 'channels';
   const isStudio = activeTab === 'studio';
   const isPlan = activeTab === 'plan';
   const isSettings = activeTab === 'settings';
+  const notifications = (
+    <div className="product-notifications-anchor">
+      <button
+        className="icon"
+        type="button"
+        aria-label={t('product.actions.notifications')}
+        aria-expanded={notificationsOpen}
+        onClick={onToggleNotifications}
+      >
+        <Bell size={18} />
+      </button>
+      {notificationsOpen && (
+        <section className="product-notifications-popover" role="dialog" aria-label={t('product.notifications.title')}>
+          <header>
+            <strong>{t('product.notifications.title')}</strong>
+            <button type="button" aria-label={t('product.notifications.close')} onClick={onCloseNotifications}><X size={17} /></button>
+          </header>
+          <div>
+            <Bell size={22} />
+            <strong>{t('product.notifications.emptyTitle')}</strong>
+            <p>{t('product.notifications.emptyBody')}</p>
+          </div>
+        </section>
+      )}
+    </div>
+  );
 
   return (
     <header className="product-topbar">
@@ -252,16 +279,17 @@ function ProductTopbar({
         <div className="product-topbar-actions product-channel-topbar-actions">
           <button className="secondary" type="button"><Filter size={16} />{t('product.channels.actions.filters')}</button>
           <button className="secondary" type="button"><ArrowUpDown size={16} />{t('product.channels.actions.sort')}</button>
+          {notifications}
           <button className="create" type="button" onClick={onAddChannel}><Plus size={17} />{t('product.channels.actions.add')}</button>
         </div>
       ) : (isStudio || isPlan || isSettings) ? (
         <div className="product-topbar-actions studio-topbar-actions">
-          <button className="icon" type="button" aria-label={t('product.actions.notifications')}><Bell size={18} /><i /></button>
+          {notifications}
           {isPlan && <button className="secondary studio-export-button" type="button">{t('product.studio.export')}</button>}
         </div>
       ) : (
         <div className="product-topbar-actions">
-          <button className="icon" type="button" aria-label={t('product.actions.notifications')}><Bell size={18} /><i /></button>
+          {notifications}
         </div>
       )}
     </header>
@@ -270,12 +298,17 @@ function ProductTopbar({
 
 function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
   const { t } = useI18n();
+  const [strengthOpen, setStrengthOpen] = useState(false);
+  const strengthEvidence = useMemo(() => buildSignalStrengthEvidence(card, []), [card]);
+  const strengthDetailsId = `signal-strength-${card.id}`;
 
   return (
     <article className="product-signal-card">
       <div className={`product-signal-visual ${card.visual}`}>
         <div className="product-signal-art" aria-hidden="true"><i /><i /><i /></div>
-        <span className="product-match-badge"><Sparkles size={14} />{card.match} {t('product.cards.match')}</span>
+        <span className="product-match-badge pending" title={t('product.intelligence.aiMatch.pendingBody')}>
+          <Sparkles size={14} />{t('product.intelligence.aiMatch.label')}{' · '}{t('product.intelligence.aiMatch.pending')}
+        </span>
         <div className="product-signal-tags">
           <span>{card.country}</span>
           <span>{card.platform}</span>
@@ -293,8 +326,37 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
         <div className="product-signal-metrics">
           <span><Eye size={16} />{card.views}</span>
           <span><Heart size={16} />{card.likes}</span>
-          <span><TrendingUp size={16} />{card.trend}</span>
         </div>
+        <button
+          className="product-signal-strength"
+          type="button"
+          aria-expanded={strengthOpen}
+          aria-controls={strengthDetailsId}
+          onClick={() => setStrengthOpen((open) => !open)}
+        >
+          <Gauge size={17} />
+          <span>
+            <small>{t('product.intelligence.strength.label')}</small>
+            <strong>{t('product.intelligence.strength.needsBaseline')}</strong>
+          </span>
+          <Info size={15} />
+        </button>
+        {strengthOpen && (
+          <div className="product-signal-strength-details" id={strengthDetailsId}>
+            <p>{t('product.intelligence.strength.body')}</p>
+            <div>
+              <span className="available">{t('product.intelligence.strength.viewsAvailable')}</span>
+              <span className="available">{t('product.intelligence.strength.likesAvailable')}</span>
+              <span>{t('product.intelligence.strength.velocityMissing')}</span>
+            </div>
+            <strong>{t('product.intelligence.strength.comparableProgress', {
+              count: strengthEvidence.comparableCount,
+              required: strengthEvidence.requiredComparables,
+            })}</strong>
+            <small>{t('product.intelligence.strength.confidenceUnavailable')}</small>
+            <small>{t('product.intelligence.strength.normalization')}</small>
+          </div>
+        )}
         <div className="product-signal-actions">
           <button type="button" onClick={() => onOpenStudio(card)}>{t('product.actions.openStudio')}</button>
           <button
@@ -313,25 +375,28 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
   );
 }
 
-function ProductUtilityRail() {
+function ProductUtilityRail({ onOpenChannels }) {
   const { t } = useI18n();
 
   return (
     <aside className="product-utility-rail">
       <section className="product-rail-section">
-        <header><strong>{t('product.creators.title')}</strong><button type="button">{t('product.actions.seeAll')}</button></header>
-        <div className="product-creators-list">
-          <div><span>MB</span><p><strong>{t('product.creators.first')}</strong><small>{t('product.creators.firstRole')}</small></p><TrendingUp size={16} /></div>
-          <div><span>SC</span><p><strong>{t('product.creators.second')}</strong><small>{t('product.creators.secondRole')}</small></p><TrendingUp size={16} /></div>
+        <header><strong>{t('product.intelligence.tracked.title')}</strong></header>
+        <div className="product-rail-empty">
+          <Radio size={20} />
+          <strong>{t('product.intelligence.tracked.emptyTitle')}</strong>
+          <p>{t('product.intelligence.tracked.emptyBody')}</p>
+          <button type="button" onClick={onOpenChannels}>{t('product.intelligence.tracked.action')}</button>
         </div>
       </section>
 
       <section className="product-rail-section">
-        <header><strong>{t('product.trends.title')}</strong></header>
-        <div className="product-trends-list">
-          <button type="button"><strong>#GenerativeVideo</strong><small>{t('product.trends.first')}</small></button>
-          <button type="button"><strong>#SaaSMarketing</strong><small>{t('product.trends.second')}</small></button>
-          <button type="button"><strong>#CreatorEconomy</strong><small>{t('product.trends.third')}</small></button>
+        <header><strong>{t('product.intelligence.rising.title')}</strong></header>
+        <div className="product-rail-empty">
+          <Clock3 size={20} />
+          <strong>{t('product.intelligence.rising.emptyTitle')}</strong>
+          <p>{t('product.intelligence.rising.emptyBody')}</p>
+          <span>{t('product.intelligence.rising.requirement')}</span>
         </div>
       </section>
 
@@ -341,12 +406,13 @@ function ProductUtilityRail() {
 
 function DiscoverHome({
   onOpenStudio,
+  onOpenChannels,
   directSearch,
   onClearDirectSearch,
 }) {
   const { t } = useI18n();
   const [filters, setFilters] = useState(DEFAULT_SIGNAL_FILTERS);
-  const [sort, setSort] = useState('match');
+  const [sort, setSort] = useState('newest');
   const [view, setView] = useState('grid');
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [savedIds, setSavedIds] = useState(readSavedSignals);
@@ -381,10 +447,6 @@ function DiscoverHome({
       lifestyle: t('product.signals.values.lifestyle'),
       food: t('product.signals.values.food'),
     },
-    aiMatch: {
-      match80: t('product.signals.values.match80'),
-      match90: t('product.signals.values.match90'),
-    },
     views: {
       views1m: t('product.signals.values.views1m'),
       views2m: t('product.signals.values.views2m'),
@@ -405,7 +467,6 @@ function DiscoverHome({
   const filterLabels = {
     platform: t('product.signals.filters.platform'),
     niche: t('product.signals.filters.niche'),
-    aiMatch: t('product.signals.filters.aiMatch'),
     views: t('product.signals.filters.views'),
     likes: t('product.signals.filters.likes'),
     date: t('product.signals.filters.date'),
@@ -463,14 +524,6 @@ function DiscoverHome({
               </select>
             </label>
             <label>
-              <span>{t('product.signals.filters.aiMatch')}</span>
-              <select value={filters.aiMatch} onChange={(event) => updateFilter('aiMatch', event.target.value)}>
-                <option value="all">{t('product.signals.values.any')}</option>
-                <option value="match80">{t('product.signals.values.match80')}</option>
-                <option value="match90">{t('product.signals.values.match90')}</option>
-              </select>
-            </label>
-            <label>
               <span>{t('product.signals.filters.niche')}</span>
               <select value={filters.niche} onChange={(event) => updateFilter('niche', event.target.value)}>
                 <option value="all">{t('product.signals.values.all')}</option>
@@ -495,7 +548,6 @@ function DiscoverHome({
               <ArrowUpDown size={16} />
               <span>{t('product.signals.sort.label')}</span>
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
-                <option value="match">{t('product.signals.sort.match')}</option>
                 <option value="views">{t('product.signals.sort.views')}</option>
                 <option value="likes">{t('product.signals.sort.likes')}</option>
                 <option value="newest">{t('product.signals.sort.newest')}</option>
@@ -571,7 +623,7 @@ function DiscoverHome({
           </div>
         )}
       </section>
-      <ProductUtilityRail />
+      <ProductUtilityRail onOpenChannels={onOpenChannels} />
     </div>
   );
 }
@@ -603,6 +655,7 @@ export default function ProductHomePreview({
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [addChannelOpen, setAddChannelOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [signalUrl, setSignalUrl] = useState('');
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
@@ -665,6 +718,7 @@ export default function ProductHomePreview({
         activeTab={activeTab}
         setActiveTab={(nextTab) => {
           setActiveTab(nextTab);
+          setNotificationsOpen(false);
           if (nextTab !== 'channels') setAddChannelOpen(false);
         }}
         language={language}
@@ -683,10 +737,14 @@ export default function ProductHomePreview({
           signalSearchStatus={directSearch.status}
           onSignalUrlChange={changeSignalUrl}
           onSignalUrlSubmit={submitDirectSearch}
+          notificationsOpen={notificationsOpen}
+          onToggleNotifications={() => setNotificationsOpen((open) => !open)}
+          onCloseNotifications={() => setNotificationsOpen(false)}
         />
         {activeTab === 'discover' && (
           <DiscoverHome
             onOpenStudio={() => setActiveTab('studio')}
+            onOpenChannels={() => setActiveTab('channels')}
             directSearch={directSearch}
             onClearDirectSearch={clearDirectSearch}
           />
