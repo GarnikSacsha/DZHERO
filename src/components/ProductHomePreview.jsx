@@ -38,6 +38,17 @@ import {
   getSupportedSignalPlatform,
   sortSignalCards,
 } from '../productSignalsViewState.mjs';
+import {
+  PRODUCT_UNASSIGNED_BRAND_ID,
+  createProductBrandId,
+  readActiveBrandId,
+  readCreditState,
+  readProductBrands,
+  resolveActiveBrandId,
+  upsertProductBrand,
+  writeActiveBrandId,
+  writeProductBrands,
+} from '../productSettingsState.mjs';
 import { buildSignalStrengthEvidence } from '../signalIntelligenceState.mjs';
 import ProductChannelsPreview from './ProductChannelsPreview.jsx';
 import ProductContentPlanPreview from './ProductContentPlanPreview.jsx';
@@ -136,6 +147,9 @@ function ProductSidebar({
   onToggleTheme,
   mobileOpen,
   setMobileOpen,
+  brands,
+  activeBrandId,
+  onSelectBrand,
 }) {
   const { t } = useI18n();
 
@@ -182,6 +196,21 @@ function ProductSidebar({
           <button className="product-upgrade-button" type="button">
             <Zap size={17} />{t('product.actions.upgrade')}
           </button>
+          <label className="product-active-brand">
+            <span><FolderKanban size={16} /></span>
+            <div>
+              <small>{t('product.brandContext.label')}</small>
+              <select
+                value={activeBrandId}
+                disabled={brands.length === 0}
+                aria-label={t('product.brandContext.label')}
+                onChange={(event) => onSelectBrand(event.target.value)}
+              >
+                {brands.length === 0 && <option value="">{t('product.brandContext.empty')}</option>}
+                {brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}
+              </select>
+            </div>
+          </label>
           <div className="product-sidebar-preferences">
             <div className="language-switch marketing-language-switch" aria-label={t('language.interface')}>
               <button type="button" className={language === 'uk' ? 'active' : ''} onClick={() => setLanguage('uk')}>UA</button>
@@ -190,13 +219,6 @@ function ProductSidebar({
             <button type="button" title={t('landing.actions.theme')} aria-label={t('landing.actions.theme')} onClick={onToggleTheme}>
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-          </div>
-          <div className="product-user-card">
-            <span>AR</span>
-            <div>
-              <strong>{t('product.mock.userName')}</strong>
-              <small>{t('product.mock.userRole')}</small>
-            </div>
           </div>
         </div>
       </aside>
@@ -667,6 +689,9 @@ export default function ProductHomePreview({
   const [channelQuery, setChannelQuery] = useState('');
   const [studioSignal, setStudioSignal] = useState(null);
   const [studioPlanDraft, setStudioPlanDraft] = useState(null);
+  const [brands, setBrands] = useState(() => readProductBrands(window.localStorage));
+  const [activeBrandId, setActiveBrandId] = useState(() => readActiveBrandId(window.localStorage, brands));
+  const [creditState] = useState(() => readCreditState(window.localStorage));
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
     messageKey: '',
@@ -674,8 +699,36 @@ export default function ProductHomePreview({
   });
   const directSearchTimer = useRef(null);
   const planExportRef = useRef(null);
+  const activeBrand = useMemo(
+    () => brands.find((brand) => brand.id === activeBrandId) || null,
+    [activeBrandId, brands],
+  );
+  const contentPlanBrandId = activeBrandId || PRODUCT_UNASSIGNED_BRAND_ID;
 
   useEffect(() => () => window.clearTimeout(directSearchTimer.current), []);
+  useEffect(() => {
+    writeProductBrands(window.localStorage, brands);
+    const resolved = writeActiveBrandId(window.localStorage, brands, activeBrandId);
+    if (resolved !== activeBrandId) setActiveBrandId(resolved);
+  }, [activeBrandId, brands]);
+
+  const saveBrand = (draft) => {
+    const timestamp = new Date().toISOString();
+    const id = draft.id || createProductBrandId(draft.name);
+    const brand = {
+      ...draft,
+      id,
+      createdAt: draft.createdAt || timestamp,
+      updatedAt: timestamp,
+    };
+    setBrands((current) => upsertProductBrand(current, brand));
+    setActiveBrandId(id);
+  };
+
+  const selectBrand = (brandId) => {
+    setActiveBrandId(resolveActiveBrandId(brands, brandId));
+    setStudioPlanDraft(null);
+  };
 
   const clearDirectSearch = () => {
     window.clearTimeout(directSearchTimer.current);
@@ -738,6 +791,9 @@ export default function ProductHomePreview({
         onToggleTheme={onToggleTheme}
         mobileOpen={mobileOpen}
         setMobileOpen={setMobileOpen}
+        brands={brands}
+        activeBrandId={activeBrandId}
+        onSelectBrand={selectBrand}
       />
       <section className="product-shell-main">
         <ProductTopbar
@@ -771,6 +827,7 @@ export default function ProductHomePreview({
             addOpen={addChannelOpen}
             onCloseAdd={() => setAddChannelOpen(false)}
             query={channelQuery}
+            brandBrain={activeBrand?.brain || null}
           />
         )}
         {activeTab === 'studio' && (
@@ -780,6 +837,7 @@ export default function ProductHomePreview({
             onAddToPlan={(draft) => {
               setStudioPlanDraft({
                 ...draft,
+                targetBrandId: contentPlanBrandId,
                 sourceSignalId: studioSignal?.id || '',
                 sourceTitle: studioSignal?.title || '',
                 sourceUrl: studioSignal?.sourceUrl || '',
@@ -790,14 +848,26 @@ export default function ProductHomePreview({
         )}
         {activeTab === 'plan' && (
           <ProductContentPlanPreview
-            incomingPost={studioPlanDraft}
-            activeBrandId="preview-primary-brand"
+            incomingPost={studioPlanDraft?.targetBrandId === contentPlanBrandId ? studioPlanDraft : null}
+            activeBrandId={contentPlanBrandId}
             onRegisterExport={(handler) => {
               planExportRef.current = handler;
             }}
           />
         )}
-        {activeTab === 'settings' && <ProductSettingsPreview language={language} setLanguage={setLanguage} theme={theme} onToggleTheme={onToggleTheme} />}
+        {activeTab === 'settings' && (
+          <ProductSettingsPreview
+            language={language}
+            setLanguage={setLanguage}
+            theme={theme}
+            onToggleTheme={onToggleTheme}
+            brands={brands}
+            activeBrandId={activeBrandId}
+            onSelectBrand={selectBrand}
+            onSaveBrand={saveBrand}
+            creditState={creditState}
+          />
+        )}
         {!['discover', 'channels', 'studio', 'plan', 'settings'].includes(activeTab) && <EmptyProductTab activeTab={activeTab} />}
       </section>
     </main>
