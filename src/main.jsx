@@ -556,6 +556,10 @@ function PublicResourcesPage({ theme, themeMode, setThemeMode, setLanguage }) {
           <p>{t('resources.contact.body')}</p>
           <small>{t('resources.contact.emailLabel')}</small>
           <a href={`mailto:${t('resources.contact.email')}`}><Send size={16} />{t('resources.contact.email')}</a>
+          <small className="public-resources-contact-founder-label">{t('resources.contact.founderTelegramLabel')}</small>
+          <a href="https://t.me/PackChoOi" target="_blank" rel="noreferrer">
+            <MessageSquareText size={16} />{t('resources.contact.founderTelegram')}
+          </a>
         </article>
       </section>
 
@@ -4080,10 +4084,22 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
             </div>
             <div>
               <strong>{t('landing.footer.socials')}</strong>
-              {['x', 'instagram', 'threads', 'linkedin', 'youtube'].map((social) => (
-                <span className="marketing-footer-placeholder" title={t('landing.footer.socialsPlaceholder')} key={social}>
-                  {t(`landing.footer.social.${social}`)}
-                </span>
+              {[
+                ['x', 'https://x.com/dzhero_app'],
+                ['instagram', 'https://www.instagram.com/dzheroua/'],
+                ['threads', 'https://www.threads.com/@dzheroua'],
+                ['linkedin', null],
+                ['youtube', null],
+              ].map(([social, url]) => (
+                url ? (
+                  <a href={url} target="_blank" rel="noreferrer" key={social}>
+                    {t(`landing.footer.social.${social}`)}
+                  </a>
+                ) : (
+                  <span className="marketing-footer-placeholder" title={t('landing.footer.socialsPlaceholder')} key={social}>
+                    {t(`landing.footer.social.${social}`)}
+                  </span>
+                )
               ))}
             </div>
             <div>
