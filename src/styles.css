@@ -28628,9 +28628,25 @@ nav button.active::before {
 .plan-stats {
   display: grid;
   max-width: 1240px;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 22px;
   margin: 0 auto 34px;
+}
+
+.plan-export-notice {
+  display: flex;
+  max-width: 1240px;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  margin: -14px auto 20px;
+  padding: 0 13px;
+  border: 1px solid color-mix(in srgb, var(--product-accent) 28%, var(--product-border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--product-accent) 7%, var(--product-surface));
+  color: var(--product-text);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .plan-stats article {
@@ -28835,6 +28851,60 @@ nav button.active::before {
   font-weight: 850;
 }
 
+.plan-empty-state {
+  display: grid;
+  min-height: 220px;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 30px;
+  border-top: 1px solid var(--product-border);
+  border-bottom: 1px solid var(--product-border);
+  background: color-mix(in srgb, var(--product-soft) 38%, var(--product-surface));
+  text-align: center;
+}
+
+.plan-empty-state > span {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--product-surface);
+  color: var(--product-muted);
+}
+
+.plan-empty-state > strong {
+  font-size: 16px;
+}
+
+.plan-empty-state > p {
+  max-width: 470px;
+  margin: 0;
+  color: var(--product-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.plan-empty-state > button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  padding: 0 12px;
+  border: 1px solid var(--product-border);
+  border-radius: 9px;
+  background: var(--product-surface);
+  color: var(--product-text);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.plan-calendar-scroll {
+  overflow-x: auto;
+}
+
 .plan-weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -28905,7 +28975,6 @@ nav button.active::before {
 
 .plan-calendar-cell.outside {
   background: color-mix(in srgb, var(--product-soft) 44%, var(--product-surface));
-  cursor: default;
 }
 
 .plan-calendar-cell.outside > span {
@@ -28916,6 +28985,14 @@ nav button.active::before {
   display: grid;
   gap: 5px;
   margin-top: 4px;
+}
+
+.plan-more-count {
+  display: block;
+  padding: 2px 5px;
+  color: var(--product-muted);
+  font-size: 8px;
+  font-weight: 850;
 }
 
 .plan-calendar-event {
@@ -28951,6 +29028,86 @@ nav button.active::before {
 
 .plan-week-view {
   overflow-x: auto;
+}
+
+.plan-week-columns {
+  display: grid;
+  min-width: 840px;
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
+}
+
+.plan-week-columns > section {
+  min-height: 420px;
+  border-right: 1px solid var(--product-border);
+}
+
+.plan-week-columns > section:last-child {
+  border-right: 0;
+}
+
+.plan-week-columns > section.today {
+  background: color-mix(in srgb, var(--product-accent) 4%, var(--product-surface));
+}
+
+.plan-week-day {
+  display: grid;
+  width: 100%;
+  min-height: 72px;
+  place-items: center;
+  place-content: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--product-border);
+}
+
+.plan-week-day small {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.plan-week-day strong {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 15px;
+}
+
+.plan-week-columns > section.today .plan-week-day strong {
+  background: var(--product-text);
+  color: var(--product-surface);
+}
+
+.plan-week-columns > section > div {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 9px;
+}
+
+.plan-week-event {
+  display: grid;
+  gap: 5px;
+}
+
+.plan-week-event time,
+.plan-week-event small {
+  font-size: 8px;
+  font-style: normal;
+}
+
+.plan-week-event.done {
+  opacity: .7;
+}
+
+.plan-week-add {
+  display: grid;
+  min-height: 35px;
+  place-items: center;
+  border: 1px dashed var(--product-border);
+  border-radius: 8px;
+  color: var(--product-muted);
 }
 
 .plan-week-view > header,
@@ -29084,6 +29241,12 @@ nav button.active::before {
 
 .plan-schedule-view > button > div strong {
   font-size: 13px;
+}
+
+.plan-schedule-view > button > div em {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-style: normal;
 }
 
 .plan-schedule-view > button > span {
@@ -29234,7 +29397,8 @@ nav button.active::before {
 }
 
 .plan-editor-body input:focus,
-.plan-editor-body textarea:focus {
+.plan-editor-body textarea:focus,
+.plan-event-timing select:focus {
   border-color: var(--product-accent);
   outline: none;
 }
@@ -29261,24 +29425,84 @@ nav button.active::before {
   color: var(--product-surface);
 }
 
-.plan-editor-date-row {
+.plan-editor-body fieldset.plan-event-timing {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  gap: 0;
+  border: 1px solid var(--product-border);
+  border-radius: 14px;
+  background: var(--product-soft);
 }
 
-.plan-editor-date-row label > div {
-  display: flex;
+.plan-editor-body fieldset.plan-event-timing > legend {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 0;
+}
+
+.plan-editor-body fieldset > .plan-event-time-line {
+  display: grid;
+  min-height: 50px;
+  grid-template-columns: auto minmax(80px, 1fr);
   align-items: center;
-  gap: 7px;
-  padding-left: 13px;
+  flex-wrap: nowrap;
+  gap: 8px;
+  padding: 0 13px;
   color: var(--product-muted);
 }
 
-.plan-editor-date-row label > div input {
+.plan-event-time-line select {
   min-width: 0;
-  padding: 14px 10px 14px 0;
+  height: 34px;
+  padding: 0;
+  border: 0;
   background: transparent;
+  color: var(--product-text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.plan-event-date-line {
+  display: flex;
+  position: relative;
+  min-height: 46px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 13px;
+  border-top: 1px solid var(--product-border);
+  color: var(--product-muted);
+  cursor: pointer;
+}
+
+.plan-event-date-line > span {
+  display: grid;
+  gap: 2px;
+  color: var(--product-text);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.plan-event-date-line > span small {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.plan-event-date-line > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.plan-event-timing:focus-within {
+  border-color: var(--product-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--product-accent) 12%, transparent);
 }
 
 .plan-editor-body > aside {
@@ -29298,6 +29522,16 @@ nav button.active::before {
   margin: 0;
   font-size: 11px;
   line-height: 1.55;
+}
+
+.plan-editor-body > aside.plan-source-note p {
+  display: grid;
+  gap: 3px;
+}
+
+.plan-editor-body > aside.plan-source-note small {
+  color: var(--product-muted);
+  line-height: 1.45;
 }
 
 .plan-editor-drawer > footer {
@@ -29332,6 +29566,33 @@ nav button.active::before {
 
 .plan-editor-drawer > footer .save:disabled {
   opacity: .45;
+}
+
+.plan-delete-confirm {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.plan-delete-confirm p {
+  grid-column: 1 / -1;
+  margin: 0 0 3px;
+  color: var(--product-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.plan-delete-confirm button {
+  border: 1px solid var(--product-border);
+  color: var(--product-text);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.plan-delete-confirm button.confirm {
+  border-color: color-mix(in srgb, #d34d4d 38%, var(--product-border));
+  color: #d34d4d;
 }
 
 @keyframes plan-drawer-in {
@@ -29426,10 +29687,6 @@ nav button.active::before {
     min-width: 700px;
   }
 
-  .plan-calendar-card:has(.plan-month-grid) {
-    overflow-x: auto;
-  }
-
   .plan-weekdays,
   .plan-month-grid {
     width: max(100%, 700px);
@@ -29461,6 +29718,11 @@ nav button.active::before {
   .plan-schedule-view > button > span {
     display: none;
   }
+
+  .plan-empty-state {
+    min-height: 250px;
+    border-bottom: 0;
+  }
 }
 
 @media (max-width: 460px) {
@@ -29475,9 +29737,6 @@ nav button.active::before {
     padding-left: 20px;
   }
 
-  .plan-editor-date-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

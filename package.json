@@ -16,6 +16,7 @@
     "test:signal-intelligence": "node scripts/test-signal-intelligence.mjs",
     "test:channels-view": "node scripts/test-channel-view-state.mjs",
     "test:studio-view": "node scripts/test-studio-view-state.mjs",
+    "test:content-plan-view": "node scripts/test-content-plan-view-state.mjs",
     "test:tiktok-thumbnail-service": "node scripts/test-tiktok-thumbnail-service.cjs",
     "test:tiktok-thumbnail-api": "node scripts/test-tiktok-thumbnail-api.mjs",
     "test:brand-brain": "node scripts/test-brand-brain.mjs",

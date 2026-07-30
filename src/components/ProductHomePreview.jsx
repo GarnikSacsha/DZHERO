@@ -218,6 +218,7 @@ function ProductTopbar({
   notificationsOpen,
   onToggleNotifications,
   onCloseNotifications,
+  onExportPlan,
 }) {
   const { t } = useI18n();
   const isChannels = activeTab === 'channels';
@@ -291,7 +292,7 @@ function ProductTopbar({
       ) : (isStudio || isPlan || isSettings) ? (
         <div className="product-topbar-actions studio-topbar-actions">
           {notifications}
-          {isPlan && <button className="secondary studio-export-button" type="button">{t('product.studio.export')}</button>}
+          {isPlan && <button className="secondary studio-export-button" type="button" onClick={onExportPlan}>{t('product.plan.actions.export')}</button>}
         </div>
       ) : (
         <div className="product-topbar-actions">
@@ -672,6 +673,7 @@ export default function ProductHomePreview({
     directSignalId: '',
   });
   const directSearchTimer = useRef(null);
+  const planExportRef = useRef(null);
 
   useEffect(() => () => window.clearTimeout(directSearchTimer.current), []);
 
@@ -751,6 +753,7 @@ export default function ProductHomePreview({
           notificationsOpen={notificationsOpen}
           onToggleNotifications={() => setNotificationsOpen((open) => !open)}
           onCloseNotifications={() => setNotificationsOpen(false)}
+          onExportPlan={() => planExportRef.current?.()}
         />
         {activeTab === 'discover' && (
           <DiscoverHome
@@ -785,7 +788,15 @@ export default function ProductHomePreview({
             }}
           />
         )}
-        {activeTab === 'plan' && <ProductContentPlanPreview incomingPost={studioPlanDraft} />}
+        {activeTab === 'plan' && (
+          <ProductContentPlanPreview
+            incomingPost={studioPlanDraft}
+            activeBrandId="preview-primary-brand"
+            onRegisterExport={(handler) => {
+              planExportRef.current = handler;
+            }}
+          />
+        )}
         {activeTab === 'settings' && <ProductSettingsPreview language={language} setLanguage={setLanguage} theme={theme} onToggleTheme={onToggleTheme} />}
         {!['discover', 'channels', 'studio', 'plan', 'settings'].includes(activeTab) && <EmptyProductTab activeTab={activeTab} />}
       </section>
