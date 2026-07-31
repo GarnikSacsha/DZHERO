@@ -129,6 +129,7 @@ const isLocalPage = isBrowser && ['localhost', '127.0.0.1', '::1'].includes(wind
 const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(rawApiUrl);
 const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
+const PRODUCT_PREVIEW_ENTRY = isLocalPage || import.meta.env.VITE_ENABLE_PRODUCT_PREVIEW === 'true';
 const IS_BUILD_WEEK_HOST = isBrowser && window.location.hostname === 'openaibuildweek.up.railway.app';
 const AGENT_STUDIO_PUBLIC_ENTRY = IS_BUILD_WEEK_HOST || import.meta.env.VITE_ENABLE_AGENT_STUDIO === 'true';
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
@@ -849,7 +850,7 @@ function App() {
   };
   const publicPage = getPublicPage();
   const mobilePreviewUrl = getMobilePreviewUrl();
-  const localPreviewPage = isLocalPage
+  const localPreviewPage = PRODUCT_PREVIEW_ENTRY
     ? new URLSearchParams(window.location.search).get('preview')
     : '';
   const onboardingPreview = localPreviewPage === 'onboarding';
