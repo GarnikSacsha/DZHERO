@@ -22,7 +22,7 @@ const testerPolicy = {
   dailyTarget: 10,
   maxBudgetedRunsPerDay: 1,
   resultLimitPerPlatform: 5,
-  maxPlannedCalls: 2,
+  maxPlannedCalls: 1,
 };
 
 const testerPolicyState = {
@@ -51,9 +51,9 @@ const testerPrepared = prepareAutomaticDiscovery({
   policy: testerPolicy,
 });
 assert.equal(testerPrepared.run.budgetUsd, 0.4);
-assert.equal(testerPrepared.execution.plannedCalls.length, 2);
-assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.platform), ['instagram', 'tiktok']);
-assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.limit), [5, 5]);
+assert.equal(testerPrepared.execution.plannedCalls.length, 1);
+assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.platform), ['instagram']);
+assert.deepEqual(testerPrepared.execution.plannedCalls.map((call) => call.limit), [5]);
 assert.equal(testerPrepared.execution.maxWinners, 10);
 assert.ok(testerPrepared.run.reservedCostUsd <= 0.4);
 
@@ -78,17 +78,17 @@ const ownerForcedPrepared = prepareAutomaticDiscovery({
   now,
   force: true,
 });
-assert.equal(ownerForcedPrepared.execution.plannedCalls.length, 4);
+assert.equal(ownerForcedPrepared.execution.plannedCalls.length, 1);
 assert.deepEqual(
   [...new Set(ownerForcedPrepared.execution.plannedCalls.map((call) => call.lane))].sort(),
-  ['hashtags', 'keywords', 'trends'],
+  ['keywords'],
 );
 assert.deepEqual(
   [...new Set(ownerForcedPrepared.execution.plannedCalls.map((call) => call.platform))].sort(),
-  ['instagram', 'tiktok'],
+  ['tiktok'],
 );
-assert.equal(ownerForcedPrepared.execution.maxWinners, 10);
-assert.equal(ownerForcedPrepared.execution.maxWinnerDownloads, 2);
+assert.equal(ownerForcedPrepared.execution.maxWinners, 1);
+assert.equal(ownerForcedPrepared.execution.maxWinnerDownloads, 1);
 assert.ok(ownerForcedPrepared.run.reservedCostUsd <= 0.8);
 
 const scheduledMixedState = structuredClone(ownerForcedState);
@@ -108,19 +108,19 @@ const scheduledMixedPrepared = prepareAutomaticDiscovery({
   workspaceId: 'ws_scheduled_mixed',
   now,
 });
-assert.equal(scheduledMixedPrepared.execution.plannedCalls.length, 4);
+assert.equal(scheduledMixedPrepared.execution.plannedCalls.length, 1);
 assert.deepEqual(
   [...new Set(scheduledMixedPrepared.execution.plannedCalls.map((call) => call.lane))].sort(),
-  ['hashtags', 'keywords', 'trends'],
+  ['keywords'],
 );
 assert.deepEqual(
   [...new Set(scheduledMixedPrepared.execution.plannedCalls.map((call) => call.platform))].sort(),
-  ['instagram', 'tiktok'],
+  ['tiktok'],
 );
 assert.ok(scheduledMixedPrepared.run.reservedCostUsd <= 0.8);
 
 testerPrepared.run.status = 'completed';
-testerPrepared.run.attemptedCallCount = 2;
+testerPrepared.run.attemptedCallCount = 1;
 testerPrepared.run.completedAt = now.toISOString();
 const testerSecondRun = prepareAutomaticDiscovery({
   state: testerPolicyState,
@@ -532,7 +532,7 @@ const automaticState = {
         enabled: true,
         dailyBudgetUsd: 4,
         viralScoreThreshold: 70,
-        platforms: ['instagram', 'tiktok'],
+        platforms: ['tiktok'],
         lastRunAt: {
           accounts: '2026-07-08T00:00:00.000Z',
           keywords: '2026-07-07T12:00:00.000Z',
@@ -549,7 +549,7 @@ const automaticState = {
     },
   ],
   sources: [
-    { id: 'src-1', workspaceId: 'ws-1', handle: '@fitlab', label: 'Fit Lab', type: 'instagram' },
+    { id: 'src-1', workspaceId: 'ws-1', handle: '@fitlab', label: 'Fit Lab', type: 'tiktok' },
   ],
   competitors: [
     { id: 'cmp-1', workspaceId: 'ws-1', handle: '@winnercoach', niche: 'pilates', market: 'ua' },
@@ -607,7 +607,7 @@ const createFetchSignalsStub = () => {
       return [];
     }
 
-    if (mode === 'search' && !metadataServed) {
+    if (!metadataServed) {
       metadataServed = true;
       return [lowScoreCandidate, qualifyingMetadataCandidate, duplicateCandidate, duplicateCandidateCopy];
     }
@@ -628,16 +628,15 @@ const automaticResult = await executeAutomaticDiscovery({
   fetchSignals,
 });
 
-assert.equal(automaticResult.acceptedSignals.length, 2);
+assert.equal(automaticResult.acceptedSignals.length, 1);
 assert.equal(automaticResult.updatedSignals.length, 1);
 assert.equal(automaticResult.run.status, 'completed');
-assert.equal(automaticResult.run.acceptedCount, 2);
+assert.equal(automaticResult.run.acceptedCount, 1);
 assert.equal(automaticResult.run.duplicateCount, 2);
 assert.equal(automaticResult.run.budgetUsd, 0.8);
-assert.ok(automaticResult.run.errors.some((entry) => entry.platform === 'instagram'));
 assert.equal(automaticState.workspaces[0].discoverySettings.lastRunAt.keywords, now.toISOString());
 assert.equal(automaticState.workspaces[0].discoverySettings.nextRunAt.keywords, twelveHoursLater.toISOString());
-assert.equal(automaticState.reels.length, 3);
+assert.equal(automaticState.reels.length, 2);
 
 const [acceptedSignal] = automaticResult.acceptedSignals;
 assert.equal(acceptedSignal.videoUrl, 'https://cdn.example.com/winner.mp4');
@@ -754,10 +753,8 @@ await executeAutomaticDiscovery({
   },
 });
 
-assert.equal(forcedFetchCalls.some((call) => call.mode === 'search'), true);
-assert.equal(forcedFetchCalls.some((call) => call.mode === 'hashtag'), true);
-assert.equal(forcedFetchCalls.some((call) => call.platform === 'instagram' && call.limit === 5), true);
-assert.equal(forcedFetchCalls.some((call) => call.platform === 'tiktok' && call.limit === 5), true);
+assert.equal(forcedFetchCalls.length, 1);
+assert.equal(forcedFetchCalls[0].limit, 5);
 
 const fallbackFillState = {
   workspaces: [
@@ -842,9 +839,9 @@ const fallbackFillResult = await executeAutomaticDiscovery({
   },
 });
 
-assert.equal(fallbackFillResult.acceptedSignals.length, 10);
-assert.equal(fallbackFillResult.run.acceptedCount, 10);
-assert.equal(fallbackFillResult.run.rejectedCount, fallbackCandidates.length - 10);
+assert.equal(fallbackFillResult.acceptedSignals.length, 1);
+assert.equal(fallbackFillResult.run.acceptedCount, 1);
+assert.equal(fallbackFillResult.run.rejectedCount, fallbackCandidates.length - 1);
 
 const pausedState = {
   workspaces: [

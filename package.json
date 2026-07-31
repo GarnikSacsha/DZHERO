@@ -18,6 +18,7 @@
     "test:signal-quality-gate": "node scripts/test-signal-quality-gate.cjs && node scripts/test-automatic-discovery-quality-gate.mjs",
     "test:signal-filter-soak": "node scripts/test-signal-filter-soak.mjs",
     "soak:signal-filter": "node scripts/signal-filter-soak.mjs",
+    "audit:staging-metadata": "node scripts/staging-metadata-audit.mjs",
     "test:channels-view": "node scripts/test-channel-view-state.mjs",
     "test:studio-view": "node scripts/test-studio-view-state.mjs",
     "test:content-plan-view": "node scripts/test-content-plan-view-state.mjs",

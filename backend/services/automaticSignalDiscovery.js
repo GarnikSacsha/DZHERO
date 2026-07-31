@@ -1049,6 +1049,40 @@ function mergeSignalSnapshot(baseSignal = {}, incomingSignal = {}, now = new Dat
   return merged;
 }
 
+function buildMetadataAuditCandidateSet(signals = [], context = {}) {
+  const now = toDate(context.now || new Date());
+  const normalizedCandidates = (Array.isArray(signals) ? signals : [])
+    .map((signal, index) => normalizeAutomaticSignal(signal, {
+      workspaceId: context.workspaceId,
+      market: context.market,
+      now,
+      createId: (prefix) => `${prefix}_metadata_audit_${index + 1}`,
+    }));
+  const deduplicatedByIdentity = new Map();
+
+  for (const candidate of normalizedCandidates) {
+    const identityKeys = getSignalIdentityKeys(candidate);
+    const identity = identityKeys[0] || `tie:${getSignalRankingTieKey(candidate)}`;
+    const existing = deduplicatedByIdentity.get(identity);
+    deduplicatedByIdentity.set(
+      identity,
+      existing ? mergeSignalSnapshot(existing, candidate, now) : candidate,
+    );
+  }
+
+  const deduplicatedEligibleCandidates = Array.from(deduplicatedByIdentity.values())
+    .filter(hasActionableSignalEvidence);
+  const rankedCandidates = rankSignalsByBSoft(deduplicatedEligibleCandidates);
+
+  return {
+    normalizedCandidates,
+    deduplicatedEligibleCandidates,
+    rankedCandidates,
+    topCandidates: rankedCandidates.slice(0, 5),
+    selectedTopCandidate: rankedCandidates[0] || null,
+  };
+}
+
 function refreshExistingSignal(existingSignal, incomingSignal, now = new Date()) {
   const merged = mergeSignalSnapshot(existingSignal, incomingSignal, now);
   Object.assign(existingSignal, merged);
@@ -2257,10 +2291,12 @@ module.exports = {
   getDailyAutomaticSpend,
   getDailyAutomaticSpendSummary,
   canStartDiscoveryRun,
+  estimateDiscoveryRunCostUsd,
   claimDiscoveryRun,
   recoverStaleRunningRuns,
   prepareAutomaticDiscovery,
   executeAutomaticDiscovery,
+  buildMetadataAuditCandidateSet,
   rankSignalsByBSoft,
   mergeSignalSnapshot,
 };

@@ -220,16 +220,34 @@ function mapTikTokApifyItem(item = {}, context = {}) {
   };
 }
 
-async function runApifyActor({ token, actorId, input }) {
+async function runApifyActor({
+  token,
+  actorId,
+  input,
+  maxTotalChargeUsd = null,
+  maxItems = null,
+  fetchImpl = globalThis.fetch,
+  sleepImpl = (delayMs) => new Promise((resolve) => setTimeout(resolve, delayMs)),
+}) {
   if (!token) {
     const error = new Error('apify_not_configured');
     error.status = 501;
     throw error;
   }
+  if (typeof fetchImpl !== 'function') throw new Error('apify_fetch_unavailable');
   const actorPath = encodeURIComponent(actorId).replace('%2F', '~');
-  const runResponse = await fetch(`${APIFY_API_BASE}/acts/${actorPath}/runs?token=${encodeURIComponent(token)}`, {
+  const runParams = new URLSearchParams();
+  if (Number.isFinite(Number(maxTotalChargeUsd)) && Number(maxTotalChargeUsd) > 0) {
+    runParams.set('maxTotalChargeUsd', String(Number(maxTotalChargeUsd)));
+  }
+  if (Number.isFinite(Number(maxItems)) && Number(maxItems) > 0) {
+    runParams.set('maxItems', String(Math.trunc(Number(maxItems))));
+  }
+  const authorizationHeaders = { Authorization: `Bearer ${token}` };
+  const runUrl = `${APIFY_API_BASE}/acts/${actorPath}/runs${runParams.size ? `?${runParams}` : ''}`;
+  const runResponse = await fetchImpl(runUrl, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authorizationHeaders },
     body: JSON.stringify(input),
   });
   const runPayload = await runResponse.json().catch(() => ({}));
@@ -250,8 +268,10 @@ async function runApifyActor({ token, actorId, input }) {
       error.status = 504;
       throw error;
     }
-    await new Promise((resolve) => setTimeout(resolve, 2500));
-    const statusResponse = await fetch(`${APIFY_API_BASE}/actor-runs/${runId}?token=${encodeURIComponent(token)}`);
+    await sleepImpl(2500);
+    const statusResponse = await fetchImpl(`${APIFY_API_BASE}/actor-runs/${runId}`, {
+      headers: authorizationHeaders,
+    });
     const statusPayload = await statusResponse.json().catch(() => ({}));
     if (!statusResponse.ok) throw new Error(statusPayload?.error?.message || `apify_status_failed_${statusResponse.status}`);
     run = statusPayload.data;
@@ -260,6 +280,10 @@ async function runApifyActor({ token, actorId, input }) {
     const error = new Error(`apify_run_${String(run.status).toLowerCase()}`);
     error.status = 502;
     error.run = run;
+    error.runId = runId;
+    error.actualCostUsd = Number.isFinite(Number(run.usageTotalUsd))
+      ? Number(run.usageTotalUsd)
+      : null;
     throw error;
   }
 
@@ -270,17 +294,26 @@ async function runApifyActor({ token, actorId, input }) {
     ? actualCostUsd
     : null;
   const datasetId = run.defaultDatasetId;
-  if (!datasetId) return { items: [], actualCostUsd: billedCostUsd };
-  const itemResponse = await fetch(`${APIFY_API_BASE}/datasets/${datasetId}/items?clean=true&format=json&token=${encodeURIComponent(token)}`);
+  if (!datasetId) return { items: [], actualCostUsd: billedCostUsd, runId };
+  const itemParams = new URLSearchParams({ clean: 'true', format: 'json' });
+  if (Number.isFinite(Number(maxItems)) && Number(maxItems) > 0) {
+    itemParams.set('limit', String(Math.trunc(Number(maxItems))));
+  }
+  const itemResponse = await fetchImpl(`${APIFY_API_BASE}/datasets/${datasetId}/items?${itemParams}`, {
+    headers: authorizationHeaders,
+  });
   const items = await itemResponse.json().catch(() => []);
   if (!itemResponse.ok) {
     const error = new Error(items?.error?.message || `apify_dataset_failed_${itemResponse.status}`);
     error.status = itemResponse.status;
+    error.runId = runId;
+    error.actualCostUsd = billedCostUsd;
     throw error;
   }
   return {
     items: Array.isArray(items) ? items : [],
     actualCostUsd: billedCostUsd,
+    runId,
   };
 }
 
