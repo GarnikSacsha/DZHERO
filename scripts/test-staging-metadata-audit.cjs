@@ -103,7 +103,7 @@ assert.equal(basePreflight.invariants.geminiCalls, 0);
 assert.equal(basePreflight.invariants.signalFilterCalls, 0);
 assert.equal(basePreflight.invariants.maxVideoAnalysesPerRun, 1);
 
-for (const environmentName of ['production', 'development', '']) {
+for (const environmentName of ['production', 'local', 'unknown', '']) {
   expectCode(
     () => buildMetadataAuditPreflight({
       state,
@@ -113,6 +113,17 @@ for (const environmentName of ['production', 'development', '']) {
     'metadata_audit_staging_required',
   );
 }
+const tiktokCapPreflight = buildMetadataAuditPreflight({
+  state,
+  env,
+  options: createOptions(commitA, {
+    platform: 'tiktok',
+    hardCapUsd: 0.5,
+  }),
+});
+assert.equal(tiktokCapPreflight.estimatedCostUsd, 0.2);
+assert.equal(tiktokCapPreflight.hardCapUsd, 0.5);
+assert.equal(tiktokCapPreflight.effectiveBudgetUsd, 0.5);
 expectCode(
   () => buildMetadataAuditPreflight({ state, env: { ...env, ENABLE_STAGING_METADATA_AUDIT: 'false' }, options: createOptions() }),
   'metadata_audit_feature_disabled',
@@ -122,7 +133,7 @@ expectCode(
   'metadata_audit_railway_runtime_required',
 );
 expectCode(
-  () => buildMetadataAuditPreflight({ state, env, options: createOptions(commitA, { hardCapUsd: 0.31 }) }),
+  () => buildMetadataAuditPreflight({ state, env, options: createOptions(commitA, { hardCapUsd: 0.51 }) }),
   'metadata_audit_hard_cap_invalid',
 );
 expectCode(
@@ -150,6 +161,23 @@ assert.equal(preflightProviderCalls, 0);
 assert.equal(preflightResult.trace, null);
 assert.equal((await preflightStore.readState()).metadataAuditRuns.length, 0);
 
+let overEstimateProviderCalls = 0;
+await assert.rejects(
+  runStagingMetadataAudit({
+    env,
+    options: createOptions(commitA, { hardCapUsd: 0.5, preflightOnly: false }),
+    store: createInMemoryMetadataAuditStore(state),
+    estimateRunCost: () => 0.51,
+    runActor: async () => {
+      overEstimateProviderCalls += 1;
+      return { items: [] };
+    },
+  }),
+  (error) => error?.code === 'metadata_audit_estimate_exceeds_effective_budget',
+  'an estimate above the staging audit cap must fail before the provider',
+);
+assert.equal(overEstimateProviderCalls, 0);
+
 const rawCandidates = [
   {
     id: 'ig_1', shortCode: 'CHATCUT_A', ownerUsername: 'chatcutapp',
@@ -174,11 +202,11 @@ let liveProviderCalls = 0;
 const liveStore = createInMemoryMetadataAuditStore(state);
 const liveResult = await runStagingMetadataAudit({
   env,
-  options: createOptions(commitA, { preflightOnly: false }),
+  options: createOptions(commitA, { hardCapUsd: 0.5, preflightOnly: false }),
   store: liveStore,
   runActor: async (request) => {
     liveProviderCalls += 1;
-    assert.equal(request.maxTotalChargeUsd, 0.3);
+    assert.equal(request.maxTotalChargeUsd, 0.5);
     assert.equal(request.maxItems, 5);
     assert.equal(request.input.includeDownloadedVideo, false);
     return { items: rawCandidates, actualCostUsd: 0.021, runId: 'provider_run_one' };
@@ -265,7 +293,7 @@ const providerResult = await runApifyActor({
   token: 'provider-header-secret',
   actorId: 'apify/test-actor',
   input: { includeDownloadedVideo: false },
-  maxTotalChargeUsd: 0.3,
+  maxTotalChargeUsd: 0.5,
   maxItems: 5,
   fetchImpl: async (url, options = {}) => {
     providerRequests.push({ url, options });
@@ -277,7 +305,7 @@ const providerResult = await runApifyActor({
 });
 assert.equal(providerResult.runId, 'run_cap');
 assert.equal(providerRequests.length, 2);
-assert.match(providerRequests[0].url, /maxTotalChargeUsd=0\.3/);
+assert.match(providerRequests[0].url, /maxTotalChargeUsd=0\.5/);
 assert.match(providerRequests[0].url, /maxItems=5/);
 assert.doesNotMatch(providerRequests[0].url, /provider-header-secret|token=/);
 assert.equal(providerRequests[0].options.headers.Authorization, 'Bearer provider-header-secret');

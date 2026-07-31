@@ -19,7 +19,7 @@ const {
   sanitizeDiagnosticExport,
 } = require('./diagnosticExportSanitizer.cjs');
 
-const MAX_COMMAND_BUDGET_USD = 0.30;
+const MAX_COMMAND_BUDGET_USD = 0.50;
 const MAX_RESULT_LIMIT = 5;
 const RANKING_VERSION = 'b_soft_v1';
 
@@ -145,7 +145,12 @@ function normalizeOptions(options = {}) {
   };
 }
 
-function buildMetadataAuditPreflight({ state = {}, env = {}, options = {} }) {
+function buildMetadataAuditPreflight({
+  state = {},
+  env = {},
+  options = {},
+  estimateRunCost = estimateDiscoveryRunCostUsd,
+}) {
   assertStagingGuards(env);
   const normalized = normalizeOptions(options);
   if (env.RAILWAY_GIT_COMMIT_SHA && env.RAILWAY_GIT_COMMIT_SHA.toLowerCase() !== normalized.deployedCommitSha) {
@@ -170,7 +175,7 @@ function buildMetadataAuditPreflight({ state = {}, env = {}, options = {} }) {
     normalized.hardCapUsd,
     MAX_COMMAND_BUDGET_USD,
   ));
-  const estimatedCostUsd = roundUsd(estimateDiscoveryRunCostUsd({
+  const estimatedCostUsd = roundUsd(estimateRunCost({
     platform: normalized.platform,
     limit: normalized.limit,
     downloadVideo: false,
@@ -261,13 +266,14 @@ async function runStagingMetadataAudit({
   options = {},
   store,
   runActor = runApifyActor,
+  estimateRunCost = estimateDiscoveryRunCostUsd,
   now = () => new Date(),
 }) {
   if (!store || typeof store.readState !== 'function' || typeof store.writeTrace !== 'function') {
     throw auditError('metadata_audit_store_required');
   }
   const initialState = await store.readState();
-  const preflight = buildMetadataAuditPreflight({ state: initialState, env, options });
+  const preflight = buildMetadataAuditPreflight({ state: initialState, env, options, estimateRunCost });
   const sanitizedPlan = sanitizeAuditValue({
     mode: preflight.preflightOnly ? 'preflight-only' : 'execute',
     environment: preflight.environment,
