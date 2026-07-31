@@ -21,6 +21,7 @@ import {
   Moon,
   Plus,
   Radio,
+  RefreshCw,
   Search,
   Settings,
   Sparkles,
@@ -36,6 +37,7 @@ import {
   filterSignalCards,
   findSignalBySourceUrl,
   getSupportedSignalPlatform,
+  mapQualityAcceptedSignalsToProductCards,
   sortSignalCards,
 } from '../productSignalsViewState.mjs';
 import {
@@ -49,6 +51,11 @@ import {
   writeActiveBrandId,
   writeProductBrands,
 } from '../productSettingsState.mjs';
+import {
+  createProductDiscoveryClient,
+  getActiveProductBrand,
+  mergeRestoredProductBrand,
+} from '../productDiscoveryIntegration.mjs';
 import { buildSignalStrengthEvidence } from '../signalIntelligenceState.mjs';
 import ProductChannelsPreview from './ProductChannelsPreview.jsx';
 import ProductContentPlanPreview from './ProductContentPlanPreview.jsx';
@@ -66,76 +73,17 @@ const NAV_ITEMS = Object.freeze([
 
 const SAVED_SIGNALS_STORAGE_KEY = 'dzhero-preview-product-saved-signals-v1';
 
-const SIGNAL_CARDS = Object.freeze([
-  {
-    id: 'agents',
-    visual: 'agents',
-    creatorId: 'techinsights-ai',
-    country: 'USA',
-    platform: 'YouTube',
-    platformId: 'youtube',
-    niche: 'technology',
-    creator: 'product.cards.agents.creator',
-    handle: 'product.cards.agents.handle',
-    title: 'product.cards.agents.title',
-    views: '1.2M',
-    viewsValue: 1_200_000,
-    likes: '45K',
-    likesValue: 45_000,
-    ageHours: 2,
-    publishedOrder: 3,
-    sourceUrl: 'https://youtube.com/shorts/dzhero-agents',
-    initials: 'TA',
-  },
-  {
-    id: 'minimalism',
-    visual: 'minimalism',
-    creatorId: 'luxeliving',
-    country: 'UK',
-    platform: 'Instagram',
-    platformId: 'instagram',
-    niche: 'lifestyle',
-    creator: 'product.cards.minimalism.creator',
-    handle: 'product.cards.minimalism.handle',
-    title: 'product.cards.minimalism.title',
-    views: '850K',
-    viewsValue: 850_000,
-    likes: '120K',
-    likesValue: 120_000,
-    ageHours: 5,
-    publishedOrder: 2,
-    sourceUrl: 'https://instagram.com/reel/dzhero-minimalism',
-    initials: 'LL',
-  },
-  {
-    id: 'markets',
-    visual: 'markets',
-    creatorId: 'tokyoeat',
-    country: 'JP',
-    platform: 'TikTok',
-    platformId: 'tiktok',
-    niche: 'food',
-    creator: 'product.cards.markets.creator',
-    handle: 'product.cards.markets.handle',
-    title: 'product.cards.markets.title',
-    views: '4.1M',
-    viewsValue: 4_100_000,
-    likes: '890K',
-    likesValue: 890_000,
-    ageHours: 28,
-    publishedOrder: 1,
-    sourceUrl: 'https://tiktok.com/@dzhero/video/7400000000000000000',
-    initials: 'TE',
-  },
-]);
-
 function readSavedSignals() {
   try {
     const value = JSON.parse(window.localStorage.getItem(SAVED_SIGNALS_STORAGE_KEY) || '[]');
-    return new Set(Array.isArray(value) ? value.filter((id) => SIGNAL_CARDS.some((card) => card.id === id)) : []);
+    return new Set(Array.isArray(value) ? value.filter(Boolean) : []);
   } catch {
     return new Set();
   }
+}
+
+function renderCardText(value, t) {
+  return String(value || '').startsWith('product.') ? t(value) : String(value || '');
 }
 
 function ProductSidebar({
@@ -334,9 +282,19 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
   return (
     <article className="product-signal-card">
       <div className={`product-signal-visual ${card.visual}`}>
-        <div className="product-signal-art" aria-hidden="true"><i /><i /><i /></div>
-        <span className="product-match-badge pending" title={t('product.intelligence.aiMatch.pendingBody')}>
-          <Sparkles size={14} />{t('product.intelligence.aiMatch.label')}{' · '}{t('product.intelligence.aiMatch.pending')}
+        {card.image
+          ? <img className="product-signal-image" src={card.image} alt="" />
+          : <div className="product-signal-art" aria-hidden="true"><i /><i /><i /></div>}
+        {Number.isFinite(card.qualityValue) && (
+          <span className="product-quality-badge" title={card.qualitySummary || t('product.intelligence.quality.verifiedBody')}>
+            <Zap size={14} />{t('product.intelligence.quality.label')}{' · '}{Math.round(card.qualityValue)}
+          </span>
+        )}
+        <span
+          className={`product-match-badge ${Number.isFinite(card.matchValue) ? '' : 'pending'}`}
+          title={Number.isFinite(card.matchValue) ? t('product.intelligence.aiMatch.scoredBody') : t('product.intelligence.aiMatch.pendingBody')}
+        >
+          <Sparkles size={14} />{t('product.intelligence.aiMatch.label')}{' · '}{Number.isFinite(card.matchValue) ? Math.round(card.matchValue) : t('product.intelligence.aiMatch.pending')}
         </span>
         <div className="product-signal-tags">
           <span>{card.country}</span>
@@ -347,11 +305,12 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
         <div className="product-signal-author">
           <span>{card.initials}</span>
           <div>
-            <strong>{t(card.creator)}</strong>
-            <small>{t(card.handle)}</small>
+            <strong>{renderCardText(card.creator, t)}</strong>
+            <small>{renderCardText(card.handle, t)}</small>
           </div>
         </div>
-        <h3>{t(card.title)}</h3>
+        <h3>{renderCardText(card.title, t)}</h3>
+        {card.insight && <p className="product-signal-insight">{card.insight}</p>}
         <div className="product-signal-metrics">
           <span><Eye size={16} />{card.views}</span>
           <span><Heart size={16} />{card.likes}</span>
@@ -434,10 +393,13 @@ function ProductUtilityRail({ onOpenChannels }) {
 }
 
 function DiscoverHome({
+  cards,
   onOpenStudio,
   onOpenChannels,
   directSearch,
   onClearDirectSearch,
+  refreshState,
+  onRefreshBank,
 }) {
   const { t } = useI18n();
   const [filters, setFilters] = useState(DEFAULT_SIGNAL_FILTERS);
@@ -452,13 +414,13 @@ function DiscoverHome({
 
   const visibleCards = useMemo(
     () => sortSignalCards(
-      filterSignalCards(SIGNAL_CARDS, filters, {
+      filterSignalCards(cards, filters, {
         savedIds,
         directSignalId: directSearch.directSignalId,
       }),
       sort,
     ),
-    [directSearch.directSignalId, filters, savedIds, sort],
+    [cards, directSearch.directSignalId, filters, savedIds, sort],
   );
 
   const updateFilter = (key, value) => {
@@ -488,7 +450,7 @@ function DiscoverHome({
       last6h: t('product.signals.values.last6h'),
       last24h: t('product.signals.values.last24h'),
     },
-    creator: Object.fromEntries(SIGNAL_CARDS.map((card) => [card.id, t(card.creator)])),
+    creator: Object.fromEntries(cards.map((card) => [card.id, renderCardText(card.creator, t)])),
     status: {
       saved: t('product.signals.values.saved'),
     },
@@ -527,7 +489,26 @@ function DiscoverHome({
             <h1>{t('product.discover.title')}</h1>
             <p>{t('product.discover.subtitle')}</p>
           </div>
+          <button
+            className="product-refresh-bank"
+            type="button"
+            disabled={refreshState.status === 'running'}
+            onClick={onRefreshBank}
+          >
+            <RefreshCw size={17} className={refreshState.status === 'running' ? 'spin' : ''} />
+            {t(refreshState.status === 'running' ? 'product.discovery.refresh.running' : 'product.discovery.refresh.action')}
+          </button>
         </header>
+
+        {refreshState.status !== 'idle' && (
+          <div
+            className={`product-refresh-result ${refreshState.status}`}
+            role={refreshState.status === 'error' ? 'alert' : 'status'}
+          >
+            <strong>{t(`product.discovery.refresh.${refreshState.status}.title`)}</strong>
+            <span>{t(`product.discovery.refresh.${refreshState.status}.body`)}</span>
+          </div>
+        )}
 
         {directSearch.status !== 'idle' && (
           <div className={`product-signal-search-state ${directSearch.status}`} role={directSearch.status === 'error' ? 'alert' : 'status'}>
@@ -602,7 +583,7 @@ function DiscoverHome({
               <label><span>{filterLabels.views}</span><select value={filters.views} onChange={(event) => updateFilter('views', event.target.value)}><option value="all">{t('product.signals.values.any')}</option><option value="views1m">{t('product.signals.values.views1m')}</option><option value="views2m">{t('product.signals.values.views2m')}</option></select></label>
               <label><span>{filterLabels.likes}</span><select value={filters.likes} onChange={(event) => updateFilter('likes', event.target.value)}><option value="all">{t('product.signals.values.any')}</option><option value="likes100k">{t('product.signals.values.likes100k')}</option><option value="likes500k">{t('product.signals.values.likes500k')}</option></select></label>
               <label><span>{filterLabels.date}</span><select value={filters.date} onChange={(event) => updateFilter('date', event.target.value)}><option value="all">{t('product.signals.values.any')}</option><option value="last6h">{t('product.signals.values.last6h')}</option><option value="last24h">{t('product.signals.values.last24h')}</option></select></label>
-              <label><span>{filterLabels.creator}</span><select value={filters.creator} onChange={(event) => updateFilter('creator', event.target.value)}><option value="all">{t('product.signals.values.all')}</option>{SIGNAL_CARDS.map((card) => <option key={card.id} value={card.id}>{t(card.creator)}</option>)}</select></label>
+              <label><span>{filterLabels.creator}</span><select value={filters.creator} onChange={(event) => updateFilter('creator', event.target.value)}><option value="all">{t('product.signals.values.all')}</option>{cards.map((card) => <option key={card.id} value={card.id}>{renderCardText(card.creator, t)}</option>)}</select></label>
               <label><span>{filterLabels.status}</span><select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}><option value="all">{t('product.signals.values.all')}</option><option value="saved">{t('product.signals.values.saved')}</option></select></label>
             </div>
           </div>
@@ -677,6 +658,12 @@ export default function ProductHomePreview({
   setLanguage,
   theme,
   onToggleTheme,
+  signals = [],
+  signalsReady = false,
+  apiBase = '/api',
+  workspaceId = '',
+  fetcher = globalThis.fetch,
+  authenticated = false,
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
@@ -692,6 +679,9 @@ export default function ProductHomePreview({
   const [brands, setBrands] = useState(() => readProductBrands(window.localStorage));
   const [activeBrandId, setActiveBrandId] = useState(() => readActiveBrandId(window.localStorage, brands));
   const [creditState] = useState(() => readCreditState(window.localStorage));
+  const [collectionSignals, setCollectionSignals] = useState(signals);
+  const [brandPersistenceStatus, setBrandPersistenceStatus] = useState('idle');
+  const [refreshState, setRefreshState] = useState({ status: 'idle', code: '' });
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
     messageKey: '',
@@ -699,18 +689,75 @@ export default function ProductHomePreview({
   });
   const directSearchTimer = useRef(null);
   const planExportRef = useRef(null);
+  const brandSyncPromiseRef = useRef(Promise.resolve());
+  const brandSyncRevisionRef = useRef(0);
+  const productClient = useMemo(
+    () => createProductDiscoveryClient({ apiBase, workspaceId, fetcher }),
+    [apiBase, fetcher, workspaceId],
+  );
   const activeBrand = useMemo(
     () => brands.find((brand) => brand.id === activeBrandId) || null,
     [activeBrandId, brands],
   );
   const contentPlanBrandId = activeBrandId || PRODUCT_UNASSIGNED_BRAND_ID;
+  const signalCards = useMemo(
+    () => (signalsReady ? mapQualityAcceptedSignalsToProductCards(collectionSignals) : []),
+    [collectionSignals, signalsReady],
+  );
 
   useEffect(() => () => window.clearTimeout(directSearchTimer.current), []);
+  useEffect(() => {
+    setCollectionSignals(signals);
+  }, [signals, workspaceId]);
   useEffect(() => {
     writeProductBrands(window.localStorage, brands);
     const resolved = writeActiveBrandId(window.localStorage, brands, activeBrandId);
     if (resolved !== activeBrandId) setActiveBrandId(resolved);
   }, [activeBrandId, brands]);
+
+  useEffect(() => {
+    if (!authenticated || !workspaceId) return undefined;
+    let cancelled = false;
+    const localBrands = readProductBrands(window.localStorage);
+    const localActiveBrandId = readActiveBrandId(window.localStorage, localBrands);
+    const localActiveBrand = getActiveProductBrand(localBrands, localActiveBrandId);
+    setBrandPersistenceStatus('loading');
+    productClient.loadBrand()
+      .then(async (backendBrand) => {
+        if (cancelled) return;
+        if (backendBrand) {
+          const restored = mergeRestoredProductBrand(localBrands, backendBrand);
+          setBrands(restored.brands);
+          setActiveBrandId(restored.activeBrandId);
+        } else if (localActiveBrand) {
+          await productClient.saveBrand(localActiveBrand);
+        }
+        if (!cancelled) setBrandPersistenceStatus('ready');
+      })
+      .catch(() => {
+        if (!cancelled) setBrandPersistenceStatus('error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, productClient, workspaceId]);
+
+  const persistBrand = (brand) => {
+    const revision = ++brandSyncRevisionRef.current;
+    setBrandPersistenceStatus('saving');
+    const operation = brandSyncPromiseRef.current
+      .catch(() => null)
+      .then(() => productClient.saveBrand(brand));
+    brandSyncPromiseRef.current = operation;
+    operation
+      .then(() => {
+        if (brandSyncRevisionRef.current === revision) setBrandPersistenceStatus('ready');
+      })
+      .catch(() => {
+        if (brandSyncRevisionRef.current === revision) setBrandPersistenceStatus('error');
+      });
+    return operation;
+  };
 
   const saveBrand = (draft) => {
     const timestamp = new Date().toISOString();
@@ -723,11 +770,34 @@ export default function ProductHomePreview({
     };
     setBrands((current) => upsertProductBrand(current, brand));
     setActiveBrandId(id);
+    if (authenticated && workspaceId) void persistBrand(brand);
   };
 
   const selectBrand = (brandId) => {
-    setActiveBrandId(resolveActiveBrandId(brands, brandId));
+    const nextActiveBrandId = resolveActiveBrandId(brands, brandId);
+    setActiveBrandId(nextActiveBrandId);
     setStudioPlanDraft(null);
+    const brand = getActiveProductBrand(brands, nextActiveBrandId);
+    if (brand && authenticated && workspaceId) void persistBrand(brand);
+  };
+
+  const refreshBank = async () => {
+    if (refreshState.status === 'running') return;
+    const brand = getActiveProductBrand(brands, activeBrandId);
+    setRefreshState({ status: 'running', code: '' });
+    if (!authenticated || !workspaceId || !brand) {
+      setRefreshState({ status: 'blocked', code: 'automatic_discovery_brand_brain_incomplete' });
+      return;
+    }
+    try {
+      await persistBrand(brand);
+    } catch {
+      setRefreshState({ status: 'error', code: 'product_brand_brain_save_failed' });
+      return;
+    }
+    const result = await productClient.refreshBank({ activeBrandId: brand.id });
+    if (Array.isArray(result.reels)) setCollectionSignals(result.reels);
+    setRefreshState({ status: result.status, code: result.code });
   };
 
   const clearDirectSearch = () => {
@@ -763,7 +833,7 @@ export default function ProductHomePreview({
       directSignalId: '',
     });
     directSearchTimer.current = window.setTimeout(() => {
-      const signal = findSignalBySourceUrl(SIGNAL_CARDS, signalUrl);
+      const signal = findSignalBySourceUrl(signalCards, signalUrl);
       setDirectSearch(signal ? {
         status: 'matched',
         messageKey: 'product.search.matched',
@@ -813,6 +883,7 @@ export default function ProductHomePreview({
         />
         {activeTab === 'discover' && (
           <DiscoverHome
+            cards={signalCards}
             onOpenStudio={(signal) => {
               setStudioSignal(signal);
               setActiveTab('studio');
@@ -820,6 +891,8 @@ export default function ProductHomePreview({
             onOpenChannels={() => setActiveTab('channels')}
             directSearch={directSearch}
             onClearDirectSearch={clearDirectSearch}
+            refreshState={refreshState}
+            onRefreshBank={refreshBank}
           />
         )}
         {activeTab === 'channels' && (
@@ -866,6 +939,7 @@ export default function ProductHomePreview({
             onSelectBrand={selectBrand}
             onSaveBrand={saveBrand}
             creditState={creditState}
+            persistenceStatus={brandPersistenceStatus}
           />
         )}
         {!['discover', 'channels', 'studio', 'plan', 'settings'].includes(activeTab) && <EmptyProductTab activeTab={activeTab} />}

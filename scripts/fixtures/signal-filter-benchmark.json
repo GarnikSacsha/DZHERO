@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "suite": "signal-quality-owner-goldens-v1",
+  "cases": [
+    {
+      "id": "mindstudio-accept",
+      "url": "https://www.tiktok.com/@sabrina_ramonov/video/7500302407373540639",
+      "platform": "tiktok",
+      "expectedDecision": "accept",
+      "labelSource": "product_owner",
+      "expectedFacts": [
+        {
+          "id": "beginner-workflow",
+          "claim": "The video explains how a beginner can create AI workflows with MindStudio.ai.",
+          "matchTerms": [
+            "beginner",
+            "AI workflow",
+            "MindStudio.ai"
+          ]
+        },
+        {
+          "id": "usable-progression",
+          "claim": "The video contains a real central idea and a transferable step-by-step mechanic.",
+          "matchTerms": [
+            "workflow",
+            "steps",
+            "result"
+          ]
+        }
+      ],
+      "forbiddenClaims": [],
+      "notes": "Owner-labelled accept. The explanation and reusable mechanic are present in the video."
+    },
+    {
+      "id": "axial-teaser-reject",
+      "url": "https://www.tiktok.com/@axial.studio/video/7646239971480702239",
+      "platform": "tiktok",
+      "expectedDecision": "reject",
+      "labelSource": "product_owner",
+      "expectedFacts": [
+        {
+          "id": "decorative-teaser",
+          "claim": "The video is a visually attractive interface teaser for managing AI agents.",
+          "matchTerms": [
+            "AI agents",
+            "interface",
+            "teaser"
+          ]
+        },
+        {
+          "id": "missing-value",
+          "claim": "The video does not provide enough explanation, useful progression, or payoff for adaptation.",
+          "matchTerms": [
+            "no explanation",
+            "no progression",
+            "no payoff"
+          ]
+        }
+      ],
+      "forbiddenClaims": [
+        {
+          "id": "demonstrated-workflow",
+          "claim": "The video demonstrates a complete repeatable workflow with a proven result.",
+          "patterns": [
+            "complete repeatable workflow",
+            "proven measurable result"
+          ]
+        }
+      ],
+      "notes": "Owner-labelled reject. Topical relevance and visual appeal must not compensate for missing content value."
+    }
+  ]
+}

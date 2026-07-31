@@ -3,6 +3,11 @@ const {
   fetchApifySignals,
   getApifySignalKey,
 } = require('./apifySignalProvider');
+const {
+  combineSignalQualityAssessments,
+  isSignalQualityBorderline,
+} = require('./signalQualityGate.cjs');
+const { resolveWorkspaceDiscoveryBrand } = require('./productBrandBrain.cjs');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -12,22 +17,28 @@ const MAX_INPUTS_PER_LANE = 10;
 const MAX_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
-const AUTOMATIC_FALLBACK_SCORE_THRESHOLD = 55;
 const AUTOMATIC_RUN_LANE = 'automatic';
 const AUTOMATIC_INPUTS_PER_LANE = 3;
 const AUTOMATIC_METADATA_LIMIT = 5;
-const AUTOMATIC_MAX_PLANNED_CALLS = 4;
+const AUTOMATIC_MAX_PLANNED_CALLS = 1;
 const FORCED_AUTOMATIC_INPUTS_PER_LANE = 1;
 const FORCED_AUTOMATIC_METADATA_LIMIT = 5;
 const FORCED_AUTOMATIC_INSTAGRAM_METADATA_LIMIT = 5;
 const AUTOMATIC_DOWNLOAD_LIMIT = 1;
 const AUTOMATIC_MAX_WINNERS = 20;
-const FORCED_AUTOMATIC_MAX_WINNERS = 10;
+const FORCED_AUTOMATIC_MAX_WINNERS = 1;
 const AUTOMATIC_MAX_WINNER_DOWNLOADS = 1;
-const FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS = 2;
+const FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS = 1;
 const STALE_RUNNING_LEASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_BASE_MS = 30 * 60 * 1000;
 const FAILURE_RETRY_CAP_MS = 6 * HOUR_MS;
+const B_SOFT_RANKING_VERSION = 'b_soft_v1';
+const B_SOFT_SHARE_WEIGHT = 4;
+const B_SOFT_SAVE_WEIGHT = 3;
+const B_SOFT_DENOMINATOR_FLOOR = 500;
+const B_SOFT_DURATION_MIN_SECONDS = 12;
+const B_SOFT_DURATION_MAX_SECONDS = 60;
+const B_SOFT_DURATION_DECAY_SECONDS = 12;
 
 const BOOTSTRAP_KEYWORDS = [
   'ai tools',
@@ -102,6 +113,18 @@ function normalizeText(value) {
 
 function normalizeLower(value) {
   return normalizeText(value).toLowerCase();
+}
+
+function cloneAuditValue(value) {
+  try {
+    return JSON.parse(JSON.stringify(value, (key, nestedValue) => (
+      /^(authorization|cookie|token|apiKey|api_key|secret|password)$/i.test(key)
+        ? undefined
+        : nestedValue
+    )));
+  } catch {
+    return null;
+  }
 }
 
 function canonicalizeSignalUrl(value) {
@@ -443,8 +466,11 @@ function ensureWorkspaceDiscoverySettings(workspace = {}, now = new Date()) {
   return workspace.discoverySettings;
 }
 
-function buildDiscoveryInputs(state = {}, workspaceId) {
-  const workspace = getWorkspace(state, workspaceId) || {};
+function buildDiscoveryInputs(state = {}, workspaceId, options = {}) {
+  const storedWorkspace = getWorkspace(state, workspaceId) || {};
+  const workspace = options.brandBrain && typeof options.brandBrain === 'object'
+    ? { ...storedWorkspace, brief: options.brandBrain }
+    : storedWorkspace;
   const accounts = collectAccountCandidates(state, workspaceId);
   const keywords = collectKeywordCandidates(workspace, state, workspaceId);
   const hashtags = collectHashtagCandidates(workspace, state, workspaceId);
@@ -654,6 +680,192 @@ function getSignalIdentityKeys(reel = {}) {
   if (providerKey) keys.push(providerKey);
   if (sourceUrlKey) keys.push(`url:${normalizeLower(sourceUrlKey)}`);
   return [...new Set(keys)];
+}
+
+function getSignalRankingTieKey(reel = {}) {
+  const metadata = reel.importedMetadata || {};
+  const platform = normalizeLower(
+    metadata.platform
+    || metadata.providerPlatform
+    || metadata.source?.tone
+    || reel.sourceType
+    || ''
+  );
+  const providerId = normalizeLower(
+    metadata.externalId
+    || metadata.tiktokVideoId
+    || metadata.shortCode
+    || ''
+  );
+  const canonicalUrl = normalizeLower(canonicalizeSignalUrl(
+    getSignalSourceUrl(reel)
+    || metadata.url
+    || ''
+  ));
+  const stableIdentity = providerId
+    ? `id:${providerId}`
+    : canonicalUrl
+      ? `url:${canonicalUrl}`
+      : '';
+
+  if (stableIdentity) {
+    return JSON.stringify(['identity', platform, stableIdentity]);
+  }
+
+  return JSON.stringify([
+    'metadata',
+    platform,
+    normalizeLower(metadata.handle || reel.handle || reel.sourceHandle || ''),
+    normalizeLower(metadata.title || reel.title || ''),
+    normalizeLower(metadata.description || reel.caption || ''),
+    normalizeLower(metadata.publishedAt || reel.publishedAt || ''),
+    normalizeLower(metadata.duration || reel.duration || ''),
+    Number(reel.views || metadata.stats?.views || 0),
+    Number(reel.likes || metadata.stats?.likes || 0),
+    Number(reel.comments || metadata.stats?.comments || 0),
+    Number(reel.shares || metadata.stats?.shares || 0),
+    Number(reel.saves || metadata.stats?.saves || 0),
+  ]);
+}
+
+function toRankingNumber(value) {
+  try {
+    return Number(value);
+  } catch {
+    return Number.NaN;
+  }
+}
+
+function hasKnownRankingMetric(value) {
+  if (value === null || value === undefined || value === '') return false;
+  const number = toRankingNumber(value);
+  return Number.isFinite(number) && number >= 0;
+}
+
+function safeRankingMetric(value) {
+  const number = toRankingNumber(value);
+  if (!Number.isFinite(number) || number < 0) return 0;
+  return Math.min(number, Number.MAX_SAFE_INTEGER);
+}
+
+function getFirstPresentRankingValue(values = []) {
+  return values.find((value) => value !== null && value !== undefined && value !== '');
+}
+
+function getSignalRankingMetric(reel = {}, key) {
+  return getFirstPresentRankingValue([
+    reel[key],
+    reel.importedMetadata?.stats?.[key],
+    reel.importedMetadata?.rawStats?.[key],
+  ]);
+}
+
+function getSignalRankingDuration(reel = {}) {
+  return getFirstPresentRankingValue([
+    reel.duration,
+    reel.importedMetadata?.duration,
+  ]);
+}
+
+function getKnownDurationRankingComponents(value) {
+  const duration = safeRankingMetric(value);
+  const durationDistance = duration < B_SOFT_DURATION_MIN_SECONDS
+    ? B_SOFT_DURATION_MIN_SECONDS - duration
+    : duration > B_SOFT_DURATION_MAX_SECONDS
+      ? duration - B_SOFT_DURATION_MAX_SECONDS
+      : 0;
+  return {
+    durationDistance,
+    durationPrior: 1 / (1 + durationDistance / B_SOFT_DURATION_DECAY_SECONDS),
+  };
+}
+
+function medianRankingValue(values = []) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function rankSignalsByBSoft(signals = []) {
+  const candidateBatch = Array.isArray(signals) ? signals : [];
+  const knownDurationPriors = candidateBatch
+    .map((signal) => getSignalRankingDuration(signal))
+    .filter(hasKnownRankingMetric)
+    .map((duration) => getKnownDurationRankingComponents(duration).durationPrior);
+  const missingDurationPrior = medianRankingValue(knownDurationPriors) ?? 1;
+
+  return candidateBatch
+    .map((signal) => {
+      const safeViews = safeRankingMetric(getSignalRankingMetric(signal, 'views'));
+      const safeShares = safeRankingMetric(getSignalRankingMetric(signal, 'shares'));
+      const safeSaves = safeRankingMetric(getSignalRankingMetric(signal, 'saves'));
+      const intentNumerator = B_SOFT_SHARE_WEIGHT * safeShares
+        + B_SOFT_SAVE_WEIGHT * safeSaves;
+      const protectedIntent = intentNumerator / Math.max(safeViews, B_SOFT_DENOMINATOR_FLOOR);
+      const duration = getSignalRankingDuration(signal);
+      const missingDuration = !hasKnownRankingMetric(duration);
+      const durationComponents = missingDuration
+        ? { durationDistance: null, durationPrior: missingDurationPrior }
+        : getKnownDurationRankingComponents(duration);
+      const rankingScore = protectedIntent * durationComponents.durationPrior;
+
+      return {
+        ...signal,
+        rankingVersion: B_SOFT_RANKING_VERSION,
+        rankingScore,
+        rankingComponents: {
+          intentNumerator,
+          protectedIntent,
+          durationPrior: durationComponents.durationPrior,
+          durationDistance: durationComponents.durationDistance,
+          denominatorFloor: B_SOFT_DENOMINATOR_FLOOR,
+          missingDuration,
+        },
+      };
+    })
+    .sort(compareSignalsByMetadataRank);
+}
+
+function compareSignalsByMetadataRank(left = {}, right = {}) {
+  const scoreDifference = Number(right.rankingScore || 0) - Number(left.rankingScore || 0);
+  if (scoreDifference !== 0) return scoreDifference;
+
+  const leftTieKey = getSignalRankingTieKey(left);
+  const rightTieKey = getSignalRankingTieKey(right);
+  if (leftTieKey < rightTieKey) return -1;
+  if (leftTieKey > rightTieKey) return 1;
+  return 0;
+}
+
+function getActiveQualityRejectionKeys(state = {}, workspaceId, config = {}, now = new Date()) {
+  if (config.rejectionMemory?.enabled === false) return new Set();
+  const policyVersion = Number(config.version);
+  if (!Number.isFinite(policyVersion)) return new Set();
+  const nowMs = toDate(now).getTime();
+  const keys = new Set();
+  for (const run of Array.isArray(state.discoveryRuns) ? state.discoveryRuns : []) {
+    if (run?.workspaceId !== workspaceId) continue;
+    for (const decision of Array.isArray(run.qualityDecisions) ? run.qualityDecisions : []) {
+      const cachedUntilMs = Date.parse(decision?.cachedUntil || '');
+      if (
+        decision?.decision !== 'reject'
+        || Number(decision.policyVersion) !== policyVersion
+        || !Number.isFinite(cachedUntilMs)
+        || cachedUntilMs <= nowMs
+      ) {
+        continue;
+      }
+      for (const key of Array.isArray(decision.identityKeys) ? decision.identityKeys : []) {
+        if (key) keys.add(key);
+      }
+      const sourceUrl = canonicalizeSignalUrl(decision.sourceUrl || '');
+      if (sourceUrl) keys.add(`url:${normalizeLower(sourceUrl)}`);
+    }
+  }
+  return keys;
 }
 
 function getExistingReelsByIdentity(state = {}, workspaceId) {
@@ -1079,6 +1291,15 @@ function createAutomaticRun(state = {}, args = {}) {
     acceptedCount: 0,
     duplicateCount: 0,
     rejectedCount: 0,
+    qualityEvaluatedCount: 0,
+    qualityInteractionCount: 0,
+    qualityRecheckCount: 0,
+    qualityCacheHitCount: 0,
+    qualityAcceptedCount: 0,
+    qualityRejectedCount: 0,
+    qualityUncertainCount: 0,
+    qualityErrorCount: 0,
+    qualityDecisions: [],
     errorCount: 0,
     errors: [],
     claimedAt: now.toISOString(),
@@ -1111,6 +1332,28 @@ function prepareAutomaticDiscovery(args = {}) {
     throw error;
   }
 
+  const discoveryBrand = resolveWorkspaceDiscoveryBrand(workspace, {
+    requireProductBrandBrain: Boolean(args.requireProductBrandBrain),
+    activeBrandId: args.activeBrandId,
+  });
+  if (!discoveryBrand.complete && (args.requireProductBrandBrain || discoveryBrand.productBrand)) {
+    const error = new Error(
+      discoveryBrand.activeBrandMismatch
+        ? 'automatic_discovery_active_brand_mismatch'
+        : 'automatic_discovery_brand_brain_incomplete',
+    );
+    error.status = 422;
+    error.payload = {
+      error: error.message,
+      message: discoveryBrand.activeBrandMismatch
+        ? 'The selected redesign brand is not the active backend Brand Brain.'
+        : 'Complete the active Brand Brain before refreshing the signal bank.',
+      missingFields: discoveryBrand.missingFields,
+      activeBrandId: discoveryBrand.ref.activeBrandId,
+    };
+    throw error;
+  }
+
   ensureWorkspaceDiscoverySettings(workspace, now);
   const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
   const rawPolicy = args.policy && typeof args.policy === 'object' ? args.policy : null;
@@ -1119,7 +1362,10 @@ function prepareAutomaticDiscovery(args = {}) {
     dailyTarget: Math.max(1, Math.trunc(Number(rawPolicy.dailyTarget || AUTOMATIC_MAX_WINNERS))),
     maxBudgetedRunsPerDay: Math.max(1, Math.trunc(Number(rawPolicy.maxBudgetedRunsPerDay || 1))),
     resultLimitPerPlatform: Math.max(1, Math.trunc(Number(rawPolicy.resultLimitPerPlatform || AUTOMATIC_METADATA_LIMIT))),
-    maxPlannedCalls: Math.max(1, Math.trunc(Number(rawPolicy.maxPlannedCalls || 1))),
+    maxPlannedCalls: Math.min(
+      AUTOMATIC_MAX_PLANNED_CALLS,
+      Math.max(1, Math.trunc(Number(rawPolicy.maxPlannedCalls || 1))),
+    ),
   } : null;
   if (policy) {
     settings.dailyBudgetUsd = Math.min(settings.dailyBudgetUsd, policy.dailyBudgetUsd);
@@ -1193,7 +1439,9 @@ function prepareAutomaticDiscovery(args = {}) {
         },
       }
     : {};
-  const discoveryInputs = buildDiscoveryInputs(state, workspaceId);
+  const discoveryInputs = buildDiscoveryInputs(state, workspaceId, {
+    brandBrain: discoveryBrand.brief,
+  });
   const candidateCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes, planningOptions);
   const plannedCalls = policy
     ? (() => {
@@ -1271,6 +1519,53 @@ function prepareAutomaticDiscovery(args = {}) {
     requestedCount: plannedCalls.length,
   });
   if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+  run.auditTrace = {
+    version: 1,
+    workspace: {
+      id: workspaceId,
+      brandBrainSource: discoveryBrand.source,
+      brandBrainRef: { ...discoveryBrand.ref },
+      brandBrainSnapshot: JSON.parse(JSON.stringify(discoveryBrand.brief)),
+    },
+    plan: {
+      metadataBeforeMedia: true,
+      canonicalDeduplicationBeforeRanking: true,
+      rankingVersion: B_SOFT_RANKING_VERSION,
+      plannedCalls: plannedCalls.map((call) => ({ ...call })),
+      maxMetadataCalls: AUTOMATIC_MAX_PLANNED_CALLS,
+      maxMediaDownloads: 1,
+      maxVideoAnalyses: 1,
+      concurrency: 1,
+      retries: 0,
+    },
+    rawMetadataCandidates: [],
+    normalizedEligibleCandidates: [],
+    topCandidates: [],
+    selectedTopCandidate: null,
+    download: {
+      attempted: false,
+      result: 'not_attempted',
+      mediaSha256: null,
+    },
+    gemini: {
+      attempted: false,
+      rawResponse: null,
+      parsedResult: null,
+      usage: null,
+    },
+    signalFilter: {
+      decision: null,
+      admittedToBank: false,
+      rejectionReasons: [],
+      uncertaintyReasons: [],
+    },
+    failure: null,
+    providerCost: {
+      estimatedUsd: run.estimatedCostUsd,
+      actualUsd: null,
+      geminiEstimatedUsd: null,
+    },
+  };
   return {
     run,
     acceptedSignals: [],
@@ -1283,6 +1578,7 @@ function prepareAutomaticDiscovery(args = {}) {
       maxWinnerDownloads: isForcedRun
         ? FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS
         : AUTOMATIC_MAX_WINNER_DOWNLOADS,
+      discoveryBrand,
       settings,
     },
   };
@@ -1309,8 +1605,33 @@ async function executeAutomaticDiscovery(args = {}) {
     plannedCalls,
     maxWinners = AUTOMATIC_MAX_WINNERS,
     maxWinnerDownloads = AUTOMATIC_MAX_WINNER_DOWNLOADS,
+    discoveryBrand,
     settings,
   } = prepared.execution;
+  const auditTrace = run.auditTrace || null;
+  const discoveryWorkspace = discoveryBrand?.brief
+    ? { ...workspace, brief: discoveryBrand.brief }
+    : workspace;
+  const evaluateSignalQuality = typeof args.evaluateSignalQuality === 'function'
+    ? args.evaluateSignalQuality
+    : null;
+  const maxQualityEvaluations = evaluateSignalQuality
+    ? Math.min(1, Math.max(1, Math.trunc(Number(args.maxQualityEvaluations || 1))))
+    : 0;
+  const qualityGateConfig = args.qualityGateConfig || {};
+  const maxQualityRechecks = evaluateSignalQuality
+    ? Math.max(0, Math.trunc(Number(qualityGateConfig.borderlineReview?.maxRechecksPerRun || 0)))
+    : 0;
+  const rejectionMemoryTtlDays = Math.max(
+    0,
+    Number(qualityGateConfig.rejectionMemory?.ttlDays || 0),
+  );
+  const activeQualityRejectionKeys = getActiveQualityRejectionKeys(
+    state,
+    workspaceId,
+    qualityGateConfig,
+    now,
+  );
   const spentUsd = run.spentUsdBefore;
 
   const fetchSignals = typeof args.fetchSignals === 'function' ? args.fetchSignals : fetchApifySignals;
@@ -1400,6 +1721,13 @@ async function executeAutomaticDiscovery(args = {}) {
         createId: createAutomaticSignalId,
       });
       const { signals: fetchedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+      if (auditTrace) {
+        auditTrace.rawMetadataCandidates.push(
+          ...(Array.isArray(fetchedSignals) ? fetchedSignals : [])
+            .map(cloneAuditValue)
+            .filter(Boolean),
+        );
+      }
       recordBilledCost(actualCostUsd);
       run.returnedCount += Array.isArray(fetchedSignals) ? fetchedSignals.length : 0;
       successfulCalls += 1;
@@ -1463,36 +1791,44 @@ async function executeAutomaticDiscovery(args = {}) {
   applyFailedLaneSchedules(workspace, settings, failedLanes, now);
   advanceSourceCheckpoints(workspace, settings, plannedCalls);
 
-  const rankedSignals = Array.from(candidatesById.values())
+  const eligibleSignals = Array.from(candidatesById.values())
     .filter(hasActionableSignalEvidence)
-    .sort((left, right) => right.score - left.score);
-  const selectedCandidateIds = new Set();
-  const selectCandidate = (signal) => {
-    if (!signal || selectedCandidateIds.has(signal.id)) return;
-    selectedCandidateIds.add(signal.id);
-  };
-  for (const signal of rankedSignals) {
-    if (signal.score >= settings.viralScoreThreshold) selectCandidate(signal);
+    .filter((signal) => {
+      const cacheHit = getSignalIdentityKeys(signal)
+        .some((key) => activeQualityRejectionKeys.has(key));
+      if (cacheHit) run.qualityCacheHitCount += 1;
+      return !cacheHit;
+    });
+  const rankedSignals = rankSignalsByBSoft(eligibleSignals);
+  if (auditTrace) {
+    auditTrace.normalizedEligibleCandidates = eligibleSignals.map((signal) => cloneAuditValue({
+      ...signal,
+      canonicalUrl: canonicalizeSignalUrl(getSignalSourceUrl(signal)),
+      identityKeys: getSignalIdentityKeys(signal),
+    })).filter(Boolean);
+    auditTrace.topCandidates = rankedSignals.slice(0, 5).map((signal) => cloneAuditValue({
+      ...signal,
+      rankingScore: signal.rankingScore,
+      rankingVersion: signal.rankingVersion,
+      canonicalIdentity: getSignalRankingTieKey(signal),
+    })).filter(Boolean);
   }
-  for (const platform of settings.platforms || []) {
-    const platformHasWinner = rankedSignals.some((signal) => (
-      selectedCandidateIds.has(signal.id)
-      && normalizeLower(signal.importedMetadata?.platform) === platform
-    ));
-    if (platformHasWinner) continue;
-    const fallbackSignal = rankedSignals.find((signal) => (
-      normalizeLower(signal.importedMetadata?.platform) === platform
-      && signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD
-    ));
-    selectCandidate(fallbackSignal);
-  }
-  for (const signal of rankedSignals) {
-    if (selectedCandidateIds.size >= maxWinners) break;
-    if (signal.score >= AUTOMATIC_FALLBACK_SCORE_THRESHOLD) selectCandidate(signal);
-  }
+  const shortlistLimit = evaluateSignalQuality
+    ? Math.min(maxWinners, maxQualityEvaluations)
+    : maxWinners;
   const shortlistedSignals = rankedSignals
-    .filter((signal) => selectedCandidateIds.has(signal.id))
-    .slice(0, maxWinners);
+    .slice(0, shortlistLimit);
+
+  if (auditTrace) {
+    auditTrace.selectedTopCandidate = shortlistedSignals[0]
+      ? cloneAuditValue({
+          ...shortlistedSignals[0],
+          rankingScore: shortlistedSignals[0].rankingScore,
+          rankingVersion: shortlistedSignals[0].rankingVersion,
+          canonicalIdentity: getSignalRankingTieKey(shortlistedSignals[0]),
+        })
+      : null;
+  }
 
   run.rejectedCount = Math.max(candidatesById.size - shortlistedSignals.length, 0);
 
@@ -1501,10 +1837,13 @@ async function executeAutomaticDiscovery(args = {}) {
   for (const shortlistedSignal of shortlistedSignals) {
     let acceptedSignal = shortlistedSignal;
     const platform = normalizeLower(shortlistedSignal.importedMetadata?.platform);
-    if (platform === 'tiktok' && winnerDownloadCount < maxWinnerDownloads) {
+    const winnerDownloadLimit = evaluateSignalQuality
+      ? Math.min(maxWinnerDownloads, maxQualityEvaluations)
+      : maxWinnerDownloads;
+    if (['instagram', 'tiktok'].includes(platform) && winnerDownloadCount < winnerDownloadLimit) {
       const downloadInput = shortlistedSignal.sourceUrl || shortlistedSignal.importedMetadata?.url || '';
       const downloadCall = {
-        platform: 'tiktok',
+        platform,
         lane: 'winner',
         inputType: 'url',
         inputValue: downloadInput,
@@ -1512,6 +1851,17 @@ async function executeAutomaticDiscovery(args = {}) {
         downloadVideo: true,
       };
       const downloadEstimateUsd = estimateDiscoveryCallCostUsd(downloadCall);
+      if (auditTrace) {
+        auditTrace.download = {
+          attempted: Boolean(downloadInput),
+          result: downloadInput ? 'running' : 'missing_source_url',
+          platform,
+          sourceUrl: downloadInput,
+          estimatedCostUsd: downloadEstimateUsd,
+          actualCostUsd: null,
+          mediaSha256: null,
+        };
+      }
       if (downloadInput && spentUsd + run.reservedCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd) {
         winnerDownloadCount += 1;
         run.estimatedCostUsd = roundUsd(run.estimatedCostUsd + downloadEstimateUsd);
@@ -1521,7 +1871,7 @@ async function executeAutomaticDiscovery(args = {}) {
         try {
           const providerResult = await fetchSignals({
             token: args.token,
-            platform: 'tiktok',
+            platform,
             mode: 'url',
             input: downloadInput,
             inputType: 'url',
@@ -1534,6 +1884,9 @@ async function executeAutomaticDiscovery(args = {}) {
             createId: createAutomaticSignalId,
           });
           const { signals: downloadedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+          if (auditTrace) {
+            auditTrace.download.actualCostUsd = Number.isFinite(actualCostUsd) ? actualCostUsd : null;
+          }
           recordBilledCost(actualCostUsd);
           run.returnedCount += Array.isArray(downloadedSignals) ? downloadedSignals.length : 0;
           successfulCalls += 1;
@@ -1561,29 +1914,255 @@ async function executeAutomaticDiscovery(args = {}) {
                 url: acceptedSignal.sourceUrl,
               };
             }
+            if (auditTrace) auditTrace.download.result = 'media_url_ready';
+          } else if (auditTrace) {
+            auditTrace.download.result = 'matching_media_not_returned';
           }
         } catch (error) {
           recordBilledCost(error?.actualCostUsd);
           run.errorCount += 1;
           run.errors.push({
-            platform: 'tiktok',
+            platform,
             lane: 'winner',
             input: downloadInput,
             message: error?.message || 'automatic_discovery_download_failed',
             status: error?.status || 500,
           });
+          if (auditTrace) {
+            auditTrace.download.result = 'failed';
+            auditTrace.download.error = {
+              code: error?.code || 'automatic_discovery_download_failed',
+              message: error?.message || 'automatic_discovery_download_failed',
+              status: error?.status || 500,
+            };
+          }
         } finally {
           await reportProgress();
         }
+      } else if (downloadInput && auditTrace) {
+        auditTrace.download.result = 'blocked_budget';
       }
     }
 
-    const finalizedSignal = normalizeAutomaticSignal(acceptedSignal, {
+    let finalizedSignal = normalizeAutomaticSignal(acceptedSignal, {
       workspaceId,
       market,
       now,
       createId: createAutomaticSignalId,
     });
+    if (evaluateSignalQuality) {
+      try {
+        run.qualityEvaluatedCount += 1;
+        run.qualityInteractionCount += 1;
+        if (auditTrace) auditTrace.gemini.attempted = true;
+        let quality = await evaluateSignalQuality({
+          signal: finalizedSignal,
+          workspace: discoveryWorkspace,
+          platform,
+          now,
+        });
+        const borderline = (
+          run.qualityRecheckCount < maxQualityRechecks
+          && isSignalQualityBorderline(quality, qualityGateConfig)
+        );
+        if (borderline) {
+          run.qualityRecheckCount += 1;
+          run.qualityInteractionCount += 1;
+          try {
+            const repeatedQuality = await evaluateSignalQuality({
+              signal: finalizedSignal,
+              workspace: discoveryWorkspace,
+              platform,
+              now,
+              reviewAttempt: 2,
+            });
+            quality = combineSignalQualityAssessments(
+              quality,
+              repeatedQuality,
+              qualityGateConfig,
+            );
+          } catch (reviewError) {
+            run.qualityErrorCount += 1;
+            run.errorCount += 1;
+            run.errors.push({
+              platform,
+              lane: 'quality_gate_review',
+              input: finalizedSignal.sourceUrl || finalizedSignal.importedMetadata?.url || '',
+              message: reviewError?.message || 'signal_quality_gate_review_failed',
+              status: reviewError?.status || 500,
+            });
+            quality = {
+              ...quality,
+              decision: 'uncertain',
+              rejectionReasons: [
+                ...new Set([
+                  ...(quality?.rejectionReasons || []),
+                  'borderline_review_failed',
+                ]),
+              ],
+              review: {
+                performed: true,
+                consistent: false,
+                decisions: [quality?.decision || 'uncertain', 'error'],
+                qualityScores: [quality?.qualityScore ?? null, null],
+              },
+            };
+          }
+        }
+        const identityKeys = getSignalIdentityKeys(finalizedSignal);
+        const decision = ['accept', 'reject', 'uncertain'].includes(quality?.decision)
+          ? quality.decision
+          : 'uncertain';
+        const admittedToBank = decision === 'accept' && quality?.admittedToBank === true;
+        if (auditTrace) {
+          auditTrace.download.mediaSha256 = quality?.auditTrace?.mediaSha256 || null;
+          auditTrace.gemini.rawResponse = cloneAuditValue(quality?.auditTrace?.rawResponse ?? null);
+          auditTrace.gemini.parsedResult = cloneAuditValue(
+            quality?.auditTrace?.parsedResult ?? quality?.auditTrace?.rawAssessment ?? null,
+          );
+          auditTrace.gemini.usage = cloneAuditValue(quality?.auditTrace?.usage ?? null);
+          auditTrace.signalFilter = {
+            decision,
+            admittedToBank,
+            rejectionReasons: Array.isArray(quality?.rejectionReasons) ? [...quality.rejectionReasons] : [],
+            uncertaintyReasons: Array.isArray(quality?.uncertaintyReasons)
+              ? [...quality.uncertaintyReasons]
+              : [],
+            policyVersion: quality?.policyVersion ?? qualityGateConfig.version ?? null,
+            result: cloneAuditValue(quality),
+          };
+          auditTrace.providerCost.geminiEstimatedUsd = Number.isFinite(Number(quality?.auditTrace?.estimatedCostUsd))
+            ? Number(quality.auditTrace.estimatedCostUsd)
+            : null;
+        }
+        const cachedUntil = quality?.decision === 'reject' && rejectionMemoryTtlDays > 0
+          ? new Date(now.getTime() + rejectionMemoryTtlDays * DAY_MS).toISOString()
+          : null;
+        run.qualityDecisions.push({
+          signalId: finalizedSignal.id,
+          sourceUrl: finalizedSignal.sourceUrl || finalizedSignal.importedMetadata?.url || '',
+          identityKeys,
+          policyVersion: quality?.policyVersion ?? qualityGateConfig.version ?? null,
+          decision,
+          admittedToBank,
+          qualityScore: Number.isFinite(Number(quality?.qualityScore)) ? Number(quality.qualityScore) : null,
+          brandRelevance: Number.isFinite(Number(quality?.brandRelevance)) ? Number(quality.brandRelevance) : null,
+          rejectionReasons: Array.isArray(quality?.rejectionReasons) ? [...quality.rejectionReasons] : [],
+          uncertaintyReasons: Array.isArray(quality?.uncertaintyReasons)
+            ? [...quality.uncertaintyReasons]
+            : [],
+          cachedUntil,
+          review: quality?.review ? { ...quality.review } : null,
+        });
+        if (!admittedToBank) {
+          if (decision === 'uncertain') run.qualityUncertainCount += 1;
+          else run.qualityRejectedCount += 1;
+          run.rejectedCount += 1;
+          await reportProgress();
+          continue;
+        }
+        run.qualityAcceptedCount += 1;
+        finalizedSignal = {
+          ...finalizedSignal,
+          importedMetadata: {
+            ...(finalizedSignal.importedMetadata || {}),
+            qualityGate: {
+              policyVersion: quality.policyVersion,
+              policy: quality.policy,
+              generatedContentPolicy: quality.generatedContentPolicy,
+              decision,
+              admittedToBank,
+              admissionMode: quality.admissionMode || null,
+              passedModes: Array.isArray(quality.passedModes) ? [...quality.passedModes] : [],
+              modeResults: Array.isArray(quality.modeResults)
+                ? quality.modeResults.map((result) => ({
+                  ...result,
+                  evidenceIds: Array.isArray(result.evidenceIds) ? [...result.evidenceIds] : [],
+                  missingRequirements: Array.isArray(result.missingRequirements)
+                    ? [...result.missingRequirements]
+                    : [],
+                }))
+                : [],
+              evidenceChains: Array.isArray(quality.evidenceChains)
+                ? quality.evidenceChains.map((chain) => ({
+                  ...chain,
+                  ambiguityReasons: Array.isArray(chain.ambiguityReasons)
+                    ? [...chain.ambiguityReasons]
+                    : [],
+                }))
+                : [],
+              causalChainValidation: Array.isArray(quality.causalChainValidation)
+                ? quality.causalChainValidation.map((chain) => ({
+                  ...chain,
+                  evidenceIds: Array.isArray(chain.evidenceIds) ? [...chain.evidenceIds] : [],
+                  ambiguityReasons: Array.isArray(chain.ambiguityReasons)
+                    ? [...chain.ambiguityReasons]
+                    : [],
+                  issues: Array.isArray(chain.issues) ? [...chain.issues] : [],
+                }))
+                : [],
+              qualityScore: quality.qualityScore,
+              brandRelevance: quality.brandRelevance,
+              scores: quality.scores,
+              evidenceConfidence: quality.evidenceConfidence,
+              summary: quality.summary,
+              centralIdea: quality.centralIdea,
+              contentMechanic: quality.contentMechanic || quality.transferableMechanic || '',
+              visualExecution: quality.visualExecution || '',
+              adaptationTemplate: quality.adaptationTemplate || '',
+              derivedClaims: quality.derivedClaims
+                ? Object.fromEntries(
+                  Object.entries(quality.derivedClaims).map(([key, claim]) => [
+                    key,
+                    {
+                      ...claim,
+                      evidenceIds: Array.isArray(claim?.evidenceIds) ? [...claim.evidenceIds] : [],
+                    },
+                  ]),
+                )
+                : null,
+              contentMechanicEvidenceIds: Array.isArray(quality.contentMechanicEvidenceIds)
+                ? [...quality.contentMechanicEvidenceIds]
+                : [],
+              transferableMechanic: quality.transferableMechanic,
+              slopIndicators: Array.isArray(quality.slopIndicators) ? [...quality.slopIndicators] : [],
+              rejectionReasons: Array.isArray(quality.rejectionReasons) ? [...quality.rejectionReasons] : [],
+              uncertaintyReasons: Array.isArray(quality.uncertaintyReasons)
+                ? [...quality.uncertaintyReasons]
+                : [],
+              observations: Array.isArray(quality.observations)
+                ? quality.observations.map((observation) => ({ ...observation }))
+                : [],
+              unknowns: Array.isArray(quality.unknowns) ? [...quality.unknowns] : [],
+              review: quality.review ? { ...quality.review } : null,
+              evaluationCount: quality.review?.performed ? 2 : 1,
+              evaluatedAt: now.toISOString(),
+            },
+          },
+        };
+      } catch (error) {
+        run.qualityErrorCount += 1;
+        run.rejectedCount += 1;
+        run.errorCount += 1;
+        run.errors.push({
+          platform,
+          lane: 'quality_gate',
+          input: finalizedSignal.sourceUrl || finalizedSignal.importedMetadata?.url || '',
+          message: error?.message || 'signal_quality_gate_failed',
+          status: error?.status || 500,
+        });
+        if (auditTrace) {
+          auditTrace.failure = {
+            stage: 'quality_gate',
+            code: error?.code || 'signal_quality_gate_failed',
+            message: error?.message || 'signal_quality_gate_failed',
+            status: error?.status || 500,
+          };
+        }
+        await reportProgress();
+        continue;
+      }
+    }
     acceptedSignals.push(finalizedSignal);
     run.acceptedCount = acceptedSignals.length;
     registerSignalIdentity(existingByIdentity, finalizedSignal);
@@ -1600,6 +2179,18 @@ async function executeAutomaticDiscovery(args = {}) {
   run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd >= 0
     ? roundedBilledCostUsd
     : null;
+  if (auditTrace) {
+    auditTrace.providerCost.estimatedUsd = run.estimatedCostUsd;
+    auditTrace.providerCost.actualUsd = run.actualCostUsd;
+    if (!auditTrace.failure && run.status === 'failed') {
+      auditTrace.failure = {
+        stage: 'metadata',
+        code: run.errors[0]?.message || 'automatic_discovery_failed',
+        message: run.errors[0]?.message || 'automatic_discovery_failed',
+        status: run.errors[0]?.status || 500,
+      };
+    }
+  }
   run.completedAt = now.toISOString();
   const latestHeartbeat = Date.parse(run.updatedAt || '');
   run.updatedAt = Number.isFinite(latestHeartbeat) && latestHeartbeat > now.getTime()
@@ -1670,5 +2261,6 @@ module.exports = {
   recoverStaleRunningRuns,
   prepareAutomaticDiscovery,
   executeAutomaticDiscovery,
+  rankSignalsByBSoft,
   mergeSignalSnapshot,
 };

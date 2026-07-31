@@ -835,6 +835,7 @@ function App() {
   const activeBrandContextWorkspaceRef = useRef(workspaceId);
   const pendingBrandScanRef = useRef(null);
   const dailyAiUsageRevisionRef = useRef(0);
+  const productPreviewDemoLoginRef = useRef(false);
   const updateDailyAiUsage = (nextDaily, requestWorkspaceId = workspaceId) => {
     if (activeBrandContextWorkspaceRef.current !== requestWorkspaceId) return;
     dailyAiUsageRevisionRef.current += 1;
@@ -1157,6 +1158,40 @@ function App() {
     };
   }, [sessionRevision]);
 
+  useEffect(() => {
+    if (
+      !import.meta.env.DEV
+      || !productPreview
+      || authStatus !== 'guest'
+      || productPreviewDemoLoginRef.current
+    ) return undefined;
+
+    let isMounted = true;
+    productPreviewDemoLoginRef.current = true;
+    fetch(`${API_BASE}/auth/demo`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'demo_login_failed');
+        return payload;
+      })
+      .then((payload) => {
+        if (!isMounted) return;
+        applyAuthPayload(payload);
+        setAuthStatus('ready');
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setAuthStatus('guest');
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authStatus, productPreview]);
+
   const filtered = useMemo(() => {
     if (!data) return null;
     if (market === 'all') return data;
@@ -1178,7 +1213,7 @@ function App() {
   }, [brandContextStatus, data, filtered, page]);
 
   useEffect(() => {
-    if (!currentUser || page !== 'viral') return undefined;
+    if (!currentUser || page !== 'viral' || productPreview) return undefined;
     let isMounted = true;
     setSignalDiscovery(null);
     setSignalDiscoveryError('');
@@ -1192,7 +1227,7 @@ function App() {
     return () => {
       isMounted = false;
     };
-  }, [currentUser, page, workspaceId]);
+  }, [currentUser, page, productPreview, workspaceId]);
 
   const notify = (message) => {
     setToast(translateText(message));
@@ -1326,6 +1361,12 @@ function App() {
           theme={theme}
           onToggleTheme={() => setThemeMode(getNextThemeMode(themeMode))}
           onExit={() => window.location.assign('/')}
+          signals={workspaceScopedSignalsReels}
+          signalsReady={Boolean(currentUser && data && reelsWorkspaceRef.current === workspaceId)}
+          apiBase={API_BASE}
+          workspaceId={workspaceId}
+          fetcher={authFetch}
+          authenticated={Boolean(currentUser)}
         />
       </div>
     );

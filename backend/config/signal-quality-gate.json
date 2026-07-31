@@ -1,0 +1,81 @@
+{
+  "version": 3.1,
+  "policy": "evidence_first_modes_with_uncertainty",
+  "enabled": true,
+  "maxVideoAnalysesPerRun": 1,
+  "generatedContentPolicy": "ignore_origin",
+  "evidenceChainContract": {
+    "minimumDistinctEvidence": 3,
+    "requireTemporalOrder": true,
+    "requireSingleSubject": true,
+    "requireDifferentBeforeAfterStates": true,
+    "requireDirectObservation": true,
+    "inferredOrAmbiguousDecision": "uncertain"
+  },
+  "modeGates": {
+    "knowledge_explainer": {
+      "strategy": "independent_semantic_observations",
+      "minimumDistinctEvidence": 2,
+      "claimSources": ["spoken", "onscreen_text"],
+      "claimKinds": ["claim"],
+      "explanationSources": ["spoken", "onscreen_text"],
+      "explanationKinds": ["process", "comparison", "result", "payoff"],
+      "visualDeviceCanSatisfyMode": false
+    },
+    "process_demo": {
+      "strategy": "validated_evidence_chain",
+      "slots": ["before", "action", "after"]
+    },
+    "transformation": {
+      "strategy": "validated_evidence_chain",
+      "slots": ["before", "action", "after"]
+    },
+    "story_emotion": {
+      "strategy": "validated_evidence_chain",
+      "slots": ["setup", "meaningful_change", "payoff"]
+    },
+    "comedy": {
+      "strategy": "validated_evidence_chain",
+      "slots": ["setup", "action_or_reaction", "punchline"]
+    },
+    "visual_product": {
+      "strategy": "validated_evidence_chain",
+      "slots": ["before", "visible_action", "observable_result"]
+    }
+  },
+  "borderlineReview": {
+    "enabled": false,
+    "scoreMargin": 0,
+    "maxRechecksPerRun": 0,
+    "requireConsistentAccept": false
+  },
+  "rejectionMemory": {
+    "enabled": true,
+    "ttlDays": 30
+  },
+  "scoreWeights": {
+    "contentValue": 0.35,
+    "adaptability": 0.3,
+    "topicClarity": 0.15,
+    "hookStrength": 0.1,
+    "payoffStrength": 0.1
+  },
+  "hardRejectSlopIndicators": [
+    "empty_spectacle",
+    "random_personal_moment",
+    "caption_only_value",
+    "bait_without_payoff",
+    "repost_compilation",
+    "decorative_product_tease"
+  ],
+  "evaluationPrinciples": [
+    "Admission is computed from structured evidence and mode gates, never from a provider pass field.",
+    "Numeric scores rank accepted signals but are not admission thresholds.",
+    "Brand relevance does not participate in universal quality admission or ranking score.",
+    "Every derived claim cites evidence IDs and declares explicit, demonstrated, or inferred support.",
+    "An inferred content mechanic cannot independently produce accept.",
+    "A visual device without process, result, progression, payoff, punchline, comparison, or spoken knowledge is not bank-worthy.",
+    "Three-state admission separates accepted evidence, rejected absence of value, and ambiguous or inferred causal evidence.",
+    "Only a deterministic accept may set admittedToBank to true."
+  ]
+}

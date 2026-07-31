@@ -487,8 +487,8 @@ try {
   assert.equal(manualRun.body?.run?.status, 'completed');
   assert.equal(manualRun.body?.run?.budgetUsd, 0.4);
   assert.equal(manualRun.body?.run?.actualCostUsd, null);
-  assert.equal(manualRun.body?.run?.attemptedCallCount, 2);
-  assert.equal(manualRun.body?.run?.requestedCount, 2);
+  assert.equal(manualRun.body?.run?.attemptedCallCount, 1);
+  assert.equal(manualRun.body?.run?.requestedCount, 1);
   assert.equal(manualRun.body?.acceptedSignals, 0);
   assert.ok(manualRun.body?.run?.estimatedCostUsd > 0 && manualRun.body?.run?.estimatedCostUsd <= 0.4);
 

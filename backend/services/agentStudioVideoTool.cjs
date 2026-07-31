@@ -255,7 +255,7 @@ async function uploadGeminiVideoFromUrl({
   const declaredLength = Number(getHeader(download, 'content-length') || 0);
   if (declaredLength > maxBytes) throw new Error('video_download_too_large');
   const bytes = Buffer.from(await download.arrayBuffer());
-  return uploadGeminiVideoBytes({
+  const uploadedFile = await uploadGeminiVideoBytes({
     bytes,
     mimeType: getHeader(download, 'content-type') || 'video/mp4',
     displayName: 'dzhero-agent-studio-reel',
@@ -264,6 +264,11 @@ async function uploadGeminiVideoFromUrl({
     sleepImpl,
     maxBytes,
   });
+  return {
+    ...uploadedFile,
+    sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
+    byteLength: bytes.length,
+  };
 }
 
 async function deleteGeminiFile({ fileName, apiKey, fetchImpl = globalThis.fetch }) {

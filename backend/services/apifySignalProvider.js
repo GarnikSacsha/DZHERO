@@ -110,7 +110,7 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     rawStats: { views, likes, comments, shares },
     source: { label: 'Instagram', tone: 'instagram' },
     sourceStatus: videoUrl ? 'apify_video' : 'apify_metadata',
-    duration: item.videoDuration || item.duration || '',
+    duration: item.videoDuration ?? item.duration ?? '',
     apify: item,
     analysisText: compactText([item.caption, item.text, handle, url].filter(Boolean).join(' '), 2400),
   };
@@ -186,7 +186,7 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     rawStats: { views, likes, comments, shares, saves },
     source: { label: 'TikTok', tone: 'tiktok' },
     sourceStatus: videoUrl ? 'apify_video' : 'apify_metadata',
-    duration: item['videoMeta.duration'] || item.videoMeta?.duration || '',
+    duration: item['videoMeta.duration'] ?? item.videoMeta?.duration ?? '',
     apify: item,
     analysisText: compactText([item.text, handle, url].filter(Boolean).join(' '), 2400),
   };

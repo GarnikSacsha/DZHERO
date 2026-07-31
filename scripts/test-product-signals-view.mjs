@@ -5,6 +5,8 @@ import {
   filterSignalCards,
   findSignalBySourceUrl,
   getSupportedSignalPlatform,
+  mapBackendSignalToProductCard,
+  mapQualityAcceptedSignalsToProductCards,
   sortSignalCards,
 } from '../src/productSignalsViewState.mjs';
 
@@ -71,5 +73,84 @@ assert.equal(getSupportedSignalPlatform('not a url'), '');
 
 assert.equal(findSignalBySourceUrl(cards, 'https://www.instagram.com/reel/second/?utm_source=test')?.id, 'second');
 assert.equal(findSignalBySourceUrl(cards, 'https://youtube.com/shorts/missing'), null);
+
+const acceptedReel = {
+  id: 'accepted',
+  title: 'Build an AI workflow with modular agents',
+  handle: '@mindstudio',
+  sourceUrl: 'https://www.tiktok.com/@mindstudio/video/123',
+  sourceType: 'TikTok',
+  market: 'global',
+  image: 'https://example.com/cover.jpg',
+  views: 12_400,
+  likes: 930,
+  createdAt: '2026-07-30T10:00:00.000Z',
+  importedMetadata: {
+    platform: 'tiktok',
+    publishedAt: '2026-07-30T09:00:00.000Z',
+    qualityGate: {
+      decision: 'accept',
+      admittedToBank: true,
+      qualityScore: 66.7,
+      brandRelevance: 62,
+      summary: 'A clear walkthrough of a modular AI workflow.',
+      centralIdea: 'Modular agents make workflow building easier.',
+      transferableMechanic: 'Screen walkthrough with a concrete before-and-after.',
+    },
+  },
+};
+const rejectedReel = {
+  ...acceptedReel,
+  id: 'rejected',
+  sourceUrl: 'https://www.tiktok.com/@mindstudio/video/456',
+  importedMetadata: {
+    ...acceptedReel.importedMetadata,
+    qualityGate: { ...acceptedReel.importedMetadata.qualityGate, decision: 'reject' },
+  },
+};
+const nonAdmittedAccept = {
+  ...acceptedReel,
+  id: 'not-admitted',
+  sourceUrl: 'https://www.tiktok.com/@mindstudio/video/789',
+  importedMetadata: {
+    ...acceptedReel.importedMetadata,
+    qualityGate: {
+      ...acceptedReel.importedMetadata.qualityGate,
+      decision: 'accept',
+      admittedToBank: false,
+    },
+  },
+};
+const uncertainReel = {
+  ...acceptedReel,
+  id: 'uncertain',
+  sourceUrl: 'https://www.tiktok.com/@mindstudio/video/999',
+  importedMetadata: {
+    ...acceptedReel.importedMetadata,
+    qualityGate: {
+      ...acceptedReel.importedMetadata.qualityGate,
+      decision: 'uncertain',
+      admittedToBank: false,
+    },
+  },
+};
+const mapped = mapBackendSignalToProductCard(acceptedReel, Date.parse('2026-07-30T12:00:00.000Z'));
+assert.equal(mapped.platformId, 'tiktok');
+assert.equal(mapped.niche, 'technology');
+assert.equal(mapped.qualityValue, 66.7);
+assert.equal(mapped.matchValue, 62);
+assert.equal(mapped.views, '12K');
+assert.equal(mapped.image, 'https://example.com/cover.jpg');
+assert.equal(mapped.ageHours, 3);
+assert.equal(mapped.centralIdea, 'Modular agents make workflow building easier.');
+assert.deepEqual(
+  mapQualityAcceptedSignalsToProductCards([
+    rejectedReel,
+    nonAdmittedAccept,
+    uncertainReel,
+    acceptedReel,
+  ]).map(({ id }) => id),
+  ['accepted'],
+);
 
 console.log('Product Signals view-state checks passed.');

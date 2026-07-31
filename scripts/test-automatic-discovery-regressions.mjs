@@ -188,8 +188,8 @@ await executeAutomaticDiscovery({
     return result;
   },
 });
-assert.deepEqual(firstRotationCalls, ['@one', '@two', '@three']);
-assert.equal(rotationState.workspaces[0].discoverySettings.sourceCheckpoints.instagram.accounts, 3);
+assert.deepEqual(firstRotationCalls, ['@one']);
+assert.equal(rotationState.workspaces[0].discoverySettings.sourceCheckpoints.instagram.accounts, 1);
 
 const secondRotationCalls = [];
 await executeAutomaticDiscovery({
@@ -203,7 +203,7 @@ await executeAutomaticDiscovery({
     return result;
   },
 });
-assert.deepEqual(secondRotationCalls, ['@four', '@one', '@two']);
+assert.deepEqual(secondRotationCalls, ['@two']);
 
 assert.equal(
   canonicalizeSignalUrl('HTTPS://WWW.Instagram.com/reel/ABC123/?utm_source=test#comments'),

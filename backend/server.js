@@ -61,6 +61,13 @@ const {
   getMissingRequiredBrandFields,
   normalizeBrandBrainSourceLinks,
 } = require('./services/brandBrainPersistence.cjs');
+const {
+  normalizeProductBrand,
+  getMissingProductBrainFields,
+  isProductBrandComplete,
+  persistProductBrand,
+  resolveWorkspaceDiscoveryBrand,
+} = require('./services/productBrandBrain.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
@@ -77,6 +84,10 @@ const {
   fetchApifySignals,
   getApifySignalKey,
 } = require('./services/apifySignalProvider');
+const {
+  evaluateSignalQuality,
+  loadSignalQualityGateConfig,
+} = require('./services/signalQualityGate.cjs');
 const {
   defaultDiscoverySettings,
   ensureWorkspaceDiscoverySettings,
@@ -448,8 +459,10 @@ const USAGE_METRICS = {
 const allowedOrigins = new Set([
   'http://127.0.0.1:5173',
   'http://127.0.0.1:5174',
+  'http://127.0.0.1:5180',
   'http://localhost:5173',
   'http://localhost:5174',
+  'http://localhost:5180',
   'https://dzhero.com.ua',
   'https://insta-producer-production.up.railway.app',
   CLIENT_URL,
@@ -912,7 +925,26 @@ function normalizeDiscoveryIdentity(value) {
 function cloneDiscoveryRun(run = {}) {
   return {
     ...run,
+    auditTrace: run.auditTrace ? JSON.parse(JSON.stringify(run.auditTrace)) : null,
     errors: Array.isArray(run.errors) ? [...run.errors] : [],
+    qualityDecisions: Array.isArray(run.qualityDecisions)
+      ? run.qualityDecisions.map((decision) => ({
+        ...decision,
+        identityKeys: Array.isArray(decision?.identityKeys) ? [...decision.identityKeys] : [],
+        rejectionReasons: Array.isArray(decision?.rejectionReasons) ? [...decision.rejectionReasons] : [],
+        review: decision?.review
+          ? {
+            ...decision.review,
+            decisions: Array.isArray(decision.review.decisions)
+              ? [...decision.review.decisions]
+              : [],
+            qualityScores: Array.isArray(decision.review.qualityScores)
+              ? [...decision.review.qualityScores]
+              : [],
+          }
+          : null,
+      }))
+      : [],
   };
 }
 
@@ -1131,6 +1163,19 @@ function runAutomaticDiscoveryFetch(call = {}) {
   return fetchApifySignals({
     ...call,
     token: APIFY_TOKEN,
+  });
+}
+
+const SIGNAL_QUALITY_GATE_CONFIG = loadSignalQualityGateConfig();
+
+function runAutomaticSignalQualityGate({ signal, workspace } = {}) {
+  return evaluateSignalQuality({
+    signal,
+    workspace,
+    config: SIGNAL_QUALITY_GATE_CONFIG,
+    apiKey: GEMINI_API_KEY,
+    mediaApiToken: APIFY_TOKEN,
+    includeAuditTrace: true,
   });
 }
 
@@ -1538,6 +1583,8 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         now,
         force: Boolean(options.force),
         recordPaused: Boolean(options.force),
+        requireProductBrandBrain: Boolean(options.requireProductBrandBrain),
+        activeBrandId: options.activeBrandId,
         policy,
       });
       return { db, prepared };
@@ -1559,6 +1606,11 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         });
       },
       fetchSignals: runAutomaticDiscoveryFetch,
+      evaluateSignalQuality: SIGNAL_QUALITY_GATE_CONFIG.enabled
+        ? runAutomaticSignalQualityGate
+        : null,
+      maxQualityEvaluations: SIGNAL_QUALITY_GATE_CONFIG.maxVideoAnalysesPerRun,
+      qualityGateConfig: SIGNAL_QUALITY_GATE_CONFIG,
     });
 
     if (result.run) {
@@ -6929,12 +6981,36 @@ app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, nex
 app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, next) => {
   try {
     const accessDb = await readDb();
-    if (!requireWorkspace(accessDb, req.params.workspaceId, res)) return;
+    const accessWorkspace = requireWorkspace(accessDb, req.params.workspaceId, res);
+    if (!accessWorkspace) return;
     assertWorkspaceCanUsePaidDiscovery(accessDb, req.params.workspaceId, req.authUser);
+
+    const productRedesignRun = req.body?.surface === 'product_redesign';
+    if (productRedesignRun) {
+      const discoveryBrand = resolveWorkspaceDiscoveryBrand(accessWorkspace, {
+        requireProductBrandBrain: true,
+        activeBrandId: req.body?.activeBrandId,
+      });
+      if (!discoveryBrand.complete) {
+        res.status(422).json({
+          error: discoveryBrand.activeBrandMismatch
+            ? 'automatic_discovery_active_brand_mismatch'
+            : 'automatic_discovery_brand_brain_incomplete',
+          message: discoveryBrand.activeBrandMismatch
+            ? 'The selected redesign brand is not the active backend Brand Brain.'
+            : 'Complete the active Brand Brain before refreshing the signal bank.',
+          missingFields: discoveryBrand.missingFields,
+          activeBrandId: discoveryBrand.ref.activeBrandId,
+        });
+        return;
+      }
+    }
 
     const result = await runAutomaticDiscoveryForWorkspace(req.params.workspaceId, {
       force: true,
       actorUser: req.authUser,
+      requireProductBrandBrain: productRedesignRun,
+      activeBrandId: productRedesignRun ? req.body?.activeBrandId : '',
     });
     if (!result.run) {
       if (result.reason === 'daily_run_limit') {
@@ -7534,11 +7610,31 @@ app.get('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
     workspaceId: workspace.id,
     complete,
     brief,
+    productBrand: normalizeProductBrand(workspace.productBrandBrain),
     brandBrain: normalizeBrandBrain(projectBrandBrainCompatibility(brief)),
     draft: complete ? null : normalizeBrandBrainDraft(workspace.brandBrainDraft),
     recommendation: brief.recommendation || null,
     providers: getAiProviderStatus(),
     memory: db.aiMemory.filter((item) => item.workspaceId === req.params.workspaceId).slice(0, 20),
+  });
+});
+
+app.put('/api/workspaces/:workspaceId/agent/context/redesign', async (req, res) => {
+  const db = await readDb();
+  const workspace = requireWorkspace(db, req.params.workspaceId, res);
+  if (!workspace) return;
+  const requestedBrand = normalizeProductBrand(req.body?.brand || req.body);
+  if (!requestedBrand) {
+    res.status(400).json({ error: 'product_brand_brain_invalid' });
+    return;
+  }
+  const productBrand = persistProductBrand(workspace, requestedBrand, new Date());
+  await writeDb(db);
+  res.json({
+    workspaceId: workspace.id,
+    productBrand,
+    complete: isProductBrandComplete(productBrand),
+    missingFields: getMissingProductBrainFields(productBrand),
   });
 });
 
