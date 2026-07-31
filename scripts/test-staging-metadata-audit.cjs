@@ -21,6 +21,7 @@ const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.json');
 const dbHashBefore = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
 const commitA = 'a'.repeat(40);
 const commitB = 'b'.repeat(40);
+const commitC = 'c'.repeat(40);
 
 function createState() {
   return {
@@ -154,18 +155,19 @@ const rawCandidates = [
     id: 'ig_1', shortCode: 'CHATCUT_A', ownerUsername: 'chatcutapp',
     caption: 'AI editing workflow apify-secret-never-persist',
     url: 'https://www.instagram.com/reel/CHATCUT_A/', videoPlayCount: 8000,
-    likesCount: 400, commentsCount: 20, sharesCount: 120, videoDuration: 44,
+    likesCount: 400, commentsCount: 20, sharesCount: 120, savesCount: 80, videoDuration: 44,
     apiToken: 'raw-token-must-be-redacted', Authorization: 'Bearer raw-auth-must-be-redacted',
   },
   {
     id: 'ig_1', shortCode: 'CHATCUT_A', ownerUsername: 'chatcutapp',
     caption: 'Duplicate snapshot', url: 'https://www.instagram.com/reel/CHATCUT_A/?utm_source=duplicate',
-    videoPlayCount: 8100, likesCount: 410, commentsCount: 21, sharesCount: 121, videoDuration: 44,
+    videoPlayCount: 8100, likesCount: 410, commentsCount: 21, sharesCount: 121, savesCount: 81, videoDuration: 44,
   },
   {
     id: 'ig_2', shortCode: 'OTHER_B', ownerUsername: 'othercreator',
+    coauthorProducers: [{ username: 'chatcutapp' }],
     caption: 'Another AI workflow', url: 'https://www.instagram.com/reel/OTHER_B/',
-    videoPlayCount: 50000, likesCount: 1000, commentsCount: 10, sharesCount: 20, videoDuration: 20,
+    videoPlayCount: 50000, likesCount: 1000, commentsCount: 10, sharesCount: 20, savesCount: 10, videoDuration: 20,
   },
 ];
 let liveProviderCalls = 0;
@@ -210,6 +212,37 @@ expectCode(
   }),
   'metadata_audit_provider_call_already_recorded',
 );
+
+const sanitizedInstagramFixture = JSON.parse(fs.readFileSync(
+  path.resolve(__dirname, 'fixtures', 'instagram-metadata-audit-chatcut-sanitized.json'),
+  'utf8',
+));
+let blockedMockProviderCalls = 0;
+const blockedStore = createInMemoryMetadataAuditStore(createState());
+const blockedResult = await runStagingMetadataAudit({
+  env: createEnv(commitC),
+  options: createOptions(commitC, { preflightOnly: false }),
+  store: blockedStore,
+  runActor: async () => {
+    blockedMockProviderCalls += 1;
+    return { items: sanitizedInstagramFixture.candidates, actualCostUsd: 0, runId: 'provider_fixture_only' };
+  },
+});
+assert.equal(blockedMockProviderCalls, 1, 'one local provider stub supplies the saved metadata fixture');
+assert.equal(blockedResult.trace.state, 'failed');
+assert.equal(blockedResult.trace.classifiedFailure.code, 'insufficient_ranking_metadata');
+assert.equal(blockedResult.trace.selectedTopCandidate, null);
+assert.equal(blockedResult.trace.invariants.downloads, 0);
+assert.equal(blockedResult.trace.invariants.geminiCalls, 0);
+assert.equal(blockedResult.trace.invariants.signalFilterCalls, 0);
+assert.equal(blockedResult.trace.invariants.reelsWrites, 0);
+assert.equal(blockedResult.trace.invariants.collectionWrites, 0);
+assert.equal(blockedResult.trace.invariants.bankWrites, 0);
+assert.equal(blockedResult.trace.mutationGuardPassed, true);
+const blockedPersistedState = await blockedStore.readState();
+assert.equal(blockedPersistedState.metadataAuditRuns[0].classifiedFailure.code, 'insufficient_ranking_metadata');
+assert.equal(blockedPersistedState.metadataAuditRuns[0].selectedTopCandidate, null);
+assert.equal(blockedPersistedState.reels.length, state.reels.length);
 
 let failedProviderCalls = 0;
 const failedStore = createInMemoryMetadataAuditStore(createState());
@@ -284,10 +317,20 @@ await postgresStore.close();
 const sanitized = sanitizeAuditValue({
   token: 'secret',
   nested: { Authorization: 'Bearer secret', url: 'https://example.test/?token=secret' },
+  DATABASE_URL: 'postgresql://user:password@postgres.internal/app',
+  users: [{ passwordHash: 'hash-secret', id: 'safe-user' }],
+  sessions: [{ token: 'session-secret', userId: 'safe-user' }],
+  signedMediaUrl: 'https://media.example.test/video.mp4?X-Amz-Signature=signed-secret',
+  auditCounts: { raw: 5, normalized: 5, rankingVersion: 'b_soft_v1' },
 });
 assert.equal(sanitized.token, undefined);
 assert.equal(sanitized.nested.Authorization, undefined);
-assert.match(sanitized.nested.url, /\[REDACTED\]/);
+assert.equal(sanitized.nested.url, 'https://example.test/');
+assert.equal(sanitized.DATABASE_URL, undefined);
+assert.equal(sanitized.users[0].passwordHash, undefined);
+assert.equal(sanitized.sessions[0].token, undefined);
+assert.equal(sanitized.signedMediaUrl, 'https://media.example.test/video.mp4');
+assert.deepEqual(sanitized.auditCounts, { raw: 5, normalized: 5, rankingVersion: 'b_soft_v1' });
 
 const dbHashAfter = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
 assert.equal(dbHashAfter, dbHashBefore, 'backend/data/db.json must remain unchanged');

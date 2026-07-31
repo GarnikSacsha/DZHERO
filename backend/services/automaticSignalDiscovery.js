@@ -767,6 +767,64 @@ function getSignalRankingDuration(reel = {}) {
   ]);
 }
 
+function getExplicitRankingAvailability(reel = {}, key) {
+  const availabilityKey = `${key}Available`;
+  const direct = reel[availabilityKey];
+  if (typeof direct === 'boolean') return direct;
+  const nested = reel.importedMetadata?.rankingAvailability?.[availabilityKey];
+  return typeof nested === 'boolean' ? nested : null;
+}
+
+function inspectRankingMetric(reel = {}, key) {
+  const value = key === 'duration'
+    ? getSignalRankingDuration(reel)
+    : getSignalRankingMetric(reel, key);
+  const explicitAvailability = getExplicitRankingAvailability(reel, key);
+  if (explicitAvailability === false) {
+    const explicitStatus = reel.rankingMetadataStatus
+      || reel.importedMetadata?.rankingAvailability?.rankingMetadataStatus;
+    return {
+      available: false,
+      invalid: explicitStatus === 'invalid_ranking_metadata',
+      value: null,
+    };
+  }
+  if (value === null || value === undefined || value === '') {
+    return { available: false, invalid: false, value: null };
+  }
+  const number = toRankingNumber(value);
+  if (!Number.isFinite(number) || number < 0) {
+    return { available: false, invalid: true, value: null };
+  }
+  return {
+    available: explicitAvailability !== false,
+    invalid: false,
+    value: Math.min(number, Number.MAX_SAFE_INTEGER),
+  };
+}
+
+function assessSignalRankingMetadata(reel = {}) {
+  const views = inspectRankingMetric(reel, 'views');
+  const shares = inspectRankingMetric(reel, 'shares');
+  const saves = inspectRankingMetric(reel, 'saves');
+  const duration = inspectRankingMetric(reel, 'duration');
+  const protectedIntentAvailable = views.available && shares.available && saves.available;
+  const invalid = views.invalid || shares.invalid || saves.invalid || duration.invalid;
+  return {
+    sharesAvailable: shares.available,
+    savesAvailable: saves.available,
+    viewsAvailable: views.available,
+    durationAvailable: duration.available,
+    protectedIntentAvailable,
+    rankingMetadataStatus: invalid
+      ? 'invalid_ranking_metadata'
+      : protectedIntentAvailable
+        ? 'ready'
+        : 'insufficient_ranking_metadata',
+    metrics: { views, shares, saves, duration },
+  };
+}
+
 function getKnownDurationRankingComponents(value) {
   const duration = safeRankingMetric(value);
   const durationDistance = duration < B_SOFT_DURATION_MIN_SECONDS
@@ -792,21 +850,22 @@ function medianRankingValue(values = []) {
 function rankSignalsByBSoft(signals = []) {
   const candidateBatch = Array.isArray(signals) ? signals : [];
   const knownDurationPriors = candidateBatch
-    .map((signal) => getSignalRankingDuration(signal))
-    .filter(hasKnownRankingMetric)
-    .map((duration) => getKnownDurationRankingComponents(duration).durationPrior);
+    .map((signal) => assessSignalRankingMetadata(signal).metrics.duration)
+    .filter((duration) => duration.available)
+    .map((duration) => getKnownDurationRankingComponents(duration.value).durationPrior);
   const missingDurationPrior = medianRankingValue(knownDurationPriors) ?? 1;
 
   return candidateBatch
     .map((signal) => {
-      const safeViews = safeRankingMetric(getSignalRankingMetric(signal, 'views'));
-      const safeShares = safeRankingMetric(getSignalRankingMetric(signal, 'shares'));
-      const safeSaves = safeRankingMetric(getSignalRankingMetric(signal, 'saves'));
+      const rankingAvailability = assessSignalRankingMetadata(signal);
+      const safeViews = safeRankingMetric(rankingAvailability.metrics.views.value);
+      const safeShares = safeRankingMetric(rankingAvailability.metrics.shares.value);
+      const safeSaves = safeRankingMetric(rankingAvailability.metrics.saves.value);
       const intentNumerator = B_SOFT_SHARE_WEIGHT * safeShares
         + B_SOFT_SAVE_WEIGHT * safeSaves;
       const protectedIntent = intentNumerator / Math.max(safeViews, B_SOFT_DENOMINATOR_FLOOR);
-      const duration = getSignalRankingDuration(signal);
-      const missingDuration = !hasKnownRankingMetric(duration);
+      const duration = rankingAvailability.metrics.duration.value;
+      const missingDuration = !rankingAvailability.durationAvailable;
       const durationComponents = missingDuration
         ? { durationDistance: null, durationPrior: missingDurationPrior }
         : getKnownDurationRankingComponents(duration);
@@ -816,6 +875,12 @@ function rankSignalsByBSoft(signals = []) {
         ...signal,
         rankingVersion: B_SOFT_RANKING_VERSION,
         rankingScore,
+        sharesAvailable: rankingAvailability.sharesAvailable,
+        savesAvailable: rankingAvailability.savesAvailable,
+        viewsAvailable: rankingAvailability.viewsAvailable,
+        durationAvailable: rankingAvailability.durationAvailable,
+        protectedIntentAvailable: rankingAvailability.protectedIntentAvailable,
+        rankingMetadataStatus: rankingAvailability.rankingMetadataStatus,
         rankingComponents: {
           intentNumerator,
           protectedIntent,
@@ -827,6 +892,34 @@ function rankSignalsByBSoft(signals = []) {
       };
     })
     .sort(compareSignalsByMetadataRank);
+}
+
+function hasMeaningfulRankingSignal(signal = {}) {
+  return signal.rankingMetadataStatus === 'ready'
+    && signal.protectedIntentAvailable === true
+    && Number(signal.rankingComponents?.intentNumerator || 0) > 0
+    && Number(signal.rankingScore || 0) > 0;
+}
+
+function getSignalSourceRelationship(signal = {}) {
+  return signal.sourceRelationship || signal.importedMetadata?.sourceRelationship || null;
+}
+
+function isSignalWithinRequestedSourceScope(signal = {}) {
+  return getSignalSourceRelationship(signal) !== 'unrelated';
+}
+
+function classifyBlockedRankingBatch({ allCandidates = [], inScopeCandidates = [], rankedCandidates = [] } = {}) {
+  if (allCandidates.length > 0 && inScopeCandidates.length === 0) {
+    return { code: 'provider_scope_mismatch' };
+  }
+  if (rankedCandidates.some(hasMeaningfulRankingSignal)) return null;
+  if (inScopeCandidates.length > 0
+    && rankedCandidates.length > 0
+    && rankedCandidates.every((candidate) => candidate.rankingMetadataStatus === 'invalid_ranking_metadata')) {
+    return { code: 'invalid_ranking_metadata' };
+  }
+  return { code: 'insufficient_ranking_metadata' };
 }
 
 function compareSignalsByMetadataRank(left = {}, right = {}) {
@@ -1070,16 +1163,27 @@ function buildMetadataAuditCandidateSet(signals = [], context = {}) {
     );
   }
 
-  const deduplicatedEligibleCandidates = Array.from(deduplicatedByIdentity.values())
-    .filter(hasActionableSignalEvidence);
-  const rankedCandidates = rankSignalsByBSoft(deduplicatedEligibleCandidates);
+  const deduplicatedCandidates = Array.from(deduplicatedByIdentity.values());
+  const inScopeCandidates = deduplicatedCandidates.filter(isSignalWithinRequestedSourceScope);
+  const deduplicatedEligibleCandidates = inScopeCandidates.filter(hasActionableSignalEvidence);
+  const evaluatedCandidates = rankSignalsByBSoft(deduplicatedEligibleCandidates);
+  const rankedCandidates = evaluatedCandidates.filter(hasMeaningfulRankingSignal);
+  const classifiedFailure = classifyBlockedRankingBatch({
+    allCandidates: deduplicatedCandidates,
+    inScopeCandidates,
+    rankedCandidates: evaluatedCandidates,
+  });
 
   return {
     normalizedCandidates,
+    deduplicatedCandidates,
+    inScopeCandidates,
     deduplicatedEligibleCandidates,
+    evaluatedCandidates,
     rankedCandidates,
     topCandidates: rankedCandidates.slice(0, 5),
     selectedTopCandidate: rankedCandidates[0] || null,
+    classifiedFailure,
   };
 }
 
@@ -1675,6 +1779,7 @@ async function executeAutomaticDiscovery(args = {}) {
   const candidateIdsByIdentity = new Map();
   const candidatesById = new Map();
   const updatedSignalsById = new Map();
+  const pendingSignalUpdatesById = new Map();
   let successfulCalls = 0;
   let billedCostUsd = 0;
   let hasCompleteBilledCost = true;
@@ -1777,8 +1882,11 @@ async function executeAutomaticDiscovery(args = {}) {
         const identityKeys = getSignalIdentityKeys(normalizedSignal);
         const existingSignal = findFirstMappedValue(existingByIdentity, identityKeys);
         if (existingSignal) {
-          const refreshedSignal = refreshExistingSignal(existingSignal, normalizedSignal, now);
-          updatedSignalsById.set(refreshedSignal.id, refreshedSignal);
+          const refreshedSignal = mergeSignalSnapshot(existingSignal, normalizedSignal, now);
+          pendingSignalUpdatesById.set(refreshedSignal.id, {
+            target: existingSignal,
+            value: refreshedSignal,
+          });
           registerSignalIdentity(existingByIdentity, refreshedSignal);
           run.duplicateCount += 1;
           continue;
@@ -1825,7 +1933,9 @@ async function executeAutomaticDiscovery(args = {}) {
   applyFailedLaneSchedules(workspace, settings, failedLanes, now);
   advanceSourceCheckpoints(workspace, settings, plannedCalls);
 
-  const eligibleSignals = Array.from(candidatesById.values())
+  const deduplicatedCandidates = Array.from(candidatesById.values());
+  const inScopeCandidates = deduplicatedCandidates.filter(isSignalWithinRequestedSourceScope);
+  const eligibleSignals = inScopeCandidates
     .filter(hasActionableSignalEvidence)
     .filter((signal) => {
       const cacheHit = getSignalIdentityKeys(signal)
@@ -1833,9 +1943,30 @@ async function executeAutomaticDiscovery(args = {}) {
       if (cacheHit) run.qualityCacheHitCount += 1;
       return !cacheHit;
     });
-  const rankedSignals = rankSignalsByBSoft(eligibleSignals);
+  const evaluatedSignals = rankSignalsByBSoft(eligibleSignals);
+  const rankedSignals = evaluatedSignals.filter(hasMeaningfulRankingSignal);
+  const classifiedRankingFailure = classifyBlockedRankingBatch({
+    allCandidates: deduplicatedCandidates,
+    inScopeCandidates,
+    rankedCandidates: evaluatedSignals,
+  });
+  const rankingBlocked = Boolean(classifiedRankingFailure);
+  if (rankingBlocked) {
+    run.classifiedFailure = classifiedRankingFailure;
+    run.errorCount += 1;
+    run.errors.push({
+      code: classifiedRankingFailure.code,
+      message: classifiedRankingFailure.code,
+      status: 422,
+    });
+  } else {
+    for (const { target, value } of pendingSignalUpdatesById.values()) {
+      Object.assign(target, value);
+      updatedSignalsById.set(value.id, value);
+    }
+  }
   if (auditTrace) {
-    auditTrace.normalizedEligibleCandidates = eligibleSignals.map((signal) => cloneAuditValue({
+    auditTrace.normalizedEligibleCandidates = evaluatedSignals.map((signal) => cloneAuditValue({
       ...signal,
       canonicalUrl: canonicalizeSignalUrl(getSignalSourceUrl(signal)),
       identityKeys: getSignalIdentityKeys(signal),
@@ -1846,6 +1977,14 @@ async function executeAutomaticDiscovery(args = {}) {
       rankingVersion: signal.rankingVersion,
       canonicalIdentity: getSignalRankingTieKey(signal),
     })).filter(Boolean);
+    if (rankingBlocked) {
+      auditTrace.failure = {
+        stage: 'metadata_ranking',
+        code: classifiedRankingFailure.code,
+        message: classifiedRankingFailure.code,
+        status: 422,
+      };
+    }
   }
   const shortlistLimit = evaluateSignalQuality
     ? Math.min(maxWinners, maxQualityEvaluations)
@@ -2208,7 +2347,7 @@ async function executeAutomaticDiscovery(args = {}) {
   }
 
   run.acceptedCount = acceptedSignals.length;
-  run.status = successfulCalls > 0 ? 'completed' : 'failed';
+  run.status = !rankingBlocked && successfulCalls > 0 ? 'completed' : 'failed';
   const roundedBilledCostUsd = roundUsd(billedCostUsd);
   run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd >= 0
     ? roundedBilledCostUsd

@@ -281,9 +281,11 @@ const mergeResult = await executeAutomaticDiscovery({
     }],
   }),
 });
-assert.equal(mergeResult.updatedSignals.length, 1);
-assert.equal(mergeResult.updatedSignals[0].views, 1000);
-assert.equal(mergeResult.updatedSignals[0].likes, 100);
+assert.equal(mergeResult.updatedSignals.length, 0, 'blocked ranking must not write duplicate refreshes');
+assert.equal(mergeResult.run.status, 'failed');
+assert.equal(mergeResult.run.classifiedFailure.code, 'insufficient_ranking_metadata');
+assert.equal(mergeState.reels[0].views, 1000);
+assert.equal(mergeState.reels[0].likes, 100);
 assert.equal(mergeState.reels.length, 1);
 assert.equal(mergeResult.run.actualCostUsd, 0.02);
 

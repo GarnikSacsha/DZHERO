@@ -1,0 +1,65 @@
+{
+  "requestedProfile": "@chatcutapp",
+  "candidates": [
+    {
+      "stableId": "3945356706583750750",
+      "shortCode": "DbAuQVwIShe",
+      "ownerUsername": "handlytech",
+      "coauthorProducers": [{ "username": "chatcutapp" }],
+      "taggedUsers": [{ "username": "chatcutapp" }],
+      "likesCount": 200,
+      "commentsCount": 226,
+      "videoPlayCount": 10436,
+      "videoViewCount": 347,
+      "videoDuration": 36.633
+    },
+    {
+      "stableId": "3943984020861690467",
+      "shortCode": "Da72JIjRyJj",
+      "ownerUsername": "miracampschool",
+      "coauthorProducers": [{ "username": "chatcutapp" }],
+      "taggedUsers": [{ "username": "chatcutapp" }],
+      "likesCount": 172,
+      "commentsCount": 170,
+      "videoPlayCount": 11438,
+      "videoViewCount": 269,
+      "videoDuration": 103.333
+    },
+    {
+      "stableId": "3948302922433589108",
+      "shortCode": "DbLMJbFSm90",
+      "ownerUsername": "artzenmedia",
+      "coauthorProducers": [{ "username": "chatcutapp" }],
+      "taggedUsers": [{ "username": "chatcutapp" }],
+      "likesCount": 949,
+      "commentsCount": 856,
+      "videoPlayCount": 36147,
+      "videoViewCount": 2696,
+      "videoDuration": 61.266
+    },
+    {
+      "stableId": "3943480162398278214",
+      "shortCode": "Da6DlByjJJG",
+      "ownerUsername": "migs.visuals",
+      "coauthorProducers": [{ "username": "chatcutapp" }],
+      "taggedUsers": [{ "username": "chatcutapp" }],
+      "likesCount": 9629,
+      "commentsCount": 14905,
+      "videoPlayCount": 235840,
+      "videoViewCount": 9973,
+      "videoDuration": 41.641
+    },
+    {
+      "stableId": "3952461838703935856",
+      "shortCode": "DbZ9xnsPEFw",
+      "ownerUsername": "chatcutapp",
+      "coauthorProducers": [],
+      "taggedUsers": [],
+      "likesCount": 95,
+      "commentsCount": 6,
+      "videoPlayCount": 4390,
+      "videoViewCount": 1636,
+      "videoDuration": 44.256
+    }
+  ]
+}

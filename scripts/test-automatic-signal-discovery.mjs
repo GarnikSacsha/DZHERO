@@ -839,9 +839,12 @@ const fallbackFillResult = await executeAutomaticDiscovery({
   },
 });
 
-assert.equal(fallbackFillResult.acceptedSignals.length, 1);
-assert.equal(fallbackFillResult.run.acceptedCount, 1);
-assert.equal(fallbackFillResult.run.rejectedCount, fallbackCandidates.length - 1);
+assert.equal(fallbackFillResult.acceptedSignals.length, 0);
+assert.equal(fallbackFillResult.run.acceptedCount, 0);
+assert.equal(fallbackFillResult.run.rejectedCount, fallbackCandidates.length);
+assert.equal(fallbackFillResult.run.status, 'failed');
+assert.equal(fallbackFillResult.run.classifiedFailure.code, 'insufficient_ranking_metadata');
+assert.equal(fallbackFillResult.run.auditTrace.selectedTopCandidate, null);
 
 const pausedState = {
   workspaces: [

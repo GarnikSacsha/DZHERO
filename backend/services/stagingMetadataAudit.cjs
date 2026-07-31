@@ -15,6 +15,9 @@ const {
 const {
   resolveWorkspaceDiscoveryBrand,
 } = require('./productBrandBrain.cjs');
+const {
+  sanitizeDiagnosticExport,
+} = require('./diagnosticExportSanitizer.cjs');
 
 const MAX_COMMAND_BUDGET_USD = 0.30;
 const MAX_RESULT_LIMIT = 5;
@@ -50,26 +53,7 @@ function sanitizeSource(value) {
 }
 
 function sanitizeAuditValue(value, { secrets = [] } = {}) {
-  const secretValues = secrets.map((item) => String(item || '')).filter(Boolean);
-  const sanitizeString = (input) => {
-    let output = String(input || '')
-      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, 'Bearer [REDACTED]')
-      .replace(/([?&](?:token|api_key|apikey|key)=)[^&#\s]+/gi, '$1[REDACTED]');
-    for (const secret of secretValues) output = output.split(secret).join('[REDACTED]');
-    return output;
-  };
-  const visit = (item, key = '') => {
-    if (/authorization|cookie|token|api.?key|secret|password|credential/i.test(key)) return undefined;
-    if (typeof item === 'string') return sanitizeString(item);
-    if (Array.isArray(item)) return item.map((entry) => visit(entry)).filter((entry) => entry !== undefined);
-    if (item && typeof item === 'object') {
-      return Object.fromEntries(Object.entries(item)
-        .map(([nestedKey, nestedValue]) => [nestedKey, visit(nestedValue, nestedKey)])
-        .filter(([, nestedValue]) => nestedValue !== undefined));
-    }
-    return item;
-  };
-  return visit(value);
+  return sanitizeDiagnosticExport(value, { secrets });
 }
 
 function getMutationSnapshot(state = {}, workspaceId = '') {
@@ -258,6 +242,17 @@ function summarizeCandidate(candidate = {}) {
     rankingScore: Number.isFinite(Number(candidate.rankingScore)) ? Number(candidate.rankingScore) : null,
     qualityScore: null,
     rankingVersion: candidate.rankingVersion || null,
+    requestedSourceHandle: candidate.requestedSourceHandle || metadata.requestedSourceHandle || '',
+    contentOwnerHandle: candidate.contentOwnerHandle || metadata.contentOwnerHandle || '',
+    coauthorHandles: candidate.coauthorHandles || metadata.coauthorHandles || [],
+    taggedHandles: candidate.taggedHandles || metadata.taggedHandles || [],
+    sourceRelationship: candidate.sourceRelationship || metadata.sourceRelationship || null,
+    sharesAvailable: candidate.sharesAvailable === true,
+    savesAvailable: candidate.savesAvailable === true,
+    viewsAvailable: candidate.viewsAvailable === true,
+    durationAvailable: candidate.durationAvailable === true,
+    protectedIntentAvailable: candidate.protectedIntentAvailable === true,
+    rankingMetadataStatus: candidate.rankingMetadataStatus || null,
   };
 }
 
@@ -364,6 +359,9 @@ async function runStagingMetadataAudit({
     const mapped = rawItems.map((item, index) => mapper(item, {
       workspaceId: preflight.workspaceId,
       market: 'global',
+      inputType: preflight.inputType,
+      inputValue: preflight.source,
+      requestedSourceHandle: preflight.inputType === 'profile' ? preflight.source : '',
       createId: (prefix) => `${prefix}_${runId}_${index + 1}`,
       providerActor: preflight.actorId,
     }));
@@ -384,7 +382,8 @@ async function runStagingMetadataAudit({
     trace.selectedTopCandidate = candidateSet.selectedTopCandidate
       ? summarizeCandidate(candidateSet.selectedTopCandidate)
       : null;
-    trace.state = 'completed';
+    trace.classifiedFailure = candidateSet.classifiedFailure;
+    trace.state = candidateSet.selectedTopCandidate ? 'completed' : 'failed';
   } catch (error) {
     const failedActualCostUsd = Number.isFinite(Number(error?.actualCostUsd))
       ? roundUsd(error.actualCostUsd)

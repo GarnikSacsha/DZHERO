@@ -13,26 +13,138 @@ function cleanSocialToken(value = '') {
     .replace(/[^a-zA-Z0-9_]/g, '');
 }
 
+function cleanSocialHandleToken(value = '') {
+  return String(value || '')
+    .trim()
+    .replace(/^instagram\s+/i, '')
+    .replace(/^#|^@/, '')
+    .replace(/[^a-zA-Z0-9._]/g, '');
+}
+
 function getInstagramProfileHandle(value = '') {
   const raw = String(value || '').trim();
   if (!raw) return '';
   if (!/^https?:\/\//i.test(raw) && !/instagram\.com\//i.test(raw)) {
-    return cleanSocialToken(raw);
+    return cleanSocialHandleToken(raw);
   }
   try {
     const url = new URL(raw.startsWith('http') ? raw : `https://${raw}`);
     if (!/instagram\.com$/i.test(url.hostname.replace(/^www\./, ''))) return '';
     const [handle] = url.pathname.split('/').filter(Boolean);
     if (!handle || ['p', 'reel', 'reels', 'tv', 'explore'].includes(handle.toLowerCase())) return '';
-    return cleanSocialToken(handle);
+    return cleanSocialHandleToken(handle);
   } catch {
-    return cleanSocialToken(raw);
+    return cleanSocialHandleToken(raw);
   }
 }
 
 function toNumber(value) {
   const number = Number(value || 0);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function readOptionalMetric(item = {}, keys = []) {
+  const presentKeys = keys.filter((key) => Object.prototype.hasOwnProperty.call(item, key));
+  if (!presentKeys.length) return { available: false, invalid: false, status: 'unavailable', value: null, sourceField: null };
+  const sourceField = presentKeys.find((key) => Boolean(item[key])) || presentKeys[0];
+  const rawValue = item[sourceField];
+  if (rawValue === null || rawValue === undefined) {
+    return { available: false, invalid: false, status: 'unavailable', value: null, sourceField };
+  }
+  if ((typeof rawValue !== 'number' && typeof rawValue !== 'string') || String(rawValue).trim() === '') {
+    return { available: false, invalid: true, status: 'invalid', value: null, sourceField };
+  }
+  const numericValue = Number(rawValue);
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return { available: false, invalid: true, status: 'invalid', value: null, sourceField };
+  }
+  const value = Math.min(numericValue, Number.MAX_SAFE_INTEGER);
+  return {
+    available: true,
+    invalid: false,
+    status: value === 0 ? 'confirmed_zero' : 'positive',
+    value,
+    sourceField,
+  };
+}
+
+function canonicalSocialHandle(value = '') {
+  const handle = cleanSocialHandleToken(value).toLowerCase();
+  return handle ? `@${handle}` : '';
+}
+
+function collectSocialHandles(values = []) {
+  const entries = Array.isArray(values) ? values : [];
+  return [...new Set(entries.map((entry) => canonicalSocialHandle(
+    typeof entry === 'string'
+      ? entry
+      : entry?.username || entry?.userName || entry?.handle || entry?.ownerUsername || '',
+  )).filter(Boolean))];
+}
+
+function getInstagramSourceScope(item = {}, context = {}) {
+  const requestedProfile = getInstagramProfileHandle(
+    context.requestedSourceHandle || context.inputValue || context.input || '',
+  );
+  const requestedSourceHandle = context.inputType === 'profile' || context.mode === 'profile'
+    ? canonicalSocialHandle(requestedProfile)
+    : '';
+  const contentOwnerHandle = canonicalSocialHandle(
+    item.ownerUsername || item.username || item.owner?.username || item.user?.username || '',
+  );
+  const coauthorHandles = collectSocialHandles(item.coauthorProducers);
+  const taggedHandles = collectSocialHandles(item.taggedUsers);
+  const sourceRelationship = !requestedSourceHandle
+    ? null
+    : contentOwnerHandle === requestedSourceHandle
+      ? 'owner'
+      : coauthorHandles.includes(requestedSourceHandle)
+        ? 'coauthor'
+        : 'unrelated';
+  return {
+    requestedSourceHandle,
+    contentOwnerHandle,
+    coauthorHandles,
+    taggedHandles,
+    sourceRelationship,
+  };
+}
+
+function getTikTokSourceScope(item = {}, context = {}) {
+  const requestedSourceHandle = context.inputType === 'profile' || context.mode === 'profile'
+    ? canonicalSocialHandle(context.requestedSourceHandle || context.inputValue || context.input || '')
+    : '';
+  const contentOwnerHandle = canonicalSocialHandle(
+    item['authorMeta.name'] || item.authorMeta?.name || item.authorName || item.username || '',
+  );
+  return {
+    requestedSourceHandle,
+    contentOwnerHandle,
+    coauthorHandles: [],
+    taggedHandles: [],
+    sourceRelationship: !requestedSourceHandle
+      ? null
+      : contentOwnerHandle === requestedSourceHandle
+        ? 'owner'
+        : 'unrelated',
+  };
+}
+
+function buildRankingAvailability({ views, shares, saves, duration }) {
+  const protectedIntentAvailable = views.available && shares.available && saves.available;
+  const hasInvalidRankingMetadata = views.invalid || shares.invalid || saves.invalid || duration.invalid;
+  return {
+    sharesAvailable: shares.available,
+    savesAvailable: saves.available,
+    viewsAvailable: views.available,
+    durationAvailable: duration.available,
+    protectedIntentAvailable,
+    rankingMetadataStatus: hasInvalidRankingMetadata
+      ? 'invalid_ranking_metadata'
+      : protectedIntentAvailable
+        ? 'ready'
+        : 'insufficient_ranking_metadata',
+  };
 }
 
 function parseTikTokVideoId(url = '') {
@@ -62,22 +174,34 @@ function mapInstagramApifyItem(item = {}, context = {}) {
   const snapshotAt = context.now instanceof Date
     ? context.now.toISOString()
     : new Date(context.now || Date.now()).toISOString();
-  const views = toNumber(
-    item.videoPlayCount
-    || item.videoViewCount
-    || item.viewCount
-    || item.viewsCount
-    || item.playsCount
-    || item.playCount
-    || item.views
-    || item.plays
-  );
+  const viewsMetric = readOptionalMetric(item, [
+    'videoPlayCount',
+    'videoViewCount',
+    'viewCount',
+    'viewsCount',
+    'playsCount',
+    'playCount',
+    'views',
+    'plays',
+  ]);
+  const sharesMetric = readOptionalMetric(item, ['sharesCount', 'shareCount', 'shares']);
+  const savesMetric = readOptionalMetric(item, ['savesCount', 'saveCount', 'saves']);
+  const durationMetric = readOptionalMetric(item, ['videoDuration', 'duration']);
+  const views = viewsMetric.value;
   const likes = toNumber(item.likesCount || item.likes);
   const comments = toNumber(item.commentsCount || item.comments);
-  const shares = toNumber(item.sharesCount || item.shareCount || item.shares);
+  const shares = sharesMetric.value;
+  const saves = savesMetric.value;
   const thumbnailUrl = item.displayUrl || item.thumbnailUrl || item.coverUrl || item.imageUrl || item.images?.[0] || '';
   const ownerUsername = item.ownerUsername || item.username || item.owner?.username || item.user?.username || '';
   const handle = ownerUsername ? `@${String(ownerUsername).replace(/^@/, '')}` : '@instagram';
+  const sourceScope = getInstagramSourceScope(item, context);
+  const rankingAvailability = buildRankingAvailability({
+    views: viewsMetric,
+    shares: sharesMetric,
+    saves: savesMetric,
+    duration: durationMetric,
+  });
   const title = compactText(item.caption || item.text || item.description || `Instagram Reel ${item.shortCode || item.code || item.id || ''}`, 180);
   const shortCode = item.shortCode || item.code || '';
   const url = item.url || item.inputUrl || (shortCode ? `https://www.instagram.com/reel/${shortCode}/` : '');
@@ -106,11 +230,22 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     audioUrl: item.audioUrl || '',
     publishedAt,
     snapshotAt,
-    stats: { views, likes, comments, shares },
-    rawStats: { views, likes, comments, shares },
+    stats: { views, likes, comments, shares, saves },
+    rawStats: {
+      views,
+      likes,
+      comments,
+      shares,
+      saves,
+      videoPlayCount: item.videoPlayCount ?? null,
+      videoViewCount: item.videoViewCount ?? null,
+      videoDuration: item.videoDuration ?? null,
+    },
+    rankingAvailability,
+    ...sourceScope,
     source: { label: 'Instagram', tone: 'instagram' },
     sourceStatus: videoUrl ? 'apify_video' : 'apify_metadata',
-    duration: item.videoDuration ?? item.duration ?? '',
+    duration: durationMetric.value,
     apify: item,
     analysisText: compactText([item.caption, item.text, handle, url].filter(Boolean).join(' '), 2400),
   };
@@ -134,11 +269,13 @@ function mapInstagramApifyItem(item = {}, context = {}) {
     likes,
     comments,
     shares,
-    saves: 0,
+    saves,
+    ...rankingAvailability,
+    ...sourceScope,
     hook: title,
     status: ['Instagram', 'Apify', videoUrl ? 'Player ready' : 'Metadata'],
     tag: (String(ownerUsername || 'I')[0] || 'I').toUpperCase(),
-    score: buildScore({ views, likes, comments, shares, publishedAt, sourceQuality: videoUrl ? 12 : 8 }),
+    score: buildScore({ views, likes, comments, shares, saves, publishedAt, sourceQuality: videoUrl ? 12 : 8 }),
     importedMetadata: metadata,
     createdAt: snapshotAt,
   };
@@ -150,11 +287,18 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     : new Date(context.now || Date.now()).toISOString();
   const url = item.webVideoUrl || item.url || '';
   const tiktokVideoId = parseTikTokVideoId(url);
-  const views = toNumber(item.playCount);
+  const viewsMetric = readOptionalMetric(item, ['playCount']);
+  const sharesMetric = readOptionalMetric(item, ['shareCount']);
+  const savesMetric = readOptionalMetric(item, ['collectCount']);
+  const durationMetric = readOptionalMetric(item, ['videoMeta.duration']);
+  if (!durationMetric.available && !durationMetric.invalid && item.videoMeta) {
+    Object.assign(durationMetric, readOptionalMetric(item.videoMeta, ['duration']));
+  }
+  const views = viewsMetric.value;
   const likes = toNumber(item.diggCount);
   const comments = toNumber(item.commentCount);
-  const shares = toNumber(item.shareCount);
-  const saves = toNumber(item.collectCount);
+  const shares = sharesMetric.value;
+  const saves = savesMetric.value;
   const mediaUrls = Array.isArray(item.mediaUrls) ? item.mediaUrls : [];
   const videoUrl = mediaUrls[0] || item.videoUrl || '';
   const thumbnailUrl = item['videoMeta.coverUrl']
@@ -165,6 +309,13 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     || '';
   const authorName = item['authorMeta.name'] || item.authorMeta?.name || 'tiktok';
   const handle = authorName.startsWith('@') ? authorName : `@${authorName}`;
+  const sourceScope = getTikTokSourceScope(item, context);
+  const rankingAvailability = buildRankingAvailability({
+    views: viewsMetric,
+    shares: sharesMetric,
+    saves: savesMetric,
+    duration: durationMetric,
+  });
   const title = compactText(item.text || `TikTok ${tiktokVideoId}`, 180);
   const publishedAt = item.createTimeISO || '';
   const metadata = {
@@ -183,10 +334,12 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     publishedAt,
     snapshotAt,
     stats: { views, likes, comments, shares, saves },
-    rawStats: { views, likes, comments, shares, saves },
+    rawStats: { views, likes, comments, shares, saves, playCount: item.playCount ?? null },
+    rankingAvailability,
+    ...sourceScope,
     source: { label: 'TikTok', tone: 'tiktok' },
     sourceStatus: videoUrl ? 'apify_video' : 'apify_metadata',
-    duration: item['videoMeta.duration'] ?? item.videoMeta?.duration ?? '',
+    duration: durationMetric.value,
     apify: item,
     analysisText: compactText([item.text, handle, url].filter(Boolean).join(' '), 2400),
   };
@@ -211,6 +364,8 @@ function mapTikTokApifyItem(item = {}, context = {}) {
     comments,
     shares,
     saves,
+    ...rankingAvailability,
+    ...sourceScope,
     hook: title,
     status: ['TikTok', 'Apify', videoUrl ? 'Player ready' : 'Metadata'],
     tag: (authorName[0] || 'T').toUpperCase(),
@@ -421,6 +576,11 @@ async function fetchApifySignals(options = {}) {
         workspaceId,
         market,
         createId,
+        inputType: options.inputType || options.mode,
+        inputValue: options.inputValue ?? options.input,
+        requestedSourceHandle: options.inputType === 'profile' || options.mode === 'profile'
+          ? options.inputValue ?? options.input
+          : '',
         providerActor: actorRequest.actorId,
       })),
       result.actualCostUsd,
@@ -433,7 +593,16 @@ async function fetchApifySignals(options = {}) {
       input: actorRequest.input,
     });
     return attachActualCost(
-      result.items.map((item) => mapTikTokApifyItem(item, { workspaceId, market, createId })),
+      result.items.map((item) => mapTikTokApifyItem(item, {
+        workspaceId,
+        market,
+        createId,
+        inputType: options.inputType || options.mode,
+        inputValue: options.inputValue ?? options.input,
+        requestedSourceHandle: options.inputType === 'profile' || options.mode === 'profile'
+          ? options.inputValue ?? options.input
+          : '',
+      })),
       result.actualCostUsd,
     );
   }

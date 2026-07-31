@@ -202,4 +202,84 @@ assert.equal(result.run.auditTrace.signalFilter.decision, 'accept');
 assert.equal(result.run.auditTrace.signalFilter.admittedToBank, true);
 assert.equal(result.run.auditTrace.providerCost.geminiEstimatedUsd, 0.001);
 
+const blockedWorkspaceId = 'ws_product_integration_blocked';
+const blockedWorkspace = structuredClone(workspace);
+blockedWorkspace.id = blockedWorkspaceId;
+const blockedState = {
+  workspaces: [blockedWorkspace],
+  sources: [],
+  competitors: [],
+  reels: [],
+  discoveryRuns: [],
+};
+const blockedPrepared = prepareAutomaticDiscovery({
+  state: blockedState,
+  workspaceId: blockedWorkspaceId,
+  now,
+  force: true,
+  requireProductBrandBrain: true,
+  activeBrandId: productBrand.id,
+});
+let blockedMetadataFixtureCalls = 0;
+let blockedDownloadCalls = 0;
+let blockedAnalysisCalls = 0;
+const blockedCandidate = {
+  ...candidate(false),
+  id: 'chatcut_missing_intent',
+  workspaceId: blockedWorkspaceId,
+  shares: null,
+  saves: null,
+  sharesAvailable: false,
+  savesAvailable: false,
+  viewsAvailable: true,
+  durationAvailable: true,
+  protectedIntentAvailable: false,
+  rankingMetadataStatus: 'insufficient_ranking_metadata',
+  importedMetadata: {
+    ...candidate(false).importedMetadata,
+    stats: { views: 100_000, likes: 8_000, comments: 120, shares: null, saves: null },
+    rawStats: { views: 100_000, likes: 8_000, comments: 120, shares: null, saves: null },
+    rankingAvailability: {
+      sharesAvailable: false,
+      savesAvailable: false,
+      viewsAvailable: true,
+      durationAvailable: true,
+      protectedIntentAvailable: false,
+      rankingMetadataStatus: 'insufficient_ranking_metadata',
+    },
+  },
+};
+const blockedDiscoveryResult = await executeAutomaticDiscovery({
+  state: blockedState,
+  workspaceId: blockedWorkspaceId,
+  now,
+  prepared: blockedPrepared,
+  fetchSignals: async (call) => {
+    if (call.downloadVideo || call.downloadVideos) {
+      blockedDownloadCalls += 1;
+      return [];
+    }
+    blockedMetadataFixtureCalls += 1;
+    return [blockedCandidate];
+  },
+  evaluateSignalQuality: async () => {
+    blockedAnalysisCalls += 1;
+    return { decision: 'accept', admittedToBank: true };
+  },
+  qualityGateConfig: { version: 3.1, borderlineReview: { maxRechecksPerRun: 0 } },
+});
+assert.equal(blockedMetadataFixtureCalls, 1, 'one local metadata fixture reaches production selection');
+assert.equal(blockedDownloadCalls, 0);
+assert.equal(blockedAnalysisCalls, 0);
+assert.equal(blockedState.reels.length, 0);
+assert.equal(blockedDiscoveryResult.acceptedSignals.length, 0);
+assert.equal(blockedDiscoveryResult.updatedSignals.length, 0);
+assert.equal(blockedDiscoveryResult.run.status, 'failed');
+assert.equal(blockedDiscoveryResult.run.classifiedFailure.code, 'insufficient_ranking_metadata');
+assert.equal(blockedDiscoveryResult.run.auditTrace.selectedTopCandidate, null);
+assert.equal(blockedDiscoveryResult.run.auditTrace.download.attempted, false);
+assert.equal(blockedDiscoveryResult.run.auditTrace.gemini.attempted, false);
+assert.equal(blockedDiscoveryResult.run.auditTrace.signalFilter.decision, null);
+assert.equal(blockedDiscoveryResult.run.auditTrace.signalFilter.admittedToBank, false);
+
 console.log('MVP discovery integration checks passed.');

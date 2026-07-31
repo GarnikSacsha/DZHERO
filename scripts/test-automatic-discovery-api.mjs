@@ -484,7 +484,7 @@ try {
 
   const manualRun = await manualRunPromise;
   assert.equal(manualRun.response.status, 201);
-  assert.equal(manualRun.body?.run?.status, 'completed');
+  assert.equal(manualRun.body?.run?.status, 'failed');
   assert.equal(manualRun.body?.run?.budgetUsd, 0.4);
   assert.equal(manualRun.body?.run?.actualCostUsd, null);
   assert.equal(manualRun.body?.run?.attemptedCallCount, 1);
@@ -496,7 +496,8 @@ try {
   const persistedRun = persistedState.discoveryRuns?.find((run) => run.id === activeRun.id);
   const persistedWorkspace = persistedState.workspaces.find((item) => item.id === workspaceId);
   const persistedConcurrentReel = persistedState.reels?.find((reel) => reel.id === 'reel_concurrent_unrelated');
-  assert.equal(persistedRun?.status, 'completed');
+  assert.equal(persistedRun?.status, 'failed');
+  assert.equal(persistedRun?.classifiedFailure?.code, 'insufficient_ranking_metadata');
   assert.equal(persistedWorkspace?.reviewNote, 'survives concurrent merge');
   assert.equal(persistedConcurrentReel?.sourceUrl, 'https://example.com/concurrent-reel');
 
