@@ -14,6 +14,7 @@
     "test:theme-preferences": "node scripts/test-theme-preferences.mjs",
     "test:signals-view": "node scripts/test-product-signals-view.mjs",
     "test:mvp-discovery-integration": "node scripts/test-product-discovery-client.mjs && node scripts/test-mvp-discovery-integration.mjs && node scripts/test-product-brand-brain-api.mjs",
+    "test:product-entry-routing": "node scripts/test-product-entry-routing.mjs",
     "test:signal-intelligence": "node scripts/test-signal-intelligence.mjs",
     "test:signal-quality-gate": "node scripts/test-signal-quality-gate.cjs && node scripts/test-automatic-discovery-quality-gate.mjs",
     "test:signal-filter-soak": "node scripts/test-signal-filter-soak.mjs",

@@ -129,7 +129,8 @@ const isLocalPage = isBrowser && ['localhost', '127.0.0.1', '::1'].includes(wind
 const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.test(rawApiUrl);
 const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
-const PRODUCT_PREVIEW_ENTRY = isLocalPage || import.meta.env.VITE_ENABLE_PRODUCT_PREVIEW === 'true';
+const PRODUCT_PREVIEW_DEFAULT_ENTRY = import.meta.env.VITE_ENABLE_PRODUCT_PREVIEW === 'true';
+const PRODUCT_PREVIEW_ENTRY = isLocalPage || PRODUCT_PREVIEW_DEFAULT_ENTRY;
 const IS_BUILD_WEEK_HOST = isBrowser && window.location.hostname === 'openaibuildweek.up.railway.app';
 const AGENT_STUDIO_PUBLIC_ENTRY = IS_BUILD_WEEK_HOST || import.meta.env.VITE_ENABLE_AGENT_STUDIO === 'true';
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
@@ -766,6 +767,18 @@ function getMobilePreviewUrl() {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+function selectDefaultProductEntry() {
+  if (!isBrowser || !PRODUCT_PREVIEW_DEFAULT_ENTRY) return false;
+  const url = new URL(window.location.href);
+  if (url.pathname !== '/' || url.searchParams.has('preview')) return false;
+  window.history.replaceState(
+    window.history.state,
+    '',
+    '/?preview=product&tab=discover',
+  );
+  return true;
+}
+
 function MobilePreviewFrame({ src }) {
   useI18n();
   return (
@@ -1145,6 +1158,7 @@ function App() {
       })
       .then((payload) => {
         if (!isMounted) return;
+        selectDefaultProductEntry();
         applyAuthPayload(payload);
         setAuthStatus('ready');
       })
@@ -1281,6 +1295,7 @@ function App() {
   }, [currentUser]);
 
   const handleAuthSuccess = (payload, destination = null) => {
+    selectDefaultProductEntry();
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
     setSessionRevision((revision) => revision + 1);
     applyAuthPayload(payload);
