@@ -3857,12 +3857,15 @@ function scheduleGeminiFileCleanup(fileNames = []) {
 }
 
 const SESSION_COOKIE_NAME = 'dzhero_session';
+const SESSION_COOKIE_SAME_SITE = ['Lax', 'Strict', 'None'].find((value) => (
+  value.toLowerCase() === String(process.env.SESSION_COOKIE_SAME_SITE || '').trim().toLowerCase()
+)) || 'Lax';
 
 function getSessionCookieOptions(maxAgeMs = SESSION_TTL_MS) {
   return [
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    `SameSite=${SESSION_COOKIE_SAME_SITE}`,
     `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
     ...(IS_PRODUCTION ? ['Secure'] : []),
   ].join('; ');
@@ -3873,7 +3876,7 @@ function setSessionCookie(res, token, maxAgeMs = SESSION_TTL_MS) {
 }
 
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=${SESSION_COOKIE_SAME_SITE}; Max-Age=0${IS_PRODUCTION ? '; Secure' : ''}`);
 }
 
 function getAuthToken(req) {
