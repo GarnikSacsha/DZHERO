@@ -20,6 +20,8 @@
     "test:signal-filter-soak": "node scripts/test-signal-filter-soak.mjs",
     "soak:signal-filter": "node scripts/signal-filter-soak.mjs",
     "audit:staging-metadata": "node scripts/staging-metadata-audit.mjs",
+    "audit:staging-signal-filter": "node scripts/staging-signal-filter-audit.mjs",
+    "test:staging-signal-filter-audit": "node scripts/test-staging-signal-filter-audit.cjs",
     "test:discovery-metadata-guards": "node scripts/test-discovery-metadata-guards.cjs",
     "test:channels-view": "node scripts/test-channel-view-state.mjs",
     "test:studio-view": "node scripts/test-studio-view-state.mjs",

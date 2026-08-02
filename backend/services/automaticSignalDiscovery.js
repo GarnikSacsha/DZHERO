@@ -901,6 +901,16 @@ function hasMeaningfulRankingSignal(signal = {}) {
     && Number(signal.rankingScore || 0) > 0;
 }
 
+function resolveSignalAdmission(quality = {}) {
+  const decision = ['accept', 'reject', 'uncertain'].includes(quality?.decision)
+    ? quality.decision
+    : 'uncertain';
+  return {
+    decision,
+    admittedToBank: decision === 'accept' && quality?.admittedToBank === true,
+  };
+}
+
 function getSignalSourceRelationship(signal = {}) {
   return signal.sourceRelationship || signal.importedMetadata?.sourceRelationship || null;
 }
@@ -2183,10 +2193,7 @@ async function executeAutomaticDiscovery(args = {}) {
           }
         }
         const identityKeys = getSignalIdentityKeys(finalizedSignal);
-        const decision = ['accept', 'reject', 'uncertain'].includes(quality?.decision)
-          ? quality.decision
-          : 'uncertain';
-        const admittedToBank = decision === 'accept' && quality?.admittedToBank === true;
+        const { decision, admittedToBank } = resolveSignalAdmission(quality);
         if (auditTrace) {
           auditTrace.download.mediaSha256 = quality?.auditTrace?.mediaSha256 || null;
           auditTrace.gemini.rawResponse = cloneAuditValue(quality?.auditTrace?.rawResponse ?? null);
@@ -2438,4 +2445,5 @@ module.exports = {
   buildMetadataAuditCandidateSet,
   rankSignalsByBSoft,
   mergeSignalSnapshot,
+  resolveSignalAdmission,
 };
