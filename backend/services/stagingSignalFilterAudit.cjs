@@ -15,6 +15,7 @@ const {
   sanitizeAuditValue,
 } = require('./stagingMetadataAudit.cjs');
 const {
+  rankSignalsByBSoft,
   resolveSignalAdmission,
 } = require('./automaticSignalDiscovery.js');
 
@@ -420,14 +421,17 @@ function buildStagingSignalFilterPreflight({
   if (metrics.duration > normalized.maxMediaDurationSeconds) {
     throw auditError('signal_filter_media_duration_exceeds_limit');
   }
+  const recomputedRanking = rankSignalsByBSoft([candidate])[0] || null;
   const rankingScore = firstFinite([
     selectedTopCandidate.rankingScore,
     candidate.rankingScore,
+    recomputedRanking?.rankingScore,
   ]);
   const protectedIntent = firstFinite([
     selectedTopCandidate.protectedIntent,
     candidate.rankingComponents?.protectedIntent,
     candidate.protectedIntent,
+    recomputedRanking?.rankingComponents?.protectedIntent,
   ]);
   if (rankingScore === null || rankingScore <= 0 || protectedIntent === null || protectedIntent <= 0) {
     throw auditError('signal_filter_insufficient_ranking_signal');

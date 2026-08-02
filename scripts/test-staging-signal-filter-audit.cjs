@@ -249,6 +249,20 @@ async function main() {
   assert.ok(preflight.estimate.maximumCostUsd <= 0.15);
   assert.equal(preflight.estimate.providerEnforcedDollarCap, false);
 
+  const persistedTraceShape = createState();
+  delete persistedTraceShape.metadataAuditRuns[0].selectedTopCandidate.protectedIntent;
+  for (const key of ['normalizedCandidates', 'deduplicatedEligibleCandidates']) {
+    delete persistedTraceShape.metadataAuditRuns[0][key][0].rankingScore;
+    delete persistedTraceShape.metadataAuditRuns[0][key][0].rankingComponents;
+  }
+  const persistedTracePreflight = buildStagingSignalFilterPreflight({
+    state: persistedTraceShape,
+    env: createEnv(),
+    options: createOptions(),
+  });
+  assert.equal(persistedTracePreflight.rankingScore, 0.241855);
+  assert.ok(Math.abs(persistedTracePreflight.protectedIntent - 0.24185454545454546) < 1e-12);
+
   for (const environmentName of ['production', 'local', 'unknown', '']) {
     expectCode(
       () => buildStagingSignalFilterPreflight({
