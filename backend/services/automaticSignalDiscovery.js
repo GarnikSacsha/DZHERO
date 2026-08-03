@@ -2,6 +2,7 @@ const crypto = require('node:crypto');
 const {
   buildScore,
   fetchApifySignals,
+  getApifyInputSupport,
   getApifySignalKey,
 } = require('./apifySignalProvider');
 const {
@@ -1962,25 +1963,120 @@ function prepareAutomaticDiscovery(args = {}) {
     brandBrain: discoveryBrand.brief,
   });
   const candidateCalls = getPlannedAutomaticDiscoveryCalls(discoveryInputs, settings.platforms, dueLanes, planningOptions);
+  const unsupportedCandidateCalls = candidateCalls.filter((call) => (
+    !getApifyInputSupport({
+      platform: call.platform,
+      inputType: call.inputType,
+      inputValue: call.inputValue,
+    }).supported
+  ));
+  const supportedCandidateCalls = candidateCalls.filter((call) => (
+    getApifyInputSupport({
+      platform: call.platform,
+      inputType: call.inputType,
+      inputValue: call.inputValue,
+    }).supported
+  ));
   const plannedCalls = policy
-    ? (() => {
-        const selected = [];
-        for (const platform of settings.platforms) {
-          const call = candidateCalls.find((item) => item.platform === platform && !selected.includes(item));
-          if (call) selected.push(call);
-          if (selected.length >= policy.maxPlannedCalls) break;
-        }
-        for (const call of candidateCalls) {
-          if (selected.length >= policy.maxPlannedCalls) break;
-          if (!selected.includes(call)) selected.push(call);
-        }
-        return selected;
-      })()
-    : selectDiverseDiscoveryCalls(candidateCalls, settings.platforms, AUTOMATIC_MAX_PLANNED_CALLS);
+    ? selectDiverseDiscoveryCalls(supportedCandidateCalls, settings.platforms, policy.maxPlannedCalls)
+    : selectDiverseDiscoveryCalls(supportedCandidateCalls, settings.platforms, AUTOMATIC_MAX_PLANNED_CALLS);
   const lanesWithCalls = new Set(plannedCalls.map((call) => call.lane));
   const emptyLanes = dueLanes.filter((lane) => !lanesWithCalls.has(lane));
   applyNormalLaneSchedules(workspace, settings, emptyLanes, now);
   if (!plannedCalls.length) {
+    if (unsupportedCandidateCalls.length) {
+      const spentWithoutProviderCall = getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now);
+      const monthlyWithoutProviderCall = getMonthlyAutomaticSpendSummary(state.discoveryRuns, workspaceId, now);
+      const run = createAutomaticRun(state, {
+        workspaceId,
+        now,
+        triggerMode,
+        budgetUsd: policy?.perRunBudgetUsd || settings.dailyBudgetUsd,
+        dailyBudgetUsd: policy?.manualRefreshDailyBudgetUsd || settings.dailyBudgetUsd,
+        monthlyBudgetUsd: policy?.monthlyBudgetUsd || 0,
+        monthlySpentUsdBefore: monthlyWithoutProviderCall.amountUsd,
+        spentUsdBefore: spentWithoutProviderCall,
+        estimatedCostUsd: 0,
+        reservedCostUsd: 0,
+        requestedCount: 0,
+      });
+      if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
+      const unsupportedSummary = unsupportedCandidateCalls.map((call) => {
+        const support = getApifyInputSupport({
+          platform: call.platform,
+          inputType: call.inputType,
+          inputValue: call.inputValue,
+        });
+        return {
+          platform: call.platform,
+          lane: call.lane,
+          inputType: call.inputType,
+          code: support.code,
+          reason: support.reason,
+        };
+      });
+      run.status = 'failed';
+      run.classifiedFailure = {
+        code: 'provider_input_unsupported',
+        reason: 'no_supported_provider_input',
+        unsupportedCalls: unsupportedSummary,
+      };
+      run.errorCount = 1;
+      run.errors.push({
+        code: 'provider_input_unsupported',
+        message: 'No planned discovery input satisfies the provider contract.',
+        status: 422,
+      });
+      run.auditTrace = {
+        version: 1,
+        runId: run.id,
+        triggerMode,
+        workspace: {
+          id: workspaceId,
+          brandBrainSource: discoveryBrand.source,
+          brandBrainRef: { ...discoveryBrand.ref },
+        },
+        plan: {
+          metadataBeforeMedia: true,
+          plannedCalls: [],
+          unsupportedCalls: unsupportedSummary,
+          maxMetadataCalls: policy?.maxPlannedCalls || AUTOMATIC_MAX_PLANNED_CALLS,
+          maxMediaDownloads: 1,
+          maxVideoAnalyses: 1,
+          concurrency: 1,
+          retries: 0,
+          fallbacks: 0,
+        },
+        counts: {
+          raw: 0,
+          normalized: 0,
+          deduplicated: 0,
+          inScope: 0,
+          eligible: 0,
+          suppressed: 0,
+        },
+        candidates: [],
+        rawMetadataCandidates: [],
+        normalizedEligibleCandidates: [],
+        suppressedCandidates: [],
+        topCandidates: [],
+        selectedTopCandidate: null,
+        failure: {
+          stage: 'metadata_input',
+          code: 'provider_input_unsupported',
+          message: 'No planned discovery input satisfies the provider contract.',
+          status: 422,
+        },
+        providerCost: { estimatedUsd: 0, actualUsd: 0, geminiEstimatedUsd: null },
+        apifyRuns: { metadata: [], download: null },
+        mutationSnapshot: { before: null, after: null, bankDelta: 0, collectionDelta: 0 },
+      };
+      run.actualCostUsd = 0;
+      run.completedAt = now.toISOString();
+      run.updatedAt = now.toISOString();
+      run.auditTrace = sanitizeAutomaticDiscoveryTrace(run.auditTrace);
+      return createEmptyDiscoveryResult(run, { reason: 'provider_input_unsupported' });
+    }
     if (args.force) {
       const run = createAutomaticRun(state, {
         workspaceId,

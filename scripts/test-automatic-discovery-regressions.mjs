@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import discovery from '../backend/services/automaticSignalDiscovery.js';
+import { buildApifyActorRequest } from '../backend/services/apifySignalProvider.js';
 
 const {
   buildDiscoveryInputs,
@@ -149,6 +150,84 @@ assert.ok(!sourceInputs.tiktok.accounts.includes('@ig_one'));
 assert.ok(!sourceInputs.instagram.accounts.some((value) => value.includes('example.com')));
 assert.equal(sourceInputs.instagram.accounts[0], '@ig_connected');
 assert.equal(sourceInputs.tiktok.accounts[0], '@tt_competitor');
+
+const keywordContractState = {
+  workspaces: [{
+    id: 'ws_keyword_contract',
+    brief: {
+      businessType: 'ми продаємо спортивне харчування.',
+      niche: 'sports nutrition',
+    },
+    discoverySettings: {
+      ...discovery.defaultDiscoverySettings(start),
+      enabled: true,
+      platforms: ['instagram'],
+      nextRunAt: {
+        accounts: '2099-01-01T00:00:00.000Z',
+        keywords: '2026-07-09T00:00:00.000Z',
+        hashtags: '2099-01-01T00:00:00.000Z',
+        trends: '2099-01-01T00:00:00.000Z',
+      },
+    },
+  }],
+  sources: [],
+  competitors: [],
+  instagramAccounts: [],
+  tiktokAccounts: [],
+  reels: [],
+  discoveryRuns: [],
+};
+const keywordInputs = buildDiscoveryInputs(keywordContractState, 'ws_keyword_contract');
+const keywordCalls = [];
+const keywordExecution = await discovery.executeAutomaticDiscovery({
+  state: keywordContractState,
+  workspaceId: 'ws_keyword_contract',
+  now: start,
+  force: false,
+  triggerMode: 'manual_refresh',
+  policy: {
+    perRunBudgetUsd: 1.15,
+    manualRefreshDailyBudgetUsd: 1.15,
+    monthlyBudgetUsd: 11.5,
+    metadataApifyHardCapUsd: 0.5,
+    downloadApifyHardCapUsd: 0.5,
+    geminiHardCapUsd: 0.15,
+    maxBudgetedRunsPerDay: 1,
+    resultLimitPerPlatform: 5,
+    maxPlannedCalls: 1,
+  },
+  fetchSignals: async (call) => {
+    keywordCalls.push(call);
+    const emptySignals = [];
+    Object.defineProperty(emptySignals, 'actualCostUsd', { value: 0, enumerable: false });
+    return emptySignals;
+  },
+});
+assert.equal(keywordInputs.instagram.keywords[0], 'ми продаємо спортивне харчування.');
+assert.equal(keywordCalls.length, 0);
+const instagramKeywordRequest = buildApifyActorRequest({
+  platform: 'instagram',
+  inputType: 'search',
+  inputValue: keywordInputs.instagram.keywords[0],
+  limit: 5,
+});
+assert.equal(instagramKeywordRequest.actorId, 'apify/instagram-search-scraper');
+assert.deepEqual(instagramKeywordRequest.input, {
+  search: keywordInputs.instagram.keywords[0],
+  searchType: 'popular',
+  searchLimit: 5,
+});
+assert.equal(keywordExecution.run?.classifiedFailure?.code, 'provider_input_unsupported');
+
+const tiktokKeywordRequest = buildApifyActorRequest({
+  platform: 'tiktok',
+  inputType: 'search',
+  inputValue: 'sports nutrition',
+  limit: 5,
+  downloadVideo: false,
+});
+assert.deepEqual(tiktokKeywordRequest.input.searchQueries, ['sports nutrition']);
+assert.equal(tiktokKeywordRequest.input.hashtags, undefined);
 
 const rotationState = {
   workspaces: [{

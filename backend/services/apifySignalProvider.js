@@ -506,6 +506,28 @@ function buildInstagramInput({ inputValue, inputType, limit, downloadVideo }) {
       input,
     };
   }
+  if (inputType === 'search') {
+    if (!rawValue) {
+      const error = new Error('instagram_search_input_empty');
+      error.code = 'provider_input_unsupported';
+      error.status = 422;
+      throw error;
+    }
+    return {
+      actorId: 'apify/instagram-search-scraper',
+      input: {
+        search: rawValue,
+        searchType: 'popular',
+        searchLimit: limit,
+      },
+    };
+  }
+  if (inputType === 'hashtag' && !hashtagInput) {
+    const error = new Error('instagram_hashtag_input_empty');
+    error.code = 'provider_input_unsupported';
+    error.status = 422;
+    throw error;
+  }
   return {
     actorId: 'apify/instagram-hashtag-scraper',
     input: {
@@ -515,6 +537,37 @@ function buildInstagramInput({ inputValue, inputType, limit, downloadVideo }) {
       keywordSearch: inputType === 'search',
     },
   };
+}
+
+function getApifyInputSupport(options = {}) {
+  const platform = String(options.platform || '').trim().toLowerCase();
+  const inputType = String(options.inputType || options.mode || 'search').trim().toLowerCase();
+  const inputValue = String(options.inputValue ?? options.input ?? '').trim();
+  if (platform === 'instagram' && inputType === 'search') {
+    return {
+      supported: false,
+      code: 'provider_input_unsupported',
+      reason: 'instagram_search_missing_shares_saves_contract',
+    };
+  }
+  if (platform === 'instagram' && inputType === 'hashtag' && !cleanSocialToken(inputValue)) {
+    return {
+      supported: false,
+      code: 'provider_input_unsupported',
+      reason: 'instagram_hashtag_requires_non_empty_value',
+    };
+  }
+  return { supported: true, code: null, reason: null };
+}
+
+function assertApifyInputSupported(options = {}) {
+  const support = getApifyInputSupport(options);
+  if (support.supported) return support;
+  const error = new Error(support.reason);
+  error.code = support.code;
+  error.status = 422;
+  error.details = { reason: support.reason };
+  throw error;
 }
 
 function buildTikTokInput({ inputValue, inputType, limit, downloadVideo }) {
@@ -571,6 +624,7 @@ async function fetchApifySignals(options = {}) {
     sleepImpl,
   } = options;
   const actorRequest = buildApifyActorRequest(options);
+  assertApifyInputSupported(options);
   if (platform === 'instagram') {
     const result = await runApifyActor({
       token,
@@ -629,6 +683,7 @@ module.exports = {
   buildApifyActorRequest,
   buildScore,
   fetchApifySignals,
+  getApifyInputSupport,
   getApifySignalKey,
   mapInstagramApifyItem,
   mapTikTokApifyItem,

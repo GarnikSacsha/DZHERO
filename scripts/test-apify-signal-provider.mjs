@@ -190,13 +190,22 @@ const instagramSearchActorRequest = buildApifyActorRequest({
   limit: 9,
 });
 
-assert.equal(instagramSearchActorRequest.actorId, 'apify/instagram-hashtag-scraper');
+assert.equal(instagramSearchActorRequest.actorId, 'apify/instagram-search-scraper');
 assert.deepEqual(instagramSearchActorRequest.input, {
-  hashtags: ['aitools'],
-  resultsType: 'reels',
-  resultsLimit: 9,
-  keywordSearch: true,
+  search: 'instagram ai tools',
+  searchType: 'popular',
+  searchLimit: 9,
 });
+
+assert.throws(
+  () => buildApifyActorRequest({
+    platform: 'instagram',
+    inputType: 'hashtag',
+    inputValue: '###',
+    limit: 5,
+  }),
+  (error) => error?.code === 'provider_input_unsupported' && error?.status === 422,
+);
 
 const tiktokProfileActorRequest = buildApifyActorRequest({
   platform: 'tiktok',
