@@ -943,7 +943,7 @@ function compareSignalsByMetadataRank(left = {}, right = {}) {
   return 0;
 }
 
-function getActiveQualityRejectionKeys(state = {}, workspaceId, config = {}, now = new Date()) {
+function getActiveQualityDecisionSuppressionKeys(state = {}, workspaceId, config = {}, now = new Date()) {
   if (config.rejectionMemory?.enabled === false) return new Set();
   const policyVersion = Number(config.version);
   if (!Number.isFinite(policyVersion)) return new Set();
@@ -954,7 +954,7 @@ function getActiveQualityRejectionKeys(state = {}, workspaceId, config = {}, now
     for (const decision of Array.isArray(run.qualityDecisions) ? run.qualityDecisions : []) {
       const cachedUntilMs = Date.parse(decision?.cachedUntil || '');
       if (
-        decision?.decision !== 'reject'
+        !['reject', 'uncertain'].includes(decision?.decision)
         || Number(decision.policyVersion) !== policyVersion
         || !Number.isFinite(cachedUntilMs)
         || cachedUntilMs <= nowMs
@@ -969,6 +969,23 @@ function getActiveQualityRejectionKeys(state = {}, workspaceId, config = {}, now
     }
   }
   return keys;
+}
+
+function isQualityDecisionSuppressionEligible(quality = {}, config = {}) {
+  const decision = quality?.decision;
+  const policyVersion = Number(quality?.policyVersion);
+  const expectedPolicyVersion = Number(config.version);
+  if (
+    !['reject', 'uncertain'].includes(decision)
+    || !Number.isFinite(policyVersion)
+    || !Number.isFinite(expectedPolicyVersion)
+    || policyVersion !== expectedPolicyVersion
+  ) {
+    return false;
+  }
+  return decision === 'reject'
+    ? Array.isArray(quality.rejectionReasons)
+    : Array.isArray(quality.uncertaintyReasons);
 }
 
 function getExistingReelsByIdentity(state = {}, workspaceId) {
@@ -1770,11 +1787,11 @@ async function executeAutomaticDiscovery(args = {}) {
   const maxQualityRechecks = evaluateSignalQuality
     ? Math.max(0, Math.trunc(Number(qualityGateConfig.borderlineReview?.maxRechecksPerRun || 0)))
     : 0;
-  const rejectionMemoryTtlDays = Math.max(
+  const decisionSuppressionTtlDays = Math.max(
     0,
     Number(qualityGateConfig.rejectionMemory?.ttlDays || 0),
   );
-  const activeQualityRejectionKeys = getActiveQualityRejectionKeys(
+  const activeQualityDecisionSuppressionKeys = getActiveQualityDecisionSuppressionKeys(
     state,
     workspaceId,
     qualityGateConfig,
@@ -1949,7 +1966,7 @@ async function executeAutomaticDiscovery(args = {}) {
     .filter(hasActionableSignalEvidence)
     .filter((signal) => {
       const cacheHit = getSignalIdentityKeys(signal)
-        .some((key) => activeQualityRejectionKeys.has(key));
+        .some((key) => activeQualityDecisionSuppressionKeys.has(key));
       if (cacheHit) run.qualityCacheHitCount += 1;
       return !cacheHit;
     });
@@ -2019,6 +2036,7 @@ async function executeAutomaticDiscovery(args = {}) {
   let winnerDownloadCount = 0;
   for (const shortlistedSignal of shortlistedSignals) {
     let acceptedSignal = shortlistedSignal;
+    let candidateHadTechnicalFailure = false;
     const platform = normalizeLower(shortlistedSignal.importedMetadata?.platform);
     const winnerDownloadLimit = evaluateSignalQuality
       ? Math.min(maxWinnerDownloads, maxQualityEvaluations)
@@ -2098,10 +2116,12 @@ async function executeAutomaticDiscovery(args = {}) {
               };
             }
             if (auditTrace) auditTrace.download.result = 'media_url_ready';
-          } else if (auditTrace) {
-            auditTrace.download.result = 'matching_media_not_returned';
+          } else {
+            candidateHadTechnicalFailure = true;
+            if (auditTrace) auditTrace.download.result = 'matching_media_not_returned';
           }
         } catch (error) {
+          candidateHadTechnicalFailure = true;
           recordBilledCost(error?.actualCostUsd);
           run.errorCount += 1;
           run.errors.push({
@@ -2122,8 +2142,9 @@ async function executeAutomaticDiscovery(args = {}) {
         } finally {
           await reportProgress();
         }
-      } else if (downloadInput && auditTrace) {
-        auditTrace.download.result = 'blocked_budget';
+      } else {
+        candidateHadTechnicalFailure = true;
+        if (downloadInput && auditTrace) auditTrace.download.result = 'blocked_budget';
       }
     }
 
@@ -2215,8 +2236,10 @@ async function executeAutomaticDiscovery(args = {}) {
             ? Number(quality.auditTrace.estimatedCostUsd)
             : null;
         }
-        const cachedUntil = quality?.decision === 'reject' && rejectionMemoryTtlDays > 0
-          ? new Date(now.getTime() + rejectionMemoryTtlDays * DAY_MS).toISOString()
+        const cachedUntil = !candidateHadTechnicalFailure
+          && isQualityDecisionSuppressionEligible(quality, qualityGateConfig)
+          && decisionSuppressionTtlDays > 0
+          ? new Date(now.getTime() + decisionSuppressionTtlDays * DAY_MS).toISOString()
           : null;
         run.qualityDecisions.push({
           signalId: finalizedSignal.id,

@@ -438,4 +438,364 @@ const budgetRepeat = prepareAutomaticDiscovery({
 assert.equal(budgetRepeat.run, null);
 assert.equal(budgetState.discoveryRuns.filter((run) => run.status === 'blocked_budget').length, 1);
 
+const uncertainMemoryWorkspaceId = 'ws_uncertain_memory';
+const uncertainCandidateAId = '7000000000000000001';
+const uncertainCandidateBId = '7000000000000000002';
+const uncertainMemoryQualityConfig = {
+  version: 3.1,
+  maxVideoAnalysesPerRun: 1,
+  rejectionMemory: {
+    enabled: true,
+    ttlDays: 30,
+  },
+  borderlineReview: {
+    enabled: false,
+    maxRechecksPerRun: 0,
+  },
+};
+const uncertainMemoryPolicy = {
+  dailyBudgetUsd: 0.8,
+  dailyTarget: 10,
+  maxBudgetedRunsPerDay: 3,
+  resultLimitPerPlatform: 2,
+  maxPlannedCalls: 1,
+};
+function createUncertainMemoryState(workspaceId = uncertainMemoryWorkspaceId) {
+  return {
+    workspaces: [{
+      id: workspaceId,
+      brief: {
+        businessType: 'AI tools',
+        niche: 'vibe coding',
+        product: 'DZHERO',
+        audience: 'AI builders',
+        location: 'global',
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 0.8,
+        viralScoreThreshold: 70,
+        platforms: ['tiktok'],
+      },
+    }],
+    sources: [{
+      id: `source_${workspaceId}`,
+      workspaceId,
+      type: 'tiktok',
+      handle: '@uncertain-memory-fixture',
+    }],
+    competitors: [],
+    instagramAccounts: [],
+    tiktokAccounts: [],
+    reels: [],
+    discoveryRuns: [],
+  };
+}
+const uncertainMemoryState = createUncertainMemoryState();
+
+function createUncertainMemoryCandidate(stableId, { downloaded = false } = {}) {
+  const isCandidateA = stableId === uncertainCandidateAId;
+  const sourceUrl = `https://www.tiktok.com/@uncertain-memory-fixture/video/${stableId}`;
+  const videoUrl = downloaded ? `https://offline.invalid/${stableId}.mp4` : '';
+  return {
+    id: `uncertain_memory_${stableId}`,
+    workspaceId: uncertainMemoryWorkspaceId,
+    handle: '@uncertain-memory-fixture',
+    sourceHandle: '@uncertain-memory-fixture',
+    sourceUrl,
+    sourceStatus: downloaded ? 'mock_video' : 'mock_metadata',
+    sourceType: 'TikTok',
+    views: 10_000,
+    likes: isCandidateA ? 900 : 600,
+    comments: isCandidateA ? 80 : 50,
+    shares: isCandidateA ? 200 : 100,
+    saves: isCandidateA ? 300 : 150,
+    videoUrl,
+    importedMetadata: {
+      provider: 'offline_mock',
+      platform: 'tiktok',
+      externalId: stableId,
+      tiktokVideoId: stableId,
+      url: sourceUrl,
+      videoUrl,
+      mediaUrls: videoUrl ? [videoUrl] : [],
+      handle: '@uncertain-memory-fixture',
+      duration: 44,
+      sourceRelationship: 'exact_owner',
+    },
+  };
+}
+
+function getUncertainMemoryStableId(signal) {
+  return String(signal?.importedMetadata?.tiktokVideoId || signal?.importedMetadata?.externalId || '');
+}
+
+const uncertainMemoryCandidates = [
+  createUncertainMemoryCandidate(uncertainCandidateAId),
+  createUncertainMemoryCandidate(uncertainCandidateBId),
+];
+const uncertainMemoryAudit = {
+  networkAttempts: 0,
+  metadataMockCalls: 0,
+  downloadMockCandidateIds: [],
+  qualityMockCandidateIds: [],
+  apifyCalls: 0,
+  geminiCalls: 0,
+  geminiUploads: 0,
+  realDownloads: 0,
+  paidCostUsd: 0,
+};
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  uncertainMemoryAudit.networkAttempts += 1;
+  throw new Error('network_forbidden_in_uncertain_memory_reproducer');
+};
+
+async function runUncertainMemoryDiscovery(now, qualityConfig = uncertainMemoryQualityConfig) {
+  return executeAutomaticDiscovery({
+    state: uncertainMemoryState,
+    workspaceId: uncertainMemoryWorkspaceId,
+    token: 'offline-mock-only',
+    now,
+    force: true,
+    policy: uncertainMemoryPolicy,
+    maxQualityEvaluations: qualityConfig.maxVideoAnalysesPerRun,
+    qualityGateConfig: qualityConfig,
+    fetchSignals: async (call) => {
+      const wantsDownload = Boolean(call.downloadVideos ?? call.downloadVideo);
+      if (!wantsDownload) {
+        uncertainMemoryAudit.metadataMockCalls += 1;
+        return {
+          actualCostUsd: 0,
+          signals: uncertainMemoryCandidates.map((candidate) => structuredClone(candidate)),
+        };
+      }
+      const selected = uncertainMemoryCandidates.find((candidate) => candidate.sourceUrl === call.inputValue);
+      const selectedId = getUncertainMemoryStableId(selected);
+      uncertainMemoryAudit.downloadMockCandidateIds.push(selectedId);
+      return {
+        actualCostUsd: 0,
+        signals: selected ? [createUncertainMemoryCandidate(selectedId, { downloaded: true })] : [],
+      };
+    },
+    evaluateSignalQuality: async ({ signal }) => {
+      const stableId = getUncertainMemoryStableId(signal);
+      uncertainMemoryAudit.qualityMockCandidateIds.push(stableId);
+      return stableId === uncertainCandidateAId
+        ? {
+            policyVersion: qualityConfig.version,
+            decision: 'uncertain',
+            admittedToBank: false,
+            qualityScore: 50,
+            brandRelevance: 80,
+            rejectionReasons: ['no_qualifying_evidence_mode'],
+            uncertaintyReasons: ['ambiguous_or_invalid_evidence_chain'],
+          }
+        : {
+            policyVersion: qualityConfig.version,
+            decision: 'reject',
+            admittedToBank: false,
+            qualityScore: 20,
+            brandRelevance: 80,
+            rejectionReasons: ['offline_second_candidate_reject'],
+            uncertaintyReasons: [],
+          };
+    },
+  });
+}
+
+try {
+  const firstUncertainMemoryRun = await runUncertainMemoryDiscovery(
+    new Date('2026-08-03T10:00:00.000Z'),
+  );
+  assert.equal(firstUncertainMemoryRun.run.status, 'completed');
+  assert.equal(firstUncertainMemoryRun.run.qualityEvaluatedCount, 1);
+  assert.equal(firstUncertainMemoryRun.run.qualityDecisions[0].decision, 'uncertain');
+  assert.equal(firstUncertainMemoryRun.run.qualityDecisions[0].admittedToBank, false);
+  assert.deepEqual(uncertainMemoryAudit.downloadMockCandidateIds, [uncertainCandidateAId]);
+  assert.deepEqual(uncertainMemoryAudit.qualityMockCandidateIds, [uncertainCandidateAId]);
+  assert.equal(uncertainMemoryState.reels.length, 0, 'uncertain A must not write to Bank/Collection');
+
+  const secondUncertainMemoryRun = await runUncertainMemoryDiscovery(
+    new Date('2026-08-03T10:01:00.000Z'),
+  );
+  assert.equal(secondUncertainMemoryRun.run.status, 'completed');
+  assert.equal(secondUncertainMemoryRun.run.qualityEvaluatedCount, 1);
+  assert.equal(uncertainMemoryAudit.metadataMockCalls, 2);
+  assert.equal(uncertainMemoryState.reels.length, 0, 'uncertain A must never create a Bank write');
+  assert.equal(uncertainMemoryAudit.networkAttempts, 0);
+  assert.equal(uncertainMemoryAudit.apifyCalls, 0);
+  assert.equal(uncertainMemoryAudit.geminiCalls, 0);
+  assert.equal(uncertainMemoryAudit.geminiUploads, 0);
+  assert.equal(uncertainMemoryAudit.realDownloads, 0);
+  assert.equal(uncertainMemoryAudit.paidCostUsd, 0);
+  assert.deepEqual(
+    uncertainMemoryAudit.downloadMockCandidateIds,
+    [uncertainCandidateAId, uncertainCandidateBId],
+    'immediate repeat must suppress unchanged uncertain A and download lower-ranked valid B',
+  );
+  assert.deepEqual(
+    uncertainMemoryAudit.qualityMockCandidateIds,
+    [uncertainCandidateAId, uncertainCandidateBId],
+    'immediate repeat must reuse uncertain A and analyze B exactly once',
+  );
+  assert.equal(secondUncertainMemoryRun.run.qualityCacheHitCount, 1);
+
+  const bumpedUncertainMemoryQualityConfig = {
+    ...uncertainMemoryQualityConfig,
+    version: 3.2,
+  };
+  const policyVersionRetryRun = await runUncertainMemoryDiscovery(
+    new Date('2026-08-03T10:02:00.000Z'),
+    bumpedUncertainMemoryQualityConfig,
+  );
+  assert.equal(policyVersionRetryRun.run.qualityCacheHitCount, 0);
+  assert.deepEqual(
+    uncertainMemoryAudit.downloadMockCandidateIds,
+    [uncertainCandidateAId, uncertainCandidateBId, uncertainCandidateAId],
+    'a new Signal Filter policy version must make uncertain A eligible again',
+  );
+
+  const expiredUncertainMemoryRun = await runUncertainMemoryDiscovery(
+    new Date('2026-09-03T10:00:00.000Z'),
+  );
+  assert.equal(expiredUncertainMemoryRun.run.qualityCacheHitCount, 0);
+  assert.deepEqual(
+    uncertainMemoryAudit.downloadMockCandidateIds,
+    [
+      uncertainCandidateAId,
+      uncertainCandidateBId,
+      uncertainCandidateAId,
+      uncertainCandidateAId,
+    ],
+    'expired decision suppression must make uncertain A eligible again',
+  );
+
+  const malformedState = createUncertainMemoryState('ws_malformed_memory');
+  const malformedDownloadIds = [];
+  let malformedQualityAttempts = 0;
+  async function runMalformedDiscovery(now) {
+    return executeAutomaticDiscovery({
+      state: malformedState,
+      workspaceId: 'ws_malformed_memory',
+      token: 'offline-mock-only',
+      now,
+      force: true,
+      policy: uncertainMemoryPolicy,
+      maxQualityEvaluations: 1,
+      qualityGateConfig: uncertainMemoryQualityConfig,
+      fetchSignals: async (call) => {
+        if (!Boolean(call.downloadVideos ?? call.downloadVideo)) {
+          return {
+            actualCostUsd: 0,
+            signals: uncertainMemoryCandidates.map((candidate) => structuredClone(candidate)),
+          };
+        }
+        const selected = uncertainMemoryCandidates.find((candidate) => candidate.sourceUrl === call.inputValue);
+        const selectedId = getUncertainMemoryStableId(selected);
+        malformedDownloadIds.push(selectedId);
+        return {
+          actualCostUsd: 0,
+          signals: selected ? [createUncertainMemoryCandidate(selectedId, { downloaded: true })] : [],
+        };
+      },
+      evaluateSignalQuality: async () => {
+        malformedQualityAttempts += 1;
+        if (malformedQualityAttempts === 1) {
+          const error = new Error('gemini_schema_validation_failed');
+          error.code = 'gemini_schema_validation_failed';
+          throw error;
+        }
+        return {
+          policyVersion: uncertainMemoryQualityConfig.version,
+          decision: 'reject',
+          admittedToBank: false,
+          qualityScore: 10,
+          rejectionReasons: ['offline_retry_after_malformed_result'],
+          uncertaintyReasons: [],
+        };
+      },
+    });
+  }
+  const malformedFirstRun = await runMalformedDiscovery(new Date('2026-08-04T10:00:00.000Z'));
+  assert.equal(malformedFirstRun.run.qualityDecisions.length, 0);
+  const malformedRetryRun = await runMalformedDiscovery(new Date('2026-08-04T10:01:00.000Z'));
+  assert.equal(malformedRetryRun.run.qualityCacheHitCount, 0);
+  assert.deepEqual(
+    malformedDownloadIds,
+    [uncertainCandidateAId, uncertainCandidateAId],
+    'provider/schema failure must not suppress a future attempt',
+  );
+
+  const downloadErrorState = createUncertainMemoryState('ws_download_error_memory');
+  const downloadErrorCandidateIds = [];
+  let failFirstDownload = true;
+  let downloadErrorQualityAttempts = 0;
+  async function runDownloadErrorDiscovery(now) {
+    return executeAutomaticDiscovery({
+      state: downloadErrorState,
+      workspaceId: 'ws_download_error_memory',
+      token: 'offline-mock-only',
+      now,
+      force: true,
+      policy: uncertainMemoryPolicy,
+      maxQualityEvaluations: 1,
+      qualityGateConfig: uncertainMemoryQualityConfig,
+      fetchSignals: async (call) => {
+        if (!Boolean(call.downloadVideos ?? call.downloadVideo)) {
+          return {
+            actualCostUsd: 0,
+            signals: uncertainMemoryCandidates.map((candidate) => structuredClone(candidate)),
+          };
+        }
+        const selected = uncertainMemoryCandidates.find((candidate) => candidate.sourceUrl === call.inputValue);
+        const selectedId = getUncertainMemoryStableId(selected);
+        downloadErrorCandidateIds.push(selectedId);
+        if (failFirstDownload) {
+          failFirstDownload = false;
+          const error = new Error('offline_download_failed');
+          error.actualCostUsd = 0;
+          throw error;
+        }
+        return {
+          actualCostUsd: 0,
+          signals: selected ? [createUncertainMemoryCandidate(selectedId, { downloaded: true })] : [],
+        };
+      },
+      evaluateSignalQuality: async () => {
+        downloadErrorQualityAttempts += 1;
+        return downloadErrorQualityAttempts === 1
+          ? {
+              policyVersion: uncertainMemoryQualityConfig.version,
+              decision: 'uncertain',
+              admittedToBank: false,
+              qualityScore: 50,
+              rejectionReasons: ['no_qualifying_evidence_mode'],
+              uncertaintyReasons: ['download_failed_before_analysis'],
+            }
+          : {
+              policyVersion: uncertainMemoryQualityConfig.version,
+              decision: 'reject',
+              admittedToBank: false,
+              qualityScore: 10,
+              rejectionReasons: ['offline_retry_after_download_error'],
+              uncertaintyReasons: [],
+            };
+      },
+    });
+  }
+  const downloadErrorFirstRun = await runDownloadErrorDiscovery(new Date('2026-08-05T10:00:00.000Z'));
+  assert.equal(downloadErrorFirstRun.run.qualityDecisions[0].decision, 'uncertain');
+  assert.equal(downloadErrorFirstRun.run.qualityDecisions[0].cachedUntil, null);
+  const downloadErrorRetryRun = await runDownloadErrorDiscovery(new Date('2026-08-05T10:01:00.000Z'));
+  assert.equal(downloadErrorRetryRun.run.qualityCacheHitCount, 0);
+  assert.deepEqual(
+    downloadErrorCandidateIds,
+    [uncertainCandidateAId, uncertainCandidateAId],
+    'download failure must not suppress a future attempt',
+  );
+} finally {
+  globalThis.fetch = originalFetch;
+}
+
 console.log('automatic discovery regression tests passed');
