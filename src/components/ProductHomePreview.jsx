@@ -17,6 +17,7 @@ import {
   Heart,
   Info,
   List,
+  LogOut,
   Menu,
   Moon,
   Plus,
@@ -98,6 +99,8 @@ function ProductSidebar({
   brands,
   activeBrandId,
   onSelectBrand,
+  onLogout,
+  logoutPending = false,
 }) {
   const { t } = useI18n();
 
@@ -144,6 +147,17 @@ function ProductSidebar({
           <button className="product-upgrade-button" type="button">
             <Zap size={17} />{t('product.actions.upgrade')}
           </button>
+          {onLogout && (
+            <button
+              className="product-logout-button"
+              type="button"
+              disabled={logoutPending}
+              aria-busy={logoutPending}
+              onClick={onLogout}
+            >
+              <LogOut size={16} />{t(logoutPending ? 'product.actions.logoutLoading' : 'product.actions.logout')}
+            </button>
+          )}
           <label className="product-active-brand">
             <span><FolderKanban size={16} /></span>
             <div>
@@ -664,6 +678,7 @@ export default function ProductHomePreview({
   workspaceId = '',
   fetcher = globalThis.fetch,
   authenticated = false,
+  onLogout,
 }) {
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
@@ -681,6 +696,7 @@ export default function ProductHomePreview({
   const [creditState] = useState(() => readCreditState(window.localStorage));
   const [collectionSignals, setCollectionSignals] = useState(signals);
   const [brandPersistenceStatus, setBrandPersistenceStatus] = useState('idle');
+  const [logoutPending, setLogoutPending] = useState(false);
   const [refreshState, setRefreshState] = useState({ status: 'idle', code: '' });
   const [directSearch, setDirectSearch] = useState({
     status: 'idle',
@@ -695,6 +711,15 @@ export default function ProductHomePreview({
     () => createProductDiscoveryClient({ apiBase, workspaceId, fetcher }),
     [apiBase, fetcher, workspaceId],
   );
+  const handleProductLogout = async () => {
+    if (logoutPending || typeof onLogout !== 'function') return;
+    setLogoutPending(true);
+    try {
+      await onLogout();
+    } finally {
+      setLogoutPending(false);
+    }
+  };
   const activeBrand = useMemo(
     () => brands.find((brand) => brand.id === activeBrandId) || null,
     [activeBrandId, brands],
@@ -864,6 +889,8 @@ export default function ProductHomePreview({
         brands={brands}
         activeBrandId={activeBrandId}
         onSelectBrand={selectBrand}
+        onLogout={onLogout ? handleProductLogout : undefined}
+        logoutPending={logoutPending}
       />
       <section className="product-shell-main">
         <ProductTopbar

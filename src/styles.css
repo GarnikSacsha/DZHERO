@@ -25136,6 +25136,31 @@ nav button.active::before {
   font-weight: 850;
 }
 
+.product-logout-button {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--product-border);
+  border-radius: 10px;
+  background: var(--product-surface);
+  color: var(--product-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.product-logout-button:hover:not(:disabled) {
+  border-color: var(--product-primary);
+  color: var(--product-primary);
+}
+
+.product-logout-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
 .product-sidebar-preferences {
   display: flex;
   align-items: center;

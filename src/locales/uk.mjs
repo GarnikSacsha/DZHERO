@@ -374,6 +374,8 @@ export const uk = Object.freeze({
   'product.actions.openMenu': 'Відкрити навігацію',
   'product.actions.exitPreview': 'Закрити перегляд продукту',
   'product.actions.upgrade': 'Перейти на Pro',
+  'product.actions.logout': 'Вийти',
+  'product.actions.logoutLoading': 'Вихід…',
   'product.actions.notifications': 'Сповіщення',
   'product.actions.sort': 'Сортувати сигнали',
   'product.actions.createSignal': 'Створити сигнал',

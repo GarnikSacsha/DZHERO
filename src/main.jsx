@@ -120,6 +120,11 @@ import {
   getMissingWizardAnswers,
   normalizeWizardAnswers,
 } from './brandBrainWizardState.mjs';
+import {
+  PRODUCT_ACTIVE_BRAND_STORAGE_KEY,
+  PRODUCT_BRANDS_STORAGE_KEY,
+  PRODUCT_CREDITS_STORAGE_KEY,
+} from './productSettingsState.mjs';
 
 React.createElement = createLocalizedElement;
 
@@ -141,6 +146,7 @@ const JERYK_LOADING_MESSAGE = '__JERYK_LOADING__';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
+const PRODUCT_SAVED_SIGNALS_STORAGE_KEY = 'dzhero-preview-product-saved-signals-v1';
 const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'TikTok', 'Video', 'Stories'];
 
 function createInterfaceApiError(payload, fallbackCode = 'unknown_error') {
@@ -1167,6 +1173,12 @@ function App() {
         window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
         setCurrentUser(null);
         setAuthStatus('guest');
+        if (productPreview) {
+          const publicUrl = new URL(window.location.href);
+          publicUrl.searchParams.delete('preview');
+          publicUrl.searchParams.delete('tab');
+          window.history.replaceState(window.history.state, '', `${publicUrl.pathname}${publicUrl.search}${publicUrl.hash}`);
+        }
       });
     return () => {
       isMounted = false;
@@ -1318,6 +1330,12 @@ function App() {
         : 'Не вдалося вийти. Сесія все ще активна. Спробуйте ще раз.');
       return;
     }
+    if (productPreview) {
+      window.localStorage.removeItem(PRODUCT_BRANDS_STORAGE_KEY);
+      window.localStorage.removeItem(PRODUCT_ACTIVE_BRAND_STORAGE_KEY);
+      window.localStorage.removeItem(PRODUCT_CREDITS_STORAGE_KEY);
+      window.localStorage.removeItem(PRODUCT_SAVED_SIGNALS_STORAGE_KEY);
+    }
     resetBrandContextForWorkspace(DEMO_WORKSPACES[0].id);
     setPage('home');
     window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
@@ -1331,6 +1349,7 @@ function App() {
     activateWorkspace(DEMO_WORKSPACES[0].id);
     setSessionRevision((revision) => revision + 1);
     setAuthStatus('guest');
+    if (productPreview) window.location.assign('/');
     notify('Ви вийшли з акаунта');
   };
 
@@ -1368,6 +1387,19 @@ function App() {
     return <MobilePreviewFrame src={mobilePreviewUrl} />;
   }
 
+  if (productPreview && !currentUser && authStatus === 'checking') {
+    return <div className="loading-screen">РџРµСЂРµРІС–СЂСЏС”РјРѕ СЃРµСЃС–СЋ...</div>;
+  }
+
+  if (productPreview && !currentUser) {
+    return (
+      <div className="app auth-app" data-theme={theme}>
+        <AuthGate onAuth={handleAuthSuccess} notify={notify} theme={theme} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} />
+        {toast && <div className="toast">{toast}</div>}
+      </div>
+    );
+  }
+
   if (productPreview) {
     return (
       <div className="app product-preview-app" data-theme={theme}>
@@ -1383,7 +1415,9 @@ function App() {
           workspaceId={workspaceId}
           fetcher={authFetch}
           authenticated={Boolean(currentUser)}
+          onLogout={handleLogout}
         />
+        {toast && <div className="toast">{toast}</div>}
       </div>
     );
   }

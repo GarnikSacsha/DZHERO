@@ -374,6 +374,8 @@ export const en = Object.freeze({
   'product.actions.openMenu': 'Open navigation',
   'product.actions.exitPreview': 'Close product preview',
   'product.actions.upgrade': 'Upgrade to Pro',
+  'product.actions.logout': 'Log out',
+  'product.actions.logoutLoading': 'Logging out…',
   'product.actions.notifications': 'Notifications',
   'product.actions.sort': 'Sort signals',
   'product.actions.createSignal': 'Create Signal',
