@@ -6,9 +6,23 @@ const {
   parseGeminiInteractionText,
   uploadGeminiVideoFromUrl,
 } = require('./agentStudioVideoTool.cjs');
+const { normalizeGeminiUsage } = require('./agentStudioUsage.cjs');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const CONFIG_PATH = path.join(__dirname, '..', 'config', 'signal-quality-gate.json');
+const DEFAULT_SIGNAL_QUALITY_MODEL = 'gemini-3.5-flash';
+const DEFAULT_MAX_OUTPUT_TOKENS = 8192;
+const DEFAULT_MAX_METADATA_TEXT_CHARS = 6000;
+const DEFAULT_MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+const DEFAULT_MAX_MEDIA_DURATION_SECONDS = 60;
+const DEFAULT_GEMINI_HARD_CAP_USD = 0.15;
+const SIGNAL_QUALITY_PRICING = {
+  'gemini-3.5-flash': {
+    inputUsdPerMillion: 1.5,
+    outputUsdPerMillion: 9,
+    conservativeInputTokens: 18_000,
+  },
+};
 
 const EVIDENCE_SOURCES = ['spoken', 'onscreen_text', 'visual'];
 const EVIDENCE_KINDS = [
@@ -221,6 +235,80 @@ function loadSignalQualityGateConfig() {
 function compactText(value, maxLength = 5000) {
   const text = String(value || '').replace(/\s+/g, ' ').trim();
   return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}…` : text;
+}
+
+function roundCostUsd(value) {
+  return Number(Number(value || 0).toFixed(6));
+}
+
+function resolveSignalQualityRuntimeGuards(options = {}) {
+  const model = String(options.model || process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || DEFAULT_SIGNAL_QUALITY_MODEL).trim();
+  const pricing = SIGNAL_QUALITY_PRICING[model];
+  if (!pricing) {
+    const error = new Error('signal_quality_gemini_pricing_unknown');
+    error.code = 'signal_quality_gemini_pricing_unknown';
+    throw error;
+  }
+  const maxOutputTokens = Math.trunc(Number(options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS));
+  const maxMetadataTextChars = Math.trunc(Number(options.maxMetadataTextChars ?? DEFAULT_MAX_METADATA_TEXT_CHARS));
+  const maxMediaBytes = Math.trunc(Number(options.maxMediaBytes ?? DEFAULT_MAX_MEDIA_BYTES));
+  const maxMediaDurationSeconds = Number(options.maxMediaDurationSeconds ?? DEFAULT_MAX_MEDIA_DURATION_SECONDS);
+  const hardCapUsd = Number(options.hardCapUsd ?? DEFAULT_GEMINI_HARD_CAP_USD);
+  if (maxOutputTokens !== DEFAULT_MAX_OUTPUT_TOKENS) throw new Error('signal_quality_max_output_tokens_invalid');
+  if (maxMetadataTextChars !== DEFAULT_MAX_METADATA_TEXT_CHARS) throw new Error('signal_quality_metadata_limit_invalid');
+  if (maxMediaBytes !== DEFAULT_MAX_MEDIA_BYTES) throw new Error('signal_quality_media_size_limit_invalid');
+  if (maxMediaDurationSeconds !== DEFAULT_MAX_MEDIA_DURATION_SECONDS) throw new Error('signal_quality_media_duration_limit_invalid');
+  if (!Number.isFinite(hardCapUsd) || hardCapUsd <= 0 || hardCapUsd > DEFAULT_GEMINI_HARD_CAP_USD) {
+    throw new Error('signal_quality_gemini_hard_cap_invalid');
+  }
+  const conservativeCostUsd = roundCostUsd((
+    pricing.conservativeInputTokens * pricing.inputUsdPerMillion
+    + maxOutputTokens * pricing.outputUsdPerMillion
+  ) / 1_000_000);
+  if (conservativeCostUsd > hardCapUsd) throw new Error('signal_quality_gemini_conservative_cost_exceeds_cap');
+  return {
+    model,
+    maxOutputTokens,
+    maxMetadataTextChars,
+    maxMediaBytes,
+    maxMediaDurationSeconds,
+    hardCapUsd: roundCostUsd(hardCapUsd),
+    conservativeCostUsd,
+    pricingVersion: 'gemini-standard-2026-07-16',
+  };
+}
+
+function getSignalDurationSeconds(signal = {}) {
+  const candidates = [
+    signal.durationSeconds,
+    signal.duration,
+    signal.importedMetadata?.durationSeconds,
+    signal.importedMetadata?.duration,
+    signal.importedMetadata?.videoDuration,
+  ];
+  const value = candidates.map(Number).find((item) => Number.isFinite(item) && item > 0);
+  return Number.isFinite(value) ? value : null;
+}
+
+function buildBoundedSourceMetadata(signal = {}, maxChars = DEFAULT_MAX_METADATA_TEXT_CHARS) {
+  let remaining = Math.max(0, Math.trunc(Number(maxChars) || 0));
+  const take = (value, limit = remaining) => {
+    const normalized = String(value || '').replace(/\s+/g, ' ').trim();
+    const selected = normalized.slice(0, Math.max(0, Math.min(remaining, limit)));
+    remaining -= selected.length;
+    return selected;
+  };
+  return {
+    title: take(signal.title, 1000),
+    caption: take(signal.caption),
+    handle: take(signal.handle || signal.sourceHandle, 200),
+    platform: take(signal.importedMetadata?.platform || signal.sourceType, 80),
+    views: signal.views ?? null,
+    likes: signal.likes ?? null,
+    comments: signal.comments ?? null,
+    shares: signal.shares ?? null,
+    saves: signal.saves ?? null,
+  };
 }
 
 function parseJson(text) {
@@ -716,8 +804,10 @@ function buildSignalQualityPrompt({
   signal = {},
   workspace = {},
   config = loadSignalQualityGateConfig(),
+  maxMetadataTextChars = DEFAULT_MAX_METADATA_TEXT_CHARS,
 } = {}) {
   const brief = workspace.brief || {};
+  const sourceMetadata = buildBoundedSourceMetadata(signal, maxMetadataTextChars);
   return [
     'You are the evidence extractor for DZHERO Signal Filter v3.1.',
     'Inspect the supplied short-form video itself: frames, sequence, audio, speech, and on-screen text. Report factual observations; the server computes admission.',
@@ -756,17 +846,7 @@ function buildSignalQualityPrompt({
     }, null, 2),
     '</untrusted_brand_context>',
     '<untrusted_source_metadata>',
-    JSON.stringify({
-      title: signal.title || '',
-      caption: signal.caption || '',
-      handle: signal.handle || signal.sourceHandle || '',
-      platform: signal.importedMetadata?.platform || signal.sourceType || '',
-      views: signal.views ?? null,
-      likes: signal.likes ?? null,
-      comments: signal.comments ?? null,
-      shares: signal.shares ?? null,
-      saves: signal.saves ?? null,
-    }, null, 2),
+    JSON.stringify(sourceMetadata, null, 2),
     '</untrusted_source_metadata>',
   ].join('\n');
 }
@@ -802,11 +882,13 @@ async function analyzeSignalQualityVideo({
   config = loadSignalQualityGateConfig(),
   apiKey = process.env.GEMINI_API_KEY || '',
   mediaApiToken = process.env.APIFY_TOKEN || '',
-  model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
+  model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || DEFAULT_SIGNAL_QUALITY_MODEL,
   fetchImpl = globalThis.fetch,
   sleepImpl,
   includeAuditTrace = false,
+  runtimeGuards = null,
 } = {}) {
+  const guards = resolveSignalQualityRuntimeGuards({ ...(runtimeGuards || {}), model });
   const videoUrl = getSignalVideoUrl(signal);
   if (!videoUrl) {
     const emptyClaim = { text: '', evidenceIds: [], supportLevel: 'inferred' };
@@ -838,11 +920,37 @@ async function analyzeSignalQualityVideo({
       rawResponse: null,
       parsedResult: assessment,
       usage: null,
+      normalizedUsage: null,
+      model: guards.model,
+      conservativeCostUsd: guards.conservativeCostUsd,
       estimatedCostUsd: null,
     }, includeAuditTrace);
   }
   if (!apiKey) throw new Error('signal_quality_gemini_not_configured');
   if (typeof fetchImpl !== 'function') throw new Error('signal_quality_fetch_unavailable');
+  const durationSeconds = getSignalDurationSeconds(signal);
+  if (!Number.isFinite(durationSeconds)) throw new Error('signal_quality_media_duration_required');
+  if (durationSeconds > guards.maxMediaDurationSeconds) throw new Error('signal_quality_media_duration_exceeded');
+
+  const httpOperations = {
+    mediaGet: 0,
+    uploadStart: 0,
+    uploadFinalize: 0,
+    uploadPoll: 0,
+    generate: 0,
+    cleanup: 0,
+  };
+  const trackedFetch = async (url, options = {}) => {
+    const target = String(url || '');
+    const method = String(options.method || 'GET').toUpperCase();
+    if (target === videoUrl && method === 'GET') httpOperations.mediaGet += 1;
+    else if (target.endsWith('/upload/v1beta/files') && method === 'POST') httpOperations.uploadStart += 1;
+    else if (method === 'POST' && options.headers?.['X-Goog-Upload-Command'] === 'upload, finalize') httpOperations.uploadFinalize += 1;
+    else if (target.includes('/interactions') && method === 'POST') httpOperations.generate += 1;
+    else if (method === 'DELETE') httpOperations.cleanup += 1;
+    else if (target.includes('/files/')) httpOperations.uploadPoll += 1;
+    return fetchImpl(url, options);
+  };
 
   const requestHeaders = isProtectedApifyMediaUrl(videoUrl) && mediaApiToken
     ? { Authorization: `Bearer ${mediaApiToken}` }
@@ -851,26 +959,36 @@ async function analyzeSignalQualityVideo({
     sourceUrl: videoUrl,
     apiKey,
     requestHeaders,
-    fetchImpl,
+    fetchImpl: trackedFetch,
     sleepImpl,
+    maxBytes: guards.maxMediaBytes,
   });
 
   try {
-    const response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
+    const response = await trackedFetch(`${GEMINI_API_BASE}/interactions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-goog-api-key': apiKey,
       },
       body: JSON.stringify({
-        model,
+        model: guards.model,
+        max_output_tokens: guards.maxOutputTokens,
         input: [
           {
             type: 'video',
             uri: uploadedFile.uri,
             ...(uploadedFile.mimeType ? { mime_type: uploadedFile.mimeType } : {}),
           },
-          { type: 'text', text: buildSignalQualityPrompt({ signal, workspace, config }) },
+          {
+            type: 'text',
+            text: buildSignalQualityPrompt({
+              signal,
+              workspace,
+              config,
+              maxMetadataTextChars: guards.maxMetadataTextChars,
+            }),
+          },
         ],
         response_format: SIGNAL_QUALITY_RESPONSE_FORMAT,
       }),
@@ -882,6 +1000,20 @@ async function analyzeSignalQualityVideo({
     const raw = parseJson(parseGeminiInteractionText(payload));
     const parsed = SignalQualityRawAssessmentSchema.safeParse(raw);
     if (!parsed.success) throw new Error('signal_quality_gemini_invalid_response');
+    const responseModel = String(payload?.model || guards.model).trim();
+    if (!SIGNAL_QUALITY_PRICING[responseModel]) throw new Error('signal_quality_gemini_pricing_unknown');
+    const normalizedUsage = normalizeGeminiUsage({
+      usage: payload?.usage || null,
+      model: responseModel,
+      invocationId: 'automatic_signal_discovery',
+      callId: 'automatic_signal_discovery:gemini',
+    });
+    const calculatedCostUsd = normalizedUsage.estimatedCostMicrousd === null
+      ? null
+      : roundCostUsd(normalizedUsage.estimatedCostMicrousd / 1_000_000);
+    if (calculatedCostUsd !== null && calculatedCostUsd > guards.hardCapUsd) {
+      throw new Error('signal_quality_gemini_calculated_cost_exceeds_cap');
+    }
     return buildQualityAnalysisResult(parsed.data, {
       mediaSha256: uploadedFile.sha256 || null,
       mediaByteLength: Number.isFinite(Number(uploadedFile.byteLength))
@@ -890,10 +1022,15 @@ async function analyzeSignalQualityVideo({
       rawResponse: payload,
       parsedResult: parsed.data,
       usage: payload?.usage || null,
-      estimatedCostUsd: null,
+      normalizedUsage,
+      model: responseModel,
+      calculatedCostUsd,
+      conservativeCostUsd: guards.conservativeCostUsd,
+      estimatedCostUsd: guards.conservativeCostUsd,
+      httpOperations,
     }, includeAuditTrace);
   } finally {
-    await deleteGeminiFile({ fileName: uploadedFile.name, apiKey, fetchImpl });
+    await deleteGeminiFile({ fileName: uploadedFile.name, apiKey, fetchImpl: trackedFetch });
   }
 }
 
@@ -1011,6 +1148,8 @@ module.exports = {
   calculateQualityScore,
   applySignalQualityPolicy,
   buildSignalQualityPrompt,
+  buildBoundedSourceMetadata,
+  resolveSignalQualityRuntimeGuards,
   analyzeSignalQualityVideo,
   evaluateSignalQuality,
   isSignalQualityBorderline,

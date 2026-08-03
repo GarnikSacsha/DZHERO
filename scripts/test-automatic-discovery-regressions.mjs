@@ -764,31 +764,24 @@ try {
       },
       evaluateSignalQuality: async () => {
         downloadErrorQualityAttempts += 1;
-        return downloadErrorQualityAttempts === 1
-          ? {
-              policyVersion: uncertainMemoryQualityConfig.version,
-              decision: 'uncertain',
-              admittedToBank: false,
-              qualityScore: 50,
-              rejectionReasons: ['no_qualifying_evidence_mode'],
-              uncertaintyReasons: ['download_failed_before_analysis'],
-            }
-          : {
-              policyVersion: uncertainMemoryQualityConfig.version,
-              decision: 'reject',
-              admittedToBank: false,
-              qualityScore: 10,
-              rejectionReasons: ['offline_retry_after_download_error'],
-              uncertaintyReasons: [],
-            };
+        return {
+          policyVersion: uncertainMemoryQualityConfig.version,
+          decision: 'reject',
+          admittedToBank: false,
+          qualityScore: 10,
+          rejectionReasons: ['offline_retry_after_download_error'],
+          uncertaintyReasons: [],
+        };
       },
     });
   }
   const downloadErrorFirstRun = await runDownloadErrorDiscovery(new Date('2026-08-05T10:00:00.000Z'));
-  assert.equal(downloadErrorFirstRun.run.qualityDecisions[0].decision, 'uncertain');
-  assert.equal(downloadErrorFirstRun.run.qualityDecisions[0].cachedUntil, null);
+  assert.equal(downloadErrorFirstRun.run.qualityDecisions.length, 0);
+  assert.equal(downloadErrorQualityAttempts, 0, 'download errors must stop before Gemini/Signal Filter');
+  assert.equal(downloadErrorState.reels.length, 0);
   const downloadErrorRetryRun = await runDownloadErrorDiscovery(new Date('2026-08-05T10:01:00.000Z'));
   assert.equal(downloadErrorRetryRun.run.qualityCacheHitCount, 0);
+  assert.equal(downloadErrorQualityAttempts, 1);
   assert.deepEqual(
     downloadErrorCandidateIds,
     [uncertainCandidateAId, uncertainCandidateAId],

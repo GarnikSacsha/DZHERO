@@ -87,6 +87,7 @@ const {
 const {
   evaluateSignalQuality,
   loadSignalQualityGateConfig,
+  resolveSignalQualityRuntimeGuards,
 } = require('./services/signalQualityGate.cjs');
 const {
   defaultDiscoverySettings,
@@ -139,6 +140,7 @@ const {
 const {
   getActiveTesterGrant,
   getTesterDiscoveryPolicy,
+  getTesterManualRefreshPolicy,
   linkTesterGrant,
   normalizeTesterEmail,
   resolveAccessPlan,
@@ -1167,8 +1169,9 @@ function runAutomaticDiscoveryFetch(call = {}) {
 }
 
 const SIGNAL_QUALITY_GATE_CONFIG = loadSignalQualityGateConfig();
+const SIGNAL_QUALITY_RUNTIME_GUARDS = resolveSignalQualityRuntimeGuards();
 
-function runAutomaticSignalQualityGate({ signal, workspace } = {}) {
+function runAutomaticSignalQualityGate({ signal, workspace, runtimeGuards } = {}) {
   return evaluateSignalQuality({
     signal,
     workspace,
@@ -1176,6 +1179,7 @@ function runAutomaticSignalQualityGate({ signal, workspace } = {}) {
     apiKey: GEMINI_API_KEY,
     mediaApiToken: APIFY_TOKEN,
     includeAuditTrace: true,
+    runtimeGuards: runtimeGuards || SIGNAL_QUALITY_RUNTIME_GUARDS,
   });
 }
 
@@ -1576,7 +1580,24 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         throw error;
       }
       assertWorkspaceCanUsePaidDiscovery(db, workspaceId, options.actorUser || null);
-      const policy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId);
+      const basePolicy = getWorkspaceTesterDiscoveryPolicy(db, workspaceId, options.actorUser || null);
+      const workspaceUser = options.actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
+      const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
+      const manualPolicy = options.triggerMode === 'manual_refresh'
+        ? getTesterManualRefreshPolicy(entitlements.plan.id) || {
+            triggerMode: 'manual_refresh',
+            perRunBudgetUsd: 1.15,
+            manualRefreshDailyBudgetUsd: 1.15,
+            monthlyBudgetUsd: 11.5,
+            metadataApifyHardCapUsd: 0.5,
+            downloadApifyHardCapUsd: 0.5,
+            geminiHardCapUsd: 0.15,
+            maxBudgetedRunsPerDay: 1,
+            resultLimitPerPlatform: 5,
+            maxPlannedCalls: 1,
+          }
+        : null;
+      const policy = manualPolicy ? { ...(basePolicy || {}), ...manualPolicy } : basePolicy;
       const prepared = prepareAutomaticDiscovery({
         state: db,
         workspaceId,
@@ -1585,6 +1606,7 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         recordPaused: Boolean(options.force),
         requireProductBrandBrain: Boolean(options.requireProductBrandBrain),
         activeBrandId: options.activeBrandId,
+        triggerMode: options.triggerMode,
         policy,
       });
       return { db, prepared };
@@ -1611,6 +1633,7 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
         : null,
       maxQualityEvaluations: SIGNAL_QUALITY_GATE_CONFIG.maxVideoAnalysesPerRun,
       qualityGateConfig: SIGNAL_QUALITY_GATE_CONFIG,
+      qualityRuntimeGuards: SIGNAL_QUALITY_RUNTIME_GUARDS,
     });
 
     if (result.run) {
@@ -7014,6 +7037,7 @@ app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, 
       actorUser: req.authUser,
       requireProductBrandBrain: productRedesignRun,
       activeBrandId: productRedesignRun ? req.body?.activeBrandId : '',
+      triggerMode: productRedesignRun ? 'manual_refresh' : 'scheduled',
     });
     if (!result.run) {
       if (result.reason === 'daily_run_limit') {

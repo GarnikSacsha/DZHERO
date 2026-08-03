@@ -472,13 +472,15 @@ async function runApifyActor({
   };
 }
 
-function attachActualCost(signals, actualCostUsd) {
-  Object.defineProperty(signals, 'actualCostUsd', {
-    configurable: true,
-    enumerable: false,
-    value: actualCostUsd,
-    writable: false,
-  });
+function attachProviderRunMetadata(signals, { actualCostUsd = null, runId = null } = {}) {
+  for (const [key, value] of Object.entries({ actualCostUsd, runId })) {
+    Object.defineProperty(signals, key, {
+      configurable: true,
+      enumerable: false,
+      value,
+      writable: false,
+    });
+  }
   return signals;
 }
 
@@ -563,6 +565,10 @@ async function fetchApifySignals(options = {}) {
     workspaceId,
     market,
     createId,
+    maxTotalChargeUsd,
+    maxItems,
+    fetchImpl,
+    sleepImpl,
   } = options;
   const actorRequest = buildApifyActorRequest(options);
   if (platform === 'instagram') {
@@ -570,8 +576,12 @@ async function fetchApifySignals(options = {}) {
       token,
       actorId: actorRequest.actorId,
       input: actorRequest.input,
+      maxTotalChargeUsd,
+      maxItems,
+      ...(typeof fetchImpl === 'function' ? { fetchImpl } : {}),
+      ...(typeof sleepImpl === 'function' ? { sleepImpl } : {}),
     });
-    return attachActualCost(
+    return attachProviderRunMetadata(
       result.items.map((item) => mapInstagramApifyItem(item, {
         workspaceId,
         market,
@@ -583,7 +593,7 @@ async function fetchApifySignals(options = {}) {
           : '',
         providerActor: actorRequest.actorId,
       })),
-      result.actualCostUsd,
+      { actualCostUsd: result.actualCostUsd, runId: result.runId },
     );
   }
   if (platform === 'tiktok') {
@@ -591,8 +601,12 @@ async function fetchApifySignals(options = {}) {
       token,
       actorId: actorRequest.actorId,
       input: actorRequest.input,
+      maxTotalChargeUsd,
+      maxItems,
+      ...(typeof fetchImpl === 'function' ? { fetchImpl } : {}),
+      ...(typeof sleepImpl === 'function' ? { sleepImpl } : {}),
     });
-    return attachActualCost(
+    return attachProviderRunMetadata(
       result.items.map((item) => mapTikTokApifyItem(item, {
         workspaceId,
         market,
@@ -603,7 +617,7 @@ async function fetchApifySignals(options = {}) {
           ? options.inputValue ?? options.input
           : '',
       })),
-      result.actualCostUsd,
+      { actualCostUsd: result.actualCostUsd, runId: result.runId },
     );
   }
   const error = new Error('unsupported_apify_platform');

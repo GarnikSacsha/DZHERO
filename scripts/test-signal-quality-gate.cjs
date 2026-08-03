@@ -1,10 +1,12 @@
 const assert = require('node:assert/strict');
 const {
   applySignalQualityPolicy,
+  analyzeSignalQualityVideo,
   buildSignalQualityPrompt,
   evaluateSignalQuality,
   isSignalQualityBorderline,
   loadSignalQualityGateConfig,
+  resolveSignalQualityRuntimeGuards,
 } = require('../backend/services/signalQualityGate.cjs');
 
 const config = loadSignalQualityGateConfig();
@@ -218,6 +220,90 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
     analyzeVideo: async () => decorativeTeaserAssessment,
   });
   assert.equal(evaluated.decision, 'reject');
+
+  const interactionRequests = [];
+  const longCaption = 'X'.repeat(20_000);
+  const guardedAnalysis = await analyzeSignalQualityVideo({
+    signal: {
+      videoUrl: 'https://media.invalid/video.mp4?signature=memory-only',
+      title: 'Bounded signal',
+      caption: longCaption,
+      duration: 44,
+      importedMetadata: { platform: 'tiktok', duration: 44 },
+    },
+    workspace: { brief: { niche: 'AI tools' } },
+    config,
+    apiKey: 'offline-gemini-key',
+    mediaApiToken: 'offline-apify-key',
+    includeAuditTrace: true,
+    runtimeGuards: resolveSignalQualityRuntimeGuards(),
+    fetchImpl: async (url, options = {}) => {
+      const target = String(url);
+      if (target.startsWith('https://media.invalid/')) {
+        return new Response(Buffer.from('offline-video-bytes'), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4', 'content-length': '19' },
+        });
+      }
+      if (target.includes('/upload/v1beta/files')) {
+        return new Response('{}', {
+          status: 200,
+          headers: { 'content-type': 'application/json', 'x-goog-upload-url': 'https://upload.invalid/session' },
+        });
+      }
+      if (target === 'https://upload.invalid/session') {
+        return new Response(JSON.stringify({
+          file: { name: 'files/offline', uri: 'https://files.invalid/offline', mimeType: 'video/mp4', state: 'ACTIVE' },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (target.endsWith('/interactions')) {
+        interactionRequests.push(JSON.parse(options.body));
+        return new Response(JSON.stringify({
+          model: 'gemini-3.5-flash',
+          output_text: JSON.stringify(decorativeTeaserAssessment),
+          usage: {
+            total_input_tokens: 1000,
+            total_output_tokens: 200,
+            total_thought_tokens: 100,
+            total_tokens: 1300,
+          },
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (options.method === 'DELETE') return new Response('{}', { status: 200 });
+      throw new Error(`unexpected offline request ${target}`);
+    },
+  });
+  assert.equal(interactionRequests.length, 1);
+  assert.equal(interactionRequests[0].max_output_tokens, 8192);
+  const promptText = interactionRequests[0].input[1].text;
+  assert.equal((promptText.match(/X/g) || []).length <= 6000, true);
+  assert.equal(guardedAnalysis.auditTrace.model, 'gemini-3.5-flash');
+  assert.equal(guardedAnalysis.auditTrace.normalizedUsage.inputTokens, 1000);
+  assert.equal(guardedAnalysis.auditTrace.normalizedUsage.outputTokens, 200);
+  assert.equal(guardedAnalysis.auditTrace.normalizedUsage.thoughtTokens, 100);
+  assert.equal(guardedAnalysis.auditTrace.calculatedCostUsd, 0.0042);
+  assert.equal(guardedAnalysis.auditTrace.httpOperations.mediaGet, 1);
+  assert.equal(guardedAnalysis.auditTrace.httpOperations.generate, 1);
+  assert.equal(guardedAnalysis.auditTrace.httpOperations.cleanup, 1);
+
+  let overDurationFetches = 0;
+  await assert.rejects(() => analyzeSignalQualityVideo({
+    signal: { videoUrl: 'https://media.invalid/too-long.mp4', duration: 61 },
+    apiKey: 'offline-key',
+    config,
+    fetchImpl: async () => { overDurationFetches += 1; },
+  }), /duration_exceeded/);
+  assert.equal(overDurationFetches, 0);
+
+  await assert.rejects(() => analyzeSignalQualityVideo({
+    signal: { videoUrl: 'https://media.invalid/too-large.mp4', duration: 44 },
+    apiKey: 'offline-key',
+    config,
+    fetchImpl: async () => new Response('', {
+      status: 200,
+      headers: { 'content-type': 'video/mp4', 'content-length': String(104857601) },
+    }),
+  }), /too_large/);
   console.log('signal quality gate v3.1 contract tests passed');
 })().catch((error) => {
   console.error(error);

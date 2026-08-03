@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const {
   buildScore,
   fetchApifySignals,
@@ -8,6 +9,7 @@ const {
   isSignalQualityBorderline,
 } = require('./signalQualityGate.cjs');
 const { resolveWorkspaceDiscoveryBrand } = require('./productBrandBrain.cjs');
+const { sanitizeDiagnosticExport, sanitizeUrl } = require('./diagnosticExportSanitizer.cjs');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -39,6 +41,14 @@ const B_SOFT_DENOMINATOR_FLOOR = 500;
 const B_SOFT_DURATION_MIN_SECONDS = 12;
 const B_SOFT_DURATION_MAX_SECONDS = 60;
 const B_SOFT_DURATION_DECAY_SECONDS = 12;
+const MANUAL_REFRESH_TRIGGER_MODE = 'manual_refresh';
+const SCHEDULED_TRIGGER_MODE = 'scheduled';
+const MANUAL_REFRESH_PER_RUN_CAP_USD = 1.15;
+const MANUAL_REFRESH_DAILY_CAP_USD = 1.15;
+const MANUAL_REFRESH_MONTHLY_CAP_USD = 11.5;
+const MANUAL_METADATA_APIFY_CAP_USD = 0.5;
+const MANUAL_DOWNLOAD_APIFY_CAP_USD = 0.5;
+const MANUAL_GEMINI_CAP_USD = 0.15;
 
 const BOOTSTRAP_KEYWORDS = [
   'ai tools',
@@ -95,6 +105,89 @@ function roundUsd(value) {
   return Math.round(Number(value || 0) * 100) / 100;
 }
 
+function roundProviderUsd(value) {
+  return Number(Number(value || 0).toFixed(6));
+}
+
+function createProviderBudgetLedger({ hardCapUsd = MANUAL_REFRESH_PER_RUN_CAP_USD } = {}) {
+  const hardCap = roundProviderUsd(hardCapUsd);
+  if (!Number.isFinite(hardCap) || hardCap <= 0) throw new Error('provider_budget_hard_cap_invalid');
+  const stages = new Map();
+
+  const committedFor = (stage) => {
+    if (Number.isFinite(stage.calculatedCostUsd)) return stage.calculatedCostUsd;
+    if (Number.isFinite(stage.actualCostUsd)) return stage.actualCostUsd;
+    return stage.reservedCostUsd;
+  };
+  const snapshot = () => {
+    const values = Array.from(stages.values());
+    const committedCostUsd = roundProviderUsd(values.reduce((total, stage) => total + committedFor(stage), 0));
+    const estimatedCostUsd = roundProviderUsd(values.reduce((total, stage) => total + stage.estimatedCostUsd, 0));
+    const reservedCostUsd = roundProviderUsd(values.reduce((total, stage) => total + stage.reservedCostUsd, 0));
+    const knownCostUsd = roundProviderUsd(values.reduce((total, stage) => (
+      total
+      + (Number.isFinite(stage.calculatedCostUsd)
+        ? stage.calculatedCostUsd
+        : Number.isFinite(stage.actualCostUsd)
+          ? stage.actualCostUsd
+          : 0)
+    ), 0));
+    const complete = values.every((stage) => (
+      stage.state === 'completed'
+      && (Number.isFinite(stage.actualCostUsd) || Number.isFinite(stage.calculatedCostUsd))
+    ));
+    return {
+      hardCapUsd: hardCap,
+      estimatedCostUsd,
+      reservedCostUsd,
+      actualCostUsd: complete ? knownCostUsd : null,
+      committedCostUsd,
+      remainingBudgetUsd: roundProviderUsd(Math.max(hardCap - committedCostUsd, 0)),
+      stages: Object.fromEntries(values.map((stage) => [stage.name, { ...stage }])),
+    };
+  };
+  const reserve = (name, exposureUsd, { estimatedCostUsd = exposureUsd } = {}) => {
+    const stageName = String(name || '').trim();
+    const exposure = roundProviderUsd(exposureUsd);
+    if (!stageName || !Number.isFinite(exposure) || exposure <= 0) throw new Error('provider_budget_reservation_invalid');
+    if (stages.has(stageName)) throw new Error(`provider_budget_stage_already_reserved:${stageName}`);
+    const current = snapshot().committedCostUsd;
+    if (roundProviderUsd(current + exposure) > hardCap) {
+      const error = new Error(`provider_budget_exceeded:${stageName}`);
+      error.code = 'provider_budget_exceeded';
+      throw error;
+    }
+    stages.set(stageName, {
+      name: stageName,
+      state: 'reserved',
+      estimatedCostUsd: roundProviderUsd(estimatedCostUsd),
+      reservedCostUsd: exposure,
+      actualCostUsd: null,
+      calculatedCostUsd: null,
+      providerRunId: null,
+    });
+    return snapshot();
+  };
+  const complete = (name, { actualCostUsd = null, calculatedCostUsd = null, providerRunId = null } = {}) => {
+    const stage = stages.get(String(name || '').trim());
+    if (!stage) throw new Error(`provider_budget_stage_not_reserved:${name}`);
+    const actual = actualCostUsd === null || actualCostUsd === undefined ? null : Number(actualCostUsd);
+    const calculated = calculatedCostUsd === null || calculatedCostUsd === undefined ? null : Number(calculatedCostUsd);
+    stage.actualCostUsd = Number.isFinite(actual) && actual >= 0 ? roundProviderUsd(actual) : null;
+    stage.calculatedCostUsd = Number.isFinite(calculated) && calculated >= 0 ? roundProviderUsd(calculated) : null;
+    stage.providerRunId = providerRunId ? String(providerRunId) : null;
+    stage.state = 'completed';
+    if (snapshot().committedCostUsd > hardCap) throw new Error(`provider_budget_exceeded:${name}`);
+    return snapshot();
+  };
+  const fail = (name) => {
+    const stage = stages.get(String(name || '').trim());
+    if (stage) stage.state = 'failed';
+    return snapshot();
+  };
+  return { reserve, complete, fail, snapshot };
+}
+
 function clampNumber(value, min, max, fallback = min) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
@@ -125,6 +218,64 @@ function cloneAuditValue(value) {
   } catch {
     return null;
   }
+}
+
+function sanitizeAutomaticDiscoveryTrace(value) {
+  const omitKeys = /^(caption|authorization|cookie|token|apiKey|api_key|secret|password|databaseUrl|database_url|connectionString|connection_string|rawProviderPayload|uploadUrl)$/i;
+  const visit = (item, key = '') => {
+    if (omitKeys.test(key)) return undefined;
+    if (typeof item === 'string') return sanitizeDiagnosticExport(item);
+    if (Array.isArray(item)) return item.map((entry) => visit(entry)).filter((entry) => entry !== undefined);
+    if (item && typeof item === 'object') {
+      return Object.fromEntries(Object.entries(item)
+        .map(([nestedKey, nestedValue]) => [nestedKey, visit(nestedValue, nestedKey)])
+        .filter(([, nestedValue]) => nestedValue !== undefined));
+    }
+    return item;
+  };
+  return visit(value);
+}
+
+function summarizeCandidateForAudit(signal = {}) {
+  const sourceUrl = canonicalizeSignalUrl(getSignalSourceUrl(signal));
+  return sanitizeAutomaticDiscoveryTrace({
+    id: signal.id || null,
+    stableId: signal.importedMetadata?.externalId
+      || signal.importedMetadata?.tiktokVideoId
+      || signal.importedMetadata?.shortcode
+      || null,
+    platform: normalizeLower(signal.importedMetadata?.platform || signal.sourceType),
+    sourceHandle: signal.sourceHandle || signal.handle || null,
+    canonicalUrl: sourceUrl ? sanitizeUrl(sourceUrl) : null,
+    sourceRelationship: signal.sourceRelationship || signal.importedMetadata?.sourceRelationship || null,
+    views: Number.isFinite(Number(signal.views)) ? Number(signal.views) : null,
+    shares: Number.isFinite(Number(signal.shares)) ? Number(signal.shares) : null,
+    saves: Number.isFinite(Number(signal.saves)) ? Number(signal.saves) : null,
+    durationSeconds: Number.isFinite(Number(signal.durationSeconds ?? signal.duration ?? signal.importedMetadata?.durationSeconds ?? signal.importedMetadata?.duration))
+      ? Number(signal.durationSeconds ?? signal.duration ?? signal.importedMetadata?.durationSeconds ?? signal.importedMetadata?.duration)
+      : null,
+    protectedIntent: Number.isFinite(Number(signal.protectedIntent)) ? Number(signal.protectedIntent) : null,
+    rankingScore: Number.isFinite(Number(signal.rankingScore)) ? Number(signal.rankingScore) : null,
+    rankingVersion: signal.rankingVersion || null,
+    identityKeys: getSignalIdentityKeys(signal),
+  });
+}
+
+function hashAuditPayload(value) {
+  if (value === null || value === undefined) return null;
+  try {
+    return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+  } catch {
+    return null;
+  }
+}
+
+function summarizeGeminiResponseEnvelope(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const safeKeys = ['id', 'interaction', 'model', 'status', 'finish_reason', 'finishReason'];
+  return sanitizeAutomaticDiscoveryTrace(Object.fromEntries(
+    safeKeys.filter((key) => value[key] !== undefined).map((key) => [key, value[key]]),
+  ));
 }
 
 function canonicalizeSignalUrl(value) {
@@ -506,15 +657,7 @@ function isDiscoveryDue(settings = {}, lane, now = new Date()) {
   return currentTime - toDate(lastRunAt).getTime() >= intervalMs;
 }
 
-function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date()) {
-  const dayKey = toUtcDayKey(now);
-  let total = 0;
-  let isEstimated = false;
-  for (const run of Array.isArray(runs) ? runs : []) {
-    if (!run || run.workspaceId !== workspaceId) continue;
-    const runDayKey = toUtcDayKey(run.claimedAt || run.startedAt || run.createdAt || run.completedAt);
-    if (!runDayKey) continue;
-    if (runDayKey !== dayKey) continue;
+function getCommittedDiscoveryRunCost(run = {}) {
     const hasActualCost = run.actualCostUsd !== null
       && run.actualCostUsd !== undefined
       && Number.isFinite(Number(run.actualCostUsd))
@@ -529,7 +672,7 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
       && attemptedCallCount <= 0
       && run.status !== 'running'
     ) {
-      continue;
+      return { amount: 0, isEstimated: false };
     }
     const amount = hasActualCost
       ? actualCostUsd
@@ -538,12 +681,26 @@ function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date())
       : run.status === 'running' && Number.isFinite(estimatedCostUsd) && estimatedCostUsd > 0
         ? estimatedCostUsd
         : 0;
-    if (Number.isFinite(amount) && amount > 0) {
-      total += amount;
-      if (!hasActualCost) {
-        isEstimated = true;
-      }
-    }
+    return {
+      amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      isEstimated: !hasActualCost && Number.isFinite(amount) && amount > 0,
+    };
+}
+
+function getAutomaticSpendSummary(runs = [], workspaceId, now = new Date(), period = 'day') {
+  const date = toDate(now);
+  const periodKey = period === 'month' ? date.toISOString().slice(0, 7) : toUtcDayKey(date);
+  let total = 0;
+  let isEstimated = false;
+  for (const run of Array.isArray(runs) ? runs : []) {
+    if (!run || run.workspaceId !== workspaceId) continue;
+    const runTimestamp = run.claimedAt || run.startedAt || run.createdAt || run.completedAt;
+    const runDate = toDate(runTimestamp);
+    const runPeriodKey = period === 'month' ? runDate.toISOString().slice(0, 7) : toUtcDayKey(runDate);
+    if (!runPeriodKey || runPeriodKey !== periodKey) continue;
+    const cost = getCommittedDiscoveryRunCost(run);
+    total += cost.amount;
+    if (cost.isEstimated) isEstimated = true;
   }
   return {
     amountUsd: roundUsd(total),
@@ -801,6 +958,14 @@ function inspectRankingMetric(reel = {}, key) {
     invalid: false,
     value: Math.min(number, Number.MAX_SAFE_INTEGER),
   };
+}
+
+function getDailyAutomaticSpendSummary(runs = [], workspaceId, now = new Date()) {
+  return getAutomaticSpendSummary(runs, workspaceId, now, 'day');
+}
+
+function getMonthlyAutomaticSpendSummary(runs = [], workspaceId, now = new Date()) {
+  return getAutomaticSpendSummary(runs, workspaceId, now, 'month');
 }
 
 function assessSignalRankingMetadata(reel = {}) {
@@ -1442,10 +1607,16 @@ function createAutomaticRun(state = {}, args = {}) {
     id: createRunId('automatic_discovery'),
     workspaceId,
     lane: AUTOMATIC_RUN_LANE,
+    triggerMode: args.triggerMode === MANUAL_REFRESH_TRIGGER_MODE
+      ? MANUAL_REFRESH_TRIGGER_MODE
+      : SCHEDULED_TRIGGER_MODE,
     platform: 'multi',
     dayKey: toUtcDayKey(now),
     status: 'running',
     budgetUsd: roundUsd(args.budgetUsd),
+    dailyBudgetUsd: roundProviderUsd(args.dailyBudgetUsd ?? args.budgetUsd),
+    monthlyBudgetUsd: roundProviderUsd(args.monthlyBudgetUsd),
+    monthlySpentUsdBefore: roundProviderUsd(args.monthlySpentUsdBefore),
     spentUsdBefore: roundUsd(args.spentUsdBefore),
     estimatedCostUsd: roundUsd(args.estimatedCostUsd),
     reservedCostUsd: roundUsd(args.reservedCostUsd ?? args.estimatedCostUsd),
@@ -1521,9 +1692,19 @@ function prepareAutomaticDiscovery(args = {}) {
 
   ensureWorkspaceDiscoverySettings(workspace, now);
   const settings = getWorkspaceDiscoverySettings(state, workspaceId, now);
+  const triggerMode = args.triggerMode === MANUAL_REFRESH_TRIGGER_MODE
+    ? MANUAL_REFRESH_TRIGGER_MODE
+    : SCHEDULED_TRIGGER_MODE;
+  const isManualRefresh = triggerMode === MANUAL_REFRESH_TRIGGER_MODE;
   const rawPolicy = args.policy && typeof args.policy === 'object' ? args.policy : null;
   const policy = rawPolicy ? {
     dailyBudgetUsd: clampNumber(rawPolicy.dailyBudgetUsd, 0.01, MAX_DAILY_BUDGET_USD, DEFAULT_DAILY_BUDGET_USD),
+    manualRefreshDailyBudgetUsd: roundProviderUsd(rawPolicy.manualRefreshDailyBudgetUsd ?? MANUAL_REFRESH_DAILY_CAP_USD),
+    monthlyBudgetUsd: roundProviderUsd(rawPolicy.monthlyBudgetUsd ?? MANUAL_REFRESH_MONTHLY_CAP_USD),
+    perRunBudgetUsd: roundProviderUsd(rawPolicy.perRunBudgetUsd ?? MANUAL_REFRESH_PER_RUN_CAP_USD),
+    metadataApifyHardCapUsd: roundProviderUsd(rawPolicy.metadataApifyHardCapUsd ?? MANUAL_METADATA_APIFY_CAP_USD),
+    downloadApifyHardCapUsd: roundProviderUsd(rawPolicy.downloadApifyHardCapUsd ?? MANUAL_DOWNLOAD_APIFY_CAP_USD),
+    geminiHardCapUsd: roundProviderUsd(rawPolicy.geminiHardCapUsd ?? MANUAL_GEMINI_CAP_USD),
     dailyTarget: Math.max(1, Math.trunc(Number(rawPolicy.dailyTarget || AUTOMATIC_MAX_WINNERS))),
     maxBudgetedRunsPerDay: Math.max(1, Math.trunc(Number(rawPolicy.maxBudgetedRunsPerDay || 1))),
     resultLimitPerPlatform: Math.max(1, Math.trunc(Number(rawPolicy.resultLimitPerPlatform || AUTOMATIC_METADATA_LIMIT))),
@@ -1562,13 +1743,14 @@ function prepareAutomaticDiscovery(args = {}) {
     }
   }
 
-  if (settings.enabled === false) {
+  if (settings.enabled === false && !isManualRefresh) {
     if (args.recordPaused === false) {
       return createEmptyDiscoveryResult(null, { reason: 'paused' });
     }
     const run = createAutomaticRun(state, {
       workspaceId,
       now,
+      triggerMode,
       budgetUsd: settings.dailyBudgetUsd,
       spentUsdBefore: getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now),
       estimatedCostUsd: 0,
@@ -1647,16 +1829,35 @@ function prepareAutomaticDiscovery(args = {}) {
   }
 
   const spentUsd = getDailyAutomaticSpend(state.discoveryRuns, workspaceId, now);
+  const monthlySpend = getMonthlyAutomaticSpendSummary(state.discoveryRuns, workspaceId, now);
   const estimatedMetadataCostUsd = roundUsd(
     plannedCalls.reduce((total, call) => total + estimateDiscoveryCallCostUsd(call), 0)
   );
-  const estimateExceedsBudget = spentUsd + estimatedMetadataCostUsd > settings.dailyBudgetUsd;
-  if (spentUsd >= settings.dailyBudgetUsd || estimateExceedsBudget) {
+  const dailyBudgetUsd = isManualRefresh
+    ? policy?.manualRefreshDailyBudgetUsd || MANUAL_REFRESH_DAILY_CAP_USD
+    : settings.dailyBudgetUsd;
+  const monthlyBudgetUsd = isManualRefresh
+    ? policy?.monthlyBudgetUsd || MANUAL_REFRESH_MONTHLY_CAP_USD
+    : 0;
+  const perRunBudgetUsd = isManualRefresh
+    ? policy?.perRunBudgetUsd || MANUAL_REFRESH_PER_RUN_CAP_USD
+    : settings.dailyBudgetUsd;
+  const metadataReservationUsd = isManualRefresh
+    ? policy?.metadataApifyHardCapUsd || MANUAL_METADATA_APIFY_CAP_USD
+    : estimatedMetadataCostUsd;
+  const estimateExceedsBudget = spentUsd + metadataReservationUsd > dailyBudgetUsd;
+  const monthlyEstimateExceedsBudget = isManualRefresh
+    && monthlySpend.amountUsd + metadataReservationUsd > monthlyBudgetUsd;
+  if (spentUsd >= dailyBudgetUsd || estimateExceedsBudget || monthlyEstimateExceedsBudget) {
     applyBudgetLaneSchedules(workspace, settings, DEFAULT_LANES, now);
     const run = createAutomaticRun(state, {
       workspaceId,
       now,
-      budgetUsd: settings.dailyBudgetUsd,
+      triggerMode,
+      budgetUsd: perRunBudgetUsd,
+      dailyBudgetUsd,
+      monthlyBudgetUsd,
+      monthlySpentUsdBefore: monthlySpend.amountUsd,
       spentUsdBefore: spentUsd,
       estimatedCostUsd: policy ? estimatedMetadataCostUsd : 0,
       reservedCostUsd: 0,
@@ -1677,20 +1878,25 @@ function prepareAutomaticDiscovery(args = {}) {
   const run = createAutomaticRun(state, {
     workspaceId,
     now,
-    budgetUsd: settings.dailyBudgetUsd,
+    triggerMode,
+    budgetUsd: perRunBudgetUsd,
+    dailyBudgetUsd,
+    monthlyBudgetUsd,
+    monthlySpentUsdBefore: monthlySpend.amountUsd,
     spentUsdBefore: spentUsd,
     estimatedCostUsd: estimatedMetadataCostUsd,
-    reservedCostUsd: estimatedMetadataCostUsd,
+    reservedCostUsd: metadataReservationUsd,
     requestedCount: plannedCalls.length,
   });
   if (!run) return createEmptyDiscoveryResult(null, { reason: 'active_run' });
   run.auditTrace = {
     version: 1,
+    runId: run.id,
+    triggerMode,
     workspace: {
       id: workspaceId,
       brandBrainSource: discoveryBrand.source,
       brandBrainRef: { ...discoveryBrand.ref },
-      brandBrainSnapshot: JSON.parse(JSON.stringify(discoveryBrand.brief)),
     },
     plan: {
       metadataBeforeMedia: true,
@@ -1702,9 +1908,20 @@ function prepareAutomaticDiscovery(args = {}) {
       maxVideoAnalyses: 1,
       concurrency: 1,
       retries: 0,
+      fallbacks: 0,
     },
+    counts: {
+      raw: 0,
+      normalized: 0,
+      deduplicated: 0,
+      inScope: 0,
+      eligible: 0,
+      suppressed: 0,
+    },
+    candidates: [],
     rawMetadataCandidates: [],
     normalizedEligibleCandidates: [],
+    suppressedCandidates: [],
     topCandidates: [],
     selectedTopCandidate: null,
     download: {
@@ -1717,6 +1934,11 @@ function prepareAutomaticDiscovery(args = {}) {
       rawResponse: null,
       parsedResult: null,
       usage: null,
+      normalizedUsage: null,
+      model: null,
+      calculatedCostUsd: null,
+      conservativeCostUsd: null,
+      httpOperations: null,
     },
     signalFilter: {
       decision: null,
@@ -1729,6 +1951,17 @@ function prepareAutomaticDiscovery(args = {}) {
       estimatedUsd: run.estimatedCostUsd,
       actualUsd: null,
       geminiEstimatedUsd: null,
+    },
+    apifyRuns: {
+      metadata: [],
+      download: null,
+    },
+    budgetLedger: null,
+    mutationSnapshot: {
+      before: null,
+      after: null,
+      bankDelta: 0,
+      collectionDelta: 0,
     },
   };
   return {
@@ -1743,6 +1976,15 @@ function prepareAutomaticDiscovery(args = {}) {
       maxWinnerDownloads: isForcedRun
         ? FORCED_AUTOMATIC_MAX_WINNER_DOWNLOADS
         : AUTOMATIC_MAX_WINNER_DOWNLOADS,
+      triggerMode,
+      budgetPolicy: isManualRefresh ? {
+        perRunCapUsd: perRunBudgetUsd,
+        dailyCapUsd: dailyBudgetUsd,
+        monthlyCapUsd: monthlyBudgetUsd,
+        metadataApifyHardCapUsd: policy?.metadataApifyHardCapUsd || MANUAL_METADATA_APIFY_CAP_USD,
+        downloadApifyHardCapUsd: policy?.downloadApifyHardCapUsd || MANUAL_DOWNLOAD_APIFY_CAP_USD,
+        geminiHardCapUsd: policy?.geminiHardCapUsd || MANUAL_GEMINI_CAP_USD,
+      } : null,
       discoveryBrand,
       settings,
     },
@@ -1772,8 +2014,15 @@ async function executeAutomaticDiscovery(args = {}) {
     maxWinnerDownloads = AUTOMATIC_MAX_WINNER_DOWNLOADS,
     discoveryBrand,
     settings,
+    triggerMode = SCHEDULED_TRIGGER_MODE,
+    budgetPolicy = null,
   } = prepared.execution;
   const auditTrace = run.auditTrace || null;
+  const isManualRefresh = triggerMode === MANUAL_REFRESH_TRIGGER_MODE;
+  const budgetLedger = isManualRefresh
+    ? createProviderBudgetLedger({ hardCapUsd: budgetPolicy?.perRunCapUsd || MANUAL_REFRESH_PER_RUN_CAP_USD })
+    : null;
+  const qualityRuntimeGuards = args.qualityRuntimeGuards || null;
   const discoveryWorkspace = discoveryBrand?.brief
     ? { ...workspace, brief: discoveryBrand.brief }
     : workspace;
@@ -1802,6 +2051,18 @@ async function executeAutomaticDiscovery(args = {}) {
   const fetchSignals = typeof args.fetchSignals === 'function' ? args.fetchSignals : fetchApifySignals;
   const market = getWorkspaceMarket(workspace);
   const reels = Array.isArray(state.reels) ? state.reels : (state.reels = []);
+  const bankCountBefore = reels.filter((signal) => (
+    signal?.workspaceId === workspaceId
+    && signal?.importedMetadata?.qualityGate?.decision === 'accept'
+    && signal?.importedMetadata?.qualityGate?.admittedToBank === true
+  )).length;
+  if (auditTrace) {
+    auditTrace.mutationSnapshot.before = {
+      reels: reels.filter((signal) => signal?.workspaceId === workspaceId).length,
+      bank: bankCountBefore,
+      collection: bankCountBefore,
+    };
+  }
   const existingByIdentity = getExistingReelsByIdentity(state, workspaceId);
   const candidateIdsByIdentity = new Map();
   const candidatesById = new Map();
@@ -1814,6 +2075,15 @@ async function executeAutomaticDiscovery(args = {}) {
   const getCurrentTime = typeof args.getCurrentTime === 'function'
     ? args.getCurrentTime
     : () => new Date();
+
+  function syncBudgetLedger() {
+    if (!budgetLedger) return null;
+    const snapshot = budgetLedger.snapshot();
+    run.reservedCostUsd = snapshot.committedCostUsd;
+    run.actualCostUsd = snapshot.actualCostUsd;
+    if (auditTrace) auditTrace.budgetLedger = snapshot;
+    return snapshot;
+  }
 
   async function reportProgress() {
     const progressTime = toDate(getCurrentTime());
@@ -1831,6 +2101,7 @@ async function executeAutomaticDiscovery(args = {}) {
       const actualCostUsd = result.actualCostUsd;
       return {
         signals: result,
+        runId: result.runId || null,
         actualCostUsd: actualCostUsd === null || actualCostUsd === undefined
           ? null
           : Number(actualCostUsd),
@@ -1844,6 +2115,7 @@ async function executeAutomaticDiscovery(args = {}) {
     const actualCostUsd = result?.actualCostUsd;
     return {
       signals,
+      runId: result?.runId || null,
       actualCostUsd: actualCostUsd === null || actualCostUsd === undefined
         ? null
         : Number(actualCostUsd),
@@ -1867,6 +2139,19 @@ async function executeAutomaticDiscovery(args = {}) {
 
   for (const call of plannedCalls) {
     const callEstimateUsd = estimateDiscoveryCallCostUsd(call);
+    if (budgetLedger) {
+      try {
+        budgetLedger.reserve('metadata', budgetPolicy.metadataApifyHardCapUsd, {
+          estimatedCostUsd: callEstimateUsd,
+        });
+        syncBudgetLedger();
+      } catch (error) {
+        run.errorCount += 1;
+        run.errors.push({ lane: call.lane, code: error.code || 'provider_budget_exceeded', message: error.message, status: 429 });
+        if (auditTrace) auditTrace.failure = { stage: 'metadata_budget', code: error.code || 'provider_budget_exceeded', status: 429 };
+        break;
+      }
+    }
     const laneStat = getLaneStat(call.lane);
     laneStat.attempted += 1;
     run.attemptedCallCount += 1;
@@ -1885,14 +2170,31 @@ async function executeAutomaticDiscovery(args = {}) {
         workspaceId,
         market,
         createId: createAutomaticSignalId,
+        ...(budgetLedger ? {
+          maxTotalChargeUsd: budgetPolicy.metadataApifyHardCapUsd,
+          maxItems: call.limit,
+          retries: 0,
+          fallbacks: 0,
+        } : {}),
       });
-      const { signals: fetchedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+      const { signals: fetchedSignals, actualCostUsd, runId } = unpackProviderResult(providerResult);
       if (auditTrace) {
-        auditTrace.rawMetadataCandidates.push(
-          ...(Array.isArray(fetchedSignals) ? fetchedSignals : [])
-            .map(cloneAuditValue)
-            .filter(Boolean),
-        );
+        auditTrace.counts.raw += Array.isArray(fetchedSignals) ? fetchedSignals.length : 0;
+        const candidateSummaries = (Array.isArray(fetchedSignals) ? fetchedSignals : [])
+          .map(summarizeCandidateForAudit)
+          .filter(Boolean);
+        auditTrace.candidates.push(...candidateSummaries);
+        auditTrace.rawMetadataCandidates.push(...candidateSummaries.map((candidate) => ({ ...candidate })));
+        auditTrace.apifyRuns.metadata.push({
+          runId: runId || null,
+          actualCostUsd: Number.isFinite(actualCostUsd) ? actualCostUsd : null,
+          hardCapUsd: budgetPolicy?.metadataApifyHardCapUsd || null,
+          maxItems: call.limit,
+        });
+      }
+      if (budgetLedger) {
+        budgetLedger.complete('metadata', { actualCostUsd, providerRunId: runId });
+        syncBudgetLedger();
       }
       recordBilledCost(actualCostUsd);
       run.returnedCount += Array.isArray(fetchedSignals) ? fetchedSignals.length : 0;
@@ -1933,6 +2235,17 @@ async function executeAutomaticDiscovery(args = {}) {
         registerIdentityValue(candidateIdsByIdentity, normalizedSignal, newCandidateId);
       }
     } catch (error) {
+      if (budgetLedger) {
+        try {
+          budgetLedger.complete('metadata', {
+            actualCostUsd: error?.actualCostUsd,
+            providerRunId: error?.runId,
+          });
+        } catch {
+          budgetLedger.fail('metadata');
+        }
+        syncBudgetLedger();
+      }
       recordBilledCost(error?.actualCostUsd);
       run.errorCount += 1;
       laneStat.failed += 1;
@@ -1967,7 +2280,19 @@ async function executeAutomaticDiscovery(args = {}) {
     .filter((signal) => {
       const cacheHit = getSignalIdentityKeys(signal)
         .some((key) => activeQualityDecisionSuppressionKeys.has(key));
-      if (cacheHit) run.qualityCacheHitCount += 1;
+      if (cacheHit) {
+        run.qualityCacheHitCount += 1;
+        if (auditTrace) {
+          const matchingDecision = (Array.isArray(state.discoveryRuns) ? state.discoveryRuns : [])
+            .flatMap((historyRun) => Array.isArray(historyRun?.qualityDecisions) ? historyRun.qualityDecisions : [])
+            .find((decision) => getSignalIdentityKeys(signal).some((key) => decision?.identityKeys?.includes(key)));
+          auditTrace.suppressedCandidates.push({
+            ...summarizeCandidateForAudit(signal),
+            decision: matchingDecision?.decision || null,
+            cachedUntil: matchingDecision?.cachedUntil || null,
+          });
+        }
+      }
       return !cacheHit;
     });
   const evaluatedSignals = rankSignalsByBSoft(eligibleSignals);
@@ -1993,17 +2318,13 @@ async function executeAutomaticDiscovery(args = {}) {
     }
   }
   if (auditTrace) {
-    auditTrace.normalizedEligibleCandidates = evaluatedSignals.map((signal) => cloneAuditValue({
-      ...signal,
-      canonicalUrl: canonicalizeSignalUrl(getSignalSourceUrl(signal)),
-      identityKeys: getSignalIdentityKeys(signal),
-    })).filter(Boolean);
-    auditTrace.topCandidates = rankedSignals.slice(0, 5).map((signal) => cloneAuditValue({
-      ...signal,
-      rankingScore: signal.rankingScore,
-      rankingVersion: signal.rankingVersion,
-      canonicalIdentity: getSignalRankingTieKey(signal),
-    })).filter(Boolean);
+    auditTrace.counts.normalized = run.returnedCount;
+    auditTrace.counts.deduplicated = deduplicatedCandidates.length;
+    auditTrace.counts.inScope = inScopeCandidates.length;
+    auditTrace.counts.eligible = evaluatedSignals.length;
+    auditTrace.counts.suppressed = run.qualityCacheHitCount;
+    auditTrace.normalizedEligibleCandidates = evaluatedSignals.map(summarizeCandidateForAudit).filter(Boolean);
+    auditTrace.topCandidates = rankedSignals.slice(0, 5).map(summarizeCandidateForAudit).filter(Boolean);
     if (rankingBlocked) {
       auditTrace.failure = {
         stage: 'metadata_ranking',
@@ -2021,12 +2342,7 @@ async function executeAutomaticDiscovery(args = {}) {
 
   if (auditTrace) {
     auditTrace.selectedTopCandidate = shortlistedSignals[0]
-      ? cloneAuditValue({
-          ...shortlistedSignals[0],
-          rankingScore: shortlistedSignals[0].rankingScore,
-          rankingVersion: shortlistedSignals[0].rankingVersion,
-          canonicalIdentity: getSignalRankingTieKey(shortlistedSignals[0]),
-        })
+      ? summarizeCandidateForAudit(shortlistedSignals[0])
       : null;
   }
 
@@ -2042,7 +2358,7 @@ async function executeAutomaticDiscovery(args = {}) {
       ? Math.min(maxWinnerDownloads, maxQualityEvaluations)
       : maxWinnerDownloads;
     if (['instagram', 'tiktok'].includes(platform) && winnerDownloadCount < winnerDownloadLimit) {
-      const downloadInput = shortlistedSignal.sourceUrl || shortlistedSignal.importedMetadata?.url || '';
+      const downloadInput = sanitizeUrl(shortlistedSignal.sourceUrl || shortlistedSignal.importedMetadata?.url || '');
       const downloadCall = {
         platform,
         lane: 'winner',
@@ -2057,16 +2373,35 @@ async function executeAutomaticDiscovery(args = {}) {
           attempted: Boolean(downloadInput),
           result: downloadInput ? 'running' : 'missing_source_url',
           platform,
-          sourceUrl: downloadInput,
+          sourceUrl: downloadInput ? sanitizeUrl(downloadInput) : null,
           estimatedCostUsd: downloadEstimateUsd,
           actualCostUsd: null,
           mediaSha256: null,
         };
       }
-      if (downloadInput && spentUsd + run.reservedCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd) {
+      let downloadBudgetAvailable = Boolean(downloadInput);
+      if (downloadBudgetAvailable && budgetLedger) {
+        try {
+          const currentCommitment = budgetLedger.snapshot().committedCostUsd;
+          const exposure = budgetPolicy.downloadApifyHardCapUsd;
+          if (spentUsd + currentCommitment + exposure > run.dailyBudgetUsd) throw new Error('manual_refresh_daily_budget_exceeded');
+          if (run.monthlySpentUsdBefore + currentCommitment + exposure > run.monthlyBudgetUsd) throw new Error('manual_refresh_monthly_budget_exceeded');
+          budgetLedger.reserve('download', exposure, { estimatedCostUsd: downloadEstimateUsd });
+          syncBudgetLedger();
+        } catch (error) {
+          downloadBudgetAvailable = false;
+          candidateHadTechnicalFailure = true;
+          run.errorCount += 1;
+          run.errors.push({ lane: 'winner_budget', code: error.code || error.message, message: error.message, status: 429 });
+          if (auditTrace) auditTrace.failure = { stage: 'download_budget', code: error.code || error.message, status: 429 };
+        }
+      }
+      if (downloadInput && downloadBudgetAvailable && (
+        budgetLedger || spentUsd + run.reservedCostUsd + downloadEstimateUsd <= settings.dailyBudgetUsd
+      )) {
         winnerDownloadCount += 1;
         run.estimatedCostUsd = roundUsd(run.estimatedCostUsd + downloadEstimateUsd);
-        run.reservedCostUsd = roundUsd(run.reservedCostUsd + downloadEstimateUsd);
+        if (!budgetLedger) run.reservedCostUsd = roundUsd(run.reservedCostUsd + downloadEstimateUsd);
         run.attemptedCallCount += 1;
         await reportProgress();
         try {
@@ -2083,10 +2418,26 @@ async function executeAutomaticDiscovery(args = {}) {
             workspaceId,
             market,
             createId: createAutomaticSignalId,
+            ...(budgetLedger ? {
+              maxTotalChargeUsd: budgetPolicy.downloadApifyHardCapUsd,
+              maxItems: AUTOMATIC_DOWNLOAD_LIMIT,
+              retries: 0,
+              fallbacks: 0,
+            } : {}),
           });
-          const { signals: downloadedSignals, actualCostUsd } = unpackProviderResult(providerResult);
+          const { signals: downloadedSignals, actualCostUsd, runId } = unpackProviderResult(providerResult);
           if (auditTrace) {
             auditTrace.download.actualCostUsd = Number.isFinite(actualCostUsd) ? actualCostUsd : null;
+            auditTrace.apifyRuns.download = {
+              runId: runId || null,
+              actualCostUsd: Number.isFinite(actualCostUsd) ? actualCostUsd : null,
+              hardCapUsd: budgetPolicy?.downloadApifyHardCapUsd || null,
+              maxItems: AUTOMATIC_DOWNLOAD_LIMIT,
+            };
+          }
+          if (budgetLedger) {
+            budgetLedger.complete('download', { actualCostUsd, providerRunId: runId });
+            syncBudgetLedger();
           }
           recordBilledCost(actualCostUsd);
           run.returnedCount += Array.isArray(downloadedSignals) ? downloadedSignals.length : 0;
@@ -2122,6 +2473,17 @@ async function executeAutomaticDiscovery(args = {}) {
           }
         } catch (error) {
           candidateHadTechnicalFailure = true;
+          if (budgetLedger) {
+            try {
+              budgetLedger.complete('download', {
+                actualCostUsd: error?.actualCostUsd,
+                providerRunId: error?.runId,
+              });
+            } catch {
+              budgetLedger.fail('download');
+            }
+            syncBudgetLedger();
+          }
           recordBilledCost(error?.actualCostUsd);
           run.errorCount += 1;
           run.errors.push({
@@ -2154,8 +2516,22 @@ async function executeAutomaticDiscovery(args = {}) {
       now,
       createId: createAutomaticSignalId,
     });
+    if (candidateHadTechnicalFailure) {
+      await reportProgress();
+      continue;
+    }
     if (evaluateSignalQuality) {
       try {
+        if (budgetLedger) {
+          const geminiExposure = budgetPolicy.geminiHardCapUsd;
+          const currentCommitment = budgetLedger.snapshot().committedCostUsd;
+          if (spentUsd + currentCommitment + geminiExposure > run.dailyBudgetUsd) throw new Error('manual_refresh_daily_budget_exceeded');
+          if (run.monthlySpentUsdBefore + currentCommitment + geminiExposure > run.monthlyBudgetUsd) throw new Error('manual_refresh_monthly_budget_exceeded');
+          budgetLedger.reserve('gemini', geminiExposure, {
+            estimatedCostUsd: qualityRuntimeGuards?.conservativeCostUsd ?? geminiExposure,
+          });
+          syncBudgetLedger();
+        }
         run.qualityEvaluatedCount += 1;
         run.qualityInteractionCount += 1;
         if (auditTrace) auditTrace.gemini.attempted = true;
@@ -2164,7 +2540,14 @@ async function executeAutomaticDiscovery(args = {}) {
           workspace: discoveryWorkspace,
           platform,
           now,
+          runtimeGuards: qualityRuntimeGuards,
         });
+        if (budgetLedger) {
+          budgetLedger.complete('gemini', {
+            calculatedCostUsd: quality?.auditTrace?.calculatedCostUsd,
+          });
+          syncBudgetLedger();
+        }
         const borderline = (
           run.qualityRecheckCount < maxQualityRechecks
           && isSignalQualityBorderline(quality, qualityGateConfig)
@@ -2217,11 +2600,30 @@ async function executeAutomaticDiscovery(args = {}) {
         const { decision, admittedToBank } = resolveSignalAdmission(quality);
         if (auditTrace) {
           auditTrace.download.mediaSha256 = quality?.auditTrace?.mediaSha256 || null;
-          auditTrace.gemini.rawResponse = cloneAuditValue(quality?.auditTrace?.rawResponse ?? null);
-          auditTrace.gemini.parsedResult = cloneAuditValue(
-            quality?.auditTrace?.parsedResult ?? quality?.auditTrace?.rawAssessment ?? null,
-          );
+          auditTrace.download.mediaByteLength = Number.isFinite(Number(quality?.auditTrace?.mediaByteLength))
+            ? Number(quality.auditTrace.mediaByteLength)
+            : null;
+          auditTrace.gemini.rawResponseHash = hashAuditPayload(quality?.auditTrace?.rawResponse ?? null);
+          auditTrace.gemini.rawResponse = summarizeGeminiResponseEnvelope(quality?.auditTrace?.rawResponse ?? null);
+          const parsedAudit = quality?.auditTrace?.parsedResult ?? quality?.auditTrace?.rawAssessment ?? null;
+          const safeParsedSummary = parsedAudit ? {
+            accessible: parsedAudit.accessible === true,
+            ...(parsedAudit.summary ? { summary: String(parsedAudit.summary).replace(/\s+/g, ' ').trim().slice(0, 500) } : {}),
+            observationCount: Array.isArray(parsedAudit.observations) ? parsedAudit.observations.length : 0,
+            evidenceChainCount: Array.isArray(parsedAudit.evidenceChains) ? parsedAudit.evidenceChains.length : 0,
+          } : null;
+          auditTrace.gemini.parsedSummary = safeParsedSummary;
+          auditTrace.gemini.parsedResult = safeParsedSummary ? { ...safeParsedSummary } : null;
           auditTrace.gemini.usage = cloneAuditValue(quality?.auditTrace?.usage ?? null);
+          auditTrace.gemini.normalizedUsage = cloneAuditValue(quality?.auditTrace?.normalizedUsage ?? null);
+          auditTrace.gemini.model = quality?.auditTrace?.model || qualityRuntimeGuards?.model || null;
+          auditTrace.gemini.calculatedCostUsd = Number.isFinite(Number(quality?.auditTrace?.calculatedCostUsd))
+            ? Number(quality.auditTrace.calculatedCostUsd)
+            : null;
+          auditTrace.gemini.conservativeCostUsd = Number.isFinite(Number(quality?.auditTrace?.conservativeCostUsd))
+            ? Number(quality.auditTrace.conservativeCostUsd)
+            : qualityRuntimeGuards?.conservativeCostUsd ?? null;
+          auditTrace.gemini.httpOperations = cloneAuditValue(quality?.auditTrace?.httpOperations ?? null);
           auditTrace.signalFilter = {
             decision,
             admittedToBank,
@@ -2230,10 +2632,13 @@ async function executeAutomaticDiscovery(args = {}) {
               ? [...quality.uncertaintyReasons]
               : [],
             policyVersion: quality?.policyVersion ?? qualityGateConfig.version ?? null,
-            result: cloneAuditValue(quality),
+            qualityScore: Number.isFinite(Number(quality?.qualityScore)) ? Number(quality.qualityScore) : null,
+            brandRelevance: Number.isFinite(Number(quality?.brandRelevance)) ? Number(quality.brandRelevance) : null,
           };
-          auditTrace.providerCost.geminiEstimatedUsd = Number.isFinite(Number(quality?.auditTrace?.estimatedCostUsd))
-            ? Number(quality.auditTrace.estimatedCostUsd)
+          auditTrace.providerCost.geminiEstimatedUsd = Number.isFinite(Number(quality?.auditTrace?.calculatedCostUsd))
+            ? Number(quality.auditTrace.calculatedCostUsd)
+            : Number.isFinite(Number(quality?.auditTrace?.estimatedCostUsd))
+              ? Number(quality.auditTrace.estimatedCostUsd)
             : null;
         }
         const cachedUntil = !candidateHadTechnicalFailure
@@ -2243,7 +2648,7 @@ async function executeAutomaticDiscovery(args = {}) {
           : null;
         run.qualityDecisions.push({
           signalId: finalizedSignal.id,
-          sourceUrl: finalizedSignal.sourceUrl || finalizedSignal.importedMetadata?.url || '',
+          sourceUrl: canonicalizeSignalUrl(finalizedSignal.sourceUrl || finalizedSignal.importedMetadata?.url || ''),
           identityKeys,
           policyVersion: quality?.policyVersion ?? qualityGateConfig.version ?? null,
           decision,
@@ -2344,6 +2749,10 @@ async function executeAutomaticDiscovery(args = {}) {
           },
         };
       } catch (error) {
+        if (budgetLedger && budgetLedger.snapshot().stages.gemini) {
+          budgetLedger.fail('gemini');
+          syncBudgetLedger();
+        }
         run.qualityErrorCount += 1;
         run.rejectedCount += 1;
         run.errorCount += 1;
@@ -2379,9 +2788,16 @@ async function executeAutomaticDiscovery(args = {}) {
   run.acceptedCount = acceptedSignals.length;
   run.status = !rankingBlocked && successfulCalls > 0 ? 'completed' : 'failed';
   const roundedBilledCostUsd = roundUsd(billedCostUsd);
-  run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd >= 0
-    ? roundedBilledCostUsd
-    : null;
+  if (budgetLedger) {
+    const ledgerSnapshot = syncBudgetLedger();
+    run.estimatedCostUsd = ledgerSnapshot.estimatedCostUsd;
+    run.reservedCostUsd = ledgerSnapshot.committedCostUsd;
+    run.actualCostUsd = ledgerSnapshot.actualCostUsd;
+  } else {
+    run.actualCostUsd = run.attemptedCallCount > 0 && hasCompleteBilledCost && roundedBilledCostUsd >= 0
+      ? roundedBilledCostUsd
+      : null;
+  }
   if (auditTrace) {
     auditTrace.providerCost.estimatedUsd = run.estimatedCostUsd;
     auditTrace.providerCost.actualUsd = run.actualCostUsd;
@@ -2393,6 +2809,19 @@ async function executeAutomaticDiscovery(args = {}) {
         status: run.errors[0]?.status || 500,
       };
     }
+    const bankCountAfter = reels.filter((signal) => (
+      signal?.workspaceId === workspaceId
+      && signal?.importedMetadata?.qualityGate?.decision === 'accept'
+      && signal?.importedMetadata?.qualityGate?.admittedToBank === true
+    )).length;
+    auditTrace.mutationSnapshot.after = {
+      reels: reels.filter((signal) => signal?.workspaceId === workspaceId).length,
+      bank: bankCountAfter,
+      collection: bankCountAfter,
+    };
+    auditTrace.mutationSnapshot.bankDelta = bankCountAfter - bankCountBefore;
+    auditTrace.mutationSnapshot.collectionDelta = bankCountAfter - bankCountBefore;
+    run.auditTrace = sanitizeAutomaticDiscoveryTrace(auditTrace);
   }
   run.completedAt = now.toISOString();
   const latestHeartbeat = Date.parse(run.updatedAt || '');
@@ -2459,6 +2888,9 @@ module.exports = {
   isDiscoveryDue,
   getDailyAutomaticSpend,
   getDailyAutomaticSpendSummary,
+  getMonthlyAutomaticSpendSummary,
+  createProviderBudgetLedger,
+  sanitizeAutomaticDiscoveryTrace,
   canStartDiscoveryRun,
   estimateDiscoveryRunCostUsd,
   claimDiscoveryRun,

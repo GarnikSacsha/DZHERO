@@ -140,6 +140,10 @@ module.exports = async function automaticDiscoveryTestProvider(call = {}) {
       input: call.input || call.inputValue || null,
       limit: Number(call.limit || 0),
       downloadVideos: Boolean(call.downloadVideos || call.downloadVideo),
+      maxTotalChargeUsd: Number(call.maxTotalChargeUsd || 0),
+      maxItems: Number(call.maxItems || 0),
+      retries: Number(call.retries || 0),
+      fallbacks: Number(call.fallbacks || 0),
     }, null, 2));
   }
   if (releasePath) {
@@ -413,10 +417,21 @@ try {
   const workspace = runState.workspaces.find((item) => item.id === workspaceId);
   workspace.discoverySettings = {
     ...(workspace.discoverySettings || {}),
-    enabled: true,
+    enabled: false,
     dailyBudgetUsd: 0.8,
     viralScoreThreshold: 56,
     platforms: ['instagram', 'tiktok'],
+  };
+  workspace.productBrandBrain = {
+    version: 1,
+    id: 'brand-api-manual',
+    name: 'API Manual Brand',
+    brain: {
+      profileDescription: 'An AI producer for practical builders.',
+      audience: 'AI builders',
+      niche: 'AI workflow automation',
+      market: 'Ukraine and Europe',
+    },
   };
   workspace.notes = 'pre-existing workspace note';
   runState.sources.unshift({
@@ -440,13 +455,21 @@ try {
   const manualRunPromise = requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({}),
+    body: JSON.stringify({
+      surface: 'product_redesign',
+      activeBrandId: 'brand-api-manual',
+      triggerMode: 'scheduled',
+    }),
   });
 
   await waitForFile(providerStartedPath);
 
   const startedProviderCall = JSON.parse(await readFile(providerStartedPath, 'utf8'));
   assert.equal(startedProviderCall.limit, 5);
+  assert.equal(startedProviderCall.maxTotalChargeUsd, 0.5);
+  assert.equal(startedProviderCall.maxItems, 5);
+  assert.equal(startedProviderCall.retries, 0);
+  assert.equal(startedProviderCall.fallbacks, 0);
 
   const persistedClaimState = JSON.parse(await readFile(dbPath, 'utf8'));
   const activeRun = persistedClaimState.discoveryRuns?.find((run) => run.workspaceId === workspaceId && run.status === 'running');
@@ -461,7 +484,11 @@ try {
   const overlappingRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({}),
+    body: JSON.stringify({
+      surface: 'product_redesign',
+      activeBrandId: 'brand-api-manual',
+      triggerMode: 'scheduled',
+    }),
   });
   assert.equal(overlappingRun.response.status, 409);
   assert.equal(overlappingRun.body?.error, 'automatic_discovery_running');
@@ -485,18 +512,21 @@ try {
   const manualRun = await manualRunPromise;
   assert.equal(manualRun.response.status, 201);
   assert.equal(manualRun.body?.run?.status, 'failed');
-  assert.equal(manualRun.body?.run?.budgetUsd, 0.4);
+  assert.equal(manualRun.body?.run?.budgetUsd, 1.15);
   assert.equal(manualRun.body?.run?.actualCostUsd, null);
   assert.equal(manualRun.body?.run?.attemptedCallCount, 1);
   assert.equal(manualRun.body?.run?.requestedCount, 1);
   assert.equal(manualRun.body?.acceptedSignals, 0);
   assert.ok(manualRun.body?.run?.estimatedCostUsd > 0 && manualRun.body?.run?.estimatedCostUsd <= 0.4);
+  assert.equal(Object.hasOwn(manualRun.body?.run || {}, 'auditTrace'), false);
 
   const persistedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const persistedRun = persistedState.discoveryRuns?.find((run) => run.id === activeRun.id);
   const persistedWorkspace = persistedState.workspaces.find((item) => item.id === workspaceId);
   const persistedConcurrentReel = persistedState.reels?.find((reel) => reel.id === 'reel_concurrent_unrelated');
   assert.equal(persistedRun?.status, 'failed');
+  assert.equal(persistedRun?.triggerMode, 'manual_refresh', 'client-supplied triggerMode must be ignored');
+  assert.equal(persistedRun?.auditTrace?.triggerMode, 'manual_refresh');
   assert.equal(persistedRun?.classifiedFailure?.code, 'insufficient_ranking_metadata');
   assert.equal(persistedWorkspace?.reviewNote, 'survives concurrent merge');
   assert.equal(persistedConcurrentReel?.sourceUrl, 'https://example.com/concurrent-reel');
@@ -511,7 +541,10 @@ try {
   const secondTesterRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({}),
+    body: JSON.stringify({
+      surface: 'product_redesign',
+      activeBrandId: 'brand-api-manual',
+    }),
   });
   assert.equal(secondTesterRun.response.status, 429);
   assert.equal(secondTesterRun.body?.error, 'automatic_daily_run_limit_reached');

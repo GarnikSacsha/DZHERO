@@ -101,10 +101,27 @@ function getTesterDiscoveryPolicy(planId) {
   };
 }
 
+function getTesterManualRefreshPolicy(planId) {
+  if (planId !== TESTER_PLAN_ID) return null;
+  return {
+    triggerMode: 'manual_refresh',
+    perRunBudgetUsd: 1.15,
+    manualRefreshDailyBudgetUsd: 1.15,
+    monthlyBudgetUsd: 11.5,
+    metadataApifyHardCapUsd: 0.5,
+    downloadApifyHardCapUsd: 0.5,
+    geminiHardCapUsd: 0.15,
+    maxBudgetedRunsPerDay: 1,
+    resultLimitPerPlatform: 5,
+    maxPlannedCalls: 1,
+  };
+}
+
 module.exports = {
   TESTER_PLAN_ID,
   getActiveTesterGrant,
   getTesterDiscoveryPolicy,
+  getTesterManualRefreshPolicy,
   linkTesterGrant,
   normalizeTesterEmail,
   resolveAccessPlan,
