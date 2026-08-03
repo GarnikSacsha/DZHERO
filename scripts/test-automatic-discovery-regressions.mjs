@@ -791,4 +791,367 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+const signalFilterAuditBridgeWorkspaceId = 'ws_signal_filter_audit_bridge';
+const signalFilterAuditBridgeCandidateAId = '7668237339872759053';
+const signalFilterAuditBridgeCandidateBId = '7668237339872759999';
+const signalFilterAuditBridgeNow = new Date('2026-08-06T10:00:00.000Z');
+const signalFilterAuditBridgeQualityConfig = {
+  version: 3.1,
+  maxVideoAnalysesPerRun: 1,
+  rejectionMemory: {
+    enabled: true,
+    ttlDays: 30,
+  },
+  borderlineReview: {
+    enabled: false,
+    maxRechecksPerRun: 0,
+  },
+};
+const signalFilterAuditBridgePolicy = {
+  dailyBudgetUsd: 0.8,
+  dailyTarget: 10,
+  maxBudgetedRunsPerDay: 1,
+  resultLimitPerPlatform: 2,
+  maxPlannedCalls: 1,
+};
+
+function createSignalFilterAuditBridgeCandidate(stableId, workspaceId, { downloaded = false } = {}) {
+  const isCandidateA = stableId === signalFilterAuditBridgeCandidateAId;
+  const sourceUrl = `https://www.tiktok.com/@chatcutapp/video/${stableId}`;
+  const videoUrl = downloaded ? `https://offline.invalid/${stableId}.mp4` : '';
+  return {
+    id: `signal_filter_audit_bridge_${stableId}`,
+    workspaceId,
+    handle: '@chatcutapp',
+    sourceHandle: '@chatcutapp',
+    sourceUrl,
+    sourceStatus: downloaded ? 'mock_video' : 'mock_metadata',
+    sourceType: 'TikTok',
+    views: 10_000,
+    likes: isCandidateA ? 900 : 500,
+    comments: isCandidateA ? 80 : 40,
+    shares: isCandidateA ? 200 : 70,
+    saves: isCandidateA ? 300 : 90,
+    videoUrl,
+    importedMetadata: {
+      provider: 'offline_mock',
+      platform: 'tiktok',
+      externalId: stableId,
+      tiktokVideoId: stableId,
+      url: sourceUrl,
+      videoUrl,
+      mediaUrls: videoUrl ? [videoUrl] : [],
+      handle: '@chatcutapp',
+      duration: 44,
+      sourceRelationship: 'exact_owner',
+    },
+  };
+}
+
+function createSignalFilterAuditBridgeState({
+  workspaceId = signalFilterAuditBridgeWorkspaceId,
+  auditWorkspaceId = workspaceId,
+  auditCandidateId = signalFilterAuditBridgeCandidateAId,
+  auditOverrides = {},
+  existingAcceptedCandidate = false,
+  auditFormat = 'normalized',
+  auditMetadataAuditId = 'metadata_audit_signal_filter_bridge',
+  metadataTraceId = auditMetadataAuditId,
+  duplicateMetadataAudit = false,
+} = {}) {
+  const acceptedCandidate = createSignalFilterAuditBridgeCandidate(
+    signalFilterAuditBridgeCandidateAId,
+    workspaceId,
+    { downloaded: true },
+  );
+  if (existingAcceptedCandidate) {
+    acceptedCandidate.importedMetadata.qualityGate = {
+      policyVersion: signalFilterAuditBridgeQualityConfig.version,
+      decision: 'accept',
+      admittedToBank: true,
+    };
+  }
+  const auditCanonicalUrl = `https://tiktok.com/@chatcutapp/video/${auditCandidateId}`;
+  const auditTrace = {
+    id: 'signal_filter_audit_1785754165248_6dbe23814775',
+    schemaVersion: 1,
+    state: 'completed',
+    metadataAuditId: auditMetadataAuditId,
+    candidateId: auditCandidateId,
+    decision: 'uncertain',
+    admittedToBank: false,
+    failure: null,
+    classifiedFailure: null,
+    createdAt: '2026-08-05T10:00:00.000Z',
+    ...(auditFormat === 'normalized' ? {
+      workspaceId: auditWorkspaceId,
+      platform: 'tiktok',
+      canonicalUrl: auditCanonicalUrl,
+      identityKeys: [
+        `tiktok:${auditCandidateId}`,
+        `url:${auditCanonicalUrl}`,
+      ],
+      policyVersion: signalFilterAuditBridgeQualityConfig.version,
+      completedAt: '2026-08-05T10:01:00.000Z',
+    } : {}),
+    ...auditOverrides,
+  };
+  const metadataCandidate = createSignalFilterAuditBridgeCandidate(
+    signalFilterAuditBridgeCandidateAId,
+    workspaceId,
+  );
+  const metadataAuditTrace = {
+    id: metadataTraceId,
+    state: 'completed',
+    workspaceId,
+    selectedTopCandidate: {
+      stableId: signalFilterAuditBridgeCandidateAId,
+      platform: 'tiktok',
+      canonicalUrl: `https://tiktok.com/@chatcutapp/video/${signalFilterAuditBridgeCandidateAId}`,
+    },
+    topCandidates: [],
+    deduplicatedEligibleCandidates: [metadataCandidate],
+    normalizedCandidates: [metadataCandidate],
+  };
+  return {
+    workspaces: [{
+      id: workspaceId,
+      brief: {
+        businessType: 'AI tools',
+        niche: 'vibe coding',
+        product: 'DZHERO',
+        audience: 'AI builders',
+        location: 'global',
+      },
+      discoverySettings: {
+        enabled: true,
+        dailyBudgetUsd: 0.8,
+        viralScoreThreshold: 70,
+        platforms: ['tiktok'],
+      },
+    }],
+    sources: [{
+      id: `source_${workspaceId}`,
+      workspaceId,
+      type: 'tiktok',
+      handle: '@chatcutapp',
+    }],
+    competitors: [],
+    instagramAccounts: [],
+    tiktokAccounts: [],
+    reels: existingAcceptedCandidate ? [acceptedCandidate] : [],
+    discoveryRuns: [],
+    signalFilterAuditRuns: [auditTrace],
+    metadataAuditRuns: auditFormat === 'legacy'
+      ? [metadataAuditTrace, ...(duplicateMetadataAudit ? [structuredClone(metadataAuditTrace)] : [])]
+      : [],
+  };
+}
+
+const signalFilterAuditBridgeExternalAudit = {
+  networkAttempts: 0,
+  apifyCalls: 0,
+  geminiCalls: 0,
+  geminiUploads: 0,
+  realDownloads: 0,
+  paidCostUsd: 0,
+};
+
+async function runSignalFilterAuditBridgeScenario(options = {}) {
+  const state = createSignalFilterAuditBridgeState(options);
+  const workspaceId = state.workspaces[0].id;
+  const candidates = [
+    createSignalFilterAuditBridgeCandidate(signalFilterAuditBridgeCandidateAId, workspaceId),
+    createSignalFilterAuditBridgeCandidate(signalFilterAuditBridgeCandidateBId, workspaceId),
+  ];
+  const downloadedCandidateIds = [];
+  const qualityCandidateIds = [];
+  const result = await executeAutomaticDiscovery({
+    state,
+    workspaceId,
+    token: 'offline-mock-only',
+    now: signalFilterAuditBridgeNow,
+    force: true,
+    policy: signalFilterAuditBridgePolicy,
+    maxQualityEvaluations: signalFilterAuditBridgeQualityConfig.maxVideoAnalysesPerRun,
+    qualityGateConfig: signalFilterAuditBridgeQualityConfig,
+    fetchSignals: async (call) => {
+      const wantsDownload = Boolean(call.downloadVideos ?? call.downloadVideo);
+      if (!wantsDownload) {
+        return {
+          actualCostUsd: 0,
+          signals: candidates.map((candidate) => structuredClone(candidate)),
+        };
+      }
+      const selected = candidates.find((candidate) => candidate.sourceUrl === call.inputValue);
+      const stableId = String(selected?.importedMetadata?.tiktokVideoId || '');
+      downloadedCandidateIds.push(stableId);
+      return {
+        actualCostUsd: 0,
+        signals: selected
+          ? [createSignalFilterAuditBridgeCandidate(stableId, workspaceId, { downloaded: true })]
+          : [],
+      };
+    },
+    evaluateSignalQuality: async ({ signal }) => {
+      const stableId = String(signal?.importedMetadata?.tiktokVideoId || '');
+      qualityCandidateIds.push(stableId);
+      return {
+        policyVersion: signalFilterAuditBridgeQualityConfig.version,
+        decision: 'reject',
+        admittedToBank: false,
+        qualityScore: 20,
+        brandRelevance: 80,
+        rejectionReasons: ['offline_audit_bridge_candidate_reject'],
+        uncertaintyReasons: [],
+      };
+    },
+  });
+  return { state, result, downloadedCandidateIds, qualityCandidateIds };
+}
+
+const signalFilterAuditBridgeOriginalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  signalFilterAuditBridgeExternalAudit.networkAttempts += 1;
+  throw new Error('network_forbidden_in_signal_filter_audit_bridge_reproducer');
+};
+
+let validSignalFilterAuditBridgeRun;
+let legacySignalFilterAuditBridgeRun;
+let ambiguousLegacySignalFilterAuditBridgeRun;
+let mismatchedMetadataAuditSignalFilterBridgeRun;
+let incompleteSignalFilterAuditBridgeRun;
+let missingDecisionSignalFilterAuditBridgeRun;
+let providerFailureSignalFilterAuditBridgeRun;
+let schemaFailureSignalFilterAuditBridgeRun;
+let runtimeFailureSignalFilterAuditBridgeRun;
+let policyMismatchSignalFilterAuditBridgeRun;
+let workspaceMismatchSignalFilterAuditBridgeRun;
+let identityMismatchSignalFilterAuditBridgeRun;
+let expiredSignalFilterAuditBridgeRun;
+let acceptedSignalFilterAuditBridgeRun;
+let acceptedWithoutBankSignalFilterAuditBridgeRun;
+try {
+  validSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario();
+  legacySignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditFormat: 'legacy',
+  });
+  ambiguousLegacySignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditFormat: 'legacy',
+    duplicateMetadataAudit: true,
+  });
+  mismatchedMetadataAuditSignalFilterBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditFormat: 'legacy',
+    auditMetadataAuditId: 'metadata_audit_missing_bridge',
+    metadataTraceId: 'metadata_audit_signal_filter_bridge',
+  });
+  incompleteSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { state: 'running', completedAt: null },
+  });
+  missingDecisionSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { decision: null },
+  });
+  providerFailureSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { state: 'failed', failure: { stage: 'provider', code: 'provider_error' } },
+  });
+  schemaFailureSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { state: 'failed', failure: { stage: 'schema', code: 'schema_validation_failed' } },
+  });
+  runtimeFailureSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { state: 'failed', failure: { stage: 'runtime', code: 'runtime_failed' } },
+  });
+  policyMismatchSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: { policyVersion: 3.2 },
+  });
+  workspaceMismatchSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditWorkspaceId: 'ws_other_signal_filter_audit',
+  });
+  identityMismatchSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditCandidateId: '7668237339872750000',
+  });
+  expiredSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: {
+      createdAt: '2026-06-01T10:00:00.000Z',
+      completedAt: '2026-06-01T10:01:00.000Z',
+    },
+  });
+  acceptedSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    existingAcceptedCandidate: true,
+    auditOverrides: {
+      decision: 'accept',
+      admittedToBank: true,
+    },
+  });
+  acceptedWithoutBankSignalFilterAuditBridgeRun = await runSignalFilterAuditBridgeScenario({
+    auditOverrides: {
+      decision: 'accept',
+      admittedToBank: false,
+    },
+  });
+} finally {
+  globalThis.fetch = signalFilterAuditBridgeOriginalFetch;
+}
+
+for (const negativeCase of [
+  incompleteSignalFilterAuditBridgeRun,
+  missingDecisionSignalFilterAuditBridgeRun,
+  providerFailureSignalFilterAuditBridgeRun,
+  schemaFailureSignalFilterAuditBridgeRun,
+  runtimeFailureSignalFilterAuditBridgeRun,
+  policyMismatchSignalFilterAuditBridgeRun,
+  workspaceMismatchSignalFilterAuditBridgeRun,
+  identityMismatchSignalFilterAuditBridgeRun,
+  expiredSignalFilterAuditBridgeRun,
+  ambiguousLegacySignalFilterAuditBridgeRun,
+  mismatchedMetadataAuditSignalFilterBridgeRun,
+]) {
+  assert.deepEqual(
+    negativeCase.downloadedCandidateIds,
+    [signalFilterAuditBridgeCandidateAId],
+    'invalid, mismatched, or expired audit memory must not suppress candidate A',
+  );
+  assert.deepEqual(negativeCase.qualityCandidateIds, [signalFilterAuditBridgeCandidateAId]);
+  assert.equal(negativeCase.result.run.qualityEvaluatedCount, 1);
+}
+
+assert.equal(acceptedSignalFilterAuditBridgeRun.state.reels.length, 1);
+assert.equal(
+  acceptedSignalFilterAuditBridgeRun.state.reels[0].importedMetadata?.qualityGate?.admittedToBank,
+  true,
+  'an accepted audit must not duplicate or erase the existing admitted Bank entry',
+);
+assert.deepEqual(
+  acceptedSignalFilterAuditBridgeRun.downloadedCandidateIds,
+  [signalFilterAuditBridgeCandidateBId],
+  'an existing accepted Bank entry must be deduplicated before paid analysis',
+);
+assert.deepEqual(
+  acceptedWithoutBankSignalFilterAuditBridgeRun.downloadedCandidateIds,
+  [signalFilterAuditBridgeCandidateBId],
+  'a completed accept analysis without a Bank entry must not be paid for again inside the TTL',
+);
+assert.equal(signalFilterAuditBridgeExternalAudit.networkAttempts, 0);
+assert.equal(signalFilterAuditBridgeExternalAudit.apifyCalls, 0);
+assert.equal(signalFilterAuditBridgeExternalAudit.geminiCalls, 0);
+assert.equal(signalFilterAuditBridgeExternalAudit.geminiUploads, 0);
+assert.equal(signalFilterAuditBridgeExternalAudit.realDownloads, 0);
+assert.equal(signalFilterAuditBridgeExternalAudit.paidCostUsd, 0);
+assert.equal(validSignalFilterAuditBridgeRun.result.run.qualityEvaluatedCount, 1);
+assert.deepEqual(
+  legacySignalFilterAuditBridgeRun.downloadedCandidateIds,
+  [signalFilterAuditBridgeCandidateBId],
+  'legacy audit must suppress candidate A only through a strict unique metadata audit join',
+);
+assert.deepEqual(legacySignalFilterAuditBridgeRun.qualityCandidateIds, [signalFilterAuditBridgeCandidateBId]);
+assert.deepEqual(
+  validSignalFilterAuditBridgeRun.downloadedCandidateIds,
+  [signalFilterAuditBridgeCandidateBId],
+  'completed same-workspace same-policy audit must suppress analyzed ChatCut A before B-soft/download/Gemini',
+);
+assert.deepEqual(
+  validSignalFilterAuditBridgeRun.qualityCandidateIds,
+  [signalFilterAuditBridgeCandidateBId],
+  'the one allowed quality evaluation must move to lower-ranked valid candidate B',
+);
+
 console.log('automatic discovery regression tests passed');

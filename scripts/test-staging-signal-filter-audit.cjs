@@ -648,6 +648,18 @@ async function main() {
   assert.equal(acceptState.signalFilterAuditRuns.length, 1);
   assert.equal(acceptResult.trace.decision, 'accept');
   assert.equal(acceptResult.trace.admittedToBank, true);
+  assert.equal(acceptResult.trace.workspaceId, 'ws_signal_filter_audit');
+  assert.equal(acceptResult.trace.metadataAuditId, auditId);
+  assert.equal(acceptResult.trace.candidateId, candidateId);
+  assert.equal(acceptResult.trace.platform, 'tiktok');
+  assert.equal(acceptResult.trace.canonicalUrl, canonicalSourceUrl.replace('www.', ''));
+  assert.deepEqual(acceptResult.trace.identityKeys, [
+    `tiktok:${candidateId}`,
+    `url:${canonicalSourceUrl.replace('www.', '')}`,
+  ]);
+  assert.equal(acceptResult.trace.policyVersion, 3.1);
+  assert.equal(acceptResult.trace.failure, null);
+  assert.equal(acceptResult.trace.completedAt, '2026-08-03T12:00:00.000Z');
   assert.equal(acceptResult.trace.usage.inputTokens, 14000);
   assert.equal(acceptResult.trace.usage.outputTokens, 1000);
   assert.equal(acceptResult.trace.apifyRunId, 'mock-targeted-run');
@@ -693,6 +705,11 @@ async function main() {
   assert.equal((await errorStore.readState()).reels.length, 1);
   assert.equal(errorResult.trace.state, 'failed');
   assert.equal(errorResult.trace.admittedToBank, false);
+  assert.deepEqual(errorResult.trace.failure, {
+    code: 'mock_provider_error',
+    stage: 'execution',
+  });
+  assert.equal(errorResult.trace.completedAt, errorResult.trace.createdAt);
 
   let fakeState = createState();
   class FakePool {

@@ -1108,32 +1108,199 @@ function compareSignalsByMetadataRank(left = {}, right = {}) {
   return 0;
 }
 
-function getActiveQualityDecisionSuppressionKeys(state = {}, workspaceId, config = {}, now = new Date()) {
-  if (config.rejectionMemory?.enabled === false) return new Set();
+function getAuditStableId(candidate = {}) {
+  return normalizeText(
+    candidate.stableId
+    || candidate.candidateId
+    || candidate.externalId
+    || candidate.tiktokVideoId
+    || candidate.shortCode
+    || candidate.importedMetadata?.externalId
+    || candidate.importedMetadata?.tiktokVideoId
+    || candidate.importedMetadata?.shortCode
+    || '',
+  );
+}
+
+function getAuditPlatform(candidate = {}) {
+  return normalizeLower(
+    candidate.platform
+    || candidate.importedMetadata?.platform
+    || candidate.importedMetadata?.providerPlatform
+    || candidate.sourceType
+    || '',
+  );
+}
+
+function getAuditCanonicalUrl(candidate = {}) {
+  return canonicalizeSignalUrl(
+    candidate.canonicalUrl
+    || candidate.sourceUrl
+    || candidate.url
+    || candidate.importedMetadata?.url
+    || candidate.importedMetadata?.webVideoUrl
+    || '',
+  );
+}
+
+function hasSignalFilterAuditFailure(audit = {}) {
+  return Boolean(
+    audit.failure
+    || audit.classifiedFailure
+    || audit.providerFailure
+    || audit.schemaFailure
+    || audit.runtimeFailure
+    || audit.executionFailure,
+  );
+}
+
+function addDecisionMemoryRecord(memory, record = {}) {
+  for (const key of Array.isArray(record.identityKeys) ? record.identityKeys : []) {
+    const normalizedKey = normalizeLower(key);
+    if (normalizedKey && !memory.has(normalizedKey)) memory.set(normalizedKey, record);
+  }
+}
+
+function resolveNormalizedSignalFilterAuditMemory(audit = {}, workspaceId, policyVersion) {
+  if (audit.workspaceId !== workspaceId || Number(audit.policyVersion) !== policyVersion) return null;
+  const candidateId = getAuditStableId(audit);
+  const platform = getAuditPlatform(audit);
+  if (!candidateId || !platform || !Array.isArray(audit.identityKeys)) return null;
+  const expectedProviderKey = `${platform}:${normalizeLower(candidateId)}`;
+  const identityKeys = [...new Set(audit.identityKeys.map(normalizeLower).filter(Boolean))];
+  const providerKeys = identityKeys.filter((key) => !key.startsWith('url:'));
+  if (!identityKeys.includes(expectedProviderKey)
+    || providerKeys.some((key) => key !== expectedProviderKey)) {
+    return null;
+  }
+  const canonicalUrl = getAuditCanonicalUrl(audit);
+  if (!canonicalUrl) return null;
+  const canonicalUrlKey = `url:${normalizeLower(canonicalUrl)}`;
+  const urlKeys = identityKeys.filter((key) => key.startsWith('url:'));
+  if (urlKeys.length !== 1 || urlKeys[0] !== canonicalUrlKey) return null;
+  return { candidateId, identityKeys };
+}
+
+function getMetadataAuditCandidateCollections(trace = {}) {
+  return [
+    trace.selectedTopCandidate,
+    ...(Array.isArray(trace.topCandidates) ? trace.topCandidates : []),
+    ...(Array.isArray(trace.deduplicatedEligibleCandidates) ? trace.deduplicatedEligibleCandidates : []),
+    ...(Array.isArray(trace.deduplicatedCandidates) ? trace.deduplicatedCandidates : []),
+    ...(Array.isArray(trace.normalizedCandidates) ? trace.normalizedCandidates : []),
+    ...(Array.isArray(trace.rawMetadataCandidates) ? trace.rawMetadataCandidates : []),
+  ].filter(Boolean);
+}
+
+function resolveLegacySignalFilterAuditMemory(state = {}, audit = {}, workspaceId, policyVersion) {
+  if (Number(audit.schemaVersion) !== 1 || policyVersion !== 3.1) return null;
+  const metadataAuditId = normalizeText(audit.metadataAuditId);
+  const candidateId = getAuditStableId(audit);
+  if (!metadataAuditId || !candidateId) return null;
+  const metadataMatches = (Array.isArray(state.metadataAuditRuns) ? state.metadataAuditRuns : [])
+    .filter((trace) => trace?.id === metadataAuditId);
+  if (metadataMatches.length !== 1) return null;
+  const metadataAudit = metadataMatches[0];
+  if (metadataAudit?.state !== 'completed' || metadataAudit?.workspaceId !== workspaceId) return null;
+  const availableWorkspaceIds = [audit.workspaceId, metadataAudit.workspaceId]
+    .filter(Boolean);
+  if (availableWorkspaceIds.some((value) => value !== workspaceId)) return null;
+
+  const selectedTopCandidate = metadataAudit.selectedTopCandidate || metadataAudit.topCandidates?.[0] || null;
+  if (!selectedTopCandidate || getAuditStableId(selectedTopCandidate) !== candidateId) return null;
+  const matchingCandidates = getMetadataAuditCandidateCollections(metadataAudit)
+    .filter((candidate) => getAuditStableId(candidate) === candidateId);
+  if (matchingCandidates.length === 0) return null;
+  const availableCandidateWorkspaceIds = matchingCandidates
+    .map((candidate) => candidate.workspaceId)
+    .filter(Boolean);
+  if (availableCandidateWorkspaceIds.some((value) => value !== workspaceId)) return null;
+
+  const platforms = [...new Set([selectedTopCandidate, ...matchingCandidates]
+    .map(getAuditPlatform)
+    .filter(Boolean))];
+  if (platforms.length !== 1 || platforms[0] !== 'tiktok') return null;
+  const canonicalUrls = [...new Set([selectedTopCandidate, ...matchingCandidates]
+    .map(getAuditCanonicalUrl)
+    .filter(Boolean))];
+  if (canonicalUrls.length !== 1) return null;
+  const canonicalUrl = canonicalUrls[0];
+  const expectedPathSuffix = `/video/${candidateId}`;
+  if (!canonicalUrl.toLowerCase().includes('tiktok.com/') || !canonicalUrl.endsWith(expectedPathSuffix)) return null;
+  return {
+    candidateId,
+    identityKeys: [
+      `tiktok:${normalizeLower(candidateId)}`,
+      `url:${normalizeLower(canonicalUrl)}`,
+    ],
+  };
+}
+
+function getActiveAnalysisDecisionMemory(state = {}, workspaceId, config = {}, now = new Date()) {
+  if (config.rejectionMemory?.enabled === false) return new Map();
   const policyVersion = Number(config.version);
-  if (!Number.isFinite(policyVersion)) return new Set();
+  if (!Number.isFinite(policyVersion)) return new Map();
   const nowMs = toDate(now).getTime();
-  const keys = new Set();
+  const ttlDays = Math.max(0, Number(config.rejectionMemory?.ttlDays || 0));
+  const memory = new Map();
   for (const run of Array.isArray(state.discoveryRuns) ? state.discoveryRuns : []) {
     if (run?.workspaceId !== workspaceId) continue;
     for (const decision of Array.isArray(run.qualityDecisions) ? run.qualityDecisions : []) {
       const cachedUntilMs = Date.parse(decision?.cachedUntil || '');
       if (
-        !['reject', 'uncertain'].includes(decision?.decision)
+        !['accept', 'reject', 'uncertain'].includes(decision?.decision)
         || Number(decision.policyVersion) !== policyVersion
         || !Number.isFinite(cachedUntilMs)
         || cachedUntilMs <= nowMs
       ) {
         continue;
       }
-      for (const key of Array.isArray(decision.identityKeys) ? decision.identityKeys : []) {
-        if (key) keys.add(key);
-      }
+      const identityKeys = [...(Array.isArray(decision.identityKeys) ? decision.identityKeys : [])];
       const sourceUrl = canonicalizeSignalUrl(decision.sourceUrl || '');
-      if (sourceUrl) keys.add(`url:${normalizeLower(sourceUrl)}`);
+      if (sourceUrl) identityKeys.push(`url:${normalizeLower(sourceUrl)}`);
+      addDecisionMemoryRecord(memory, {
+        source: 'discovery',
+        decision: decision.decision,
+        cachedUntil: decision.cachedUntil,
+        identityKeys,
+      });
     }
   }
-  return keys;
+
+  if (ttlDays <= 0) return memory;
+  for (const audit of Array.isArray(state.signalFilterAuditRuns) ? state.signalFilterAuditRuns : []) {
+    if (audit?.state !== 'completed'
+      || !['accept', 'reject', 'uncertain'].includes(audit?.decision)
+      || hasSignalFilterAuditFailure(audit)) {
+      continue;
+    }
+    const completedAt = audit.completedAt || audit.createdAt;
+    const completedAtMs = Date.parse(completedAt || '');
+    if (!Number.isFinite(completedAtMs)) continue;
+    const cachedUntilMs = completedAtMs + ttlDays * DAY_MS;
+    if (cachedUntilMs <= nowMs) continue;
+    const normalizedMemory = resolveNormalizedSignalFilterAuditMemory(
+      audit,
+      workspaceId,
+      policyVersion,
+    );
+    const legacyMemory = normalizedMemory || resolveLegacySignalFilterAuditMemory(
+      state,
+      audit,
+      workspaceId,
+      policyVersion,
+    );
+    if (!legacyMemory) continue;
+    addDecisionMemoryRecord(memory, {
+      source: 'signal_filter_audit',
+      auditId: audit.id || null,
+      decision: audit.decision,
+      admittedToBank: audit.admittedToBank === true,
+      cachedUntil: new Date(cachedUntilMs).toISOString(),
+      identityKeys: legacyMemory.identityKeys,
+    });
+  }
+  return memory;
 }
 
 function isQualityDecisionSuppressionEligible(quality = {}, config = {}) {
@@ -1141,13 +1308,14 @@ function isQualityDecisionSuppressionEligible(quality = {}, config = {}) {
   const policyVersion = Number(quality?.policyVersion);
   const expectedPolicyVersion = Number(config.version);
   if (
-    !['reject', 'uncertain'].includes(decision)
+    !['accept', 'reject', 'uncertain'].includes(decision)
     || !Number.isFinite(policyVersion)
     || !Number.isFinite(expectedPolicyVersion)
     || policyVersion !== expectedPolicyVersion
   ) {
     return false;
   }
+  if (decision === 'accept') return true;
   return decision === 'reject'
     ? Array.isArray(quality.rejectionReasons)
     : Array.isArray(quality.uncertaintyReasons);
@@ -2040,7 +2208,7 @@ async function executeAutomaticDiscovery(args = {}) {
     0,
     Number(qualityGateConfig.rejectionMemory?.ttlDays || 0),
   );
-  const activeQualityDecisionSuppressionKeys = getActiveQualityDecisionSuppressionKeys(
+  const activeAnalysisDecisionMemory = getActiveAnalysisDecisionMemory(
     state,
     workspaceId,
     qualityGateConfig,
@@ -2278,22 +2446,22 @@ async function executeAutomaticDiscovery(args = {}) {
   const eligibleSignals = inScopeCandidates
     .filter(hasActionableSignalEvidence)
     .filter((signal) => {
-      const cacheHit = getSignalIdentityKeys(signal)
-        .some((key) => activeQualityDecisionSuppressionKeys.has(key));
-      if (cacheHit) {
+      const matchingMemory = getSignalIdentityKeys(signal)
+        .map((key) => activeAnalysisDecisionMemory.get(key))
+        .find(Boolean);
+      if (matchingMemory) {
         run.qualityCacheHitCount += 1;
         if (auditTrace) {
-          const matchingDecision = (Array.isArray(state.discoveryRuns) ? state.discoveryRuns : [])
-            .flatMap((historyRun) => Array.isArray(historyRun?.qualityDecisions) ? historyRun.qualityDecisions : [])
-            .find((decision) => getSignalIdentityKeys(signal).some((key) => decision?.identityKeys?.includes(key)));
           auditTrace.suppressedCandidates.push({
             ...summarizeCandidateForAudit(signal),
-            decision: matchingDecision?.decision || null,
-            cachedUntil: matchingDecision?.cachedUntil || null,
+            decision: matchingMemory.decision || null,
+            cachedUntil: matchingMemory.cachedUntil || null,
+            memorySource: matchingMemory.source || null,
+            auditId: matchingMemory.auditId || null,
           });
         }
       }
-      return !cacheHit;
+      return !matchingMemory;
     });
   const evaluatedSignals = rankSignalsByBSoft(eligibleSignals);
   const rankedSignals = evaluatedSignals.filter(hasMeaningfulRankingSignal);

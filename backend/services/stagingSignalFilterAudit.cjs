@@ -15,6 +15,7 @@ const {
   sanitizeAuditValue,
 } = require('./stagingMetadataAudit.cjs');
 const {
+  canonicalizeSignalUrl,
   rankSignalsByBSoft,
   resolveSignalAdmission,
 } = require('./automaticSignalDiscovery.js');
@@ -1074,10 +1075,22 @@ async function persistExecutionResult({ store, preflight, result, failure, env, 
       schemaVersion: STAGING_SIGNAL_FILTER_AUDIT_VERSION,
       environment: 'staging',
       deployedCommitSha: preflight.options.deployedCommitSha,
+      workspaceId: preflight.workspaceId,
       metadataAuditId: preflight.options.metadataAuditId,
       candidateId: preflight.options.candidateId,
+      platform: 'tiktok',
+      canonicalUrl: canonicalizeSignalUrl(preflight.downloadSourceUrl),
+      identityKeys: [
+        `tiktok:${preflight.options.candidateId.toLowerCase()}`,
+        `url:${canonicalizeSignalUrl(preflight.downloadSourceUrl).toLowerCase()}`,
+      ],
+      policyVersion: preflight.config.version,
       model: preflight.model,
       state: failure ? 'failed' : 'completed',
+      failure: failure ? {
+        code: compactText(failure.code || 'signal_filter_execute_failed', 160),
+        stage: compactText(failure.stage || failure.details?.stage || 'execution', 80),
+      } : null,
       decision: admitted.decision,
       admittedToBank: admitted.admittedToBank,
       reasons: failure
@@ -1107,6 +1120,7 @@ async function persistExecutionResult({ store, preflight, result, failure, env, 
       mutationBefore: before,
       mutationAfter: null,
       createdAt: now.toISOString(),
+      completedAt: now.toISOString(),
     }), secretValues), { secrets: secretValues });
     trace.usage = result?.usageCall ? {
       inputTokens: result.usageCall.inputTokens,
