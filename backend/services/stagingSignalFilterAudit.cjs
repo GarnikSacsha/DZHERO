@@ -18,6 +18,10 @@ const {
   rankSignalsByBSoft,
   resolveSignalAdmission,
 } = require('./automaticSignalDiscovery.js');
+const {
+  parseTikTokVideoId,
+  runApifyActor,
+} = require('./apifySignalProvider.js');
 
 const STAGING_SIGNAL_FILTER_AUDIT_VERSION = 1;
 const GEMINI_MODEL = 'gemini-3.5-flash';
@@ -31,11 +35,15 @@ const MAX_OUTPUT_TOKENS = 8192;
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
 const MAX_MEDIA_DURATION_SECONDS = 60;
 const MAX_METADATA_TEXT_CHARS = 6000;
-const APIFY_HARD_CAP_USD = 0;
+const APIFY_HARD_CAP_USD = 0.5;
 const GEMINI_HARD_CAP_USD = 0.15;
-const TOTAL_PROVIDER_HARD_CAP_USD = 0.15;
+const TOTAL_PROVIDER_HARD_CAP_USD = 0.65;
 const MAX_FILE_STATUS_POLLS = 45;
 const MAX_SIGNAL_FILTER_AUDIT_RUNS = 100;
+const TARGETED_TIKTOK_ACTOR = 'clockworks/tiktok-scraper';
+const TARGETED_TIKTOK_HANDLE = 'chatcutapp';
+const TARGETED_TIKTOK_CANDIDATE_ID = '7668237339872759053';
+const MAX_APIFY_STATUS_POLLS = 75;
 
 function auditError(code, details = null) {
   const error = new Error(code);
@@ -61,6 +69,23 @@ function stripDiagnosticFields(value, key = '') {
     return Object.fromEntries(Object.entries(value)
       .map(([nestedKey, nestedValue]) => [nestedKey, stripDiagnosticFields(nestedValue, nestedKey)])
       .filter(([, nestedValue]) => nestedValue !== undefined));
+  }
+  return value;
+}
+
+function redactExactDiagnosticValues(value, secretValues = []) {
+  if (typeof value === 'string') {
+    return secretValues.reduce(
+      (output, secret) => (secret ? output.split(secret).join('[REDACTED]') : output),
+      value,
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactExactDiagnosticValues(item, secretValues));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value)
+      .map(([key, nestedValue]) => [key, redactExactDiagnosticValues(nestedValue, secretValues)]));
   }
   return value;
 }
@@ -150,10 +175,56 @@ function collectMediaReferences(candidate = {}) {
   ].map((value) => String(value || '').trim()).filter(Boolean);
 }
 
-function isHttpUrl(value) {
+function validateCanonicalTikTokDownloadSource(value, {
+  sourceHandle = TARGETED_TIKTOK_HANDLE,
+  candidateId = TARGETED_TIKTOK_CANDIDATE_ID,
+} = {}) {
+  const normalizedHandle = normalizeHandle(sourceHandle);
+  const normalizedId = compactText(candidateId, 40);
+  if (normalizedHandle !== TARGETED_TIKTOK_HANDLE) {
+    throw auditError('signal_filter_download_source_handle_forbidden');
+  }
+  if (normalizedId !== TARGETED_TIKTOK_CANDIDATE_ID || !/^\d+$/.test(normalizedId)) {
+    throw auditError('signal_filter_download_source_candidate_forbidden');
+  }
+  let url;
+  try {
+    url = new URL(String(value || ''));
+  } catch {
+    throw auditError('signal_filter_download_source_url_invalid');
+  }
+  const expectedPath = `/@${normalizedHandle}/video/${normalizedId}`;
+  if (url.protocol !== 'https:'
+    || url.hostname !== 'www.tiktok.com'
+    || url.port
+    || url.username
+    || url.password
+    || url.pathname !== expectedPath
+    || url.search
+    || url.hash
+    || url.href !== `https://www.tiktok.com${expectedPath}`) {
+    throw auditError('signal_filter_download_source_url_forbidden');
+  }
+  return url.href;
+}
+
+function buildCanonicalTikTokDownloadSource({ sourceHandle, candidateId } = {}) {
+  const normalizedHandle = normalizeHandle(sourceHandle);
+  const normalizedId = compactText(candidateId, 40);
+  return validateCanonicalTikTokDownloadSource(
+    `https://www.tiktok.com/@${normalizedHandle}/video/${normalizedId}`,
+    { sourceHandle: normalizedHandle, candidateId: normalizedId },
+  );
+}
+
+function isSafeResolvedMediaUrl(value) {
   try {
     const url = new URL(String(value || ''));
-    return ['http:', 'https:'].includes(url.protocol) && Boolean(url.hostname);
+    return url.protocol === 'https:'
+      && Boolean(url.hostname)
+      && !url.username
+      && !url.password
+      && !url.hash;
   } catch {
     return false;
   }
@@ -211,6 +282,12 @@ function normalizeOptions(options = {}) {
     throw auditError('signal_filter_commit_sha_invalid');
   }
   if (!normalized.expectedSourceHandle) throw auditError('signal_filter_source_handle_required');
+  if (normalized.expectedSourceHandle !== TARGETED_TIKTOK_HANDLE) {
+    throw auditError('signal_filter_source_handle_forbidden');
+  }
+  if (normalized.candidateId !== TARGETED_TIKTOK_CANDIDATE_ID) {
+    throw auditError('signal_filter_candidate_forbidden');
+  }
   if (!Number.isFinite(normalized.expectedDurationSeconds) || normalized.expectedDurationSeconds <= 0) {
     throw auditError('signal_filter_expected_duration_invalid');
   }
@@ -261,6 +338,7 @@ function assertStagingRuntime(env = {}, options = {}) {
   }
   if (!env.DATABASE_URL) throw auditError('signal_filter_postgres_required');
   if (!env.GEMINI_API_KEY) throw auditError('signal_filter_gemini_key_required');
+  if (!env.APIFY_TOKEN) throw auditError('signal_filter_apify_token_required');
   if (!env.RAILWAY_GIT_COMMIT_SHA
     || env.RAILWAY_GIT_COMMIT_SHA.toLowerCase() !== options.deployedCommitSha) {
     throw auditError('signal_filter_deployed_commit_mismatch');
@@ -439,8 +517,10 @@ function buildStagingSignalFilterPreflight({
   if (Math.abs(rankingScore - normalized.expectedRankingScore) > 0.000001) {
     throw auditError('signal_filter_ranking_score_mismatch');
   }
-  const mediaReference = collectMediaReferences(candidate).find(isHttpUrl) || '';
-  if (!mediaReference) throw auditError('signal_filter_media_reference_missing');
+  const downloadSourceUrl = buildCanonicalTikTokDownloadSource({
+    sourceHandle,
+    candidateId: normalized.candidateId,
+  });
   const workspaceId = compactText(trace.workspaceId, 160);
   const workspace = (Array.isArray(state.workspaces) ? state.workspaces : [])
     .find((item) => item?.id === workspaceId);
@@ -463,20 +543,28 @@ function buildStagingSignalFilterPreflight({
     availability,
     rankingScore,
     protectedIntent,
-    mediaReference,
+    downloadSourceUrl,
+    mediaReference: '',
     model,
     config,
   };
   const boundedCandidate = buildBoundedCandidate(candidate, base);
-  const estimate = estimateWorstCase({
+  const geminiEstimate = estimateWorstCase({
     candidate: boundedCandidate,
     workspace,
     config,
     durationSeconds: metrics.duration,
     maxOutputTokens: normalized.maxOutputTokens,
   });
-  if (estimate.maximumCostUsd > normalized.geminiHardCapUsd
-    || estimate.maximumCostUsd > normalized.totalProviderHardCapUsd) {
+  const estimate = {
+    ...geminiEstimate,
+    geminiMaximumCostUsd: geminiEstimate.maximumCostUsd,
+    apifyConservativeCommitmentUsd: normalized.apifyHardCapUsd,
+    totalMaximumCostUsd: roundUsd(normalized.apifyHardCapUsd + geminiEstimate.maximumCostUsd),
+    apifyProviderEnforcedDollarCap: true,
+  };
+  if (estimate.geminiMaximumCostUsd > normalized.geminiHardCapUsd
+    || estimate.totalMaximumCostUsd > normalized.totalProviderHardCapUsd) {
     throw auditError('signal_filter_worst_case_estimate_exceeds_cap', { estimate });
   }
   return {
@@ -504,7 +592,19 @@ function toPublicPreflight(preflight = {}) {
       protectedIntent: preflight.protectedIntent,
       metricAvailability: preflight.availability,
       savedTopOne: true,
-      mediaReferenceAvailable: true,
+      mediaReferenceAvailable: false,
+      targetedMediaResolutionRequired: true,
+    },
+    downloadSourceUrl: preflight.downloadSourceUrl,
+    targetedActor: {
+      actorId: TARGETED_TIKTOK_ACTOR,
+      inputType: 'url',
+      maxItems: 1,
+      shouldDownloadVideos: true,
+      shouldDownloadCovers: false,
+      shouldDownloadSlideshowImages: false,
+      shouldDownloadSubtitles: false,
+      shouldDownloadComments: false,
     },
     model: preflight.model,
     estimate: preflight.estimate,
@@ -526,8 +626,8 @@ function toPublicPreflight(preflight = {}) {
     },
     invariants: {
       metadataDiscoveryCalls: 0,
-      apifyActorCalls: 0,
-      providerCalls: preflight.options.preflightOnly ? 0 : 1,
+      targetedApifyActorRuns: preflight.options.preflightOnly ? 0 : 1,
+      providerCalls: preflight.options.preflightOnly ? 0 : 2,
       downloads: preflight.options.preflightOnly ? 0 : 1,
       geminiAnalysisJobs: preflight.options.preflightOnly ? 0 : 1,
       signalFilterVersion: 3.1,
@@ -539,6 +639,164 @@ function toPublicPreflight(preflight = {}) {
   result.estimate = structuredClone(preflight.estimate);
   result.limits.maxOutputTokens = preflight.options.maxOutputTokens;
   return result;
+}
+
+function createTargetedApifyFetchGuard({ fetchImpl = globalThis.fetch } = {}) {
+  if (typeof fetchImpl !== 'function') throw auditError('signal_filter_apify_fetch_unavailable');
+  const counters = {
+    actorStarts: 0,
+    statusPolls: 0,
+    datasetReads: 0,
+  };
+  const operations = [];
+  const guardedFetch = async (input, init = {}) => {
+    let url;
+    try {
+      url = new URL(String(input || ''));
+    } catch {
+      throw auditError('signal_filter_apify_network_target_invalid');
+    }
+    if (url.protocol !== 'https:' || url.hostname !== 'api.apify.com') {
+      throw auditError('signal_filter_apify_network_target_forbidden');
+    }
+    const method = String(init.method || 'GET').toUpperCase();
+    let operation = '';
+    if (method === 'POST' && /\/v2\/acts\/clockworks~tiktok-scraper\/runs\/?$/.test(url.pathname)) {
+      counters.actorStarts += 1;
+      if (counters.actorStarts > 1) throw auditError('signal_filter_apify_actor_limit_exceeded');
+      if (url.searchParams.get('maxTotalChargeUsd') !== String(APIFY_HARD_CAP_USD)
+        || url.searchParams.get('maxItems') !== '1') {
+        throw auditError('signal_filter_apify_provider_cap_missing');
+      }
+      operation = 'apify_actor_start';
+    } else if (method === 'GET' && /\/v2\/actor-runs\/[^/]+\/?$/.test(url.pathname)) {
+      counters.statusPolls += 1;
+      if (counters.statusPolls > MAX_APIFY_STATUS_POLLS) {
+        throw auditError('signal_filter_apify_poll_limit_exceeded');
+      }
+      operation = 'apify_actor_poll';
+    } else if (method === 'GET' && /\/v2\/datasets\/[^/]+\/items\/?$/.test(url.pathname)) {
+      counters.datasetReads += 1;
+      if (counters.datasetReads > 1 || url.searchParams.get('limit') !== '1') {
+        throw auditError('signal_filter_apify_dataset_limit_exceeded');
+      }
+      operation = 'apify_dataset_read';
+    } else {
+      throw auditError('signal_filter_apify_operation_forbidden');
+    }
+    const record = { operation, method, status: null, result: 'attempted' };
+    operations.push(record);
+    try {
+      const response = await fetchImpl(input, { ...init, redirect: 'error' });
+      record.status = Number(response?.status || 0) || null;
+      record.result = response?.ok === false ? 'http_error' : 'completed';
+      return response;
+    } catch (error) {
+      record.result = 'failed';
+      throw error;
+    }
+  };
+  return {
+    fetchImpl: guardedFetch,
+    snapshot() {
+      return structuredClone({ counters, operations });
+    },
+  };
+}
+
+function buildTargetedTikTokActorInput(downloadSourceUrl) {
+  const canonicalUrl = validateCanonicalTikTokDownloadSource(downloadSourceUrl);
+  return {
+    resultsPerPage: 1,
+    maxItems: 1,
+    shouldDownloadVideos: true,
+    shouldDownloadCovers: false,
+    shouldDownloadSlideshowImages: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadComments: false,
+    postURLs: [canonicalUrl],
+  };
+}
+
+function getTargetedTikTokStableId(item = {}) {
+  return firstText([
+    item.id,
+    item.videoId,
+    item.awemeId,
+    parseTikTokVideoId(item.webVideoUrl),
+    parseTikTokVideoId(item.url),
+  ], 40);
+}
+
+async function resolveTargetedTikTokMedia({
+  preflight,
+  env,
+  runActor = runApifyActor,
+  fetchImpl = globalThis.fetch,
+  sleepImpl,
+} = {}) {
+  if (!preflight?.downloadSourceUrl) throw auditError('signal_filter_download_source_missing');
+  if (typeof runActor !== 'function') throw auditError('signal_filter_apify_actor_unavailable');
+  const actorInput = buildTargetedTikTokActorInput(preflight.downloadSourceUrl);
+  const fetchGuard = createTargetedApifyFetchGuard({ fetchImpl });
+  let result;
+  try {
+    result = await runActor({
+      token: env.APIFY_TOKEN,
+      actorId: TARGETED_TIKTOK_ACTOR,
+      input: actorInput,
+      maxTotalChargeUsd: preflight.options.apifyHardCapUsd,
+      maxItems: 1,
+      fetchImpl: fetchGuard.fetchImpl,
+      sleepImpl,
+    });
+  } catch (error) {
+    throw auditError(error?.code || 'signal_filter_targeted_apify_failed', {
+      apify: {
+        logicalActorRuns: 1,
+        runId: compactText(error?.runId || error?.run?.id, 120) || null,
+        providerReportedCostUsd: firstFinite([error?.actualCostUsd, error?.run?.usageTotalUsd]),
+        conservativeCommitmentUsd: preflight.options.apifyHardCapUsd,
+        http: fetchGuard.snapshot(),
+      },
+    });
+  }
+  const actualCostUsd = firstFinite([result?.actualCostUsd]);
+  if (actualCostUsd !== null && actualCostUsd > preflight.options.apifyHardCapUsd) {
+    throw auditError('signal_filter_apify_reported_cost_exceeds_cap');
+  }
+  const item = (Array.isArray(result?.items) ? result.items : [])[0] || null;
+  const returnedId = getTargetedTikTokStableId(item || {});
+  const accounting = {
+    logicalActorRuns: 1,
+    actorId: TARGETED_TIKTOK_ACTOR,
+    runId: compactText(result?.runId, 120) || null,
+    providerReportedCostUsd: actualCostUsd,
+    conservativeCommitmentUsd: actualCostUsd === null
+      ? preflight.options.apifyHardCapUsd
+      : actualCostUsd,
+    http: fetchGuard.snapshot(),
+  };
+  if (!item) throw auditError('signal_filter_targeted_apify_empty', { apify: accounting });
+  if (returnedId !== preflight.options.candidateId) {
+    throw auditError('signal_filter_targeted_candidate_mismatch', { apify: accounting });
+  }
+  const mediaReference = collectMediaReferences(item).find(isSafeResolvedMediaUrl) || '';
+  if (!mediaReference) {
+    throw auditError('signal_filter_targeted_media_missing', { apify: accounting });
+  }
+  const conservativeTotalBeforeGemini = roundUsd(
+    accounting.conservativeCommitmentUsd + preflight.estimate.geminiMaximumCostUsd,
+  );
+  if (conservativeTotalBeforeGemini > preflight.options.totalProviderHardCapUsd) {
+    throw auditError('signal_filter_total_provider_cap_exceeded', { apify: accounting });
+  }
+  return {
+    mediaReference,
+    returnedId,
+    apify: accounting,
+    conservativeTotalBeforeGemini,
+  };
 }
 
 function createOneShotFetchGuard({
@@ -558,6 +816,7 @@ function createOneShotFetchGuard({
     cleanups: 0,
   };
   const operations = [];
+  const media = { contentType: null, byteLength: null, sha256: null };
 
   const guardedFetch = async (input, init = {}) => {
     const url = String(input || '');
@@ -570,6 +829,7 @@ function createOneShotFetchGuard({
       counters.mediaDownloads += 1;
       if (counters.mediaDownloads > MAX_DOWNLOADS) throw auditError('signal_filter_download_limit_exceeded');
       operation = 'media_download';
+      nextInit = { ...init, redirect: 'error' };
     } else {
       let parsed;
       try {
@@ -635,6 +895,14 @@ function createOneShotFetchGuard({
       throw error;
     }
     if (operation !== 'media_download') return response;
+    const contentType = String(response?.headers?.get?.('content-type') || '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    if (!contentType.startsWith('video/') && contentType !== 'application/octet-stream') {
+      throw auditError('signal_filter_media_content_type_invalid');
+    }
+    media.contentType = contentType;
     const declaredLength = Number(response?.headers?.get?.('content-length') || 0);
     if (declaredLength > maxMediaBytes) throw auditError('signal_filter_media_too_large');
     return new Proxy(response, {
@@ -647,6 +915,8 @@ function createOneShotFetchGuard({
           if (!target.body?.getReader) {
             const value = await target.arrayBuffer();
             if (value.byteLength > maxMediaBytes) throw auditError('signal_filter_media_too_large');
+            media.byteLength = value.byteLength;
+            media.sha256 = crypto.createHash('sha256').update(Buffer.from(value)).digest('hex');
             return value;
           }
           const reader = target.body.getReader();
@@ -663,6 +933,8 @@ function createOneShotFetchGuard({
             chunks.push(Buffer.from(value));
           }
           const bytes = Buffer.concat(chunks, byteLength);
+          media.byteLength = byteLength;
+          media.sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
           return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
         };
       },
@@ -672,20 +944,39 @@ function createOneShotFetchGuard({
   return {
     fetchImpl: guardedFetch,
     snapshot() {
-      return structuredClone({ counters, operations });
+      return structuredClone({ counters, operations, media });
     },
   };
 }
 
-async function executeOneShotAnalysis({ preflight, env, fetchImpl = globalThis.fetch, sleepImpl }) {
+async function executeOneShotAnalysis({
+  preflight,
+  env,
+  fetchImpl = globalThis.fetch,
+  sleepImpl,
+  runActor = runApifyActor,
+  evaluate = evaluateSignalQuality,
+}) {
+  const resolution = await resolveTargetedTikTokMedia({
+    preflight,
+    env,
+    runActor,
+    fetchImpl,
+    sleepImpl,
+  });
+  const executionPreflight = {
+    ...preflight,
+    mediaReference: resolution.mediaReference,
+  };
+  executionPreflight.boundedCandidate = buildBoundedCandidate(preflight.candidate, executionPreflight);
   const fetchGuard = createOneShotFetchGuard({
     fetchImpl,
-    mediaUrl: preflight.mediaReference,
+    mediaUrl: resolution.mediaReference,
     maxMediaBytes: preflight.options.maxMediaBytes,
     maxOutputTokens: preflight.options.maxOutputTokens,
   });
-  const quality = await evaluateSignalQuality({
-    signal: preflight.boundedCandidate,
+  const quality = await evaluate({
+    signal: executionPreflight.boundedCandidate,
     workspace: preflight.workspace,
     config: preflight.config,
     apiKey: env.GEMINI_API_KEY,
@@ -699,6 +990,9 @@ async function executeOneShotAnalysis({ preflight, env, fetchImpl = globalThis.f
   if (operations.counters.mediaDownloads !== 1) throw auditError('signal_filter_download_count_invalid');
   if (operations.counters.geminiAnalysisJobs !== 1) throw auditError('signal_filter_analysis_count_invalid');
   if (operations.counters.apifyActorCalls !== 0) throw auditError('signal_filter_apify_actor_call_forbidden');
+  if (!operations.media.sha256 || operations.media.sha256 !== quality?.auditTrace?.mediaSha256) {
+    throw auditError('signal_filter_media_sha_mismatch');
+  }
   const usageCall = normalizeGeminiUsage({
     invocationId: `staging-signal-filter:${preflight.options.candidateId}`,
     model: preflight.model,
@@ -708,11 +1002,25 @@ async function executeOneShotAnalysis({ preflight, env, fetchImpl = globalThis.f
     throw auditError('signal_filter_usage_metadata_required');
   }
   const calculatedCostUsd = roundUsd(usageCall.estimatedCostMicrousd / 1_000_000);
+  const conservativeTotalCostUsd = roundUsd(
+    resolution.apify.conservativeCommitmentUsd + calculatedCostUsd,
+  );
   if (calculatedCostUsd > preflight.options.geminiHardCapUsd
-    || calculatedCostUsd > preflight.options.totalProviderHardCapUsd) {
+    || conservativeTotalCostUsd > preflight.options.totalProviderHardCapUsd) {
     throw auditError('signal_filter_reported_usage_exceeds_cap');
   }
-  return { quality, operations, usageCall, calculatedCostUsd };
+  return {
+    quality,
+    operations: {
+      apify: resolution.apify.http,
+      mediaAndGemini: operations,
+    },
+    apify: resolution.apify,
+    resolvedMediaUrl: resolution.mediaReference,
+    usageCall,
+    calculatedCostUsd,
+    conservativeTotalCostUsd,
+  };
 }
 
 function buildAdmittedSignal(preflight, quality, now) {
@@ -747,6 +1055,7 @@ async function persistExecutionResult({ store, preflight, result, failure, env, 
     env.GEMINI_API_KEY,
     env.APIFY_TOKEN,
     preflight.boundedCandidate.caption,
+    result?.resolvedMediaUrl,
   ].filter(Boolean);
   return store.mutateState(preflight.workspaceId, (state) => {
     const before = getSignalFilterMutationSnapshot(state, preflight.workspaceId);
@@ -760,7 +1069,7 @@ async function persistExecutionResult({ store, preflight, result, failure, env, 
       const reels = Array.isArray(state.reels) ? state.reels : (state.reels = []);
       reels.unshift(admitted.signal);
     }
-    const trace = sanitizeAuditValue(stripDiagnosticFields({
+    const trace = sanitizeAuditValue(redactExactDiagnosticValues(stripDiagnosticFields({
       id: `signal_filter_audit_${Date.now()}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`,
       schemaVersion: STAGING_SIGNAL_FILTER_AUDIT_VERSION,
       environment: 'staging',
@@ -774,20 +1083,31 @@ async function persistExecutionResult({ store, preflight, result, failure, env, 
       reasons: failure
         ? [failure.code || 'signal_filter_execute_failed']
         : [...(result.quality?.rejectionReasons || []), ...(result.quality?.uncertaintyReasons || [])],
-      estimatedMaximumCostUsd: preflight.estimate.maximumCostUsd,
+      estimatedMaximumCostUsd: preflight.estimate.totalMaximumCostUsd,
+      geminiEstimatedMaximumCostUsd: preflight.estimate.geminiMaximumCostUsd,
       providerUsageCalculatedCostUsd: result?.calculatedCostUsd ?? null,
-      providerReportedCostUsd: null,
-      operations: result?.operations || null,
+      providerReportedCostUsd: result?.apify?.providerReportedCostUsd
+        ?? failure?.details?.apify?.providerReportedCostUsd
+        ?? null,
+      conservativeApifyCommitmentUsd: result?.apify?.conservativeCommitmentUsd
+        ?? failure?.details?.apify?.conservativeCommitmentUsd
+        ?? preflight.options.apifyHardCapUsd,
+      conservativeTotalCostUsd: result?.conservativeTotalCostUsd ?? null,
+      apifyRunId: result?.apify?.runId ?? failure?.details?.apify?.runId ?? null,
+      operations: result?.operations || (failure?.details?.apify
+        ? { apify: failure.details.apify.http, mediaAndGemini: null }
+        : null),
       rawGeminiResponse: result?.quality?.auditTrace?.rawResponse || null,
       parsedGeminiResult: result?.quality?.auditTrace?.parsedResult || null,
       media: result?.quality?.auditTrace ? {
         sha256: result.quality.auditTrace.mediaSha256 || null,
         byteLength: result.quality.auditTrace.mediaByteLength || null,
+        temporaryFilesPersisted: 0,
       } : null,
       mutationBefore: before,
       mutationAfter: null,
       createdAt: now.toISOString(),
-    }), { secrets: secretValues });
+    }), secretValues), { secrets: secretValues });
     trace.usage = result?.usageCall ? {
       inputTokens: result.usageCall.inputTokens,
       cachedInputTokens: result.usageCall.cachedInputTokens,
@@ -825,7 +1145,10 @@ async function runStagingSignalFilterAudit({
   try {
     result = await analyze({ preflight, env });
   } catch (error) {
-    failure = { code: error?.code || 'signal_filter_execute_failed' };
+    failure = {
+      code: error?.code || 'signal_filter_execute_failed',
+      details: error?.details || null,
+    };
   }
   const persisted = await persistExecutionResult({
     store,
@@ -855,12 +1178,19 @@ module.exports = {
   MAX_METADATA_TEXT_CHARS,
   MAX_OUTPUT_TOKENS,
   TOTAL_PROVIDER_HARD_CAP_USD,
+  TARGETED_TIKTOK_ACTOR,
   buildAdmittedSignal,
+  buildCanonicalTikTokDownloadSource,
   buildStagingSignalFilterPreflight,
+  buildTargetedTikTokActorInput,
   createOneShotFetchGuard,
+  createTargetedApifyFetchGuard,
   estimateGeminiWorstCase,
+  executeOneShotAnalysis,
   getSignalFilterMutationSnapshot,
   normalizeOptions,
+  resolveTargetedTikTokMedia,
   runStagingSignalFilterAudit,
   toPublicPreflight,
+  validateCanonicalTikTokDownloadSource,
 };

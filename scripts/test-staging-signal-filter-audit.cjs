@@ -12,9 +12,16 @@ const {
   MAX_METADATA_TEXT_CHARS,
   MAX_OUTPUT_TOKENS,
   TOTAL_PROVIDER_HARD_CAP_USD,
+  TARGETED_TIKTOK_ACTOR,
+  buildCanonicalTikTokDownloadSource,
   buildStagingSignalFilterPreflight,
+  buildTargetedTikTokActorInput,
   createOneShotFetchGuard,
+  createTargetedApifyFetchGuard,
+  executeOneShotAnalysis,
+  resolveTargetedTikTokMedia,
   runStagingSignalFilterAudit,
+  validateCanonicalTikTokDownloadSource,
 } = require('../backend/services/stagingSignalFilterAudit.cjs');
 const {
   createInMemorySignalFilterAuditStore,
@@ -26,7 +33,8 @@ const dbHashBefore = crypto.createHash('sha256').update(fs.readFileSync(dbPath))
 const commitSha = '9'.repeat(40);
 const auditId = 'metadata_audit_1785539862647_d5f3d44ba5bc';
 const candidateId = '7668237339872759053';
-const signedMediaUrl = 'https://media.example.test/chatcut.mp4?X-Amz-Signature=never-persist#fragment';
+const canonicalSourceUrl = `https://www.tiktok.com/@chatcutapp/video/${candidateId}`;
+const signedMediaUrl = 'https://media.example.test/chatcut.mp4?X-Amz-Signature=never-persist';
 
 function createCandidate(overrides = {}) {
   return {
@@ -36,8 +44,7 @@ function createCandidate(overrides = {}) {
     handle: '@chatcutapp',
     sourceHandle: '@chatcutapp',
     sourceRelationship: 'owner',
-    sourceUrl: `https://www.tiktok.com/@chatcutapp/video/${candidateId}`,
-    videoUrl: signedMediaUrl,
+    sourceUrl: canonicalSourceUrl,
     title: 'ChatCut workflow',
     caption: 'sensitive-caption-that-must-not-be-in-diagnostics',
     views: 27500,
@@ -55,9 +62,7 @@ function createCandidate(overrides = {}) {
       handle: '@chatcutapp',
       contentOwnerHandle: '@chatcutapp',
       sourceRelationship: 'owner',
-      url: `https://www.tiktok.com/@chatcutapp/video/${candidateId}`,
-      videoUrl: signedMediaUrl,
-      mediaUrls: [signedMediaUrl],
+      url: canonicalSourceUrl,
       duration: 44,
       stats: { views: 27500, shares: 411, saves: 1669 },
     },
@@ -105,7 +110,7 @@ function createState(traceOverrides = {}) {
         handle: '@chatcutapp',
         contentOwnerHandle: '@chatcutapp',
         sourceRelationship: 'owner',
-        canonicalUrl: `https://www.tiktok.com/@chatcutapp/video/${candidateId}`,
+        canonicalUrl: canonicalSourceUrl,
         rankingScore: 0.241855,
         protectedIntent: 0.241855,
         sharesAvailable: true,
@@ -186,6 +191,7 @@ function mockAnalysis(decision, admittedToBank, extra = {}) {
         mediaByteLength: 1024,
         rawResponse: {
           uploadUrl: 'https://generativelanguage.googleapis.com/upload/v1beta/files?secret=query',
+          mediaUrl: signedMediaUrl,
           echoedCaption: 'sensitive-caption-that-must-not-be-in-diagnostics',
         },
         parsedResult: { accessible: true },
@@ -198,19 +204,36 @@ function mockAnalysis(decision, admittedToBank, extra = {}) {
       },
     },
     operations: {
-      counters: {
-        mediaDownloads: 1,
-        geminiAnalysisJobs: 1,
-        apifyActorCalls: 0,
-        uploadStarts: 1,
-        uploadFinalizes: 1,
-        fileStatusPolls: 1,
-        cleanups: 1,
+      apify: {
+        counters: { actorStarts: 1, statusPolls: 1, datasetReads: 1 },
+        operations: [
+          { operation: 'apify_actor_start', method: 'POST', status: 201 },
+          { operation: 'apify_actor_poll', method: 'GET', status: 200 },
+          { operation: 'apify_dataset_read', method: 'GET', status: 200 },
+        ],
       },
-      operations: [
-        { operation: 'media_download', method: 'GET', status: 200 },
-        { operation: 'gemini_analysis', method: 'POST', status: 200 },
-      ],
+      mediaAndGemini: {
+        counters: {
+          mediaDownloads: 1,
+          geminiAnalysisJobs: 1,
+          apifyActorCalls: 0,
+          uploadStarts: 1,
+          uploadFinalizes: 1,
+          fileStatusPolls: 1,
+          cleanups: 1,
+        },
+        operations: [
+          { operation: 'media_download', method: 'GET', status: 200 },
+          { operation: 'gemini_analysis', method: 'POST', status: 200 },
+        ],
+      },
+    },
+    apify: {
+      logicalActorRuns: 1,
+      actorId: TARGETED_TIKTOK_ACTOR,
+      runId: 'mock-targeted-run',
+      providerReportedCostUsd: 0.2,
+      conservativeCommitmentUsd: 0.2,
     },
     usageCall: {
       usageKnown: true,
@@ -222,19 +245,54 @@ function mockAnalysis(decision, admittedToBank, extra = {}) {
       estimatedCostMicrousd: 34500,
     },
     calculatedCostUsd: 0.0345,
+    conservativeTotalCostUsd: 0.2345,
+    resolvedMediaUrl: signedMediaUrl,
     ...extra,
   };
 }
 
 async function main() {
+  assert.equal(buildCanonicalTikTokDownloadSource({
+    sourceHandle: '@chatcutapp',
+    candidateId,
+  }), canonicalSourceUrl);
+  assert.deepEqual(buildTargetedTikTokActorInput(canonicalSourceUrl), {
+    resultsPerPage: 1,
+    maxItems: 1,
+    shouldDownloadVideos: true,
+    shouldDownloadCovers: false,
+    shouldDownloadSlideshowImages: false,
+    shouldDownloadSubtitles: false,
+    shouldDownloadComments: false,
+    postURLs: [canonicalSourceUrl],
+  });
+  for (const [value, code] of [
+    [`https://www.tiktok.com/@other/video/${candidateId}`, 'signal_filter_download_source_url_forbidden'],
+    ['https://www.tiktok.com/@chatcutapp/video/1', 'signal_filter_download_source_url_forbidden'],
+    [`${canonicalSourceUrl}?tracking=1`, 'signal_filter_download_source_url_forbidden'],
+    [`${canonicalSourceUrl}#fragment`, 'signal_filter_download_source_url_forbidden'],
+    [`http://www.tiktok.com/@chatcutapp/video/${candidateId}`, 'signal_filter_download_source_url_forbidden'],
+    [`https://tiktok.com/@chatcutapp/video/${candidateId}`, 'signal_filter_download_source_url_forbidden'],
+  ]) {
+    expectCode(() => validateCanonicalTikTokDownloadSource(value), code);
+  }
+  expectCode(
+    () => buildCanonicalTikTokDownloadSource({ sourceHandle: '@other', candidateId }),
+    'signal_filter_download_source_handle_forbidden',
+  );
+  expectCode(
+    () => buildCanonicalTikTokDownloadSource({ sourceHandle: '@chatcutapp', candidateId: '1' }),
+    'signal_filter_download_source_candidate_forbidden',
+  );
+
   const preflight = buildStagingSignalFilterPreflight({
     state: createState(),
     env: createEnv(),
     options: createOptions(),
   });
-  assert.equal(preflight.options.apifyHardCapUsd, 0);
+  assert.equal(preflight.options.apifyHardCapUsd, 0.5);
   assert.equal(preflight.options.geminiHardCapUsd, 0.15);
-  assert.equal(preflight.options.totalProviderHardCapUsd, 0.15);
+  assert.equal(preflight.options.totalProviderHardCapUsd, 0.65);
   assert.equal(preflight.options.maxOutputTokens, 8192);
   assert.equal(preflight.options.retries, 0);
   assert.equal(preflight.options.fallbacks, 0);
@@ -245,9 +303,12 @@ async function main() {
   assert.equal(preflight.sourceHandle, 'chatcutapp');
   assert.equal(preflight.metrics.duration, 44);
   assert.equal(preflight.rankingScore, 0.241855);
-  assert.ok(preflight.mediaReference);
-  assert.ok(preflight.estimate.maximumCostUsd <= 0.15);
+  assert.equal(preflight.downloadSourceUrl, canonicalSourceUrl);
+  assert.ok(preflight.estimate.geminiMaximumCostUsd <= 0.15);
+  assert.ok(preflight.estimate.totalMaximumCostUsd <= 0.65);
+  assert.equal(preflight.estimate.apifyConservativeCommitmentUsd, 0.5);
   assert.equal(preflight.estimate.providerEnforcedDollarCap, false);
+  assert.equal(preflight.estimate.apifyProviderEnforcedDollarCap, true);
 
   const persistedTraceShape = createState();
   delete persistedTraceShape.metadataAuditRuns[0].selectedTopCandidate.protectedIntent;
@@ -286,8 +347,12 @@ async function main() {
     'signal_filter_metadata_audit_not_found',
   );
   expectCode(
+    () => buildStagingSignalFilterPreflight({ state: createState(), env: createEnv({ APIFY_TOKEN: '' }), options: createOptions() }),
+    'signal_filter_apify_token_required',
+  );
+  expectCode(
     () => buildStagingSignalFilterPreflight({ state: createState(), env: createEnv(), options: createOptions({ candidateId: 'missing' }) }),
-    'signal_filter_candidate_not_saved_top_one',
+    'signal_filter_candidate_forbidden',
   );
   expectCode(
     () => buildStagingSignalFilterPreflight({
@@ -328,8 +393,8 @@ async function main() {
   );
   for (const invalid of [
     { maxCandidates: 2 }, { maxDownloads: 2 }, { maxGeminiAnalyses: 2 },
-    { apifyHardCapUsd: 0.01 }, { geminiHardCapUsd: 0.16 },
-    { totalProviderHardCapUsd: 0.16 }, { retries: 1 }, { fallbacks: 1 },
+    { apifyHardCapUsd: 0.49 }, { apifyHardCapUsd: 0.51 }, { geminiHardCapUsd: 0.16 },
+    { totalProviderHardCapUsd: 0.66 }, { retries: 1 }, { fallbacks: 1 },
   ]) {
     assert.throws(() => buildStagingSignalFilterPreflight({
       state: createState(), env: createEnv(), options: createOptions(invalid),
@@ -355,6 +420,156 @@ async function main() {
   assert.equal(preflightResult.preflight.invariants.writes, 0);
   assert.equal(preflightResult.preflight.limits.maxOutputTokens, 8192);
   assert.ok(preflightResult.preflight.estimate.maximumInputTokens > 0);
+  assert.equal(preflightResult.preflight.downloadSourceUrl, canonicalSourceUrl);
+  assert.equal(preflightResult.preflight.targetedActor.actorId, TARGETED_TIKTOK_ACTOR);
+  assert.equal(preflightResult.preflight.targetedActor.shouldDownloadCovers, false);
+
+  let targetedActorCalls = 0;
+  const targetedResolution = await resolveTargetedTikTokMedia({
+    preflight,
+    env: createEnv(),
+    runActor: async (request) => {
+      targetedActorCalls += 1;
+      assert.equal(request.actorId, TARGETED_TIKTOK_ACTOR);
+      assert.equal(request.maxTotalChargeUsd, 0.5);
+      assert.equal(request.maxItems, 1);
+      assert.deepEqual(request.input, buildTargetedTikTokActorInput(canonicalSourceUrl));
+      return {
+        items: [{ webVideoUrl: canonicalSourceUrl, mediaUrls: [signedMediaUrl] }],
+        actualCostUsd: 0.2,
+        runId: 'mock-targeted-run',
+      };
+    },
+  });
+  assert.equal(targetedActorCalls, 1);
+  assert.equal(targetedResolution.returnedId, candidateId);
+  assert.equal(targetedResolution.mediaReference, signedMediaUrl);
+  assert.equal(targetedResolution.apify.logicalActorRuns, 1);
+  assert.equal(targetedResolution.apify.providerReportedCostUsd, 0.2);
+  assert.equal(targetedResolution.apify.conservativeCommitmentUsd, 0.2);
+  assert.ok(targetedResolution.conservativeTotalBeforeGemini <= 0.65);
+
+  const missingCostResolution = await resolveTargetedTikTokMedia({
+    preflight,
+    env: createEnv(),
+    runActor: async () => ({
+      items: [{ webVideoUrl: canonicalSourceUrl, mediaUrls: [signedMediaUrl] }],
+      actualCostUsd: null,
+      runId: 'mock-targeted-run-no-cost',
+    }),
+  });
+  assert.equal(missingCostResolution.apify.conservativeCommitmentUsd, 0.5);
+
+  let integrationActorCalls = 0;
+  const integrationResult = await executeOneShotAnalysis({
+    preflight,
+    env: createEnv(),
+    runActor: async () => {
+      integrationActorCalls += 1;
+      return {
+        items: [{ webVideoUrl: canonicalSourceUrl, mediaUrls: [signedMediaUrl] }],
+        actualCostUsd: 0.2,
+        runId: 'mock-integrated-targeted-run',
+      };
+    },
+    fetchImpl: async (url) => {
+      if (String(url) === signedMediaUrl) {
+        return new Response(Buffer.from('integrated-video-bytes'), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4', 'content-length': '22' },
+        });
+      }
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    },
+    evaluate: async ({ fetchImpl: guardedFetch, signal }) => {
+      assert.equal(signal.videoUrl, signedMediaUrl);
+      const mediaResponse = await guardedFetch(signedMediaUrl, { method: 'GET' });
+      const mediaBytes = Buffer.from(await mediaResponse.arrayBuffer());
+      await guardedFetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+        method: 'POST', headers: { 'X-Goog-Upload-Command': 'start' },
+      });
+      await guardedFetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
+        method: 'POST', headers: { 'X-Goog-Upload-Command': 'upload, finalize' },
+      });
+      await guardedFetch('https://generativelanguage.googleapis.com/v1beta/files/mock-file', { method: 'GET' });
+      await guardedFetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+        method: 'POST', body: JSON.stringify({ model: 'gemini-3.5-flash', input: [] }),
+      });
+      await guardedFetch('https://generativelanguage.googleapis.com/v1beta/files/mock-file', { method: 'DELETE' });
+      return {
+        decision: 'reject',
+        admittedToBank: false,
+        rejectionReasons: ['mock_reject'],
+        uncertaintyReasons: [],
+        auditTrace: {
+          mediaSha256: crypto.createHash('sha256').update(mediaBytes).digest('hex'),
+          mediaByteLength: mediaBytes.length,
+          usage: {
+            total_input_tokens: 14000,
+            total_output_tokens: 1000,
+            total_thought_tokens: 500,
+            total_tokens: 15500,
+          },
+        },
+      };
+    },
+  });
+  assert.equal(integrationActorCalls, 1);
+  assert.equal(integrationResult.apify.logicalActorRuns, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.mediaDownloads, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.geminiAnalysisJobs, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.uploadStarts, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.uploadFinalizes, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.fileStatusPolls, 1);
+  assert.equal(integrationResult.operations.mediaAndGemini.counters.cleanups, 1);
+  assert.equal(integrationResult.calculatedCostUsd, 0.0345);
+  assert.equal(integrationResult.conservativeTotalCostUsd, 0.2345);
+
+  let mismatchNetworkCalls = 0;
+  await assert.rejects(
+    executeOneShotAnalysis({
+      preflight,
+      env: createEnv(),
+      runActor: async () => ({
+        items: [{
+          webVideoUrl: 'https://www.tiktok.com/@chatcutapp/video/7000000000000000000',
+          mediaUrls: [signedMediaUrl],
+        }],
+        actualCostUsd: 0.2,
+        runId: 'mock-targeted-run-mismatch',
+      }),
+      fetchImpl: async () => {
+        mismatchNetworkCalls += 1;
+        throw new Error('network_must_not_run_after_mismatch');
+      },
+    }),
+    (error) => error?.code === 'signal_filter_targeted_candidate_mismatch',
+  );
+  assert.equal(mismatchNetworkCalls, 0);
+
+  const apifyGuard = createTargetedApifyFetchGuard({
+    fetchImpl: async () => new Response(JSON.stringify({ data: {} }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+  });
+  await apifyGuard.fetchImpl(
+    'https://api.apify.com/v2/acts/clockworks~tiktok-scraper/runs?maxTotalChargeUsd=0.5&maxItems=1',
+    { method: 'POST' },
+  );
+  await apifyGuard.fetchImpl('https://api.apify.com/v2/actor-runs/mock-targeted-run', { method: 'GET' });
+  await apifyGuard.fetchImpl(
+    'https://api.apify.com/v2/datasets/mock-targeted-dataset/items?clean=true&format=json&limit=1',
+    { method: 'GET' },
+  );
+  assert.deepEqual(apifyGuard.snapshot().counters, {
+    actorStarts: 1,
+    statusPolls: 1,
+    datasetReads: 1,
+  });
 
   const fetchRequests = [];
   const guarded = createOneShotFetchGuard({
@@ -383,9 +598,16 @@ async function main() {
   });
   const interactionBody = JSON.parse(fetchRequests[2].init.body);
   assert.equal(interactionBody.generation_config.max_output_tokens, 8192);
+  assert.equal(fetchRequests[0].init.redirect, 'error');
   assert.equal(guarded.snapshot().counters.mediaDownloads, 1);
   assert.equal(guarded.snapshot().counters.geminiAnalysisJobs, 1);
   assert.equal(guarded.snapshot().counters.apifyActorCalls, 0);
+  assert.equal(guarded.snapshot().media.contentType, 'video/mp4');
+  assert.equal(guarded.snapshot().media.byteLength, 11);
+  assert.equal(
+    guarded.snapshot().media.sha256,
+    crypto.createHash('sha256').update(Buffer.from('video-bytes')).digest('hex'),
+  );
   await assert.rejects(
     guarded.fetchImpl(signedMediaUrl, { method: 'GET' }),
     (error) => error?.code === 'signal_filter_download_limit_exceeded',
@@ -399,6 +621,18 @@ async function main() {
   await assert.rejects(
     guarded.fetchImpl('https://api.apify.com/v2/acts/provider/run-sync', { method: 'POST' }),
     (error) => error?.code === 'signal_filter_apify_actor_call_forbidden',
+  );
+
+  const invalidMediaGuard = createOneShotFetchGuard({
+    mediaUrl: signedMediaUrl,
+    fetchImpl: async () => new Response('<html>not media</html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html' },
+    }),
+  });
+  await assert.rejects(
+    invalidMediaGuard.fetchImpl(signedMediaUrl, { method: 'GET' }),
+    (error) => error?.code === 'signal_filter_media_content_type_invalid',
   );
 
   const acceptStore = createInMemorySignalFilterAuditStore(createState());
@@ -416,6 +650,13 @@ async function main() {
   assert.equal(acceptResult.trace.admittedToBank, true);
   assert.equal(acceptResult.trace.usage.inputTokens, 14000);
   assert.equal(acceptResult.trace.usage.outputTokens, 1000);
+  assert.equal(acceptResult.trace.apifyRunId, 'mock-targeted-run');
+  assert.equal(acceptResult.trace.providerReportedCostUsd, 0.2);
+  assert.equal(acceptResult.trace.conservativeApifyCommitmentUsd, 0.2);
+  assert.equal(acceptResult.trace.providerUsageCalculatedCostUsd, 0.0345);
+  assert.equal(acceptResult.trace.conservativeTotalCostUsd, 0.2345);
+  assert.equal(acceptResult.trace.operations.apify.counters.actorStarts, 1);
+  assert.equal(acceptResult.trace.operations.mediaAndGemini.counters.mediaDownloads, 1);
   assert.equal(acceptResult.trace.mutationAfter.reels - acceptResult.trace.mutationBefore.reels, 1);
   assert.equal(acceptResult.trace.mutationAfter.verifiedSignalBank - acceptResult.trace.mutationBefore.verifiedSignalBank, 1);
   assert.equal(acceptResult.trace.mutationAfter.signalFilterAuditRuns - acceptResult.trace.mutationBefore.signalFilterAuditRuns, 1);
@@ -423,6 +664,7 @@ async function main() {
   assert.doesNotMatch(acceptTraceText, /gemini-secret-never-persist|apify-secret-never-persist|db-secret/);
   assert.doesNotMatch(acceptTraceText, /sensitive-caption-that-must-not-be-in-diagnostics/);
   assert.doesNotMatch(acceptTraceText, /X-Amz-Signature|secret=query/);
+  assert.doesNotMatch(acceptTraceText, /media\.example\.test/);
   assert.doesNotMatch(acceptTraceText, /echoedCaption|uploadUrl/);
 
   for (const [decision, admittedToBank] of [['reject', false], ['uncertain', false], ['reject', true]]) {
