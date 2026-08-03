@@ -37,13 +37,10 @@ const productBrand = persistProductBrand(workspace, {
   brain: {
     profileDescription: 'A practical AI workflow studio for small product teams.',
     audience: 'Founders and product builders',
-    niche: 'AI workflow automation',
-    market: 'Ukraine and Europe',
-    instagramUrl: 'https://instagram.com/ai.studio',
   },
 }, now);
 assert.equal(productBrand.id, 'brand-ai-studio');
-assert.equal(productBrand.brain.niche, 'AI workflow automation');
+assert.equal(productBrand.brain.niche, '');
 
 const restored = resolveWorkspaceDiscoveryBrand(workspace, {
   requireProductBrandBrain: true,
@@ -51,14 +48,15 @@ const restored = resolveWorkspaceDiscoveryBrand(workspace, {
 });
 assert.equal(restored.complete, true);
 assert.equal(restored.source, 'product_redesign');
-assert.equal(restored.brief.niche, 'AI workflow automation');
-assert.notEqual(restored.brief.niche, workspace.brief.niche, 'demo fallback must not replace the active redesign Brand Brain');
+assert.equal(restored.brief.product, productBrand.brain.profileDescription);
+assert.equal(restored.brief.audience, productBrand.brain.audience);
+assert.notEqual(restored.brief.product, workspace.brief.product, 'demo fallback must not replace the active redesign Brand Brain');
 
 const incompleteWorkspace = {
   ...workspace,
   productBrandBrain: {
     ...productBrand,
-    brain: { ...productBrand.brain, niche: '', market: '' },
+    brain: { ...productBrand.brain, audience: '' },
   },
 };
 assert.throws(
@@ -78,8 +76,7 @@ assert.throws(
   }),
   (error) => error?.message === 'automatic_discovery_brand_brain_incomplete'
     && error?.status === 422
-    && error?.payload?.missingFields?.includes('niche')
-    && error?.payload?.missingFields?.includes('market'),
+    && error?.payload?.missingFields?.includes('audience'),
 );
 
 const state = {
@@ -91,7 +88,8 @@ const state = {
 };
 const activeInputs = buildDiscoveryInputs(state, workspaceId, { brandBrain: restored.brief });
 const serializedInputs = JSON.stringify(activeInputs).toLowerCase();
-assert.match(serializedInputs, /ai workflow automation/);
+assert.match(serializedInputs, /practical ai workflow studio/);
+assert.match(serializedInputs, /founders and product builders/);
 assert.doesNotMatch(serializedInputs, /demo fallback niche/);
 
 const prepared = prepareAutomaticDiscovery({
@@ -164,7 +162,8 @@ const result = await executeAutomaticDiscovery({
   qualityGateConfig: { version: 3.1, borderlineReview: { maxRechecksPerRun: 0 } },
   evaluateSignalQuality: async ({ workspace: receivedWorkspace }) => {
     analysisCalls += 1;
-    assert.equal(receivedWorkspace.brief.niche, 'AI workflow automation');
+    assert.equal(receivedWorkspace.brief.product, productBrand.brain.profileDescription);
+    assert.equal(receivedWorkspace.brief.audience, productBrand.brain.audience);
     return {
       policyVersion: 3.1,
       decision: 'accept',

@@ -102,8 +102,8 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
   }));
 
   useEffect(() => {
-    if (step > 4) {
-      setStep(4);
+    if (step > 2) {
+      setStep(2);
       setErrors([]);
     }
   }, [step]);
@@ -125,13 +125,6 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
     let nextErrors = [];
     if (step === 1 && brain.profileDescription.trim().length < 10) nextErrors = ['profileDescription'];
     if (step === 2 && brain.audience.trim().length < 3) nextErrors = ['audience'];
-    if (step === 3) {
-      if (!brain.niche.trim()) nextErrors.push('niche');
-      if (!brain.market.trim()) nextErrors.push('market');
-    }
-    if (step === 4 && brain.instagramUrl.trim() && !normalizeWizardAnswers(brain).instagramUrl) {
-      nextErrors = ['instagramUrl'];
-    }
     if (!draft.name.trim()) nextErrors.unshift('name');
     setErrors(nextErrors);
     return nextErrors.length === 0;
@@ -139,7 +132,7 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
 
   const continueWizard = () => {
     if (!validate()) return;
-    if (step === 4) {
+    if (step === 2) {
       finishWizard();
       return;
     }
@@ -158,21 +151,15 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
   const titleKey = {
     1: 'onboarding.brand.title',
     2: 'onboarding.audience.title',
-    3: 'product.settings.brands.editor.contextTitle',
-    4: 'product.settings.brands.editor.instagramTitle',
   }[step];
   const subtitleKey = {
     1: 'onboarding.brand.subtitle',
     2: 'onboarding.audience.subtitle',
-    3: 'product.settings.brands.editor.contextSubtitle',
-    4: 'product.settings.brands.editor.instagramSubtitle',
   }[step];
   const validationKey = step === 1 ? 'onboarding.brand.validation' : 'product.settings.brands.editor.validation';
   const currentStepValid = draft.name.trim().length >= 2 && (
     (step === 1 && draft.brain.profileDescription.trim().length >= 10)
     || (step === 2 && draft.brain.audience.trim().length >= 3)
-    || (step === 3 && draft.brain.niche.trim() && draft.brain.market.trim())
-    || (step === 4 && (!draft.brain.instagramUrl.trim() || Boolean(normalizeWizardAnswers(draft.brain).instagramUrl)))
   );
 
   return (
@@ -195,7 +182,7 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
       </label>
 
       <div className="settings-brand-onboarding-progress" aria-label={t('product.settings.brands.editor.progress', { current: step })}>
-        {[1, 2, 3, 4].map((number) => (
+        {[1, 2].map((number) => (
           <i className={number < step ? 'complete' : number === step ? 'active' : ''} key={number} />
         ))}
       </div>
@@ -248,43 +235,6 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
             </div>
           </>
         )}
-        {step === 3 && (
-          <div className="settings-brand-context-fields">
-            <label>
-              <span>{t('product.settings.brands.editor.niche')}</span>
-              <input
-                value={draft.brain.niche}
-                maxLength={160}
-                placeholder={t('product.settings.brands.editor.nicheHint')}
-                aria-invalid={errors.includes('niche')}
-                onChange={(event) => updateBrain('niche', event.target.value)}
-              />
-            </label>
-            <label>
-              <span>{t('product.settings.brands.editor.market')}</span>
-              <input
-                value={draft.brain.market}
-                maxLength={160}
-                placeholder={t('product.settings.brands.editor.marketHint')}
-                aria-invalid={errors.includes('market')}
-                onChange={(event) => updateBrain('market', event.target.value)}
-              />
-            </label>
-          </div>
-        )}
-        {step === 4 && (
-          <label className="settings-brand-instagram-field">
-            <span>{t('product.settings.brands.editor.instagram')}</span>
-            <input
-              type="url"
-              value={draft.brain.instagramUrl}
-              maxLength={500}
-              placeholder="https://instagram.com/yourprofile"
-              aria-invalid={errors.includes('instagramUrl')}
-              onChange={(event) => updateBrain('instagramUrl', event.target.value)}
-            />
-          </label>
-        )}
         {errors.length > 0 && <p className="settings-brand-brain-error">{t(validationKey)}</p>}
       </div>
 
@@ -297,7 +247,7 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
           <span className="settings-brand-onboarding-private"><LockKeyhole size={14} />{t('onboarding.brand.private')}</span>
         )}
         <button className="primary" type="button" disabled={!currentStepValid} onClick={continueWizard}>
-          {t(step === 4 ? 'product.settings.brands.editor.finish' : 'onboarding.brand.continue')}<ArrowRight size={18} />
+          {t(step === 2 ? 'product.settings.brands.editor.finish' : 'onboarding.brand.continue')}<ArrowRight size={18} />
         </button>
       </footer>
     </section>

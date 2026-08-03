@@ -445,6 +445,7 @@ function collectKeywordCandidates(workspace = {}, state = {}, workspaceId) {
     brief.businessType,
     brief.niche,
     brief.product,
+    brief.audience,
     brief.location,
     brief.contentFocus,
     brief.toneOfVoice,
@@ -477,6 +478,7 @@ function collectHashtagCandidates(workspace = {}, state = {}, workspaceId) {
     brief.businessType,
     brief.niche,
     brief.product,
+    brief.audience,
     brief.location,
     brief.contentFocus,
     ...(Array.isArray(brief.goals) ? brief.goals : []),
@@ -509,6 +511,7 @@ function buildTrendCandidates(platform, workspace = {}) {
   const businessType = normalizeText(brief.businessType || 'business').toLowerCase();
   const niche = normalizeText(brief.niche || brief.businessType || 'niche').toLowerCase();
   const product = normalizeText(brief.product || brief.contentFocus || 'content').toLowerCase();
+  const audience = normalizeText(brief.audience || brief.product || 'audience').toLowerCase();
   const location = normalizeText(brief.location || 'global').toLowerCase();
   const goal = normalizeText(Array.isArray(brief.goals) ? brief.goals[0] : '').toLowerCase();
 
@@ -516,6 +519,7 @@ function buildTrendCandidates(platform, workspace = {}) {
     `${platform} ${businessType} trends`,
     `${platform} ${niche} hooks`,
     `${platform} ${product} ideas`,
+    `${platform} ${audience} content`,
     `${location} ${businessType} examples`,
     `${product} before after`,
     `${goal || 'lead generation'} content`,

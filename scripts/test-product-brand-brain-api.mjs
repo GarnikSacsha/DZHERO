@@ -124,8 +124,8 @@ try {
     body: JSON.stringify({ brand: incompleteBrand }),
   });
   assert.equal(savedIncomplete.response.status, 200);
-  assert.equal(savedIncomplete.body.complete, false);
-  assert.deepEqual(savedIncomplete.body.missingFields, ['niche', 'market']);
+  assert.equal(savedIncomplete.body.complete, true);
+  assert.deepEqual(savedIncomplete.body.missingFields, []);
 
   const restored = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/agent/context`, { headers });
   assert.equal(restored.response.status, 200);
@@ -144,13 +144,13 @@ try {
   });
   assert.equal(tester.response.status, 201);
 
-  const blockedBrain = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+  const blockedProvider = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ surface: 'product_redesign', activeBrandId: incompleteBrand.id }),
   });
-  assert.equal(blockedBrain.response.status, 422);
-  assert.equal(blockedBrain.body.error, 'automatic_discovery_brand_brain_incomplete');
+  assert.equal(blockedProvider.response.status, 501);
+  assert.equal(blockedProvider.body.error, 'apify_not_configured');
 
   const completeBrand = {
     ...incompleteBrand,
@@ -167,14 +167,6 @@ try {
   });
   assert.equal(savedComplete.response.status, 200);
   assert.equal(savedComplete.body.complete, true);
-
-  const blockedProvider = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ surface: 'product_redesign', activeBrandId: completeBrand.id }),
-  });
-  assert.equal(blockedProvider.response.status, 501);
-  assert.equal(blockedProvider.body.error, 'apify_not_configured');
 
   const persisted = JSON.parse(await readFile(dbPath, 'utf8'));
   const persistedWorkspace = persisted.workspaces.find((item) => item.id === workspaceId);

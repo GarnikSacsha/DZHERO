@@ -10,8 +10,6 @@ const PRODUCT_BRAND_BRAIN_VERSION = 1;
 const REQUIRED_PRODUCT_BRAIN_FIELDS = Object.freeze([
   'profileDescription',
   'audience',
-  'niche',
-  'market',
 ]);
 
 function compactText(value, maxLength = 800) {
