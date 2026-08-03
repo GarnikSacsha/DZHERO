@@ -143,7 +143,7 @@ function BrandBrainEditor({ brand, onCancel, onSave }) {
       finishWizard();
       return;
     }
-    setStep(2);
+    setStep((current) => current + 1);
   };
 
   const finishWizard = (brain = draft.brain) => {
