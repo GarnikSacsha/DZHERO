@@ -2339,6 +2339,7 @@ async function executeAutomaticDiscovery(args = {}) {
   let successfulCalls = 0;
   let billedCostUsd = 0;
   let hasCompleteBilledCost = true;
+  let qualityGateTechnicalFailure = false;
   const laneStats = new Map();
   const getCurrentTime = typeof args.getCurrentTime === 'function'
     ? args.getCurrentTime
@@ -3017,12 +3018,12 @@ async function executeAutomaticDiscovery(args = {}) {
           },
         };
       } catch (error) {
+        qualityGateTechnicalFailure = true;
         if (budgetLedger && budgetLedger.snapshot().stages.gemini) {
           budgetLedger.fail('gemini');
           syncBudgetLedger();
         }
         run.qualityErrorCount += 1;
-        run.rejectedCount += 1;
         run.errorCount += 1;
         run.errors.push({
           platform,
@@ -3054,7 +3055,22 @@ async function executeAutomaticDiscovery(args = {}) {
   }
 
   run.acceptedCount = acceptedSignals.length;
-  run.status = !rankingBlocked && successfulCalls > 0 ? 'completed' : 'failed';
+  const qualityGateFailedWithoutAdmission = qualityGateTechnicalFailure && acceptedSignals.length === 0;
+  if (qualityGateFailedWithoutAdmission) {
+    const qualityFailure = run.errors.find((error) => error.lane === 'quality_gate') || {};
+    run.classifiedFailure = {
+      code: 'automatic_discovery_quality_gate_failed',
+      stage: 'quality_gate',
+      cause: {
+        code: qualityFailure.code || 'signal_quality_gate_failed',
+        message: qualityFailure.message || 'signal_quality_gate_failed',
+        status: qualityFailure.status || 500,
+      },
+    };
+  }
+  run.status = !rankingBlocked && successfulCalls > 0 && !qualityGateFailedWithoutAdmission
+    ? 'completed'
+    : 'failed';
   const roundedBilledCostUsd = roundUsd(billedCostUsd);
   if (budgetLedger) {
     const ledgerSnapshot = syncBudgetLedger();

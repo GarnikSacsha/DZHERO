@@ -973,7 +973,9 @@ async function analyzeSignalQualityVideo({
       },
       body: JSON.stringify({
         model: guards.model,
-        max_output_tokens: guards.maxOutputTokens,
+        generation_config: {
+          max_output_tokens: guards.maxOutputTokens,
+        },
         input: [
           {
             type: 'video',

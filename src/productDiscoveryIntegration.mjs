@@ -94,8 +94,24 @@ export function createProductDiscoveryClient({
           });
           const payload = await readPayload(response);
           if (!response.ok) return classifyBlockedStatus(response, payload);
-          if (payload?.run?.status === 'failed') {
-            return { status: 'error', code: 'automatic_discovery_run_failed', payload };
+          const run = payload?.run || {};
+          const errorCount = Number(run.errorCount ?? payload.errorCount ?? 0);
+          const acceptedCount = Number(payload.acceptedSignals ?? run.acceptedCount ?? 0);
+          const qualityGateTechnicalFailure = Array.isArray(run.errors)
+            && run.errors.some((error) => error?.lane === 'quality_gate');
+          const completedWithTechnicalFailure = run.status === 'completed'
+            && errorCount > 0
+            && acceptedCount === 0
+            && (run.classifiedFailure?.stage === 'quality_gate'
+              || run.auditTrace?.failure?.stage === 'quality_gate'
+              || qualityGateTechnicalFailure);
+          if (run.status === 'failed' || completedWithTechnicalFailure) {
+            return {
+              status: 'error',
+              code: run.classifiedFailure?.code || 'automatic_discovery_run_failed',
+              retryable: true,
+              payload,
+            };
           }
 
           const reelsResponse = await request('reels');

@@ -223,7 +223,10 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
 
   const interactionRequests = [];
   const longCaption = 'X'.repeat(20_000);
-  const guardedAnalysis = await analyzeSignalQualityVideo({
+  let guardedAnalysis = null;
+  let guardedError = null;
+  try {
+    guardedAnalysis = await analyzeSignalQualityVideo({
     signal: {
       videoUrl: 'https://media.invalid/video.mp4?signature=memory-only',
       title: 'Bounded signal',
@@ -257,7 +260,14 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
         }), { status: 200, headers: { 'content-type': 'application/json' } });
       }
       if (target.endsWith('/interactions')) {
-        interactionRequests.push(JSON.parse(options.body));
+        const request = JSON.parse(options.body);
+        interactionRequests.push(request);
+        if (Object.prototype.hasOwnProperty.call(request, 'max_output_tokens')) {
+          return new Response(JSON.stringify({
+            error: { message: "Unknown parameter 'max_output_tokens'." },
+          }), { status: 400, headers: { 'content-type': 'application/json' } });
+        }
+        assert.equal(request.generation_config?.max_output_tokens, 8192);
         return new Response(JSON.stringify({
           model: 'gemini-3.5-flash',
           output_text: JSON.stringify(decorativeTeaserAssessment),
@@ -272,9 +282,14 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
       if (options.method === 'DELETE') return new Response('{}', { status: 200 });
       throw new Error(`unexpected offline request ${target}`);
     },
-  });
+    });
+  } catch (error) {
+    guardedError = error;
+  }
   assert.equal(interactionRequests.length, 1);
-  assert.equal(interactionRequests[0].max_output_tokens, 8192);
+  assert.equal(interactionRequests[0].max_output_tokens, undefined);
+  assert.equal(interactionRequests[0].generation_config?.max_output_tokens, 8192);
+  assert.equal(guardedError, null);
   const promptText = interactionRequests[0].input[1].text;
   assert.equal((promptText.match(/X/g) || []).length <= 6000, true);
   assert.equal(guardedAnalysis.auditTrace.model, 'gemini-3.5-flash');

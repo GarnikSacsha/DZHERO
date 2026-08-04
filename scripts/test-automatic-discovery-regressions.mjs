@@ -368,6 +368,113 @@ assert.equal(mergeState.reels[0].likes, 100);
 assert.equal(mergeState.reels.length, 1);
 assert.equal(mergeResult.run.actualCostUsd, 0.02);
 
+const qualityProviderFailureWorkspaceId = 'ws_quality_provider_failure';
+const qualityProviderFailureState = {
+  workspaces: [{
+    id: qualityProviderFailureWorkspaceId,
+    brief: {
+      businessType: 'AI tools',
+      niche: 'vibe coding',
+      product: 'DZHERO',
+      audience: 'AI builders',
+      location: 'global',
+    },
+    discoverySettings: {
+      ...discovery.defaultDiscoverySettings(start),
+      enabled: true,
+      platforms: ['tiktok'],
+    },
+  }],
+  sources: [],
+  competitors: [],
+  instagramAccounts: [],
+  tiktokAccounts: [],
+  reels: [],
+  discoveryRuns: [],
+};
+const qualityProviderFailureCandidate = {
+  id: 'quality_provider_failure_candidate',
+  workspaceId: qualityProviderFailureWorkspaceId,
+  sourceUrl: 'https://www.tiktok.com/@veteran_znaye/video/7573756886139276556',
+  sourceHandle: '@veteran_znaye',
+  handle: '@veteran_znaye',
+  sourceStatus: 'apify_metadata',
+  sourceType: 'TikTok',
+  title: 'A concrete workflow result',
+  caption: 'A concrete workflow result.',
+  views: 100_000,
+  likes: 8_000,
+  comments: 120,
+  shares: 2_000,
+  saves: 3_000,
+  videoUrl: '',
+  importedMetadata: {
+    provider: 'offline_mock',
+    platform: 'tiktok',
+    tiktokVideoId: '7573756886139276556',
+    url: 'https://www.tiktok.com/@veteran_znaye/video/7573756886139276556',
+    duration: 30,
+  },
+};
+const qualityProviderFailureCalls = [];
+const qualityProviderFailureResult = await executeAutomaticDiscovery({
+  state: qualityProviderFailureState,
+  workspaceId: qualityProviderFailureWorkspaceId,
+  now: start,
+  force: true,
+  triggerMode: 'manual_refresh',
+  policy: {
+    perRunBudgetUsd: 1.15,
+    manualRefreshDailyBudgetUsd: 1.15,
+    monthlyBudgetUsd: 11.5,
+    metadataApifyHardCapUsd: 0.5,
+    downloadApifyHardCapUsd: 0.5,
+    geminiHardCapUsd: 0.15,
+    maxBudgetedRunsPerDay: 1,
+    resultLimitPerPlatform: 5,
+    maxPlannedCalls: 1,
+  },
+  maxQualityEvaluations: 1,
+  qualityGateConfig: { version: 3.1, maxVideoAnalysesPerRun: 1 },
+  fetchSignals: async (call) => {
+    qualityProviderFailureCalls.push(call);
+    const signal = structuredClone(qualityProviderFailureCandidate);
+    if (call.downloadVideo) {
+      signal.videoUrl = 'https://offline.invalid/veteran_znaye.mp4';
+      signal.sourceStatus = 'apify_video';
+      signal.importedMetadata.videoUrl = signal.videoUrl;
+      signal.importedMetadata.mediaUrls = [signal.videoUrl];
+    }
+    return { actualCostUsd: 0, signals: [signal] };
+  },
+  evaluateSignalQuality: async () => {
+    const error = new Error("Unknown parameter 'max_output_tokens'.");
+    error.code = 'provider_error';
+    throw error;
+  },
+});
+assert.equal(qualityProviderFailureResult.run.status, 'failed');
+assert.equal(qualityProviderFailureResult.run.errorCount, 1);
+assert.equal(qualityProviderFailureResult.run.acceptedCount, 0);
+assert.equal(qualityProviderFailureResult.acceptedSignals.length, 0);
+assert.equal(
+  qualityProviderFailureResult.run.classifiedFailure.code,
+  'automatic_discovery_quality_gate_failed',
+);
+assert.equal(
+  qualityProviderFailureResult.run.classifiedFailure.cause.message,
+  "Unknown parameter 'max_output_tokens'.",
+);
+assert.equal(qualityProviderFailureResult.run.qualityDecisions.length, 0);
+assert.equal(qualityProviderFailureState.reels.length, 0);
+assert.equal(qualityProviderFailureCalls.length, 2);
+assert.equal(qualityProviderFailureCalls.filter((call) => call.downloadVideo).length, 1);
+assert.equal(qualityProviderFailureResult.run.auditTrace.plan.maxVideoAnalyses, 1);
+assert.equal(qualityProviderFailureResult.run.auditTrace.plan.retries, 0);
+assert.equal(qualityProviderFailureResult.run.auditTrace.plan.fallbacks, 0);
+assert.equal(qualityProviderFailureResult.run.auditTrace.failure.stage, 'quality_gate');
+assert.equal(qualityProviderFailureResult.run.auditTrace.failure.code, 'provider_error');
+
 const failedState = {
   workspaces: [{
     id: 'ws_failed',

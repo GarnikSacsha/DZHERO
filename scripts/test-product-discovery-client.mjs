@@ -100,4 +100,34 @@ assert.equal(blocked.status, 'blocked');
 assert.equal(blocked.code, 'apify_not_configured');
 assert.equal(blockedCalls, 1, 'a blocked provider preflight must not fake a Collection refresh');
 
+let failedOutcomeReelsCalls = 0;
+const failedOutcomeClient = createProductDiscoveryClient({
+  apiBase: '/api',
+  workspaceId: 'workspace-quality-failure',
+  fetcher: async (url) => {
+    if (url.endsWith('/signals/discovery/run')) {
+      return jsonResponse(201, {
+        run: {
+          id: 'run-quality-failure',
+          status: 'completed',
+          errorCount: 1,
+          acceptedCount: 0,
+          errors: [{ lane: 'quality_gate', code: 'provider_error' }],
+        },
+        acceptedSignals: 0,
+        updatedSignals: 0,
+      });
+    }
+    if (url.endsWith('/reels')) {
+      failedOutcomeReelsCalls += 1;
+      return jsonResponse(200, { reels: [] });
+    }
+    throw new Error(`unexpected failed outcome request: ${url}`);
+  },
+});
+const failedOutcome = await failedOutcomeClient.refreshBank({ activeBrandId: 'brand-backend' });
+assert.equal(failedOutcome.status, 'error');
+assert.equal(failedOutcome.code, 'automatic_discovery_run_failed');
+assert.equal(failedOutcomeReelsCalls, 0, 'a technical discovery failure must not refresh Collection');
+
 console.log('Product discovery client checks passed.');
