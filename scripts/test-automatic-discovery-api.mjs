@@ -512,7 +512,7 @@ try {
   const manualRun = await manualRunPromise;
   assert.equal(manualRun.response.status, 201);
   assert.equal(manualRun.body?.run?.status, 'failed');
-  assert.equal(manualRun.body?.run?.budgetUsd, 1.15);
+  assert.equal(manualRun.body?.run?.budgetUsd, 1);
   assert.equal(manualRun.body?.run?.actualCostUsd, null);
   assert.equal(manualRun.body?.run?.attemptedCallCount, 1);
   assert.equal(manualRun.body?.run?.requestedCount, 1);
@@ -546,8 +546,30 @@ try {
       activeBrandId: 'brand-api-manual',
     }),
   });
-  assert.equal(secondTesterRun.response.status, 429);
-  assert.equal(secondTesterRun.body?.error, 'automatic_daily_run_limit_reached');
+  assert.equal(secondTesterRun.response.status, 201);
+  assert.equal(secondTesterRun.body?.run?.budgetUsd, 1);
+
+  const thirdTesterRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      surface: 'product_redesign',
+      activeBrandId: 'brand-api-manual',
+    }),
+  });
+  assert.equal(thirdTesterRun.response.status, 201);
+  assert.equal(thirdTesterRun.body?.run?.budgetUsd, 1);
+
+  const fourthTesterRun = await requestJson(baseUrl, `/api/workspaces/${workspaceId}/signals/discovery/run`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      surface: 'product_redesign',
+      activeBrandId: 'brand-api-manual',
+    }),
+  });
+  assert.equal(fourthTesterRun.response.status, 429);
+  assert.equal(fourthTesterRun.body?.error, 'automatic_daily_run_limit_reached');
 
   const budgetBlockedState = JSON.parse(await readFile(dbPath, 'utf8'));
   const budgetWorkspace = budgetBlockedState.workspaces.find((item) => item.id === workspaceId);

@@ -500,6 +500,8 @@ export const en = Object.freeze({
   'product.discovery.refresh.empty.body': 'The run completed, but no candidate passed final bank admission.',
   'product.discovery.refresh.blocked.title': 'Refresh is blocked',
   'product.discovery.refresh.blocked.body': 'Complete the active Brand Brain and check discovery access, provider setup, and budget.',
+  'product.discovery.refresh.dailyLimit.title': 'Daily limit reached',
+  'product.discovery.refresh.dailyLimit.body': 'Three manual refreshes have already been used. New signals will be available after the next UTC day starts.',
   'product.discovery.refresh.error.title': 'Refresh failed',
   'product.discovery.refresh.error.body': 'The bank was not changed. Try again after checking the backend status.',
   'product.cards.match': 'Match',

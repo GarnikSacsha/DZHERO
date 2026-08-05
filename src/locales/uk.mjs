@@ -500,6 +500,8 @@ export const uk = Object.freeze({
   'product.discovery.refresh.empty.body': 'Запуск завершився, але жоден кандидат не пройшов фінальний допуск до банку.',
   'product.discovery.refresh.blocked.title': 'Оновлення заблоковано',
   'product.discovery.refresh.blocked.body': 'Заверши активний Brand Brain і перевір доступ до пошуку, налаштування провайдерів та бюджет.',
+  'product.discovery.refresh.dailyLimit.title': 'Денний ліміт вичерпано',
+  'product.discovery.refresh.dailyLimit.body': 'Три ручні оновлення вже використано. Нові сигнали будуть доступні після початку наступної доби UTC.',
   'product.discovery.refresh.error.title': 'Не вдалося оновити банк',
   'product.discovery.refresh.error.body': 'Банк не змінено. Спробуй ще раз після перевірки стану сервера.',
   'product.cards.match': 'збіг',

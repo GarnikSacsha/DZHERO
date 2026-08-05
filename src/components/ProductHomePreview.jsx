@@ -56,6 +56,7 @@ import {
 import {
   createProductDiscoveryClient,
   getActiveProductBrand,
+  getProductRefreshMessageStatus,
   mergeRestoredProductBrand,
 } from '../productDiscoveryIntegration.mjs';
 import { buildSignalStrengthEvidence } from '../signalIntelligenceState.mjs';
@@ -574,6 +575,7 @@ function DiscoverHome({
     }));
 
   const clearFilters = () => setFilters(DEFAULT_SIGNAL_FILTERS);
+  const refreshMessageStatus = getProductRefreshMessageStatus(refreshState.status, refreshState.code);
   const toggleSaved = (cardId) => {
     setSavedIds((current) => {
       const next = new Set(current);
@@ -607,8 +609,8 @@ function DiscoverHome({
             className={`product-refresh-result ${refreshState.status}`}
             role={refreshState.status === 'error' ? 'alert' : 'status'}
           >
-            <strong>{t(`product.discovery.refresh.${refreshState.status}.title`)}</strong>
-            <span>{t(`product.discovery.refresh.${refreshState.status}.body`)}</span>
+            <strong>{t(`product.discovery.refresh.${refreshMessageStatus}.title`)}</strong>
+            <span>{t(`product.discovery.refresh.${refreshMessageStatus}.body`)}</span>
           </div>
         )}
 

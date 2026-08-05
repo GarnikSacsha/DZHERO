@@ -39,10 +39,11 @@ Production was not touched.
 - manual metadata Apify cap: `$0.50`;
 - manual targeted-download Apify cap: `$0.50`;
 - Gemini cap: `$0.15`;
-- manual per-run hard cap: `$1.15`;
-- monthly staging cap: `$11.50`;
+- manual per-run hard cap: `$1.00`;
+- manual daily staging cap: `$3.00` across up to 3 budgeted runs;
+- monthly staging cap: `$90.00`;
 - `generation_config.max_output_tokens=8192`;
-- one active run and at most one budgeted run per UTC day.
+- one active run and at most three budgeted manual-refresh runs per UTC day.
 
 The status field `dailyBudgetUsd: 0.4` is the base automatic Tester Pro budget,
 not the manual Refresh hard cap. Do not change either budget merely to make a

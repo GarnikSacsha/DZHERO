@@ -146,6 +146,7 @@ Tester Pro limits:
 - 5 competitors, 1 workspace, 1 team member, and 1 Instagram account;
 - 10 Brand Brain saves and 50 content-plan posts per month;
 - automatic Apify discovery targets up to 10 unique signals per UTC day (normally 5 Instagram + 5 TikTok), with one budget-consuming run and a hard USD 0.40 daily cap.
+- redesign manual Refresh Bank allows up to 3 budgeted runs per UTC day, with a USD 1.00 per-run cap, USD 3.00 daily cap, and USD 90.00 monthly cap.
 
 The owner account remains unlimited and is never converted to Tester Pro. Revoking a grant immediately restores the tester's unchanged base subscription/trial.
 

@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {
   getActiveTesterGrant,
   getTesterDiscoveryPolicy,
+  getTesterManualRefreshPolicy,
   linkTesterGrant,
   normalizeTesterEmail,
   resolveAccessPlan,
@@ -64,5 +65,19 @@ assert.deepEqual(getTesterDiscoveryPolicy('tester_pro'), {
   maxPlannedCalls: 2,
 });
 assert.equal(getTesterDiscoveryPolicy('trial'), null);
+
+assert.deepEqual(getTesterManualRefreshPolicy('tester_pro'), {
+  triggerMode: 'manual_refresh',
+  perRunBudgetUsd: 1,
+  manualRefreshDailyBudgetUsd: 3,
+  monthlyBudgetUsd: 90,
+  metadataApifyHardCapUsd: 0.5,
+  downloadApifyHardCapUsd: 0.5,
+  geminiHardCapUsd: 0.15,
+  maxBudgetedRunsPerDay: 3,
+  resultLimitPerPlatform: 5,
+  maxPlannedCalls: 1,
+});
+assert.equal(getTesterManualRefreshPolicy('trial'), null);
 
 console.log('tester access tests passed');

@@ -8,6 +8,13 @@ function cleanApiBase(value) {
   return String(value || '/api').replace(/\/$/, '');
 }
 
+export function getProductRefreshMessageStatus(status, code) {
+  if (status === 'blocked' && code === 'automatic_daily_run_limit_reached') {
+    return 'dailyLimit';
+  }
+  return status;
+}
+
 function workspaceRoute(apiBase, workspaceId, suffix) {
   return `${cleanApiBase(apiBase)}/workspaces/${encodeURIComponent(String(workspaceId || ''))}/${suffix}`;
 }

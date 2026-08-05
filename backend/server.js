@@ -1592,15 +1592,15 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
       const workspaceUser = options.actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
       const entitlements = buildEntitlements(db, workspaceId, workspaceUser);
       const manualPolicy = options.triggerMode === 'manual_refresh'
-        ? getTesterManualRefreshPolicy(entitlements.plan.id) || {
+          ? getTesterManualRefreshPolicy(entitlements.plan.id) || {
             triggerMode: 'manual_refresh',
-            perRunBudgetUsd: 1.15,
-            manualRefreshDailyBudgetUsd: 1.15,
-            monthlyBudgetUsd: 11.5,
+            perRunBudgetUsd: 1,
+            manualRefreshDailyBudgetUsd: 3,
+            monthlyBudgetUsd: 90,
             metadataApifyHardCapUsd: 0.5,
             downloadApifyHardCapUsd: 0.5,
             geminiHardCapUsd: 0.15,
-            maxBudgetedRunsPerDay: 1,
+            maxBudgetedRunsPerDay: 3,
             resultLimitPerPlatform: 5,
             maxPlannedCalls: 1,
           }

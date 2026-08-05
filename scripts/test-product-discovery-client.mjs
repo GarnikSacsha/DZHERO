@@ -2,8 +2,18 @@ import assert from 'node:assert/strict';
 
 import {
   createProductDiscoveryClient,
+  getProductRefreshMessageStatus,
   mergeRestoredProductBrand,
 } from '../src/productDiscoveryIntegration.mjs';
+
+assert.equal(
+  getProductRefreshMessageStatus('blocked', 'automatic_daily_run_limit_reached'),
+  'dailyLimit',
+);
+assert.equal(
+  getProductRefreshMessageStatus('blocked', 'automatic_discovery_brand_brain_incomplete'),
+  'blocked',
+);
 
 function jsonResponse(status, payload) {
   return {
