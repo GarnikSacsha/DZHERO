@@ -26080,7 +26080,128 @@ nav button.active::before {
 }
 
 .product-signal-body {
+  position: relative;
   padding: 18px;
+}
+
+.product-signal-moderation {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+}
+
+.product-signal-more {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 1px solid var(--product-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--product-surface) 92%, transparent);
+  color: var(--product-muted);
+}
+
+.product-signal-menu {
+  position: absolute;
+  top: 35px;
+  right: 0;
+  width: 210px;
+  padding: 5px;
+  border: 1px solid var(--product-border);
+  border-radius: 10px;
+  background: var(--product-surface);
+  box-shadow: 0 16px 32px -20px color-mix(in srgb, var(--product-text) 48%, transparent);
+}
+
+.product-signal-menu button {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 7px;
+  color: var(--product-text);
+  font-size: 10px;
+  text-align: left;
+}
+
+.product-signal-menu button:hover {
+  background: var(--product-soft);
+}
+
+.product-signal-moderation-dialog {
+  display: grid;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--product-accent) 35%, var(--product-border));
+  border-radius: 11px;
+  background: var(--product-soft);
+}
+
+.product-signal-moderation-dialog strong {
+  color: var(--product-text);
+  font-size: 11px;
+}
+
+.product-signal-moderation-dialog p {
+  margin: 0;
+  color: var(--product-muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.product-signal-moderation-dialog label {
+  display: grid;
+  gap: 5px;
+}
+
+.product-signal-moderation-dialog label span {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.product-signal-moderation-dialog select {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--product-border);
+  border-radius: 7px;
+  background: var(--product-surface);
+  color: var(--product-text);
+  font: inherit;
+  font-size: 9px;
+}
+
+.product-signal-moderation-dialog > small {
+  color: #b91c1c;
+  font-size: 9px;
+}
+
+.product-signal-moderation-dialog > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.product-signal-moderation-dialog > div button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--product-border);
+  border-radius: 7px;
+  color: var(--product-text);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.product-signal-moderation-dialog > div button:last-child {
+  border-color: var(--product-primary);
+  background: var(--product-primary);
+  color: var(--product-primary-text);
+}
+
+.product-signal-moderation-dialog > div button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .product-signal-author {

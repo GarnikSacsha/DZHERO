@@ -47,7 +47,8 @@ function isSharedSignalBankPlan(entitlements = {}) {
 
 function isApprovedSharedSignal(reel = {}) {
   return String(reel.curationStatus || '').trim().toLowerCase()
-    === SHARED_SIGNAL_CURATION_APPROVED;
+    === SHARED_SIGNAL_CURATION_APPROVED
+    && reel.importedMetadata?.qualityGate?.admittedToBank !== false;
 }
 
 function projectSharedSignal(reel = {}, targetWorkspaceId = '') {

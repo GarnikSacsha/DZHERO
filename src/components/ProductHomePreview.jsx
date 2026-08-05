@@ -19,6 +19,7 @@ import {
   List,
   LogOut,
   Menu,
+  MoreHorizontal,
   Moon,
   Plus,
   Radio,
@@ -73,6 +74,13 @@ const NAV_ITEMS = Object.freeze([
 ]);
 
 const SAVED_SIGNALS_STORAGE_KEY = 'dzhero-preview-product-saved-signals-v1';
+const OWNER_SIGNAL_EXCLUSION_REASONS = Object.freeze([
+  { code: 'no_useful_mechanic_or_outcome', label: 'product.moderation.reasons.noUsefulMechanic' },
+  { code: 'manipulative_or_spam', label: 'product.moderation.reasons.manipulative' },
+  { code: 'duplicate_or_broken_signal', label: 'product.moderation.reasons.duplicate' },
+  { code: 'unsafe_or_inappropriate', label: 'product.moderation.reasons.unsafe' },
+  { code: 'other', label: 'product.moderation.reasons.other' },
+]);
 
 function readSavedSignals() {
   try {
@@ -287,11 +295,38 @@ function ProductTopbar({
   );
 }
 
-function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
+function SignalCard({
+  card,
+  onOpenStudio,
+  saved,
+  onToggleSaved,
+  canManageSharedSignals = false,
+  onExcludeSignal,
+}) {
   const { t } = useI18n();
   const [strengthOpen, setStrengthOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [moderationOpen, setModerationOpen] = useState(false);
+  const [reasonCode, setReasonCode] = useState('');
+  const [moderationPending, setModerationPending] = useState(false);
+  const [moderationError, setModerationError] = useState('');
   const strengthEvidence = useMemo(() => buildSignalStrengthEvidence(card, []), [card]);
   const strengthDetailsId = `signal-strength-${card.id}`;
+  const moderationDialogId = `signal-moderation-${card.id}`;
+  const sourceSignalId = card.rawSignal?.sharedSourceId || card.rawSignal?.id || card.id;
+
+  const confirmExclusion = async () => {
+    if (!reasonCode || moderationPending || typeof onExcludeSignal !== 'function') return;
+    setModerationPending(true);
+    setModerationError('');
+    try {
+      await onExcludeSignal(sourceSignalId, reasonCode);
+    } catch (error) {
+      setModerationError(error?.message || 'owner_signal_exclusion_failed');
+    } finally {
+      setModerationPending(false);
+    }
+  };
 
   return (
     <article className="product-signal-card">
@@ -316,6 +351,33 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
         </div>
       </div>
       <div className="product-signal-body">
+        {canManageSharedSignals && (
+          <div className="product-signal-moderation">
+            <button
+              className="product-signal-more"
+              type="button"
+              aria-label={t('product.actions.more')}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <MoreHorizontal size={18} />
+            </button>
+            {menuOpen && (
+              <div className="product-signal-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setModerationOpen(true);
+                  }}
+                >
+                  {t('product.moderation.exclude')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         <div className="product-signal-author">
           <span>{card.initials}</span>
           <div>
@@ -357,6 +419,30 @@ function SignalCard({ card, onOpenStudio, saved, onToggleSaved }) {
             })}</strong>
             <small>{t('product.intelligence.strength.confidenceUnavailable')}</small>
             <small>{t('product.intelligence.strength.normalization')}</small>
+          </div>
+        )}
+        {moderationOpen && (
+          <div className="product-signal-moderation-dialog" id={moderationDialogId} role="dialog" aria-label={t('product.moderation.title')}>
+            <strong>{t('product.moderation.title')}</strong>
+            <p>{t('product.moderation.body')}</p>
+            <label>
+              <span>{t('product.moderation.reasonLabel')}</span>
+              <select value={reasonCode} onChange={(event) => setReasonCode(event.target.value)}>
+                <option value="">{t('product.moderation.reasonPlaceholder')}</option>
+                {OWNER_SIGNAL_EXCLUSION_REASONS.map((reason) => (
+                  <option value={reason.code} key={reason.code}>{t(reason.label)}</option>
+                ))}
+              </select>
+            </label>
+            {moderationError && <small role="alert">{moderationError}</small>}
+            <div>
+              <button type="button" onClick={() => setModerationOpen(false)} disabled={moderationPending}>
+                {t('product.moderation.cancel')}
+              </button>
+              <button type="button" onClick={confirmExclusion} disabled={!reasonCode || moderationPending}>
+                {t(moderationPending ? 'product.moderation.pending' : 'product.moderation.confirm')}
+              </button>
+            </div>
           </div>
         )}
         <div className="product-signal-actions">
@@ -414,6 +500,8 @@ function DiscoverHome({
   onClearDirectSearch,
   refreshState,
   onRefreshBank,
+  canManageSharedSignals,
+  onExcludeSignal,
 }) {
   const { t } = useI18n();
   const [filters, setFilters] = useState(DEFAULT_SIGNAL_FILTERS);
@@ -632,6 +720,8 @@ function DiscoverHome({
                 onOpenStudio={onOpenStudio}
                 saved={savedIds.has(card.id)}
                 onToggleSaved={toggleSaved}
+                canManageSharedSignals={canManageSharedSignals}
+                onExcludeSignal={onExcludeSignal}
               />
             ))}
           </div>
@@ -679,7 +769,10 @@ export default function ProductHomePreview({
   fetcher = globalThis.fetch,
   authenticated = false,
   onLogout,
+  canManageSharedSignals = false,
+  notify = () => {},
 }) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
     return NAV_ITEMS.some((item) => item.id === requestedTab && !item.disabled) ? requestedTab : 'discover';
@@ -825,6 +918,14 @@ export default function ProductHomePreview({
     setRefreshState({ status: result.status, code: result.code });
   };
 
+  const excludeSignal = async (signalId, reasonCode) => {
+    await productClient.excludeSignal({ signalId, reasonCode });
+    setCollectionSignals((current) => current.filter((reel) => (
+      reel.id !== signalId && reel.sharedSourceId !== signalId
+    )));
+    notify(t('product.moderation.success'));
+  };
+
   const clearDirectSearch = () => {
     window.clearTimeout(directSearchTimer.current);
     setSignalUrl('');
@@ -920,6 +1021,8 @@ export default function ProductHomePreview({
             onClearDirectSearch={clearDirectSearch}
             refreshState={refreshState}
             onRefreshBank={refreshBank}
+            canManageSharedSignals={canManageSharedSignals}
+            onExcludeSignal={excludeSignal}
           />
         )}
         {activeTab === 'channels' && (

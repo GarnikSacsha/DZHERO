@@ -1415,6 +1415,8 @@ function App() {
           workspaceId={workspaceId}
           fetcher={authFetch}
           authenticated={Boolean(currentUser)}
+          canManageSharedSignals={Boolean(currentUser?.canManageSharedSignals)}
+          notify={notify}
           onLogout={handleLogout}
         />
         {toast && <div className="toast">{toast}</div>}

@@ -118,3 +118,23 @@ PostgreSQL is preferred before production.
 The earlier Build Week Agent Studio and Free Trial decisions remain historical
 implementation context in the repository. They do not override the current
 redesign-only product direction or the limited MVP scope.
+
+## Owner-only shared-bank moderation
+
+The limited MVP supports one product-owner action in the redesign Collection:
+
+- `POST /api/owner/signals/:signalId/exclude`;
+- backend authorization uses the existing owner/unlimited-access gate, so the
+  frontend visibility check is only a usability layer;
+- the action is global and currently supports only owner moderation, not user
+  feedback or personal hiding;
+- exclusion changes only `importedMetadata.qualityGate.admittedToBank` to
+  `false`; the original `decision`, assessment, observations, evidence chains,
+  and filter results remain unchanged;
+- the record is retained with an extensible `ownerModeration.global` audit
+  object containing `scope`, `reasonCode`, `excludedAt`, actor identity,
+  `previousState`, and an audit history. This supports a future restore action
+  without deleting the signal or losing its provenance;
+- repeated exclusion is idempotent and does not append a second audit event;
+- future user-facing “Не підходить” feedback must be personal (`scope=user`)
+  and must not alter the global bank or Signal Filter decisions automatically.

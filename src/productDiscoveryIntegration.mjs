@@ -12,6 +12,10 @@ function workspaceRoute(apiBase, workspaceId, suffix) {
   return `${cleanApiBase(apiBase)}/workspaces/${encodeURIComponent(String(workspaceId || ''))}/${suffix}`;
 }
 
+function ownerSignalRoute(apiBase, signalId) {
+  return `${cleanApiBase(apiBase)}/owner/signals/${encodeURIComponent(String(signalId || ''))}/exclude`;
+}
+
 async function readPayload(response) {
   return response?.json?.().catch(() => ({})) || {};
 }
@@ -77,6 +81,17 @@ export function createProductDiscoveryClient({
       });
       const payload = await readPayload(response);
       if (!response.ok) throw new Error(payload.error || 'product_brand_brain_save_failed');
+      return payload;
+    },
+
+    async excludeSignal({ signalId, reasonCode } = {}) {
+      const response = await fetcher(ownerSignalRoute(apiBase, signalId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reasonCode }),
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'owner_signal_exclusion_failed');
       return payload;
     },
 

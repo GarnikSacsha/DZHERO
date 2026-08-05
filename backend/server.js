@@ -129,6 +129,14 @@ const {
   buildFreeTrialState,
 } = require('./services/freeTrialAccess.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
+const OWNER_SIGNAL_EXCLUSION_REASONS = new Set([
+  'no_useful_mechanic_or_outcome',
+  'manipulative_or_spam',
+  'duplicate_or_broken_signal',
+  'unsafe_or_inappropriate',
+  'other',
+]);
+const OWNER_SIGNAL_EXCLUSION_SCOPE = 'global';
 const {
   buildLeadSyncPayload,
   createCrmSyncClient,
@@ -1760,6 +1768,7 @@ function publicUser(user) {
     provider,
     isDemo: provider === 'demo',
     canManageTesters: provider !== 'demo' && userHasUnlimitedAccess(user),
+    canManageSharedSignals: provider !== 'demo' && userHasUnlimitedAccess(user),
     workspaceId: user.workspaceId,
     avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt,
@@ -2129,6 +2138,34 @@ function resolveCanonicalAccessibleSignal(db, workspaceId, authUser, reelId) {
   return db.reels.find((reel) => reel.id === canonicalId) || null;
 }
 
+function getSignalQualityGate(reel = {}) {
+  return reel.importedMetadata?.qualityGate || null;
+}
+
+function isCurrentlyVerifiedSharedSignal(reel = {}) {
+  const qualityGate = getSignalQualityGate(reel);
+  return qualityGate?.decision === 'accept' && qualityGate?.admittedToBank === true;
+}
+
+function getActiveGlobalSignalExclusion(reel = {}) {
+  const exclusion = reel.ownerModeration?.global;
+  return exclusion?.active === true ? exclusion : null;
+}
+
+function buildOwnerSignalExclusionAudit({ owner, reasonCode, timestamp, previousState }) {
+  return {
+    action: 'exclude',
+    scope: OWNER_SIGNAL_EXCLUSION_SCOPE,
+    reasonCode,
+    actor: {
+      userId: owner.id,
+      email: owner.email,
+      role: owner.role || null,
+    },
+    timestamp,
+    previousState,
+  };
+}
 function getCurrentActor(db, actorUser) {
   if (!actorUser?.id) return actorUser || null;
   return db.users.find((user) => user.id === actorUser.id) || null;
@@ -6113,6 +6150,89 @@ app.post('/api/workspaces/:workspaceId/billing/manual-activate', async (req, res
   res.json(buildEntitlements(db, req.params.workspaceId, req.authUser));
 });
 
+app.post('/api/owner/signals/:signalId/exclude', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const owner = requireOwnerUser(db, req, res);
+    if (!owner) return;
+
+    const signalId = String(req.params.signalId || '').trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(signalId)) {
+      res.status(400).json({ error: 'signal_id_invalid' });
+      return;
+    }
+
+    const reasonCode = String(req.body?.reasonCode || '').trim();
+    if (!OWNER_SIGNAL_EXCLUSION_REASONS.has(reasonCode)) {
+      res.status(400).json({ error: 'invalid_signal_exclusion_reason' });
+      return;
+    }
+
+    const reel = db.reels.find((item) => item.id === signalId);
+    if (!reel) {
+      res.status(404).json({ error: 'signal_not_found' });
+      return;
+    }
+
+    const existingExclusion = getActiveGlobalSignalExclusion(reel);
+    if (existingExclusion) {
+      res.json({
+        signalId,
+        excluded: true,
+        alreadyExcluded: true,
+        moderation: reel.ownerModeration,
+      });
+      return;
+    }
+
+    if (!isCurrentlyVerifiedSharedSignal(reel)) {
+      res.status(409).json({ error: 'signal_not_in_verified_bank' });
+      return;
+    }
+
+    const qualityGate = getSignalQualityGate(reel);
+    const timestamp = new Date().toISOString();
+    const previousState = {
+      decision: qualityGate.decision,
+      admittedToBank: qualityGate.admittedToBank,
+      curationStatus: reel.curationStatus ?? null,
+    };
+    const audit = buildOwnerSignalExclusionAudit({
+      owner,
+      reasonCode,
+      timestamp,
+      previousState,
+    });
+
+    qualityGate.admittedToBank = false;
+    reel.ownerModeration = {
+      version: 1,
+      global: {
+        active: true,
+        scope: OWNER_SIGNAL_EXCLUSION_SCOPE,
+        reasonCode,
+        excludedAt: timestamp,
+        previousState,
+        audit: [audit],
+      },
+    };
+
+    await writeDb(db);
+    res.json({
+      signalId,
+      excluded: true,
+      alreadyExcluded: false,
+      moderation: reel.ownerModeration,
+      preserved: {
+        decision: qualityGate.decision,
+        evidence: true,
+        assessment: true,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 function publicTesterGrant(db, grant) {
   const user = db.users.find((item) => item.id === grant.userId)
     || db.users.find((item) => normalizeTesterEmail(item.email) === normalizeTesterEmail(grant.email))
