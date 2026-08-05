@@ -1,0 +1,168 @@
+{
+  "ownerExpected": {
+    "decision": "reject",
+    "admissionMode": null,
+    "admittedToBank": false
+  },
+  "assessment": {
+    "accessible": true,
+    "summary": "A fitness practitioner performs a body wave plank exercise sequence.",
+    "derivedClaims": {
+      "centralIdea": {
+        "text": "Core control and strength can be demonstrated through rhythmic body wave plank variations.",
+        "evidenceIds": ["obs1", "obs2", "obs3"],
+        "supportLevel": "demonstrated"
+      },
+      "contentMechanic": {
+        "text": "Rhythmic execution of an unconventional movement to capture attention within a standard fitness frame.",
+        "evidenceIds": ["obs1", "obs2"],
+        "supportLevel": "demonstrated"
+      },
+      "visualExecution": {
+        "text": "Low-angle side shot tracking physical undulating motion in a gym setting.",
+        "evidenceIds": ["obs1", "obs3"],
+        "supportLevel": "demonstrated"
+      },
+      "adaptationTemplate": {
+        "text": "Demonstrate a highly visual, advanced variation of a common movement to drive interest.",
+        "evidenceIds": ["obs1", "obs2", "obs3"],
+        "supportLevel": "inferred"
+      }
+    },
+    "scores": {
+      "contentValue": 52,
+      "adaptability": 50,
+      "topicClarity": 58,
+      "hookStrength": 48,
+      "payoffStrength": 45,
+      "brandRelevance": 42
+    },
+    "evidenceConfidence": 0.95,
+    "slopIndicators": [],
+    "observations": [
+      {
+        "id": "obs1",
+        "timestamp": "00:00-00:03",
+        "source": "visual",
+        "kind": "setup",
+        "description": "Practitioner starts in low forearm plank and initiates a rhythmic spinal wave movement.",
+        "confidence": 0.95
+      },
+      {
+        "id": "obs2",
+        "timestamp": "00:03-00:08",
+        "source": "visual",
+        "kind": "action",
+        "description": "Practitioner continues performing continuous body waves to demonstrate core flexibility.",
+        "confidence": 0.95
+      },
+      {
+        "id": "obs3",
+        "timestamp": "00:09-00:12",
+        "source": "visual",
+        "kind": "result",
+        "description": "Practitioner pushes up from forearm plank to high plank position and holds.",
+        "confidence": 0.95
+      }
+    ],
+    "evidenceChains": [
+      {
+        "mode": "process_demo",
+        "beforeEvidenceId": "obs1",
+        "actionEvidenceId": "obs2",
+        "afterEvidenceId": "obs3",
+        "subject": "fitness practitioner",
+        "beforeState": "Low forearm plank beginning a wave pattern",
+        "afterState": "High plank hold position",
+        "supportLevel": "demonstrated",
+        "directlyObserved": true,
+        "ambiguityReasons": []
+      }
+    ],
+    "unknowns": []
+  },
+  "positiveControl": {
+    "ownerExpected": {
+      "decision": "accept",
+      "admissionMode": "process_demo",
+      "admittedToBank": true
+    },
+    "assessment": {
+      "accessible": true,
+      "summary": "A practitioner shows a plank technique correction from setup through a visible result.",
+      "derivedClaims": {
+        "centralIdea": {
+          "text": "Correcting plank alignment produces a visibly stronger and more stable technique.",
+          "evidenceIds": ["control_setup", "control_action", "control_result"],
+          "supportLevel": "demonstrated"
+        },
+        "contentMechanic": {
+          "text": "Show incorrect technique, demonstrate the correction, and reveal the corrected form.",
+          "evidenceIds": ["control_setup", "control_action", "control_result"],
+          "supportLevel": "demonstrated"
+        },
+        "visualExecution": {
+          "text": "A clear side-by-side progression from incorrect to corrected plank alignment.",
+          "evidenceIds": ["control_setup", "control_action", "control_result"],
+          "supportLevel": "demonstrated"
+        },
+        "adaptationTemplate": {
+          "text": "Show [mistake], demonstrate [correction], and reveal [improved result].",
+          "evidenceIds": ["control_setup", "control_action", "control_result"],
+          "supportLevel": "inferred"
+        }
+      },
+      "scores": {
+        "contentValue": 80,
+        "adaptability": 82,
+        "topicClarity": 85,
+        "hookStrength": 70,
+        "payoffStrength": 84,
+        "brandRelevance": 75
+      },
+      "evidenceConfidence": 0.94,
+      "slopIndicators": [],
+      "observations": [
+        {
+          "id": "control_setup",
+          "timestamp": "00:00-00:03",
+          "source": "visual",
+          "kind": "setup",
+          "description": "The practitioner's hips sag and shoulders sit behind the wrists in a visibly incorrect plank.",
+          "confidence": 0.94
+        },
+        {
+          "id": "control_action",
+          "timestamp": "00:03-00:07",
+          "source": "visual",
+          "kind": "action",
+          "description": "The practitioner actively tucks the pelvis and stacks the shoulders over the wrists to correct the plank.",
+          "confidence": 0.94
+        },
+        {
+          "id": "control_result",
+          "timestamp": "00:08-00:12",
+          "source": "visual",
+          "kind": "result",
+          "description": "The practitioner holds a straight, aligned plank with the corrected technique visible.",
+          "confidence": 0.94
+        }
+      ],
+      "evidenceChains": [
+        {
+          "mode": "process_demo",
+          "beforeEvidenceId": "control_setup",
+          "actionEvidenceId": "control_action",
+          "afterEvidenceId": "control_result",
+          "subject": "plank technique",
+          "beforeState": "Incorrect plank alignment with sagging hips",
+          "afterState": "Straight plank alignment held after correction",
+          "supportLevel": "demonstrated",
+          "directlyObserved": true,
+          "ambiguityReasons": []
+        }
+      ],
+      "unknowns": []
+    }
+  }
+}

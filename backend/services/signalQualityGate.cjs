@@ -464,7 +464,7 @@ function evaluateKnowledgeExplainer(observations, derivedClaims) {
   };
 }
 
-function validateEvidenceChain(chain, observationsById) {
+function validateEvidenceChain(chain, observationsById, contentMechanicEvidenceIds = []) {
   const requirements = CAUSAL_MODE_REQUIREMENTS[chain.mode] || {};
   const before = observationsById.get(chain.beforeEvidenceId);
   const action = observationsById.get(chain.actionEvidenceId);
@@ -519,6 +519,12 @@ function validateEvidenceChain(chain, observationsById) {
   ) {
     issues.push('before_after_state_unchanged');
   }
+  if (
+    chain.mode === 'process_demo'
+    && !contentMechanicEvidenceIds.includes(chain.afterEvidenceId)
+  ) {
+    issues.push('content_mechanic_outcome_not_grounded');
+  }
   return {
     mode: chain.mode,
     valid: issues.length === 0,
@@ -538,10 +544,19 @@ function validateEvidenceChain(chain, observationsById) {
   };
 }
 
-function evaluateCausalMode(mode, evidenceChains, observationsById) {
+function evaluateCausalMode(
+  mode,
+  evidenceChains,
+  observationsById,
+  contentMechanicEvidenceIds = [],
+) {
   const chainValidations = evidenceChains
     .filter((chain) => chain.mode === mode)
-    .map((chain) => validateEvidenceChain(chain, observationsById));
+    .map((chain) => validateEvidenceChain(
+      chain,
+      observationsById,
+      contentMechanicEvidenceIds,
+    ));
   const passing = chainValidations.find((chain) => chain.valid);
   return {
     mode,
@@ -672,7 +687,7 @@ function applySignalQualityPolicy(rawAssessment, config = loadSignalQualityGateC
   const modeResults = [
     evaluateKnowledgeExplainer(parsed.observations, derivedClaims),
     ...EVIDENCE_CHAIN_MODES.map((mode) => (
-      evaluateCausalMode(mode, evidenceChains, observationsById)
+      evaluateCausalMode(mode, evidenceChains, observationsById, contentMechanicEvidenceIds)
     )),
   ];
   const passedModes = modeResults.filter((result) => result.passed).map((result) => result.mode);
@@ -685,6 +700,7 @@ function applySignalQualityPolicy(rawAssessment, config = loadSignalQualityGateC
       'before_evidence_missing',
       'action_evidence_missing',
       'after_evidence_missing',
+      'content_mechanic_outcome_not_grounded',
     ].includes(issue))
   ));
   if (!passedModes.length && hasInvalidInterpretiveChain) {
@@ -720,6 +736,11 @@ function applySignalQualityPolicy(rawAssessment, config = loadSignalQualityGateC
   }
   if (parsed.accessible && parsed.observations.length && !passedModes.length) {
     rejectionReasons.add('no_qualifying_evidence_mode');
+  }
+  if (causalChainValidation.some((chain) => (
+    chain.issues.includes('content_mechanic_outcome_not_grounded')
+  ))) {
+    rejectionReasons.add('content_mechanic_outcome_not_grounded');
   }
   const substantiveKinds = new Set([
     'action',

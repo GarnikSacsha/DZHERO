@@ -95,6 +95,55 @@ The owner accepted the current run as the intended limited-MVP technical
 outcome. Any new relevance threshold, Collection cutoff, or feedback policy is
 a separate product decision.
 
+## Fitness false-accept regression on 2026-08-05
+
+The admitted fitness signal also exposed a shared-bank quality defect after
+the owner reviewed the actual video: the clip only repeated a body-wave motion
+in a plank and did not demonstrate a meaningful process outcome. The original
+production policy returned `accept`, `admissionMode=process_demo`, and
+`admittedToBank=true` for the captured assessment. This is the preserved RED
+case.
+
+The root cause was narrower than general visual-semantic understanding. The
+policy validated distinct, ordered before/action/after evidence, but did not
+require the `process_demo` content mechanic itself to cite the claimed after
+state. A terminal pose could therefore satisfy the structural chain even when
+it was not evidence for the transferable content mechanic.
+
+The permanent invariant is now:
+
+```text
+For process_demo, afterEvidenceId MUST appear in
+derivedClaims.contentMechanic.evidenceIds.
+```
+
+If it does not, the chain records
+`content_mechanic_outcome_not_grounded`, the mode does not pass, and this case
+resolves to `decision=reject`, `admissionMode=null`, and
+`admittedToBank=false`. A synthetic positive control in which incorrect plank
+technique is visibly corrected still resolves to
+`accept` / `process_demo` / `true`. The same regression therefore proves both
+the false-accept rejection and preservation of a grounded process demo.
+
+Free verification commands:
+
+```powershell
+node scripts/test-signal-quality-fitness-false-accept.cjs
+node scripts/test-signal-quality-gate.cjs
+node scripts/test-signal-quality-policy-v3-regression.cjs
+npm.cmd run test:discovery-regression
+npm.cmd run build
+```
+
+All checks passed with provider credentials cleared. Provider calls and
+network attempts were `0`. The SHA-256 of `backend/data/db.json` was unchanged
+before and after verification:
+`E0755CAEB092748EAF9A01F6E01DC8B15CAB1E5FF63F492838047FEF908193AE`.
+
+This is intentionally a narrow `process_demo` policy fix. Broader semantic
+detection of cyclic movement and a diverse video benchmark remain separate
+evidence tasks; this regression does not claim to solve them.
+
 ## Earlier provider-backed evidence
 
 ### Signal Filter v3.1 paid consistency
