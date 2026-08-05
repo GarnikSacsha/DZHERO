@@ -2116,7 +2116,10 @@ function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
 
 function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
   const entitlements = buildEntitlements(db, workspaceId, authUser);
-  const ownReels = db.reels.filter((item) => item.workspaceId === workspaceId);
+  const ownReels = db.reels.filter((item) => (
+    item.workspaceId === workspaceId
+    && !getActiveGlobalSignalExclusion(item)
+  ));
   const sharedBank = isSharedSignalBankPlan(entitlements)
     ? buildSharedSignalBankReels(db, {
         targetWorkspaceId: workspaceId,
