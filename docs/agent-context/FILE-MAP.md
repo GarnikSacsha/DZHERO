@@ -1,6 +1,6 @@
 # File Map
 
-Last reviewed: **2026-07-17**
+Last reviewed: **2026-08-05**
 
 ## Start files
 
@@ -9,6 +9,11 @@ Last reviewed: **2026-07-17**
 - `docs/agent-context/PROJECT-SNAPSHOT.md` - product and technical snapshot.
 - `docs/agent-context/WORKING-MEMORY.md` - recent context from conversations.
 - `docs/agent-context/OPEN-ISSUES.md` - known issues and next checks.
+- `docs/agent-context/DISCOVERY-VERIFICATION.md` - permanent Discovery contract,
+  staging evidence, test inventory, and implementation history.
+- `docs/agent-context/MVP-SCOPE.md` - limited MVP boundaries and validation.
+- `docs/agent-context/BRAINSTORM-HANDOFF.md` - canonical product handoff for
+  brainstorm, Discovery, Signal Bank, and staging decisions.
 
 ## Existing root docs
 

@@ -21,3 +21,10 @@ audit/logs/*
 !audit/screenshots/README.md
 !audit/traces/README.md
 !audit/logs/README.md
+
+# Local provider/benchmark evidence. Preserve curated fixtures and docs instead.
+outputs/production-automatic-discovery-e2e-*/
+outputs/signal-filter-v2/
+outputs/signal-filter-v3/
+outputs/signal-filter-v3-1/
+outputs/staging-*.png

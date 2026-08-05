@@ -1,6 +1,24 @@
 # Recent changes
 
-Last updated: **2026-07-20**
+Last updated: **2026-08-05**
+
+## Redesign Discovery integration and staging proof
+
+- `232c1c3` connected redesign Brand Brain, Refresh Bank, Collection admission,
+  and the bounded Automatic Discovery path.
+- Subsequent commits added metadata audits, fail-closed normalization and
+  ranking guards, targeted download, suppression memory, manual budget/run
+  safety, the two-step Brand Brain, and redesign auth/logout routing.
+- `b84c7e2` blocked unsupported Instagram search inputs before reservation and
+  selected a valid TikTok keyword plan when both platforms were available.
+- `749fe88` fixed Gemini `generation_config.max_output_tokens` and made
+  quality-gate provider errors honest retryable failures rather than content
+  rejection or an empty successful run.
+- On 2026-08-05 an owner-approved staging Refresh admitted a real TikTok fitness
+  signal, displayed it in Collection, and opened it in Studio. This completed
+  the limited redesign Discovery E2E proof.
+- The permanent contract and regression inventory are in
+  [`DISCOVERY-VERIFICATION.md`](DISCOVERY-VERIFICATION.md).
 
 ## Public beta integration
 

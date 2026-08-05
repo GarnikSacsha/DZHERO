@@ -1,59 +1,102 @@
 # Open issues
 
-Last updated: **2026-07-24**
+Last updated: **2026-08-05**
 
-## Required before Build Week submission
+## Verified integration and remaining evidence gap
 
-- Complete one final signed-out English coffee-shop flow in production.
-- Confirm in the Railway dashboard that the exact final backend revision is deployed. The July 20 frontend comparison matches the current Build Week code, but `a22a955` is server-only and cannot be proven from static assets.
-- Verify the demo workspace has no private customer data, personal billing details, or keys.
-- Make the repository public or share the private repository with `testing@devpost.com` and `build-week-event@openai.com`.
-- Record a public YouTube demo no longer than three minutes with voiceover covering the product, Codex, and GPT-5.6.
-- Run Codex `/feedback` in the primary build task and save the Session ID.
-- Complete and submit the Devpost entry before July 21, 2026 at 5:00 PM Pacific Time.
+- The redesign Brand Brain → manual Refresh Bank → Collection → Studio
+  path is verified on PostgreSQL-backed Railway staging.
+- The first admitted fitness signal had strong engagement but only AI Match 42
+  and was judged weakly useful by the owner.
+- Decide whether weak personal matches should be downranked, hidden below a
+  threshold, or improved through explicit user feedback. This belongs to Brand
+  Match/Collection, not the shared-bank admission contract.
+- The exact 2026-08-05 staging run ID and provider cost were not captured in
+  the repository. Retrieve them from authenticated staging state only if a
+  later audit requires exact accounting.
 
-## Completed on 2026-07-16/17
+## Discovery and source quality
 
-- Deployed the frontend/backend on Railway with PostgreSQL-backed state.
-- Enabled the scheduled fresh-signal discovery worker.
-- Added a separately labelled **Find fresh signals** action inside Signals.
-- Balanced discovery across accounts, keywords, hashtags, trends, Instagram, and TikTok with daily budgets and bounded downloads.
-- Added Agent Studio **New run** reset behavior.
-- Fixed authenticated transfer of restricted Apify TikTok media into Gemini Files.
-- Manually verified YouTube and TikTok Agent Studio source flows.
+- Full Channel Discovery is not implemented.
+- Channel Filter has not been designed or validated.
+- Author-relative variant D is deferred until reliable author history exists;
+  if revisited, it may only be an optional boost under a separate decision.
+- The B-soft evidence contains only six real ranking labels in the initial AI /
+  vibe-coding niche and does not establish ranking quality in other niches.
+- `@solvexhq` remains a residual top-3 risk: it is third in the baseline B-soft
+  order and can become second in coefficient sensitivity checks.
+- Before increasing `maxVideoAnalysesPerRun` above `1`, run a new labeled
+  benchmark and reassess the risk of lower-ranked candidates reaching Gemini.
+- Adding Instagram, TikTok, and YouTube channel URLs must be verified
+  end-to-end.
+- Public social media may block retrieval or make media unavailable; source
+  failures must remain honest and classified.
 
-## Provider and evidence risks
+## Signal Filter evidence gaps
 
-- Public YouTube, Instagram, and TikTok media can become unavailable or blocked.
-- Continue distinguishing observed video evidence from metadata and user notes.
-- Keep source errors classified and user-facing.
-- Use a verified backup public URL or saved rehearsal result for the recorded demo, and label saved output honestly.
+- There is no benchmark of 30 diverse real videos.
+- v3.1 has not been validated on fitness, food, coffee, comedy, story, or
+  visual-product content.
+- The current evidence covers only MindStudio and Axial reference videos.
+- Do not start v3.2 or change the v3.1 prompt, schema, policy, or thresholds
+  until diverse evidence justifies a separate owner decision.
 
-## Product improvements after submission
+## Adaptation and end-to-end product
 
-- Discover and restore the latest workspace run across browsers and devices; the current browser already restores its remembered run after refresh.
-- Move active work to a durable background queue.
-- Add team approvals and version comparison.
-- Feed measured content performance into future signal selection.
-- Use accumulated per-agent telemetry to evaluate model routing.
+- Adaptation-generation quality has not been validated separately.
+- Brand Brain → Collection → Studio is verified; the next unproven step is
+  whether users can turn admitted signals into genuinely useful adaptations.
+- The product must prove that users can distinguish DZHERO from a collection of
+  saved Reels by actually adapting useful ideas.
 
-## Public beta deployment
+## Data boundaries
 
-- Set `SHARED_SIGNAL_BANK_WORKSPACE_ID` to the workspace containing the curated signal bank (preferred), or set `SHARED_SIGNAL_BANK_OWNER_EMAIL` as a fallback.
-- Keep `ENABLE_BILLING_PURCHASES=false` until checkout is intentionally launched.
-- Keep `ENABLE_AGENT_STUDIO=false` on the public product; the separate Build Week deployment may keep it enabled.
-- Configure a real `GEMINI_API_KEY` in the public Railway service. Model/base overrides are optional and should only be set intentionally; missing or failed Gemini now returns an honest typed 503/502 instead of mock success.
-- Monitor provider cost against the Free Trial safety ceiling of 250 provider attempts per Kyiv day per workspace.
-- Daily quota reservations use the current single-process serialized JSONB state model. Revisit atomic reservation storage before running multiple application replicas.
-- After deploying the lazy AI-trial activation commit, smoke-test one historical
-  Free Trial workspace: confirm the first Studio or Jeryk action persists one
-  72-hour window, reaches Gemini, preserves any `pending_payment` state, and a
-  second action does not move `trialEndsAt`.
+- Public URLs and private uploaded files must be represented separately.
+- User uploads must not enter the shared bank automatically.
+- A public URL may become a shared-bank candidate, but admission still requires
+  `decision=accept` and `admittedToBank=true`.
+- A user-added account may enter the shared source catalog, but must not become
+  globally recommended automatically.
+- Channel Explorer may show all source publications; Verified Signal Bank must
+  show only admitted signals.
+
+## Cost and operational safety
+
+- The MVP requires hard spending controls per run and per month.
+- Spending limits must fail closed.
+- Metadata filtering, canonical-URL deduplication, and bounded top-1 download
+  are verified. Cross-user analysis reuse still needs end-to-end verification.
+- Keep `maxVideoAnalysesPerRun=1` until a separate owner decision.
+- No paid Gemini or Apify call is allowed without explicit permission,
+  preflight, and an established budget.
+
+## Railway staging
+
+- Separate frontend and backend staging services are live and use PostgreSQL.
+- Backend and frontend health returned HTTP 200 on 2026-08-05.
+- The public health endpoint does not expose deployed Git SHA; exact revision
+  checks still require Railway deployment metadata.
+- Keep secrets in backend environment variables only, with separate staging
+  credentials and budgets.
+- Keep Automatic Discovery disabled until a separate owner decision; manual
+  Refresh remains the bounded staging path.
+- Production remains untouched.
+
+## MVP validation
+
+- Run a readiness test with 5–7 target users in the initial AI / vibe coding /
+  AI agents niche.
+- Measure real adaptation, return usage, and payment rather than design praise.
+- Willingness to pay is confirmed by an actual `$15` payment, not stated
+  intent.
+- The target thresholds and red flags are defined in
+  [`MVP-SCOPE.md`](MVP-SCOPE.md).
 
 ## Repository hygiene
 
-- `backend/data/db.json` is local runtime state and must not be committed.
-- `src/main.jsx`, `src/styles.css`, and `backend/server.js` remain large; refactor only for a concrete need.
-- Production PostgreSQL storage uses a transactional JSONB application-state document; normalized tables are future scaling work.
-- Keep English and Ukrainian system copy complete and unmixed.
-- The non-blocking main-bundle size warning can remain until after submission unless the final demo reveals a visible performance problem.
+- `backend/data/db.json` is local runtime state and must not be edited or
+  committed without an explicit request.
+- Do not commit downloaded benchmark videos, evidence frames, temporary
+  outputs, or credentials.
+- Do not change the legacy dashboard or main domain while product work remains
+  redesign-only.

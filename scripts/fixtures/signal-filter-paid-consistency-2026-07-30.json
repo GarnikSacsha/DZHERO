@@ -1,0 +1,540 @@
+{
+  "fixtureVersion": 1,
+  "immutable": true,
+  "provenance": {
+    "source": "paid consistency run",
+    "generatedAt": "2026-07-30T14:47:30.035Z",
+    "suite": "signal-quality-owner-goldens-v1",
+    "preflight": {
+      "mode": "consistency",
+      "videoCount": 2,
+      "repeats": 3,
+      "plannedEvaluations": 6,
+      "maxVideos": 2,
+      "maxGeminiAttempts": 6,
+      "maxApifyRuns": 2,
+      "concurrency": 1,
+      "maxPaidUsd": 0.4,
+      "geminiCeilingUsd": 0.06,
+      "apifyCeilingUsd": 0.02,
+      "upperBoundUsd": 0.4,
+      "confirmPaid": true
+    },
+    "providerCalls": {
+      "apify": 2,
+      "gemini": 6,
+      "mediaDownloads": 2
+    },
+    "runtimeDb": {
+      "path": "backend/data/db.json",
+      "sha256Before": "e0755caeb092748eaf9a01f6e01dc8b15cab1e5ff63f492838047fef908193ae",
+      "sha256After": "e0755caeb092748eaf9a01f6e01dc8b15cab1e5ff63f492838047fef908193ae",
+      "unchanged": true
+    },
+    "budget": {
+      "limitUsd": 0.4,
+      "accountedApifyUsd": 0.008,
+      "accountedGeminiUsd": 0.258075,
+      "accountedUsd": 0.266075,
+      "stopped": false,
+      "skippedEvaluations": 0
+    }
+  },
+  "evaluations": [
+    {
+      "caseId": "mindstudio-accept",
+      "repeatIndex": 0,
+      "decision": "accept",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 67.2,
+      "brandRelevance": 62,
+      "scores": {
+        "contentValue": 68,
+        "adaptability": 66,
+        "topicClarity": 72,
+        "hookStrength": 65,
+        "payoffStrength": 63,
+        "brandRelevance": 62
+      },
+      "summary": "The creator introduces MindStudio.ai, a no-code platform that allows beginners to build custom AI workflow automations by piecing together pre-built AI agents.",
+      "centralIdea": "Beginners can easily build custom AI workflow automations by combining pre-built, specialized modular AI agents on a no-code platform.",
+      "contentMechanic": "Showcasing a visual library of modular, pre-built components to explain how non-technical users can easily assemble complex systems without coding.",
+      "visualExecution": "Green screen presenter overlay on a scrolling UI walkthrough showing pre-built templates and categorizations.",
+      "adaptationTemplate": "How [target audience] can easily build [complex asset/workflow] using [Brand]'s pre-built [modular components/templates] without [difficult skill/coding].",
+      "transferableMechanic": "Showcasing a visual library of modular, pre-built components to explain how non-technical users can easily assemble complex systems without coding.",
+      "contentMechanicEvidenceIds": [
+        "obs_1",
+        "obs_2"
+      ],
+      "rejectionReasons": [],
+      "observations": [
+        {
+          "id": "obs_1",
+          "sourceType": "audio_observation",
+          "text": "The presenter states this is the easiest way to get started building AI agents if you are an absolute beginner with zero workflow automation experience.",
+          "timestamp": "00:00",
+          "confidence": 0.9
+        },
+        {
+          "id": "obs_2",
+          "sourceType": "video_observation",
+          "text": "The UI displays numerous categorised pre-built agents (e.g., 'TL;DR', 'Extract Quotes') that users can select and run to assemble custom workflows.",
+          "timestamp": "00:10",
+          "confidence": 0.9
+        }
+      ],
+      "evidenceConfidence": 0.85,
+      "latencyMs": 22572.6933,
+      "geminiEstimatedCostUsd": 0.047466,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 5274,
+        "durationMs": 13302.317,
+        "estimatedUsd": 0.047466,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Showcasing a visual library of modular, pre-built components to explain how non-technical users can easily assemble complex systems without coding.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Green screen presenter overlay on a scrolling UI walkthrough showing pre-built templates and categorizations.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 2,
+        "observationCount": 2,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    },
+    {
+      "caseId": "mindstudio-accept",
+      "repeatIndex": 1,
+      "decision": "accept",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 65.5,
+      "brandRelevance": 63,
+      "scores": {
+        "contentValue": 67,
+        "adaptability": 65,
+        "topicClarity": 68,
+        "hookStrength": 62,
+        "payoffStrength": 61,
+        "brandRelevance": 63
+      },
+      "summary": "The creator introduces MindStudio.ai as a beginner-friendly, no-code platform that provides modular, prebuilt AI agents for building custom workflows.",
+      "centralIdea": "Demonstrating how beginners can construct custom AI automations easily using a directory of prebuilt modular agent blocks.",
+      "contentMechanic": "Showcasing a library of prebuilt, modular tools within a platform to demonstrate how easily beginners can assemble custom workflows without coding.",
+      "visualExecution": "Green screen talking-head video overlaid on a screen recording that scrolls through the software's UI dashboard categories.",
+      "adaptationTemplate": "Introducing [Platform] as the easiest way for beginners to build [Output Type] by combining prebuilt [Feature Blocks] into custom workflows.",
+      "transferableMechanic": "Showcasing a library of prebuilt, modular tools within a platform to demonstrate how easily beginners can assemble custom workflows without coding.",
+      "contentMechanicEvidenceIds": [
+        "obs_1",
+        "obs_2"
+      ],
+      "rejectionReasons": [],
+      "observations": [
+        {
+          "id": "obs_1",
+          "sourceType": "video_observation",
+          "text": "The creator is speaking in front of a green screen displaying a scrolling list of pre-built AI agent categories on MindStudio.ai.",
+          "timestamp": "00:01",
+          "confidence": 0.95
+        },
+        {
+          "id": "obs_2",
+          "sourceType": "audio_observation",
+          "text": "The creator explains that users can combine various pre-built agents to establish personalized automations and workflows without needing prior experience.",
+          "timestamp": "00:11",
+          "confidence": 0.95
+        },
+        {
+          "id": "obs_3",
+          "sourceType": "on_screen_text",
+          "text": "'DFY ai agents ⬇️'",
+          "timestamp": "00:00",
+          "confidence": 0.95
+        }
+      ],
+      "evidenceConfidence": 0.95,
+      "latencyMs": 24347.983499999988,
+      "geminiEstimatedCostUsd": 0.054873,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 6097,
+        "durationMs": 15742.45,
+        "estimatedUsd": 0.054873,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Green screen talking-head video overlaid on a screen recording that scrolls through the software's UI dashboard categories.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "'DFY ai agents ⬇️'",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 3,
+        "observationCount": 3,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    },
+    {
+      "caseId": "mindstudio-accept",
+      "repeatIndex": 2,
+      "decision": "reject",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 56.6,
+      "brandRelevance": 50,
+      "scores": {
+        "contentValue": 55,
+        "adaptability": 58,
+        "topicClarity": 62,
+        "hookStrength": 54,
+        "payoffStrength": 52,
+        "brandRelevance": 50
+      },
+      "summary": "A creator showcases MindStudio.ai as a beginner-friendly tool to build AI agent workflows using pre-made templates.",
+      "centralIdea": "MindStudio.ai lets non-technical beginners build automated workflows using pre-built AI agents.",
+      "contentMechanic": "Demonstrating software ease-of-use by walking through a visual directory of pre-made templates or modules that eliminate the need for custom setup.",
+      "visualExecution": "Green screen overlay of the presenter speaking in front of a scrolling platform interface walkthrough.",
+      "adaptationTemplate": "One of the easiest ways to start with [Technical Task] is using [Platform Name]'s pre-built [Asset/Module Type].",
+      "transferableMechanic": "Demonstrating software ease-of-use by walking through a visual directory of pre-made templates or modules that eliminate the need for custom setup.",
+      "contentMechanicEvidenceIds": [
+        "obs_1",
+        "obs_2"
+      ],
+      "rejectionReasons": [
+        "low_content_value",
+        "low_adaptability"
+      ],
+      "observations": [
+        {
+          "id": "obs_1",
+          "sourceType": "audio_observation",
+          "text": "Creator introduces the platform as an easy way to build AI agents with zero automation experience.",
+          "timestamp": "0:01",
+          "confidence": 0.95
+        },
+        {
+          "id": "obs_2",
+          "sourceType": "video_observation",
+          "text": "The screen shows a 'Browse Agents' list categorized by research, analysis, content creation, and marketing.",
+          "timestamp": "0:10",
+          "confidence": 0.95
+        }
+      ],
+      "evidenceConfidence": 0.9,
+      "latencyMs": 16307.043099999995,
+      "geminiEstimatedCostUsd": 0.042633,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 4737,
+        "durationMs": 8056.705,
+        "estimatedUsd": 0.042633,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Demonstrating software ease-of-use by walking through a visual directory of pre-made templates or modules that eliminate the need for custom setup.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Green screen overlay of the presenter speaking in front of a scrolling platform interface walkthrough.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "One of the easiest ways to start with [Technical Task] is using [Platform Name]'s pre-built [Asset/Module Type].",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Creator introduces the platform as an easy way to build AI agents with zero automation experience.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "The screen shows a 'Browse Agents' list categorized by research, analysis, content creation, and marketing.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 2,
+        "observationCount": 2,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    },
+    {
+      "caseId": "axial-teaser-reject",
+      "repeatIndex": 0,
+      "decision": "reject",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 58.2,
+      "brandRelevance": 55,
+      "scores": {
+        "contentValue": 55,
+        "adaptability": 60,
+        "topicClarity": 65,
+        "hookStrength": 60,
+        "payoffStrength": 52,
+        "brandRelevance": 55
+      },
+      "summary": "A brief product showcase demonstrating an interactive 3D dashboard that visualizes AI agents working in a simulated office environment.",
+      "centralIdea": "Visualizing complex AI agent workflows as a simulated virtual office space.",
+      "contentMechanic": "Translating abstract, invisible backend systems into a physicalized visual metaphor to make technical operations intuitive.",
+      "visualExecution": "Screen recording of a 3D interface walkthrough with minimalist text overlay and instrumental background music.",
+      "adaptationTemplate": "The Sims for managing [system/workflow] showing [abstract data processes] as [physical actions in a virtual workspace].",
+      "transferableMechanic": "Translating abstract, invisible backend systems into a physicalized visual metaphor to make technical operations intuitive.",
+      "contentMechanicEvidenceIds": [
+        "obs_1"
+      ],
+      "rejectionReasons": [
+        "low_content_value"
+      ],
+      "observations": [
+        {
+          "id": "obs_1",
+          "sourceType": "video_observation",
+          "text": "The video displays a local browser dashboard featuring a 3D workspace where colored characters represent active AI agents executing task lists.",
+          "timestamp": "0:04",
+          "confidence": 0.9
+        },
+        {
+          "id": "obs_2",
+          "sourceType": "on_screen_text",
+          "text": "the sims for managing AI AGENTS",
+          "timestamp": "0:00",
+          "confidence": 0.95
+        }
+      ],
+      "evidenceConfidence": 0.85,
+      "latencyMs": 16331.6244,
+      "geminiEstimatedCostUsd": 0.033066,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 3674,
+        "durationMs": 8308.024,
+        "estimatedUsd": 0.033066,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Visualizing complex AI agent workflows as a simulated virtual office space.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Translating abstract, invisible backend systems into a physicalized visual metaphor to make technical operations intuitive.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "The Sims for managing [system/workflow] showing [abstract data processes] as [physical actions in a virtual workspace].",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 2,
+        "observationCount": 2,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    },
+    {
+      "caseId": "axial-teaser-reject",
+      "repeatIndex": 1,
+      "decision": "accept",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 63.9,
+      "brandRelevance": 55,
+      "scores": {
+        "contentValue": 66,
+        "adaptability": 62,
+        "topicClarity": 64,
+        "hookStrength": 65,
+        "payoffStrength": 61,
+        "brandRelevance": 55
+      },
+      "summary": "A video demonstrating SAMS, a 3D interface modeled after 'The Sims' used to manage and track active AI agents working on software tasks.",
+      "centralIdea": "Managing active software AI agents visually through an isometric 3D office interface resembling a life simulation game.",
+      "contentMechanic": "Explaining and monitoring complex backend automation tasks by representing them as real-time physical behaviors in a gamified, virtual 3D environment.",
+      "visualExecution": "Screen recording of a localhost browser application showing isometric room layouts, active agent panels, and task progress dashboards.",
+      "adaptationTemplate": "The [simulation style/metaphor] for managing [complex digital workflow/resource].",
+      "transferableMechanic": "Explaining and monitoring complex backend automation tasks by representing them as real-time physical behaviors in a gamified, virtual 3D environment.",
+      "contentMechanicEvidenceIds": [
+        "obs_1",
+        "obs_2"
+      ],
+      "rejectionReasons": [],
+      "observations": [
+        {
+          "id": "obs_1",
+          "sourceType": "on_screen_text",
+          "text": "the sims for managing AI AGENTS",
+          "timestamp": "00:00",
+          "confidence": 0.95
+        },
+        {
+          "id": "obs_2",
+          "sourceType": "video_observation",
+          "text": "The display changes to a local browser UI showing cartoon avatars of different colors moving within a simulated isometric office, paired with GitHub tasks.",
+          "timestamp": "00:03",
+          "confidence": 0.9
+        }
+      ],
+      "evidenceConfidence": 0.9,
+      "latencyMs": 16917.397299999982,
+      "geminiEstimatedCostUsd": 0.038538,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 4282,
+        "durationMs": 11063.791,
+        "estimatedUsd": 0.038538,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Explaining and monitoring complex backend automation tasks by representing them as real-time physical behaviors in a gamified, virtual 3D environment.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Screen recording of a localhost browser application showing isometric room layouts, active agent panels, and task progress dashboards.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "The [simulation style/metaphor] for managing [complex digital workflow/resource].",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "The display changes to a local browser UI showing cartoon avatars of different colors moving within a simulated isometric office, paired with GitHub tasks.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 2,
+        "observationCount": 2,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    },
+    {
+      "caseId": "axial-teaser-reject",
+      "repeatIndex": 2,
+      "decision": "accept",
+      "schemaFailure": false,
+      "inaccessible": false,
+      "qualityScore": 66.7,
+      "brandRelevance": 62,
+      "scores": {
+        "contentValue": 67,
+        "adaptability": 65,
+        "topicClarity": 70,
+        "hookStrength": 68,
+        "payoffStrength": 64,
+        "brandRelevance": 62
+      },
+      "summary": "Visual demonstration of a localhost system that maps AI agent orchestration onto a 3D office layout resembling a video game simulation.",
+      "centralIdea": "Visualizing complex AI multi-agent task execution through a gamified 3D virtual office simulation.",
+      "contentMechanic": "Demystifying complex software architecture workflows by mapping backend logic to an intuitive, highly visual video game metaphor.",
+      "visualExecution": "Desk setup screen recording featuring a localhost browser UI showcasing 3D character animations running in parallel with project management Kanban boards.",
+      "adaptationTemplate": "Visualizing [Complex Technical Flow / Data Pipeline] using a highly relatable [Video Game / Real-world Metaphor] interface.",
+      "transferableMechanic": "Demystifying complex software architecture workflows by mapping backend logic to an intuitive, highly visual video game metaphor.",
+      "contentMechanicEvidenceIds": [
+        "obs_01",
+        "obs_02",
+        "obs_03"
+      ],
+      "rejectionReasons": [],
+      "observations": [
+        {
+          "id": "obs_01",
+          "sourceType": "on_screen_text",
+          "text": "the sims for managing AI AGENTS",
+          "timestamp": "00:00",
+          "confidence": 1
+        },
+        {
+          "id": "obs_02",
+          "sourceType": "video_observation",
+          "text": "A 3D virtual office space rendered in a browser shows active miniature avatar agents working at desks and moving to a white-board.",
+          "timestamp": "00:03",
+          "confidence": 0.95
+        },
+        {
+          "id": "obs_03",
+          "sourceType": "video_observation",
+          "text": "The interface displays Kanban columns mapping agent tasks like SAMS-201 to the specific 3D agents active on screen.",
+          "timestamp": "00:08",
+          "confidence": 0.92
+        }
+      ],
+      "evidenceConfidence": 0.95,
+      "latencyMs": 17178.06700000001,
+      "geminiEstimatedCostUsd": 0.041499,
+      "usage": {
+        "model": "gemini-3.5-flash",
+        "inputTokens": null,
+        "outputTokens": null,
+        "totalTokens": 4611,
+        "durationMs": 11595.09,
+        "estimatedUsd": 0.041499,
+        "estimatedUsdMethod": "conservative_total_tokens_at_higher_rate",
+        "status": "completed"
+      },
+      "audit": {
+        "forbiddenMatches": [],
+        "unsupportedClaimCandidates": [
+          {
+            "text": "Visualizing complex AI multi-agent task execution through a gamified 3D virtual office simulation.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Demystifying complex software architecture workflows by mapping backend logic to an intuitive, highly visual video game metaphor.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "Desk setup screen recording featuring a localhost browser UI showcasing 3D character animations running in parallel with project management Kanban boards.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          },
+          {
+            "text": "A 3D virtual office space rendered in a browser shows active miniature avatar agents working at desks and moving to a white-board.",
+            "reason": "low_overlap_with_owner_labelled_facts"
+          }
+        ],
+        "timestampedObservations": 3,
+        "observationCount": 3,
+        "timestampCoverage": 1,
+        "evidenceAuditRequired": true
+      }
+    }
+  ]
+}
