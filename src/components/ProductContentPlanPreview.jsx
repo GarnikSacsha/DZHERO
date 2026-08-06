@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CalendarPlus,
   Check,
@@ -18,6 +18,7 @@ import {
   buildWeekDays,
   CONTENT_PLAN_FORMATS,
   mergeStudioDraftIntoPlan,
+  normalizeContentPlanEntry,
   parseLocalIsoDate,
   readContentPlanEntries,
   sortContentPlanEntries,
@@ -26,6 +27,10 @@ import {
   writeContentPlanEntries,
 } from '../contentPlanViewState.mjs';
 import { useI18n } from '../i18nProvider.mjs';
+import {
+  getProductContentPlanIdentity,
+  isCurrentProductContentPlanResponse,
+} from '../productContentPlanLifecycle.mjs';
 
 const WEEKDAY_KEYS = Object.freeze([
   'product.plan.weekdays.mon',
@@ -89,6 +94,22 @@ function formatEditorTime(value, language) {
   );
 }
 
+function normalizePlanPayload(payload, fallback = []) {
+  const source = Array.isArray(payload?.posts) ? payload.posts : fallback;
+  return sortContentPlanEntries(source.map(normalizeContentPlanEntry).filter(Boolean));
+}
+
+function getIncomingPostIdentity(post) {
+  if (!post?.title) return '';
+  return [
+    post.sourceAdaptationId || '',
+    Number.isInteger(post.sourceVariantIndex) ? post.sourceVariantIndex : '',
+    post.sourceSignalId || '',
+    post.title || '',
+    post.date || '',
+  ].join('|');
+}
+
 function EmptyCalendarState({ onAdd }) {
   const { t } = useI18n();
   return (
@@ -107,6 +128,7 @@ function PostEditor({
   onClose,
   onSave,
   onDelete,
+  saving = false,
 }) {
   const { t, language } = useI18n();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -252,6 +274,7 @@ function PostEditor({
                   className="delete"
                   type="button"
                   aria-label={t('product.plan.editor.delete')}
+                  disabled={saving}
                   onClick={() => setConfirmDelete(true)}
                 >
                   <Trash2 size={18} />
@@ -260,7 +283,7 @@ function PostEditor({
               <button
                 className="save"
                 type="button"
-                disabled={!draft.title.trim() || !parseLocalIsoDate(draft.date)}
+                disabled={saving || !draft.title.trim() || !parseLocalIsoDate(draft.date)}
                 onClick={() => onSave(draft)}
               >
                 <Check size={18} />{t('product.plan.editor.save')}
@@ -443,7 +466,11 @@ function ScheduleView({
 export default function ProductContentPlanPreview({
   incomingPost = null,
   activeBrandId = 'primary-brand',
+  workspaceId = '',
   onRegisterExport,
+  authenticated = false,
+  productClient = null,
+  brandPersistenceStatus = 'ready',
 }) {
   const { t, language } = useI18n();
   const today = useMemo(() => new Date(), []);
@@ -452,25 +479,127 @@ export default function ProductContentPlanPreview({
   const [view, setView] = useState(() => (
     window.matchMedia?.('(max-width: 620px)').matches ? 'schedule' : 'month'
   ));
-  const [posts, setPosts] = useState(() => readContentPlanEntries(window.localStorage, activeBrandId));
+  const [posts, setPosts] = useState(() => authenticated
+    ? []
+    : readContentPlanEntries(window.localStorage, activeBrandId));
   const [visibleFormats, setVisibleFormats] = useState(() => [...CONTENT_PLAN_FORMATS]);
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [editingPost, setEditingPost] = useState(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [exportNotice, setExportNotice] = useState(false);
+  const [planState, setPlanState] = useState({
+    status: authenticated ? 'loading' : 'ready',
+    errorCode: '',
+  });
+  const [reloadToken, setReloadToken] = useState(0);
+  const planLoadPromiseRef = useRef(Promise.resolve());
+  const incomingPostRef = useRef('');
+  const planIdentity = useMemo(
+    () => getProductContentPlanIdentity({ workspaceId, brandId: activeBrandId }),
+    [activeBrandId, workspaceId],
+  );
+  const currentPlanIdentityRef = useRef(planIdentity);
   const weekDays = useMemo(() => buildWeekDays(anchorDate), [anchorDate]);
 
   useEffect(() => {
+    currentPlanIdentityRef.current = planIdentity;
+  }, [planIdentity]);
+
+  useEffect(() => {
+    if (authenticated) return;
     writeContentPlanEntries(window.localStorage, activeBrandId, posts);
-  }, [activeBrandId, posts]);
+  }, [activeBrandId, authenticated, posts]);
+
+  useEffect(() => {
+    if (!authenticated || !productClient) {
+      setPosts(readContentPlanEntries(window.localStorage, activeBrandId));
+      setPlanState({ status: 'ready', errorCode: '' });
+      planLoadPromiseRef.current = Promise.resolve();
+      return undefined;
+    }
+    if (brandPersistenceStatus !== 'ready') {
+      setPlanState({
+        status: brandPersistenceStatus === 'error' ? 'error' : 'loading',
+        errorCode: brandPersistenceStatus === 'error' ? 'product_brand_brain_save_failed' : '',
+      });
+      planLoadPromiseRef.current = Promise.resolve();
+      return undefined;
+    }
+
+    let cancelled = false;
+    const requestIdentity = planIdentity;
+    setPlanState({ status: 'loading', errorCode: '' });
+    const load = productClient.loadContentPlan()
+      .then((payload) => {
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+          cancelled,
+        })) return payload;
+        setPosts(normalizePlanPayload(payload));
+        setPlanState({ status: 'ready', errorCode: '' });
+        return payload;
+      })
+      .catch((error) => {
+        if (isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+          cancelled,
+        })) setPlanState({ status: 'error', errorCode: error?.code || error?.message || 'content_plan_load_failed' });
+        throw error;
+      });
+    planLoadPromiseRef.current = load;
+    load.catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBrandId, authenticated, brandPersistenceStatus, productClient, reloadToken]);
 
   useEffect(() => {
     if (!incomingPost?.title) return;
     const targetDate = parseLocalIsoDate(incomingPost.date) ? incomingPost.date : todayIso;
-    setPosts((current) => mergeStudioDraftIntoPlan(current, incomingPost, targetDate));
-    setAnchorDate(parseLocalIsoDate(targetDate) || new Date(today));
-    setSelectedDate(targetDate);
-  }, [incomingPost, today, todayIso]);
+    const identity = getIncomingPostIdentity({ ...incomingPost, date: targetDate });
+    if (!identity || incomingPostRef.current === identity) return;
+    if (!authenticated || !productClient) {
+      incomingPostRef.current = identity;
+      setPosts((current) => mergeStudioDraftIntoPlan(current, incomingPost, targetDate));
+      setAnchorDate(parseLocalIsoDate(targetDate) || new Date(today));
+      setSelectedDate(targetDate);
+      return;
+    }
+    if (brandPersistenceStatus !== 'ready') return;
+
+    let cancelled = false;
+    const requestIdentity = planIdentity;
+    setPlanState({ status: 'saving', errorCode: '' });
+    planLoadPromiseRef.current
+      .then(() => productClient.createContentPlanPost({ ...incomingPost, date: targetDate }))
+      .then((payload) => {
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+          cancelled,
+        })) return;
+        incomingPostRef.current = identity;
+        setPosts(normalizePlanPayload(payload, [...posts, payload?.post].filter(Boolean)));
+        setPlanState({ status: 'ready', errorCode: '' });
+        setAnchorDate(parseLocalIsoDate(targetDate) || new Date(today));
+        setSelectedDate(targetDate);
+      })
+      .catch((error) => {
+        if (isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+          cancelled,
+        })) setPlanState({ status: 'error', errorCode: error?.code || error?.message || 'content_plan_post_create_failed' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  // `posts` is intentionally not a dependency: the backend idempotency key is
+  // the adaptation/variant identity, and adding posts here would re-submit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authenticated, brandPersistenceStatus, incomingPost, planIdentity, productClient, today, todayIso]);
 
   const exportPlan = useCallback(() => {
     const csv = buildContentPlanCsv(posts, {
@@ -511,11 +640,62 @@ export default function ProductContentPlanPreview({
     setEditorOpen(true);
   };
 
-  const savePost = (draft) => {
-    setPosts((current) => upsertContentPlanEntry(current, draft, editingPost?.id || ''));
+  const savePost = async (draft) => {
+    if (planState.status === 'saving') return;
     const nextDate = parseLocalIsoDate(draft.date);
+    if (authenticated && productClient) {
+      const requestIdentity = planIdentity;
+      setPlanState({ status: 'saving', errorCode: '' });
+      try {
+        const payload = editingPost?.id
+          ? await productClient.updateContentPlanPost(editingPost.id, draft)
+          : await productClient.createContentPlanPost(draft);
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+        })) return;
+        setPosts(normalizePlanPayload(payload, posts));
+        setPlanState({ status: 'ready', errorCode: '' });
+      } catch (error) {
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+        })) return;
+        setPlanState({ status: 'error', errorCode: error?.code || error?.message || 'content_plan_post_save_failed' });
+        return;
+      }
+    } else {
+      setPosts((current) => upsertContentPlanEntry(current, draft, editingPost?.id || ''));
+    }
     if (nextDate) setAnchorDate(nextDate);
     setSelectedDate(draft.date);
+    setEditorOpen(false);
+  };
+
+  const deletePost = async () => {
+    if (!editingPost?.id || planState.status === 'saving') return;
+    if (authenticated && productClient) {
+      const requestIdentity = planIdentity;
+      setPlanState({ status: 'saving', errorCode: '' });
+      try {
+        const payload = await productClient.deleteContentPlanPost(editingPost.id);
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+        })) return;
+        setPosts(normalizePlanPayload(payload, posts.filter((post) => post.id !== editingPost.id)));
+        setPlanState({ status: 'ready', errorCode: '' });
+      } catch (error) {
+        if (!isCurrentProductContentPlanResponse({
+          requestIdentity,
+          currentIdentity: currentPlanIdentityRef.current,
+        })) return;
+        setPlanState({ status: 'error', errorCode: error?.code || error?.message || 'content_plan_post_delete_failed' });
+        return;
+      }
+    } else {
+      setPosts((current) => current.filter((post) => post.id !== editingPost.id));
+    }
     setEditorOpen(false);
   };
 
@@ -551,6 +731,19 @@ export default function ProductContentPlanPreview({
       {exportNotice && (
         <div className="plan-export-notice" role="status">
           <Download size={16} />{t(posts.length ? 'product.plan.export.ready' : 'product.plan.export.empty')}
+        </div>
+      )}
+
+      {planState.status === 'loading' && (
+        <div className="plan-sync-notice" role="status">{t('product.plan.sync.loading')}</div>
+      )}
+      {planState.status === 'saving' && (
+        <div className="plan-sync-notice" role="status">{t('product.plan.sync.saving')}</div>
+      )}
+      {planState.status === 'error' && (
+        <div className="plan-sync-notice error" role="alert">
+          <span>{t('product.plan.sync.error')}</span>
+          <button type="button" onClick={() => setReloadToken((current) => current + 1)}>{t('common.retry')}</button>
         </div>
       )}
 
@@ -639,10 +832,8 @@ export default function ProductContentPlanPreview({
           selectedDate={selectedDate}
           onClose={() => setEditorOpen(false)}
           onSave={savePost}
-          onDelete={() => {
-            setPosts((current) => current.filter((post) => post.id !== editingPost.id));
-            setEditorOpen(false);
-          }}
+          onDelete={deletePost}
+          saving={planState.status === 'saving'}
         />
       )}
     </section>

@@ -91,6 +91,197 @@ export function createProductDiscoveryClient({
       return payload;
     },
 
+    async loadSignals() {
+      const response = await request('reels');
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'signals_reels_load_failed');
+      return payload;
+    },
+
+    async loadSavedSignals() {
+      const response = await request('saved-signals');
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'saved_signals_load_failed');
+      return payload;
+    },
+
+    async loadSavedUrls() {
+      const response = await request('saved-urls');
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'saved_urls_load_failed');
+      return payload;
+    },
+
+    async saveUrl(url) {
+      const response = await request('saved-urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'saved_url_failed');
+        error.code = payload.error || 'saved_url_failed';
+        error.reason = payload.reason || '';
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async deleteSavedUrl(savedUrlId) {
+      const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}`, {
+        method: 'DELETE',
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'saved_url_delete_failed');
+        error.code = payload.error || 'saved_url_delete_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async loadSavedUrlAdaptation(savedUrlId) {
+      const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}/adaptation`);
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'saved_url_adaptation_load_failed');
+        error.code = payload.error || 'saved_url_adaptation_load_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async analyzeAdaptSavedUrl(savedUrlId) {
+      const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}/analyze-adapt`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'saved_url_adaptation_generate_failed');
+        error.code = payload.error || 'saved_url_adaptation_generate_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async saveSignal(signalId) {
+      const response = await request(`saved-signals/${encodeURIComponent(String(signalId || ''))}`, {
+        method: 'PUT',
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'saved_signal_failed');
+      return payload;
+    },
+
+    async unsaveSignal(signalId) {
+      const response = await request(`saved-signals/${encodeURIComponent(String(signalId || ''))}`, {
+        method: 'DELETE',
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) throw new Error(payload.error || 'unsave_signal_failed');
+      return payload;
+    },
+
+    async loadAdaptation(signalId) {
+      const response = await request(`adaptations/${encodeURIComponent(String(signalId || ''))}`);
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'workspace_adaptation_load_failed');
+        error.code = payload.error || 'workspace_adaptation_load_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async generateAdaptation(signalId) {
+      const response = await request(`adaptations/${encodeURIComponent(String(signalId || ''))}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'workspace_adaptation_generate_failed');
+        error.code = payload.error || 'workspace_adaptation_generate_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async loadContentPlan() {
+      const response = await request('content-plan?surface=product_redesign');
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'content_plan_load_failed');
+        error.code = payload.error || 'content_plan_load_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async createContentPlanPost(post) {
+      const response = await request('content-plan/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post }),
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'content_plan_post_create_failed');
+        error.code = payload.error || 'content_plan_post_create_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async updateContentPlanPost(postId, post) {
+      const response = await request(`content-plan/posts/${encodeURIComponent(String(postId || ''))}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ post }),
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'content_plan_post_update_failed');
+        error.code = payload.error || 'content_plan_post_update_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
+    async deleteContentPlanPost(postId) {
+      const response = await request(`content-plan/posts/${encodeURIComponent(String(postId || ''))}`, {
+        method: 'DELETE',
+      });
+      const payload = await readPayload(response);
+      if (!response.ok) {
+        const error = new Error(payload.error || 'content_plan_post_delete_failed');
+        error.code = payload.error || 'content_plan_post_delete_failed';
+        error.payload = payload;
+        error.status = response.status;
+        throw error;
+      }
+      return payload;
+    },
+
     async excludeSignal({ signalId, reasonCode } = {}) {
       const response = await fetcher(ownerSignalRoute(apiBase, signalId), {
         method: 'POST',

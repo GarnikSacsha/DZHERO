@@ -374,6 +374,7 @@ async function analyzeAgentStudioVideo({
   resolveSource,
   sleepImpl,
   uploadedFile: providedUpload = null,
+  beforeProviderAttempt = null,
   onUsage = null,
   phase = 'initial',
   invocationId = '',
@@ -493,6 +494,13 @@ async function analyzeAgentStudioVideo({
     }
   };
   try {
+    if (typeof beforeProviderAttempt === 'function') {
+      await beforeProviderAttempt({
+        provider: 'gemini',
+        model,
+        operation: 'agent_studio_video_analysis',
+      });
+    }
     const response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
       method: 'POST',
       headers: {

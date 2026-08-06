@@ -76,6 +76,7 @@ function createOpenAIAgentRunner({
   timeoutMs = clampInteger(process.env.AGENT_STUDIO_TIMEOUT_MS, 90000, 5000, 180000),
   sdkLoader = () => import('@openai/agents'),
   requireApiKey = true,
+  beforeProviderAttempt = null,
   onUsage = null,
   phase = 'initial',
   invocationId = '',
@@ -137,6 +138,14 @@ function createOpenAIAgentRunner({
       }
     };
     try {
+      if (typeof beforeProviderAttempt === 'function') {
+        await beforeProviderAttempt({
+          provider: 'openai',
+          model,
+          operation: 'agent_studio_agent',
+          agentId,
+        });
+      }
       result = await runner.run(
         agent,
         buildAgentStudioPrompt(agentId, input),

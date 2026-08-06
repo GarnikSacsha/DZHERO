@@ -1,6 +1,7 @@
 'use strict';
 
 const SHARED_SIGNAL_CURATION_APPROVED = 'approved';
+const { computeWorkspaceBrandMatchScores } = require('./brandSignalRecommender.cjs');
 
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
@@ -73,6 +74,27 @@ function projectSharedSignal(reel = {}, targetWorkspaceId = '') {
   return projected;
 }
 
+function projectWorkspaceBrandMatches(reels = [], productBrandBrain = null) {
+  const matchState = computeWorkspaceBrandMatchScores({
+    productBrandBrain,
+    signals: reels,
+  });
+  return (Array.isArray(reels) ? reels : []).map((reel) => {
+    const qualityGate = reel?.importedMetadata?.qualityGate || {};
+    if (qualityGate.decision !== 'accept' || qualityGate.admittedToBank !== true) return reel;
+    const signalId = String(reel.sharedSourceId || reel.id || '').trim();
+    const score = matchState.scores.get(signalId);
+    if (matchState.status !== 'ready' || !Number.isFinite(score)) {
+      return { ...reel, workspaceBrandMatchStatus: 'unavailable' };
+    }
+    return {
+      ...reel,
+      workspaceBrandMatch: score,
+      workspaceBrandMatchStatus: 'ready',
+    };
+  });
+}
+
 function buildSharedSignalBankReels(db = {}, options = {}) {
   const targetWorkspaceId = String(options.targetWorkspaceId || '').trim();
   const sourceWorkspaceId = resolveSharedSignalBankWorkspace(db, options);
@@ -111,6 +133,7 @@ module.exports = {
   isApprovedSharedSignal,
   isSharedSignalBankPlan,
   normalizeLimit,
+  projectWorkspaceBrandMatches,
   projectSharedSignal,
   resolveSharedSignalBankWorkspace,
 };

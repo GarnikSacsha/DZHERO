@@ -160,15 +160,21 @@ export function deriveStudioAnalysis(signal = {}) {
   };
 }
 
-export function getStudioRemix(signal = {}) {
-  const remixes = signal.remixResult?.remixes;
-  return Array.isArray(remixes) && remixes[0] && typeof remixes[0] === 'object'
-    ? remixes[0]
-    : null;
+export function getStudioRemixes(signal = {}, adaptation = null) {
+  const remixes = adaptation?.result?.remixes
+    || adaptation?.remixes
+    || signal.remixResult?.remixes;
+  return Array.isArray(remixes)
+    ? remixes.filter((remix) => remix && typeof remix === 'object')
+    : [];
 }
 
-export function normalizeStudioScriptScenes(signal = {}) {
-  const remix = getStudioRemix(signal);
+export function getStudioRemix(signal = {}, adaptation = null) {
+  return getStudioRemixes(signal, adaptation)[0] || null;
+}
+
+export function normalizeStudioScriptScenes(signal = {}, adaptation = null, remixOverride = null) {
+  const remix = remixOverride || getStudioRemix(signal, adaptation);
   if (!remix || !Array.isArray(remix.visualFlow)) return [];
   return remix.visualFlow
     .map((scene, index) => {

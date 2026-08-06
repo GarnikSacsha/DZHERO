@@ -8,8 +8,11 @@ function cleanContentPlanText(value) {
   return String(value || '').replace(/\s+/g, ' ').trim();
 }
 
-export function buildStudioContentPlanDraft(reel = {}) {
-  const remix = reel.remixResult?.remixes?.[0];
+export function buildStudioContentPlanDraft(reel = {}, adaptation = null, remixOverride = null) {
+  const remix = remixOverride
+    || adaptation?.result?.remixes?.[0]
+    || adaptation?.remixes?.[0]
+    || reel.remixResult?.remixes?.[0];
   if (!remix) return null;
 
   const hook = cleanContentPlanText(remix.hook);

@@ -102,8 +102,8 @@ export function mapBackendSignalToProductCard(reel = {}, now = Date.now()) {
   const qualityValue = Number.isFinite(Number(qualityGate.qualityScore))
     ? Number(qualityGate.qualityScore)
     : undefined;
-  const matchValue = Number.isFinite(Number(qualityGate.brandRelevance))
-    ? Number(qualityGate.brandRelevance)
+  const matchValue = Number.isFinite(Number(reel.workspaceBrandMatch))
+    ? Number(reel.workspaceBrandMatch)
     : undefined;
   const sourceUrl = clean(reel.sourceUrl || metadata.url || metadata.webVideoUrl);
 

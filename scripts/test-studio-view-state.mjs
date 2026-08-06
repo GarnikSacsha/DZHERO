@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 
+import { buildStudioContentPlanDraft } from '../src/contentPlanUtils.mjs';
+
 import {
   deriveStudioAnalysis,
   deriveStudioTranscript,
   getStudioRemix,
+  getStudioRemixes,
   getStudioSourceLinks,
   normalizeStudioScriptScenes,
 } from '../src/studioViewState.mjs';
@@ -76,6 +79,28 @@ assert.equal(deriveStudioAnalysis({ analysisStatus: 'pending' }).status, 'genera
 assert.equal(deriveStudioAnalysis({}).status, 'unavailable');
 
 assert.equal(getStudioRemix(signal)?.title, 'Brand-ready adaptation');
+assert.deepEqual(getStudioRemixes(signal).map(({ title }) => title), ['Brand-ready adaptation']);
+const persistedAdaptation = {
+  id: 'adaptation-1',
+  result: {
+    remixes: [
+      { title: 'Persisted variant one', visualFlow: [{ timeframe: '0:00', actionDescription: 'One', onScreenText: '', audioVoiceover: '' }] },
+      { title: 'Persisted variant two', hook: 'Two-second hook', cta: 'Write to us', visualFlow: [{ timeframe: '0:01', actionDescription: 'Two', onScreenText: '', audioVoiceover: '' }] },
+    ],
+  },
+};
+assert.deepEqual(getStudioRemixes(signal, persistedAdaptation).map(({ title }) => title), ['Persisted variant one', 'Persisted variant two']);
+assert.equal(getStudioRemix(signal, persistedAdaptation)?.title, 'Persisted variant one');
+assert.deepEqual(normalizeStudioScriptScenes(signal, persistedAdaptation, persistedAdaptation.result.remixes[1]), [{
+  id: 'scene-0',
+  time: '0:01',
+  direction: 'Two',
+  onScreenText: '',
+  voiceover: '',
+}]);
+const persistedDraft = buildStudioContentPlanDraft(signal, persistedAdaptation, persistedAdaptation.result.remixes[1]);
+assert.equal(persistedDraft.title, 'Persisted variant two');
+assert.match(persistedDraft.body, /CTA:/);
 assert.deepEqual(normalizeStudioScriptScenes(signal), [{
   id: 'scene-0',
   time: '0:00-0:03',

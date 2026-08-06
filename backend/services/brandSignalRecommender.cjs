@@ -39,13 +39,12 @@ function normalizeLimit(limit) {
   return Math.max(1, Math.min(DEFAULT_SHORTLIST_LIMIT, limit));
 }
 
-function rankSignalsForBrand({
+function scoreSignalForBrand({
   answers = {},
   derivedBrief = {},
-  signals = [],
-  limit = DEFAULT_SHORTLIST_LIMIT,
+  signal = {},
 } = {}) {
-  const shortlistLimit = normalizeLimit(limit);
+  const candidate = normalizeSignalCandidate(signal);
   const queryTokens = tokenize([
     answers.profileDescription,
     answers.audience,
@@ -53,27 +52,37 @@ function rankSignalsForBrand({
     answers.market,
     derivedBrief.summary,
   ].filter(Boolean).join(' '));
+  const searchable = [
+    candidate.title,
+    candidate.caption,
+    candidate.market,
+    candidate.platform,
+    candidate.tags.join(' '),
+  ].join(' ');
+  const semanticScore = scoreTokenOverlap(queryTokens, searchable) * 12;
+  const marketScore = answers.market
+    && tokenize(answers.market).some((token) => tokenize(candidate.market).includes(token))
+    ? 18
+    : 0;
+  const qualityScore = Math.max(0, Math.min(100, candidate.qualityScore)) * 0.18;
+  return semanticScore + marketScore + qualityScore;
+}
+
+function rankSignalsForBrand({
+  answers = {},
+  derivedBrief = {},
+  signals = [],
+  limit = DEFAULT_SHORTLIST_LIMIT,
+} = {}) {
+  const shortlistLimit = normalizeLimit(limit);
 
   return signals
     .map((signal) => {
       const candidate = normalizeSignalCandidate(signal);
-      const searchable = [
-        candidate.title,
-        candidate.caption,
-        candidate.market,
-        candidate.platform,
-        candidate.tags.join(' '),
-      ].join(' ');
-      const semanticScore = scoreTokenOverlap(queryTokens, searchable) * 12;
-      const marketScore = answers.market
-        && tokenize(answers.market).some((token) => tokenize(candidate.market).includes(token))
-        ? 18
-        : 0;
-      const qualityScore = Math.max(0, Math.min(100, candidate.qualityScore)) * 0.18;
       return {
         signal,
         candidate,
-        deterministicScore: semanticScore + marketScore + qualityScore,
+        deterministicScore: scoreSignalForBrand({ answers, derivedBrief, signal }),
       };
     })
     .filter((entry) => entry.candidate.id)
@@ -82,6 +91,64 @@ function rankSignalsForBrand({
       || left.candidate.id.localeCompare(right.candidate.id)
     ))
     .slice(0, shortlistLimit);
+}
+
+function buildWorkspaceBrandMatchSignal(signal = {}) {
+  const qualityGate = signal.importedMetadata?.qualityGate || {};
+  return {
+    ...signal,
+    // Shared-bank admission quality is intentionally not part of this score.
+    score: 0,
+    title: [signal.title, qualityGate.centralIdea].filter(Boolean).join(' '),
+    caption: [
+      signal.caption,
+      qualityGate.summary,
+      qualityGate.contentMechanic,
+      qualityGate.transferableMechanic,
+    ].filter(Boolean).join(' '),
+    status: [
+      ...(Array.isArray(signal.status) ? signal.status : []),
+      qualityGate.centralIdea,
+      qualityGate.contentMechanic,
+      qualityGate.transferableMechanic,
+    ].filter(Boolean),
+  };
+}
+
+function computeWorkspaceBrandMatchScores({
+  productBrandBrain = null,
+  signals = [],
+} = {}) {
+  const brain = productBrandBrain?.brain || productBrandBrain || {};
+  const answers = brain && typeof brain === 'object' ? brain : {};
+  if (!compactText(answers.profileDescription) || !compactText(answers.audience)) {
+    return { status: 'unavailable', scores: new Map() };
+  }
+
+  const derivedBrief = {
+    summary: [
+      answers.contentFocus,
+      answers.offer,
+      answers.cta,
+      answers.proof,
+      ...(Array.isArray(answers.contentPillars) ? answers.contentPillars : []),
+      ...(Array.isArray(answers.goals) ? answers.goals : []),
+    ].filter(Boolean).join(' '),
+  };
+  const scores = new Map();
+  for (const signal of Array.isArray(signals) ? signals : []) {
+    const qualityGate = signal?.importedMetadata?.qualityGate || {};
+    if (qualityGate.decision !== 'accept' || qualityGate.admittedToBank !== true) continue;
+    const signalId = compactText(signal.sharedSourceId || signal.id);
+    if (!signalId) continue;
+    const rawScore = scoreSignalForBrand({
+      answers,
+      derivedBrief,
+      signal: buildWorkspaceBrandMatchSignal(signal),
+    });
+    scores.set(signalId, Math.round(Math.max(0, Math.min(100, rawScore))));
+  }
+  return { status: 'ready', scores };
 }
 
 function parseGeminiChoice(value) {
@@ -144,7 +211,9 @@ async function selectBestSignalForBrand({
 }
 
 module.exports = {
+  computeWorkspaceBrandMatchScores,
   normalizeSignalCandidate,
   rankSignalsForBrand,
+  scoreSignalForBrand,
   selectBestSignalForBrand,
 };

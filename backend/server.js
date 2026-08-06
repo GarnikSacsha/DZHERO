@@ -73,6 +73,7 @@ const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
   buildSharedSignalBankReels,
   isSharedSignalBankPlan,
+  projectWorkspaceBrandMatches,
 } = require('./services/sharedSignalBank.cjs');
 const { fetchTikTokThumbnail } = require('./services/tiktokThumbnail.cjs');
 const { normalizeContentPlanBody } = require('./services/contentPlanPostBody.cjs');
@@ -129,6 +130,8 @@ const {
   buildFreeTrialState,
 } = require('./services/freeTrialAccess.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
+const { parseProductSavedUrl } = require('./services/productSavedUrlLibrary.cjs');
+
 const OWNER_SIGNAL_EXCLUSION_REASONS = new Set([
   'no_useful_mechanic_or_outcome',
   'manipulative_or_spam',
@@ -258,6 +261,9 @@ const ENABLE_AGENT_STUDIO = process.env.ENABLE_AGENT_STUDIO === 'true';
 const OPENAI_AGENT_MODEL = process.env.OPENAI_AGENT_MODEL || 'gpt-5.6';
 const AGENT_STUDIO_TEST_PROVIDER = process.env.NODE_ENV === 'test'
   ? String(process.env.AGENT_STUDIO_TEST_PROVIDER || '').trim()
+  : '';
+const REMIX_TEST_PROVIDER = process.env.NODE_ENV === 'test'
+  ? String(process.env.REMIX_TEST_PROVIDER || '').trim()
   : '';
 
 const crmSyncClient = createCrmSyncClient({
@@ -586,6 +592,7 @@ app.use('/api/workspaces/:workspaceId/signals/apify/import', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/remix/generate', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/adaptations/:signalId/generate', expensiveLimiter);
 
 let pgPool;
 
@@ -627,6 +634,10 @@ function normalizeDbShape(db = {}) {
     'demoSessions',
     'agentStudioRuns',
     'agentStudioUploads',
+    'workspaceSavedSignals',
+    'workspaceSavedUrls',
+    'workspaceAdaptations',
+    'workspaceUrlAdaptations',
   ];
   for (const key of collectionKeys) {
     if (!Array.isArray(db[key])) db[key] = [];
@@ -638,9 +649,12 @@ function normalizeDbShape(db = {}) {
 let automaticDiscoveryTickInFlight = false;
 const automaticDiscoveryWorkspacesInFlight = new Set();
 const brandBrainFinalizeFlights = new Map();
+const workspaceAdaptationFlights = new Map();
+const workspaceUrlAdaptationFlights = new Map();
 const automaticDiscoveryFileMutex = createKeyedMutex();
 let automaticDiscoveryTestProvider = null;
 let agentStudioTestProvider = null;
+let remixTestProvider = null;
 
 if (AUTOMATIC_DISCOVERY_TEST_PROVIDER) {
   const loadedProvider = require(path.resolve(AUTOMATIC_DISCOVERY_TEST_PROVIDER));
@@ -956,6 +970,18 @@ function cloneDiscoveryRun(run = {}) {
       }))
       : [],
   };
+}
+
+if (REMIX_TEST_PROVIDER) {
+  const loadedProvider = require(path.resolve(REMIX_TEST_PROVIDER));
+  remixTestProvider = typeof loadedProvider === 'function'
+    ? loadedProvider
+    : typeof loadedProvider?.default === 'function'
+      ? loadedProvider.default
+      : null;
+  if (!remixTestProvider) {
+    throw new Error('REMIX_TEST_PROVIDER must export a function when NODE_ENV=test');
+  }
 }
 
 function cloneDiscoveryReel(reel = {}) {
@@ -1697,6 +1723,15 @@ function startAutomaticDiscoveryWorker() {
   timer.unref();
 }
 
+function normalizeProductContentPlanVariantIndex(value) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const normalized = typeof value === 'string' ? value.trim() : value;
+  if (typeof normalized === 'string' && !/^\d+$/.test(normalized)) return null;
+  const numeric = Number(normalized);
+  return Number.isSafeInteger(numeric) && numeric >= 0 ? numeric : null;
+}
+
 function normalizeContentPlanPosts(posts) {
   if (!Array.isArray(posts)) return [];
   return posts.slice(0, 2000).map((post, index) => ({
@@ -1707,7 +1742,8 @@ function normalizeContentPlanPosts(posts) {
     body: normalizeContentPlanBody(post?.body),
     format: normalizeContentFormat(post?.format),
     time: /^\d{2}:\d{2}$/.test(String(post?.time || '')) ? post.time : '10:00',
-    done: Boolean(post?.done),
+    status: post?.status === 'completed' || post?.done === true ? 'completed' : 'scheduled',
+    done: post?.status === 'completed' || post?.done === true,
     source: String(post?.source || '').trim().slice(0, 80),
     sourceKey: String(post?.sourceKey || '').trim().slice(0, 180),
     sourceTitle: String(post?.sourceTitle || '').trim().slice(0, 180),
@@ -1715,6 +1751,32 @@ function normalizeContentPlanPosts(posts) {
     sourceReelId: String(post?.sourceReelId || '').trim().slice(0, 120),
     sourceHandle: String(post?.sourceHandle || '').trim().slice(0, 80),
     dayLabel: String(post?.dayLabel || '').trim().slice(0, 24),
+    origin: String(post?.origin || '').trim().slice(0, 80),
+    sourceAdaptationId: String(post?.sourceAdaptationId || '').trim().slice(0, 120),
+    sourceGenerationId: String(post?.sourceGenerationId || '').trim().slice(0, 160),
+    sourceType: String(post?.sourceType || '').trim().slice(0, 60),
+    savedUrlId: String(post?.savedUrlId || '').trim().slice(0, 120),
+    sourceSignalId: String(post?.sourceSignalId || post?.sourceReelId || '').trim().slice(0, 120),
+    sourceVariantIndex: normalizeProductContentPlanVariantIndex(post?.sourceVariantIndex),
+    hook: String(post?.hook || '').trim().slice(0, 1600),
+    cta: String(post?.cta || '').trim().slice(0, 800),
+    scenes: Array.isArray(post?.scenes)
+      ? post.scenes.slice(0, 20).map((scene) => ({
+        timeframe: String(scene?.timeframe || scene?.time || '').trim().slice(0, 40),
+        actionDescription: String(scene?.actionDescription || scene?.direction || '').trim().slice(0, 1000),
+        onScreenText: String(scene?.onScreenText || '').trim().slice(0, 500),
+        audioVoiceover: String(scene?.audioVoiceover || scene?.voiceover || '').trim().slice(0, 1000),
+      }))
+      : [],
+    brandId: String(post?.brandId || '').trim().slice(0, 100),
+    brandKey: String(post?.brandKey || '').trim(),
+    brandVersion: Number.isFinite(Number(post?.brandVersion)) ? Number(post.brandVersion) : null,
+    brandUpdatedAt: String(post?.brandUpdatedAt || '').trim().slice(0, 40),
+    brandSnapshot: post?.brandSnapshot && typeof post.brandSnapshot === 'object'
+      ? cloneJsonValue(post.brandSnapshot)
+      : null,
+    createdAt: String(post?.createdAt || '').trim().slice(0, 40),
+    updatedAt: String(post?.updatedAt || '').trim().slice(0, 40),
   }));
 }
 
@@ -2115,6 +2177,7 @@ function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
 }
 
 function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
+  const workspace = db.workspaces.find((item) => item.id === workspaceId) || {};
   const entitlements = buildEntitlements(db, workspaceId, authUser);
   const ownReels = db.reels.filter((item) => (
     item.workspaceId === workspaceId
@@ -2128,7 +2191,8 @@ function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
         limit: SHARED_SIGNAL_BANK_LIMIT,
       })
     : { reels: [] };
-  return dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBank.reels]);
+  const accessibleReels = dedupeWorkspaceReelsForResponse([...ownReels, ...sharedBank.reels]);
+  return projectWorkspaceBrandMatches(accessibleReels, workspace.productBrandBrain);
 }
 
 function resolveCanonicalAccessibleSignal(db, workspaceId, authUser, reelId) {
@@ -2155,6 +2219,508 @@ function getActiveGlobalSignalExclusion(reel = {}) {
   return exclusion?.active === true ? exclusion : null;
 }
 
+function normalizeWorkspaceSavedSignalId(value) {
+  const normalized = String(value || '').trim();
+  return /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(normalized) ? normalized : '';
+}
+
+function findSaveableSharedSignal(db, workspaceId, authUser, requestedSignalId) {
+  const accessible = getAccessibleWorkspaceSignals(db, workspaceId, authUser)
+    .find((item) => item.sharedBank && (
+      item.id === requestedSignalId
+      || item.sharedSourceId === requestedSignalId
+    ));
+  if (!accessible || !isCurrentlyVerifiedSharedSignal(accessible)) return null;
+  const canonicalId = accessible.sharedSourceId || accessible.id;
+  const canonical = db.reels.find((item) => item.id === canonicalId);
+  if (!canonical || !isCurrentlyVerifiedSharedSignal(canonical) || getActiveGlobalSignalExclusion(canonical)) return null;
+  return { projected: accessible, canonical };
+}
+
+function projectWorkspaceSavedSignal(record, accessibleSignals = []) {
+  const projected = accessibleSignals.find((item) => (
+    item.sharedBank
+    && (
+      item.id === record.sharedSignalId
+      || item.sharedSourceId === record.signalId
+    )
+  ));
+  if (!projected || !isCurrentlyVerifiedSharedSignal(projected)) return null;
+  return {
+    id: record.id,
+    workspaceId: record.workspaceId,
+    signalId: record.signalId,
+    sharedSignalId: record.sharedSignalId,
+    cardId: projected.id,
+    savedAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function cloneJsonValue(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function getWorkspaceAdaptationBrandKey(productBrand = {}) {
+  return JSON.stringify({
+    id: productBrand.id || '',
+    version: productBrand.version || '',
+    brain: cloneJsonValue(productBrand.brain || {}),
+  });
+}
+
+function buildSharedSignalGlobalInsight(reel = {}) {
+  const metadata = reel.importedMetadata || {};
+  const qualityGate = metadata.qualityGate || {};
+  const videoIntelligence = cloneJsonValue(metadata.videoIntelligence || {});
+  const transcriptText = reel.transcript
+    || metadata.transcriptText
+    || videoIntelligence.transcript?.text
+    || '';
+  const video = {
+    ...(videoIntelligence.video || {}),
+    contentMechanic: videoIntelligence.video?.contentMechanic
+      || qualityGate.contentMechanic
+      || qualityGate.transferableMechanic
+      || '',
+    videoSummary: videoIntelligence.video?.videoSummary || qualityGate.summary || '',
+  };
+  const groundedParts = [
+    reel.caption,
+    transcriptText,
+    qualityGate.centralIdea,
+    qualityGate.summary,
+    qualityGate.contentMechanic,
+    qualityGate.transferableMechanic,
+    reel.analysis?.recommendation,
+    ...(Array.isArray(reel.analysis?.signals) ? reel.analysis.signals : []),
+  ].filter(Boolean);
+  return {
+    source: cloneJsonValue(metadata.source || { label: reel.sourceType || 'Shared Bank signal', tone: 'shared_bank' }),
+    url: reel.sourceUrl || metadata.url || '',
+    title: reel.title || metadata.title || qualityGate.centralIdea || 'Verified Shared Bank signal',
+    description: reel.caption || metadata.description || qualityGate.summary || '',
+    handle: reel.handle || reel.sourceHandle || metadata.handle || '',
+    hook: reel.hook || qualityGate.hook || qualityGate.centralIdea || '',
+    script: groundedParts.join(' '),
+    marketingMechanics: [
+      qualityGate.contentMechanic,
+      qualityGate.transferableMechanic,
+      qualityGate.centralIdea,
+    ].filter(Boolean).join(' '),
+    transcriptText,
+    videoIntelligence: {
+      ...videoIntelligence,
+      video,
+      transcript: videoIntelligence.transcript || (transcriptText ? { text: transcriptText } : null),
+      sourceQualityGate: cloneJsonValue(qualityGate),
+      sourceAnalysis: cloneJsonValue(reel.analysis || metadata.analysis || null),
+    },
+    sourceEvidence: {
+      qualityGate: cloneJsonValue(qualityGate),
+      observations: cloneJsonValue(qualityGate.observations || []),
+      evidenceChains: cloneJsonValue(qualityGate.evidenceChains || []),
+      analysis: cloneJsonValue(reel.analysis || metadata.analysis || null),
+    },
+  };
+}
+
+function findWorkspaceAdaptation(db, workspaceId, signalId, productBrand) {
+  const brandKey = getWorkspaceAdaptationBrandKey(productBrand);
+  return db.workspaceAdaptations
+    .filter((record) => (
+      record.workspaceId === workspaceId
+      && record.signalId === signalId
+      && record.brandKey === brandKey
+    ))
+    .sort((left, right) => (
+      (Date.parse(right.updatedAt || right.createdAt || '') || 0)
+      - (Date.parse(left.updatedAt || left.createdAt || '') || 0)
+    ))[0] || null;
+}
+
+function findWorkspaceSavedUrl(db, workspaceId, savedUrlId) {
+  return (db.workspaceSavedUrls || []).find((record) => (
+    record.workspaceId === workspaceId && record.id === savedUrlId
+  )) || null;
+}
+
+function findWorkspaceUrlAdaptation(db, workspaceId, savedUrlId, productBrand) {
+  const brandKey = getWorkspaceAdaptationBrandKey(productBrand);
+  return (db.workspaceUrlAdaptations || [])
+    .filter((record) => (
+      record.workspaceId === workspaceId
+      && record.savedUrlId === savedUrlId
+      && record.brandKey === brandKey
+      && record.status === 'completed'
+    ))
+    .sort((left, right) => (
+      (Date.parse(right.updatedAt || right.createdAt || '') || 0)
+      - (Date.parse(left.updatedAt || left.createdAt || '') || 0)
+    ))[0] || null;
+}
+
+function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
+  const input = resolved && typeof resolved === 'object' && !Array.isArray(resolved) ? resolved : {};
+  const rawMetadata = input.metadata && typeof input.metadata === 'object' && !Array.isArray(input.metadata)
+    ? input.metadata
+    : {};
+  const intelligence = input.videoIntelligence && typeof input.videoIntelligence === 'object'
+    ? input.videoIntelligence
+    : rawMetadata.videoIntelligence && typeof rawMetadata.videoIntelligence === 'object'
+      ? rawMetadata.videoIntelligence
+      : null;
+  const transcript = input.transcript && typeof input.transcript === 'object'
+    ? input.transcript
+    : intelligence?.transcript && typeof intelligence.transcript === 'object'
+      ? intelligence.transcript
+      : { status: 'unavailable', text: '', segments: [] };
+  const video = intelligence?.video && typeof intelligence.video === 'object' ? intelligence.video : {};
+  const visual = intelligence?.visual && typeof intelligence.visual === 'object' ? intelligence.visual : null;
+  const title = String(input.title || rawMetadata.title || '').trim();
+  const description = String(input.description || rawMetadata.description || '').trim();
+  const handle = String(input.handle || rawMetadata.handle || '').trim();
+  const transcriptText = String(transcript.text || '').trim();
+  const analysis = input.analysis && typeof input.analysis === 'object' && !Array.isArray(input.analysis)
+    ? input.analysis
+    : {
+      status: video.videoSummary || video.contentMechanic || visual?.visualSummary ? 'available' : 'unavailable',
+      items: [
+        video.videoSummary && { id: 'video-summary', label: 'summary', text: video.videoSummary },
+        video.contentMechanic && { id: 'content-mechanic', label: 'mechanic', text: video.contentMechanic },
+        visual?.visualSummary && { id: 'visual-summary', label: 'scene', text: visual.visualSummary },
+      ].filter(Boolean),
+    };
+  const metadata = Object.keys(rawMetadata).length
+    ? rawMetadata
+    : null;
+  const normalizedMetadata = {
+    ...rawMetadata,
+    source: rawMetadata.source || { label: savedUrl.platform || 'Personal URL', tone: 'personal_url' },
+    url: rawMetadata.url || savedUrl.canonicalUrl,
+    title,
+    description,
+    handle,
+    sourceStatus: rawMetadata.sourceStatus || input.sourceStatus || 'url_only',
+    videoIntelligence: intelligence,
+  };
+  const globalInsight = input.globalInsight && typeof input.globalInsight === 'object'
+    ? input.globalInsight
+    : buildGlobalInsightFromReelMetadata(normalizedMetadata);
+  const hasVideo = Boolean(
+    video.videoSummary
+    || video.spokenText
+    || video.onScreenText
+    || video.contentMechanic
+    || video.sceneBeats?.length
+    || video.shotList?.length,
+  );
+  const hasVisual = Boolean(visual?.visualSummary || visual?.hookMechanic || visual?.shotSignals?.length);
+  const missing = [...new Set([
+    ...(Array.isArray(input.missing) ? input.missing : []),
+    !metadata && 'metadata',
+    !title && !description && 'title_description',
+    !transcriptText && 'transcript',
+    !hasVideo && 'video_intelligence',
+    !hasVisual && 'visual_observations',
+    !analysis.items?.length && 'analysis',
+  ].filter(Boolean))];
+  return {
+    sourceType: 'personal_url',
+    savedUrlId: savedUrl.id,
+    originalUrl: savedUrl.originalUrl,
+    canonicalUrl: savedUrl.canonicalUrl,
+    platform: savedUrl.platform,
+    title,
+    description,
+    handle,
+    metadata,
+    transcript: cloneJsonValue(transcript),
+    videoIntelligence: cloneJsonValue(intelligence),
+    visual: cloneJsonValue(visual),
+    analysis: cloneJsonValue(analysis),
+    sourceStatus: input.sourceStatus || rawMetadata.sourceStatus || 'url_only',
+    readiness: cloneJsonValue(input.readiness || intelligence?.readiness || null),
+    globalInsight: cloneJsonValue(globalInsight),
+    missing,
+  };
+}
+
+function personalUrlSourceHasGrounding(sourceContext = {}) {
+  const transcript = sourceContext.transcript || {};
+  const video = sourceContext.videoIntelligence?.video || {};
+  const visual = sourceContext.videoIntelligence?.visual || sourceContext.visual || {};
+  return [
+    sourceContext.title,
+    sourceContext.description,
+    transcript.text,
+    video.videoSummary,
+    video.spokenText,
+    video.onScreenText,
+    video.contentMechanic,
+    video.sceneBeats?.length && 'scene_beats',
+    video.shotList?.length && 'shot_list',
+    visual.visualSummary,
+    visual.hookMechanic,
+    visual.shotSignals?.length && 'shot_signals',
+  ].some((value) => Boolean(String(value || '').trim()));
+}
+
+async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
+  if (process.env.NODE_ENV === 'test') {
+    if (typeof remixTestProvider?.resolveSource === 'function') {
+      const resolved = await remixTestProvider.resolveSource(cloneJsonValue(savedUrl), options);
+      return buildPersonalUrlSourceContext(savedUrl, resolved);
+    }
+    return buildPersonalUrlSourceContext(savedUrl);
+  }
+  const metadata = await fetchPublicSourceMetadata(savedUrl.canonicalUrl, {
+    beforeProviderAttempt: options.beforeProviderAttempt,
+  });
+  return buildPersonalUrlSourceContext(savedUrl, {
+    metadata,
+    globalInsight: buildGlobalInsightFromReelMetadata(metadata),
+  });
+}
+
+function buildPersonalUrlInsight(savedUrl, sourceContext) {
+  const groundedInsight = sourceContext.globalInsight && typeof sourceContext.globalInsight === 'object'
+    ? sourceContext.globalInsight
+    : {};
+  return {
+    ...cloneJsonValue(groundedInsight),
+    sourceType: 'personal_url',
+    savedUrlId: savedUrl.id,
+    source: { label: sourceContext.platform || 'Personal URL', tone: 'personal_url' },
+    url: savedUrl.canonicalUrl,
+    title: sourceContext.title || groundedInsight.title || '',
+    description: sourceContext.description || groundedInsight.description || '',
+    handle: sourceContext.handle || groundedInsight.handle || '',
+    hook: groundedInsight.hook || '',
+    script: groundedInsight.script || '',
+    marketingMechanics: groundedInsight.marketingMechanics || '',
+    transcriptText: sourceContext.transcript?.text || groundedInsight.transcriptText || '',
+    videoIntelligence: sourceContext.videoIntelligence || groundedInsight.videoIntelligence || null,
+    sourceContext: cloneJsonValue(sourceContext),
+    sourceEvidence: {
+      metadata: cloneJsonValue(sourceContext.metadata),
+      transcript: cloneJsonValue(sourceContext.transcript),
+      analysis: cloneJsonValue(sourceContext.analysis),
+      visual: cloneJsonValue(sourceContext.visual),
+    },
+  };
+}
+
+function createProductContentPlanError(code, status = 409, payload = {}) {
+  const error = new Error(code);
+  error.status = status;
+  error.payload = { error: code, ...payload };
+  return error;
+}
+
+function getProductContentPlanBrandContext(productBrand) {
+  const brand = normalizeProductBrand(productBrand);
+  if (!brand || !isProductBrandComplete(brand)) {
+    throw createProductContentPlanError('product_brand_brain_required', 409, {
+      missingFields: brand ? getMissingProductBrainFields(brand) : ['profileDescription', 'audience'],
+    });
+  }
+  return {
+    brand,
+    brandId: brand.id,
+    brandKey: getWorkspaceAdaptationBrandKey(brand),
+    brandVersion: brand.version,
+    brandUpdatedAt: brand.updatedAt || brand.createdAt || '',
+    brandSnapshot: cloneJsonValue(brand),
+  };
+}
+
+function isProductContentPlanPost(post = {}) {
+  return Boolean(post.origin === 'product_redesign' || post.origin === 'studio_adaptation');
+}
+
+function matchesProductContentPlanBrand(post = {}, productBrand) {
+  const storedKey = String(post.brandKey || '').trim();
+  const currentKey = productBrand ? getWorkspaceAdaptationBrandKey(productBrand) : '';
+  const snapshot = post.brandSnapshot && typeof post.brandSnapshot === 'object' && !Array.isArray(post.brandSnapshot)
+    ? normalizeProductBrand(post.brandSnapshot)
+    : null;
+  if (snapshot && isProductBrandComplete(snapshot)) {
+    return getWorkspaceAdaptationBrandKey(snapshot) === currentKey;
+  }
+  return storedKey === currentKey;
+}
+
+function projectProductContentPlanPosts(workspace = {}, productBrand = null) {
+  const normalizedPosts = normalizeContentPlanPosts(workspace.contentPlanPosts || []);
+  return normalizedPosts.filter((post) => (
+    !isProductContentPlanPost(post)
+    || !post.brandKey
+    || matchesProductContentPlanBrand(post, productBrand)
+  ));
+}
+
+function validateProductContentPlanDraft(post = {}) {
+  const title = String(post.title || '').trim();
+  const date = String(post.date || '').trim();
+  if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw createProductContentPlanError('content_plan_post_invalid', 400, {
+      missingFields: [
+        ...(!title ? ['title'] : []),
+        ...(!/^\d{4}-\d{2}-\d{2}$/.test(date) ? ['date'] : []),
+      ],
+    });
+  }
+}
+
+function buildAdaptationPlanBody(remix = {}) {
+  const hook = String(remix.hook || '').trim();
+  const scenes = Array.isArray(remix.visualFlow) ? remix.visualFlow : [];
+  const sceneBlocks = scenes.map((scene) => [
+    String(scene?.timeframe || '').trim(),
+    scene?.actionDescription && `Frame: ${String(scene.actionDescription).trim()}`,
+    scene?.onScreenText && `On screen: ${String(scene.onScreenText).trim()}`,
+    scene?.audioVoiceover && `Voiceover: ${String(scene.audioVoiceover).trim()}`,
+  ].filter(Boolean).join('\n')).filter(Boolean);
+  const cta = String(remix.cta || '').trim();
+  return [hook && `Hook: ${hook}`, ...sceneBlocks, cta && `CTA: ${cta}`]
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+function resolveProductAdaptationSource(db, workspaceId, authUser, adaptationId, productBrand, variantIndex) {
+  const adaptation = (db.workspaceAdaptations || []).find((record) => (
+    record.id === adaptationId && record.workspaceId === workspaceId
+  ));
+  if (adaptation) {
+    if (adaptation.brandKey !== getWorkspaceAdaptationBrandKey(productBrand)) {
+      throw createProductContentPlanError('content_plan_brand_changed');
+    }
+    const remixes = adaptation.result?.remixes;
+    if (!Array.isArray(remixes) || !Number.isInteger(variantIndex) || variantIndex < 0 || variantIndex >= remixes.length) {
+      throw createProductContentPlanError('content_plan_variant_invalid', 400, { variantIndex });
+    }
+    const resolvedSignal = findSaveableSharedSignal(
+      db,
+      workspaceId,
+      authUser,
+      adaptation.sharedSignalId || adaptation.signalId,
+    );
+    if (!resolvedSignal) throw createProductContentPlanError('content_plan_source_unavailable', 409);
+    return {
+      adaptation,
+      remix: remixes[variantIndex],
+      projected: resolvedSignal.projected,
+      canonical: resolvedSignal.canonical,
+      sourceType: 'shared_signal',
+    };
+  }
+
+  const personalAdaptation = (db.workspaceUrlAdaptations || []).find((record) => (
+    record.id === adaptationId
+      && record.workspaceId === workspaceId
+      && record.sourceType === 'personal_url'
+      && record.status === 'completed'
+  ));
+  if (!personalAdaptation || personalAdaptation.brandKey !== getWorkspaceAdaptationBrandKey(productBrand)) {
+    throw createProductContentPlanError('content_plan_brand_changed');
+  }
+  const savedUrl = findWorkspaceSavedUrl(db, workspaceId, personalAdaptation.savedUrlId);
+  if (!savedUrl) throw createProductContentPlanError('content_plan_source_unavailable', 409);
+  const remixes = personalAdaptation.result?.remixes;
+  if (!Array.isArray(remixes) || !Number.isInteger(variantIndex) || variantIndex < 0 || variantIndex >= remixes.length) {
+    throw createProductContentPlanError('content_plan_variant_invalid', 400, { variantIndex });
+  }
+  const sourceContext = personalAdaptation.sourceContext || {};
+  return {
+    adaptation: personalAdaptation,
+    remix: remixes[variantIndex],
+    projected: null,
+    canonical: {
+      title: sourceContext.title || savedUrl.canonicalUrl,
+      sourceUrl: savedUrl.canonicalUrl,
+    },
+    sourceType: 'personal_url',
+    savedUrl,
+  };
+}
+
+function buildProductPlanPostFromAdaptation({ source, requestPost = {}, brandContext, variantIndex }) {
+  const remix = source.remix || {};
+  const title = String(remix.title || remix.hook || '').trim();
+  const date = String(requestPost.date || '').trim();
+  const candidate = {
+    id: createId('product_post'),
+    day: Number(date.slice(-2)) || 1,
+    date,
+    title,
+    body: buildAdaptationPlanBody(remix),
+    format: requestPost.format || 'Reels',
+    time: requestPost.time || '10:00',
+    status: requestPost.status || 'scheduled',
+    source: 'Studio',
+    sourceType: source.sourceType || 'shared_signal',
+    savedUrlId: source.savedUrl?.id || source.adaptation.savedUrlId || '',
+    sourceTitle: source.canonical.title || source.projected?.title || '',
+    sourceUrl: source.canonical.sourceUrl || source.projected?.sourceUrl || source.savedUrl?.canonicalUrl || '',
+    sourceSignalId: source.savedUrl?.id || source.adaptation.signalId,
+    sourceReelId: source.savedUrl?.id || source.adaptation.signalId,
+    sourceAdaptationId: source.adaptation.id,
+    sourceGenerationId: source.adaptation.generationId,
+    sourceVariantIndex: variantIndex,
+    origin: 'studio_adaptation',
+    hook: remix.hook || '',
+    cta: remix.cta || '',
+    scenes: remix.visualFlow || [],
+    ...brandContext,
+  };
+  validateProductContentPlanDraft(candidate);
+  return normalizeContentPlanPosts([candidate])[0];
+}
+
+function buildProductPlanManualPost({ requestPost = {}, brandContext, existing = null }) {
+  const candidate = {
+    ...requestPost,
+    ...(existing || {}),
+    id: existing?.id || requestPost.id || createId('product_post'),
+    origin: 'product_redesign',
+    ...brandContext,
+    createdAt: existing?.createdAt || requestPost.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  validateProductContentPlanDraft(candidate);
+  return normalizeContentPlanPosts([candidate])[0];
+}
+
+function runWorkspaceAdaptationSingleFlight(key, task) {
+  const existing = workspaceAdaptationFlights.get(key);
+  if (existing) return existing;
+  const flight = Promise.resolve().then(task);
+  workspaceAdaptationFlights.set(key, flight);
+  const cleanup = () => {
+    if (workspaceAdaptationFlights.get(key) === flight) workspaceAdaptationFlights.delete(key);
+  };
+  flight.then(cleanup, cleanup);
+  return flight;
+}
+
+function runWorkspaceUrlAdaptationSingleFlight(key, task) {
+  const existing = workspaceUrlAdaptationFlights.get(key);
+  if (existing) return existing;
+  const flight = Promise.resolve().then(task);
+  workspaceUrlAdaptationFlights.set(key, flight);
+  const cleanup = () => {
+    if (workspaceUrlAdaptationFlights.get(key) === flight) workspaceUrlAdaptationFlights.delete(key);
+  };
+  flight.then(cleanup, cleanup);
+  return flight;
+}
+
+function isWorkspaceUrlAdaptationInFlight(workspaceId, savedUrlId) {
+  const prefix = `${workspaceId}:${savedUrlId}:`;
+  return Array.from(workspaceUrlAdaptationFlights.keys()).some((key) => key.startsWith(prefix));
+}
+
 function buildOwnerSignalExclusionAudit({ owner, reasonCode, timestamp, previousState }) {
   return {
     action: 'exclude',
@@ -2169,6 +2735,7 @@ function buildOwnerSignalExclusionAudit({ owner, reasonCode, timestamp, previous
     previousState,
   };
 }
+
 function getCurrentActor(db, actorUser) {
   if (!actorUser?.id) return actorUser || null;
   return db.users.find((user) => user.id === actorUser.id) || null;
@@ -3904,6 +4471,8 @@ function pruneExpiredAgentStudioDemoVisitors(db, now = Date.now()) {
     'demoSessions',
     'agentStudioRuns',
     'agentStudioUploads',
+    'workspaceSavedUrls',
+    'workspaceUrlAdaptations',
   ]) {
     db[key] = (db[key] || []).filter((item) => !staleWorkspaceIds.has(item.workspaceId));
   }
@@ -3986,6 +4555,8 @@ function usesLongRunningExternalWork(req) {
     /^\/workspaces\/[^/]+\/agent\/chat\/?$/,
     /^\/workspaces\/[^/]+\/agent\/context\/finalize\/?$/,
     /^\/workspaces\/[^/]+\/remix\/generate\/?$/,
+    /^\/workspaces\/[^/]+\/adaptations\/[^/]+\/generate\/?$/,
+    /^\/workspaces\/[^/]+\/saved-urls\/[^/]+\/analyze-adapt\/?$/,
     /^\/workspaces\/[^/]+\/agent-studio\/uploads\/?$/,
   ].some((pattern) => pattern.test(req.path));
 }
@@ -4807,30 +5378,57 @@ async function executeAgentStudioRun(runId) {
     usageCollector = createAgentStudioUsageCollector({ initialUsage: run.usage });
     const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
     if (!workspace) throw new Error('workspace_not_found');
-    const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
-    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({
-      model: OPENAI_AGENT_MODEL,
-      phase,
-      invocationId,
-      onUsage: (entry) => usageCollector.recordOpenAI(entry),
+    const actorUser = db.users.find((user) => user.id === run.userId);
+    if (!actorUser) throw new Error('user_not_found');
+    const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
+      workspaceId: run.workspaceId,
+      actorUser,
     });
+    const signals = (db.reels || []).filter((item) => item.workspaceId === run.workspaceId);
+    const runAgent = agentStudioTestProvider?.runAgent
+      ? async (args) => {
+          await beforeProviderAttempt({
+            provider: 'openai',
+            model: OPENAI_AGENT_MODEL,
+            operation: 'agent_studio_agent',
+            agentId: args.agentId,
+          });
+          return agentStudioTestProvider.runAgent(args);
+        }
+      : createOpenAIAgentRunner({
+          model: OPENAI_AGENT_MODEL,
+          phase,
+          invocationId,
+          beforeProviderAttempt,
+          onUsage: (entry) => usageCollector.recordOpenAI(entry),
+        });
     const providerAnalyzeVideo = agentStudioTestProvider?.analyzeVideo || analyzeAgentStudioVideo;
-    const analyzeVideo = (args) => providerAnalyzeVideo({
-      ...args,
-      uploadedFile: run.sourceUpload || null,
-      phase,
-      invocationId,
-      onUsage: (entry) => usageCollector.recordGemini(entry),
-      resolveSource: ({ sourceUrl }) => resolveAgentStudioVideoSource({
-        token: APIFY_TOKEN,
-        sourceUrl,
-        workspaceId: run.workspaceId,
-        market: workspace.market || 'global',
+    const analyzeVideo = async (args) => {
+      if (agentStudioTestProvider) {
+        await beforeProviderAttempt({
+          provider: 'gemini',
+          model: GEMINI_VISION_MODEL,
+          operation: 'agent_studio_video_analysis',
+        });
+      }
+      return providerAnalyzeVideo({
+        ...args,
+        uploadedFile: run.sourceUpload || null,
         phase,
         invocationId,
-        onUsage: (entry) => usageCollector.recordApify(entry),
-      }),
-    });
+        beforeProviderAttempt: agentStudioTestProvider ? null : beforeProviderAttempt,
+        onUsage: (entry) => usageCollector.recordGemini(entry),
+        resolveSource: ({ sourceUrl }) => resolveAgentStudioVideoSource({
+          token: APIFY_TOKEN,
+          sourceUrl,
+          workspaceId: run.workspaceId,
+          market: workspace.market || 'global',
+          phase,
+          invocationId,
+          onUsage: (entry) => usageCollector.recordApify(entry),
+        }),
+      });
+    };
     const result = await orchestrateAgentStudio({
       runId,
       input: run.input,
@@ -4870,12 +5468,29 @@ async function executeAgentStudioHybrid(runId) {
     usageCollector = createAgentStudioUsageCollector({ initialUsage: run.usage });
     const workspace = db.workspaces.find((item) => item.id === run.workspaceId);
     if (!workspace) throw new Error('workspace_not_found');
-    const runAgent = agentStudioTestProvider?.runAgent || createOpenAIAgentRunner({
-      model: OPENAI_AGENT_MODEL,
-      phase: 'hybrid',
-      invocationId,
-      onUsage: (entry) => usageCollector.recordOpenAI(entry),
+    const actorUser = db.users.find((user) => user.id === run.userId);
+    if (!actorUser) throw new Error('user_not_found');
+    const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
+      workspaceId: run.workspaceId,
+      actorUser,
     });
+    const runAgent = agentStudioTestProvider?.runAgent
+      ? async (args) => {
+          await beforeProviderAttempt({
+            provider: 'openai',
+            model: OPENAI_AGENT_MODEL,
+            operation: 'agent_studio_agent',
+            agentId: args.agentId,
+          });
+          return agentStudioTestProvider.runAgent(args);
+        }
+      : createOpenAIAgentRunner({
+          model: OPENAI_AGENT_MODEL,
+          phase: 'hybrid',
+          invocationId,
+          beforeProviderAttempt,
+          onUsage: (entry) => usageCollector.recordOpenAI(entry),
+        });
     const result = await orchestrateAgentStudioHybrid({
       runId,
       input: run.input,
@@ -6236,6 +6851,7 @@ app.post('/api/owner/signals/:signalId/exclude', async (req, res, next) => {
     next(error);
   }
 });
+
 function publicTesterGrant(db, grant) {
   const user = db.users.find((item) => item.id === grant.userId)
     || db.users.find((item) => normalizeTesterEmail(item.email) === normalizeTesterEmail(grant.email))
@@ -6384,11 +7000,154 @@ app.put('/api/workspaces/:workspaceId/brief', async (req, res) => {
   res.json({ brief: workspace.brief, billing: buildEntitlements(db, req.params.workspaceId, req.authUser) });
 });
 
+app.post('/api/workspaces/:workspaceId/content-plan/posts', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const brandContext = getProductContentPlanBrandContext(current.workspace.productBrandBrain);
+    const requestPost = req.body?.post || req.body || {};
+    const adaptationId = String(requestPost.sourceAdaptationId || '').trim();
+    const origin = String(requestPost.origin || '').trim();
+    const existingPosts = normalizeContentPlanPosts(current.workspace.contentPlanPosts || []);
+    let productPost;
+    if (origin === 'studio_adaptation' || adaptationId) {
+      if (!adaptationId) throw createProductContentPlanError('content_plan_source_adaptation_required', 400);
+      const rawVariantIndex = Object.prototype.hasOwnProperty.call(requestPost, 'sourceVariantIndex')
+        ? requestPost.sourceVariantIndex
+        : requestPost.variantIndex;
+      const variantIndex = normalizeProductContentPlanVariantIndex(rawVariantIndex);
+      if (variantIndex === null) {
+        throw createProductContentPlanError('content_plan_variant_invalid', 400, { variantIndex: rawVariantIndex });
+      }
+      const existing = existingPosts.find((post) => (
+        post.origin === 'studio_adaptation'
+        && post.sourceAdaptationId === adaptationId
+        && post.sourceVariantIndex === variantIndex
+      ));
+      if (existing) {
+        res.status(200).json({ post: existing, alreadyExists: true, posts: projectProductContentPlanPosts(current.workspace, brandContext.brand) });
+        return;
+      }
+      const source = resolveProductAdaptationSource(
+        db,
+        req.params.workspaceId,
+        current.actorUser,
+        adaptationId,
+        brandContext.brand,
+        variantIndex,
+      );
+      productPost = buildProductPlanPostFromAdaptation({
+        source,
+        requestPost,
+        brandContext,
+        variantIndex,
+      });
+    } else {
+      productPost = buildProductPlanManualPost({ requestPost, brandContext });
+    }
+
+    const billing = buildEntitlements(db, req.params.workspaceId, current.actorUser);
+    const limit = billing.plan.limits.contentPlanPosts;
+    if (Number.isFinite(limit) && existingPosts.length >= limit) {
+      throw createProductContentPlanError('plan_limit_reached', 402, {
+        usageKey: 'contentPlanPosts',
+        limit,
+        used: billing.usage.contentPlanPosts,
+        requested: 1,
+        remaining: billing.remaining.contentPlanPosts,
+        plan: billing.plan,
+        message: 'Content plan post limit reached for this plan.',
+      });
+    }
+    current.workspace.contentPlanPosts = [...existingPosts, productPost];
+    current.workspace.contentPlanUpdatedAt = new Date().toISOString();
+    await writeDb(db);
+    res.status(201).json({
+      post: productPost,
+      alreadyExists: false,
+      posts: projectProductContentPlanPosts(current.workspace, brandContext.brand),
+      billing: buildEntitlements(db, req.params.workspaceId, current.actorUser),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/workspaces/:workspaceId/content-plan/posts/:postId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const existingPosts = normalizeContentPlanPosts(current.workspace.contentPlanPosts || []);
+    const index = existingPosts.findIndex((post) => post.id === req.params.postId);
+    if (index < 0) throw createProductContentPlanError('content_plan_post_not_found', 404);
+    const existing = existingPosts[index];
+    const brandContext = getProductContentPlanBrandContext(current.workspace.productBrandBrain);
+    if (isProductContentPlanPost(existing) && !matchesProductContentPlanBrand(existing, brandContext.brand)) {
+      throw createProductContentPlanError('content_plan_brand_changed');
+    }
+    const requested = req.body?.post || req.body || {};
+    const editable = {
+      ...existing,
+      title: requested.title ?? existing.title,
+      body: requested.body ?? existing.body,
+      date: requested.date ?? existing.date,
+      time: requested.time ?? existing.time,
+      format: requested.format ?? existing.format,
+      status: requested.status ?? (requested.done === true ? 'completed' : existing.status),
+      done: requested.status === 'completed' || requested.done === true,
+      day: requested.day ?? existing.day,
+      updatedAt: new Date().toISOString(),
+    };
+    if (isProductContentPlanPost(existing)) Object.assign(editable, brandContext);
+    validateProductContentPlanDraft(editable);
+    existingPosts[index] = normalizeContentPlanPosts([editable])[0];
+    current.workspace.contentPlanPosts = existingPosts;
+    current.workspace.contentPlanUpdatedAt = new Date().toISOString();
+    await writeDb(db);
+    res.json({
+      post: existingPosts[index],
+      posts: projectProductContentPlanPosts(current.workspace, brandContext.brand),
+      billing: buildEntitlements(db, req.params.workspaceId, current.actorUser),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/workspaces/:workspaceId/content-plan/posts/:postId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const existingPosts = normalizeContentPlanPosts(current.workspace.contentPlanPosts || []);
+    const index = existingPosts.findIndex((post) => post.id === req.params.postId);
+    if (index < 0) throw createProductContentPlanError('content_plan_post_not_found', 404);
+    const brandContext = getProductContentPlanBrandContext(current.workspace.productBrandBrain);
+    const existing = existingPosts[index];
+    if (isProductContentPlanPost(existing) && !matchesProductContentPlanBrand(existing, brandContext.brand)) {
+      throw createProductContentPlanError('content_plan_brand_changed');
+    }
+    existingPosts.splice(index, 1);
+    current.workspace.contentPlanPosts = existingPosts;
+    current.workspace.contentPlanUpdatedAt = new Date().toISOString();
+    await writeDb(db);
+    res.json({
+      deletedPostId: req.params.postId,
+      posts: projectProductContentPlanPosts(current.workspace, brandContext.brand),
+      billing: buildEntitlements(db, req.params.workspaceId, current.actorUser),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
-  res.json({ posts: normalizeContentPlanPosts(workspace.contentPlanPosts || []) });
+  const posts = String(req.query.surface || '').trim() === 'product_redesign'
+    ? projectProductContentPlanPosts(workspace, normalizeProductBrand(workspace.productBrandBrain))
+    : normalizeContentPlanPosts(workspace.contentPlanPosts || []);
+  res.json({ posts });
 });
 
 app.put('/api/workspaces/:workspaceId/content-plan', async (req, res) => {
@@ -7034,6 +7793,370 @@ app.get('/api/workspaces/:workspaceId/reels', async (req, res) => {
       signalCount: sharedBankReels.length,
     },
   });
+});
+
+app.get('/api/workspaces/:workspaceId/saved-signals', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const accessibleSignals = getAccessibleWorkspaceSignals(
+      db,
+      req.params.workspaceId,
+      current.actorUser,
+    );
+    const savedSignals = db.workspaceSavedSignals
+      .filter((record) => record.workspaceId === req.params.workspaceId)
+      .map((record) => projectWorkspaceSavedSignal(record, accessibleSignals))
+      .filter(Boolean);
+    res.json({ workspaceId: req.params.workspaceId, savedSignals });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/workspaces/:workspaceId/saved-urls', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const savedUrls = db.workspaceSavedUrls
+      .filter((record) => record.workspaceId === req.params.workspaceId)
+      .sort((left, right) => String(right.createdAt || '').localeCompare(String(left.createdAt || '')));
+    res.json({ workspaceId: req.params.workspaceId, savedUrls });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/saved-urls', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const parsed = parseProductSavedUrl(req.body?.url || req.body?.originalUrl);
+    if (!parsed.valid) {
+      const error = new Error('saved_url_invalid');
+      error.status = 400;
+      error.payload = { error: 'saved_url_invalid', reason: parsed.reason };
+      throw error;
+    }
+
+    const existing = db.workspaceSavedUrls.find((record) => (
+      record.workspaceId === req.params.workspaceId
+      && record.canonicalUrl === parsed.canonicalUrl
+    ));
+    if (existing) {
+      res.json({ saved: true, alreadySaved: true, savedUrl: existing });
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const savedUrl = {
+      id: createId('saved_url'),
+      workspaceId: req.params.workspaceId,
+      originalUrl: String(req.body?.url || req.body?.originalUrl || '').trim(),
+      canonicalUrl: parsed.canonicalUrl,
+      platform: parsed.platform,
+      status: 'not_analyzed',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.workspaceSavedUrls.unshift(savedUrl);
+    await writeDb(db);
+    res.status(201).json({ saved: true, alreadySaved: false, savedUrl });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/workspaces/:workspaceId/saved-urls/:savedUrlId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const index = db.workspaceSavedUrls.findIndex((record) => (
+      record.workspaceId === req.params.workspaceId && record.id === req.params.savedUrlId
+    ));
+    if (index < 0) {
+      res.json({ deleted: false, alreadyDeleted: true, savedUrlId: req.params.savedUrlId });
+      return;
+    }
+    if (isWorkspaceUrlAdaptationInFlight(req.params.workspaceId, req.params.savedUrlId)) {
+      const error = new Error('saved_url_adaptation_in_flight');
+      error.status = 409;
+      error.payload = { error: 'saved_url_adaptation_in_flight' };
+      throw error;
+    }
+    const [removed] = db.workspaceSavedUrls.splice(index, 1);
+    db.workspaceUrlAdaptations = db.workspaceUrlAdaptations.filter((record) => (
+      record.workspaceId !== req.params.workspaceId || record.savedUrlId !== removed.id
+    ));
+    await writeDb(db);
+    res.json({ deleted: true, alreadyDeleted: false, savedUrlId: removed.id });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/adaptation', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
+    if (!savedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
+    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
+    const adaptation = productBrand && isProductBrandComplete(productBrand)
+      ? findWorkspaceUrlAdaptation(db, req.params.workspaceId, savedUrl.id, productBrand)
+      : null;
+    res.json({
+      workspaceId: req.params.workspaceId,
+      savedUrl,
+      sourceType: 'personal_url',
+      status: adaptation ? 'ready' : 'absent',
+      adaptation,
+      brandBrain: {
+        available: Boolean(productBrand),
+        complete: Boolean(productBrand && isProductBrandComplete(productBrand)),
+        brandId: productBrand?.id || null,
+        brandVersion: productBrand?.version || null,
+        missingFields: productBrand ? getMissingProductBrainFields(productBrand) : ['profileDescription', 'audience'],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
+    if (!savedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
+    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
+    if (!productBrand || !isProductBrandComplete(productBrand)) {
+      throw createProductContentPlanError('product_brand_brain_incomplete', 409, {
+        missingFields: productBrand
+          ? getMissingProductBrainFields(productBrand)
+          : ['profileDescription', 'audience'],
+      });
+    }
+
+    const generationBrand = cloneJsonValue(productBrand);
+    const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
+    const flightKey = `${req.params.workspaceId}:${savedUrl.id}:${generationBrandKey}`;
+    const result = await runWorkspaceUrlAdaptationSingleFlight(flightKey, async () => {
+      const latestDb = await readDb();
+      const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
+      const latestSavedUrl = findWorkspaceSavedUrl(latestDb, req.params.workspaceId, savedUrl.id);
+      if (!latestSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
+      const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, generationBrand);
+      if (existing) {
+        const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
+        return {
+          adaptation: existing,
+          alreadyGenerated: true,
+          generationId: existing.generationId,
+          activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+        };
+      }
+
+      let reservation = null;
+      try {
+        const reserved = await reserveSerializedDailyAiAction({
+          workspaceId: req.params.workspaceId,
+          actorUser: latestCurrent.actorUser,
+          action: 'remix',
+        });
+        reservation = reserved.reservation;
+        const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
+          workspaceId: req.params.workspaceId,
+          actorUser: latestCurrent.actorUser,
+        });
+        const sourceContext = Object.freeze(cloneJsonValue(await resolvePersonalUrlSourceContext(latestSavedUrl, {
+          beforeProviderAttempt,
+        })));
+        if (!personalUrlSourceHasGrounding(sourceContext)) {
+          throw createProductContentPlanError('saved_url_source_unavailable', 409, {
+            sourceStatus: sourceContext.sourceStatus,
+            missing: sourceContext.missing,
+          });
+        }
+        const generationContext = Object.freeze({
+          workspaceId: req.params.workspaceId,
+          savedUrlId: latestSavedUrl.id,
+          sourceType: 'personal_url',
+          brand: Object.freeze(cloneJsonValue(generationBrand)),
+          brandKey: generationBrandKey,
+          source: Object.freeze(buildPersonalUrlInsight(latestSavedUrl, sourceContext)),
+          sourceContext,
+        });
+        const remixGenerator = remixTestProvider || generateRemix;
+        const generated = await remixGenerator(
+          generationContext.source,
+          buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
+          { beforeProviderAttempt },
+        );
+        const generationId = `url_adaptation_generation_${crypto.randomUUID().replaceAll('-', '')}`;
+        const persisted = await serializeBackgroundMutation(async () => {
+          const currentDb = await readDb();
+          const currentAccess = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
+          const currentSavedUrl = findWorkspaceSavedUrl(currentDb, req.params.workspaceId, savedUrl.id);
+          if (!currentSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
+          const currentBrand = normalizeProductBrand(currentAccess.workspace.productBrandBrain);
+          const currentExisting = currentBrand
+            ? findWorkspaceUrlAdaptation(currentDb, req.params.workspaceId, savedUrl.id, generationBrand)
+            : null;
+          if (currentExisting) {
+            return {
+              adaptation: currentExisting,
+              alreadyGenerated: true,
+              generationId: currentExisting.generationId,
+              activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+            };
+          }
+          const currentBrandKey = getWorkspaceAdaptationBrandKey(currentBrand || {});
+          const timestamp = new Date().toISOString();
+          const record = {
+            id: createId('url_adaptation'),
+            workspaceId: req.params.workspaceId,
+            savedUrlId: currentSavedUrl.id,
+            sourceType: 'personal_url',
+            originalUrl: currentSavedUrl.originalUrl,
+            canonicalUrl: currentSavedUrl.canonicalUrl,
+            platform: currentSavedUrl.platform,
+            brandId: generationContext.brand.id,
+            brandVersion: generationContext.brand.version,
+            brandUpdatedAt: generationContext.brand.updatedAt || generationContext.brand.createdAt || null,
+            brandKey: generationContext.brandKey,
+            brandSnapshot: cloneJsonValue(generationContext.brand),
+            sourceContext: cloneJsonValue(generationContext.sourceContext),
+            result: cloneJsonValue(generated),
+            status: 'completed',
+            generationId,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            completedAt: timestamp,
+          };
+          currentDb.workspaceUrlAdaptations.unshift(record);
+          await writeDb(currentDb);
+          return {
+            adaptation: record,
+            alreadyGenerated: false,
+            generationId,
+            activeBrandChanged: currentBrandKey !== generationContext.brandKey,
+          };
+        });
+        if (persisted.alreadyGenerated) await releaseSerializedDailyAiAction(reservation);
+        reservation = null;
+        const billing = await readSerializedBilling(req.params.workspaceId, req.authUser);
+        return { ...persisted, daily: billing.daily };
+      } catch (error) {
+        try {
+          await releaseSerializedDailyAiAction(reservation);
+        } catch (releaseError) {
+          console.error('[WorkspaceUrlAdaptationDailyRelease]', releaseError);
+        }
+        throw error;
+      }
+    });
+
+    res.status(result.alreadyGenerated ? 200 : 201).json({ ...result, sourceType: 'personal_url' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put('/api/workspaces/:workspaceId/saved-signals/:signalId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const requestedSignalId = normalizeWorkspaceSavedSignalId(req.params.signalId);
+    if (!requestedSignalId) {
+      const error = new Error('saved_signal_id_invalid');
+      error.status = 400;
+      error.payload = { error: 'saved_signal_id_invalid' };
+      throw error;
+    }
+
+    const resolved = findSaveableSharedSignal(
+      db,
+      req.params.workspaceId,
+      current.actorUser,
+      requestedSignalId,
+    );
+    if (!resolved) {
+      const error = new Error('signal_not_saveable');
+      error.status = 409;
+      error.payload = { error: 'signal_not_saveable' };
+      throw error;
+    }
+
+    const existing = db.workspaceSavedSignals.find((record) => (
+      record.workspaceId === req.params.workspaceId
+      && record.signalId === resolved.canonical.id
+    ));
+    if (existing) {
+      res.json({
+        saved: true,
+        alreadySaved: true,
+        savedSignal: projectWorkspaceSavedSignal(existing, [resolved.projected]),
+      });
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const record = {
+      id: createId('saved_signal'),
+      workspaceId: req.params.workspaceId,
+      signalId: resolved.canonical.id,
+      sharedSignalId: resolved.projected.id,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    db.workspaceSavedSignals.unshift(record);
+    await writeDb(db);
+    res.status(201).json({
+      saved: true,
+      alreadySaved: false,
+      savedSignal: projectWorkspaceSavedSignal(record, [resolved.projected]),
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete('/api/workspaces/:workspaceId/saved-signals/:signalId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const requestedSignalId = normalizeWorkspaceSavedSignalId(req.params.signalId);
+    if (!requestedSignalId) {
+      const error = new Error('saved_signal_id_invalid');
+      error.status = 400;
+      error.payload = { error: 'saved_signal_id_invalid' };
+      throw error;
+    }
+
+    const index = db.workspaceSavedSignals.findIndex((record) => (
+      record.workspaceId === req.params.workspaceId
+      && (
+        record.signalId === requestedSignalId
+        || record.sharedSignalId === requestedSignalId
+      )
+    ));
+    if (index < 0) {
+      res.json({ saved: false, alreadyUnsaved: true });
+      return;
+    }
+
+    const [removed] = db.workspaceSavedSignals.splice(index, 1);
+    await writeDb(db);
+    res.json({
+      saved: false,
+      alreadyUnsaved: false,
+      signalId: removed.signalId,
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/workspaces/:workspaceId/reels/:reelId/thumbnail/refresh', async (req, res, next) => {
@@ -8215,6 +9338,216 @@ app.post('/api/workspaces/:workspaceId/video-jobs', async (req, res) => {
   });
   await writeDb(db);
   res.status(201).json({ videoJob });
+});
+
+app.get('/api/workspaces/:workspaceId/adaptations/:signalId', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const requestedSignalId = normalizeWorkspaceSavedSignalId(req.params.signalId);
+    if (!requestedSignalId) {
+      const error = new Error('adaptation_signal_id_invalid');
+      error.status = 400;
+      error.payload = { error: 'adaptation_signal_id_invalid' };
+      throw error;
+    }
+
+    const resolved = findSaveableSharedSignal(
+      db,
+      req.params.workspaceId,
+      current.actorUser,
+      requestedSignalId,
+    );
+    if (!resolved) {
+      const error = new Error('signal_not_adaptable');
+      error.status = 409;
+      error.payload = { error: 'signal_not_adaptable' };
+      throw error;
+    }
+
+    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
+    const adaptation = productBrand && isProductBrandComplete(productBrand)
+      ? findWorkspaceAdaptation(db, req.params.workspaceId, resolved.canonical.id, productBrand)
+      : null;
+    res.json({
+      workspaceId: req.params.workspaceId,
+      signalId: resolved.canonical.id,
+      sharedSignalId: resolved.projected.id,
+      status: adaptation ? 'ready' : 'absent',
+      adaptation,
+      brandBrain: {
+        available: Boolean(productBrand),
+        complete: Boolean(productBrand && isProductBrandComplete(productBrand)),
+        brandId: productBrand?.id || null,
+        brandVersion: productBrand?.version || null,
+        missingFields: productBrand ? getMissingProductBrainFields(productBrand) : ['profileDescription', 'audience'],
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (req, res, next) => {
+  try {
+    const db = await readDb();
+    const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
+    const requestedSignalId = normalizeWorkspaceSavedSignalId(req.params.signalId);
+    if (!requestedSignalId) {
+      const error = new Error('adaptation_signal_id_invalid');
+      error.status = 400;
+      error.payload = { error: 'adaptation_signal_id_invalid' };
+      throw error;
+    }
+
+    const resolved = findSaveableSharedSignal(
+      db,
+      req.params.workspaceId,
+      current.actorUser,
+      requestedSignalId,
+    );
+    if (!resolved) {
+      const error = new Error('signal_not_adaptable');
+      error.status = 409;
+      error.payload = { error: 'signal_not_adaptable' };
+      throw error;
+    }
+
+    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
+    if (!productBrand || !isProductBrandComplete(productBrand)) {
+      const error = new Error('product_brand_brain_incomplete');
+      error.status = 409;
+      error.payload = {
+        error: 'product_brand_brain_incomplete',
+        missingFields: productBrand
+          ? getMissingProductBrainFields(productBrand)
+          : ['profileDescription', 'audience'],
+      };
+      throw error;
+    }
+
+    const generationBrand = cloneJsonValue(productBrand);
+    const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
+    const flightKey = `${req.params.workspaceId}:${resolved.canonical.id}:${generationBrandKey}`;
+    const result = await runWorkspaceAdaptationSingleFlight(flightKey, async () => {
+      const latestDb = await readDb();
+      const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
+      const latestResolved = findSaveableSharedSignal(
+        latestDb,
+        req.params.workspaceId,
+        latestCurrent.actorUser,
+        requestedSignalId,
+      );
+      if (!latestResolved) {
+        const error = new Error('signal_not_adaptable');
+        error.status = 409;
+        error.payload = { error: 'signal_not_adaptable' };
+        throw error;
+      }
+      const existing = findWorkspaceAdaptation(
+        latestDb,
+        req.params.workspaceId,
+        latestResolved.canonical.id,
+        generationBrand,
+      );
+      if (existing) {
+        const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
+        return {
+          adaptation: existing,
+          alreadyGenerated: true,
+          generationId: existing.generationId,
+          activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+        };
+      }
+
+      let reservation = null;
+      try {
+        const reserved = await reserveSerializedDailyAiAction({
+          workspaceId: req.params.workspaceId,
+          actorUser: latestCurrent.actorUser,
+          action: 'remix',
+        });
+        reservation = reserved.reservation;
+
+        const generationContext = Object.freeze({
+          workspaceId: req.params.workspaceId,
+          signalId: latestResolved.canonical.id,
+          sharedSignalId: latestResolved.projected.id,
+          brand: Object.freeze(cloneJsonValue(generationBrand)),
+          brandKey: generationBrandKey,
+          source: Object.freeze(buildSharedSignalGlobalInsight(latestResolved.canonical)),
+        });
+        const remixGenerator = remixTestProvider || generateRemix;
+        const generated = await remixGenerator(
+          generationContext.source,
+          buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
+          { beforeProviderAttempt: createSerializedPaidAiAttemptGuard({
+            workspaceId: req.params.workspaceId,
+            actorUser: latestCurrent.actorUser,
+          }) },
+        );
+        const generationId = `adaptation_generation_${crypto.randomUUID().replaceAll('-', '')}`;
+        const persisted = await serializeBackgroundMutation(async () => {
+          const currentDb = await readDb();
+          const currentAccess = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
+          const currentBrand = normalizeProductBrand(currentAccess.workspace.productBrandBrain);
+          const currentExisting = currentBrand
+            ? findWorkspaceAdaptation(currentDb, req.params.workspaceId, generationContext.signalId, generationContext.brand)
+            : null;
+          if (currentExisting) {
+            return {
+              adaptation: currentExisting,
+              alreadyGenerated: true,
+              generationId: currentExisting.generationId,
+              activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationContext.brandKey,
+            };
+          }
+          const currentBrandKey = getWorkspaceAdaptationBrandKey(currentBrand || {});
+          const timestamp = new Date().toISOString();
+          const record = {
+            id: createId('adaptation'),
+            workspaceId: req.params.workspaceId,
+            signalId: generationContext.signalId,
+            sharedSignalId: generationContext.sharedSignalId,
+            brandId: generationContext.brand.id,
+            brandVersion: generationContext.brand.version,
+            brandUpdatedAt: generationContext.brand.updatedAt || generationContext.brand.createdAt || null,
+            brandKey: generationContext.brandKey,
+            brandSnapshot: cloneJsonValue(generationContext.brand),
+            result: cloneJsonValue(generated),
+            generationId,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          };
+          currentDb.workspaceAdaptations.unshift(record);
+          await writeDb(currentDb);
+          return {
+            adaptation: record,
+            alreadyGenerated: false,
+            generationId,
+            activeBrandChanged: currentBrandKey !== generationContext.brandKey,
+          };
+        });
+        if (persisted.alreadyGenerated) {
+          await releaseSerializedDailyAiAction(reservation);
+        }
+        reservation = null;
+        const billing = await readSerializedBilling(req.params.workspaceId, req.authUser);
+        return { ...persisted, daily: billing.daily };
+      } catch (error) {
+        try {
+          await releaseSerializedDailyAiAction(reservation);
+        } catch (releaseError) {
+          console.error('[WorkspaceAdaptationDailyRelease]', releaseError);
+        }
+        throw error;
+      }
+    });
+
+    res.status(result.alreadyGenerated ? 200 : 201).json(result);
+  } catch (error) {
+    next(error);
+  }
 });
 
 app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) => {

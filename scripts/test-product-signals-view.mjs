@@ -98,6 +98,7 @@ const acceptedReel = {
       transferableMechanic: 'Screen walkthrough with a concrete before-and-after.',
     },
   },
+  workspaceBrandMatch: 74,
 };
 const rejectedReel = {
   ...acceptedReel,
@@ -138,7 +139,7 @@ const mapped = mapBackendSignalToProductCard(acceptedReel, Date.parse('2026-07-3
 assert.equal(mapped.platformId, 'tiktok');
 assert.equal(mapped.niche, 'technology');
 assert.equal(mapped.qualityValue, 66.7);
-assert.equal(mapped.matchValue, 62);
+assert.equal(mapped.matchValue, 74);
 assert.equal(mapped.views, '12K');
 assert.equal(mapped.image, 'https://example.com/cover.jpg');
 assert.equal(mapped.ageHours, 3);
@@ -152,5 +153,11 @@ assert.deepEqual(
   ]).map(({ id }) => id),
   ['accepted'],
 );
+
+const originOnly = mapBackendSignalToProductCard({
+  ...acceptedReel,
+  workspaceBrandMatch: undefined,
+});
+assert.equal(originOnly.matchValue, undefined, 'origin brandRelevance must never populate workspace AI Match');
 
 console.log('Product Signals view-state checks passed.');

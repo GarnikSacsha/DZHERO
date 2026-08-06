@@ -24,7 +24,7 @@ import { useI18n } from '../i18nProvider.mjs';
 import {
   deriveStudioAnalysis,
   deriveStudioTranscript,
-  getStudioRemix,
+  getStudioRemixes,
   getStudioSourceLinks,
   normalizeStudioScriptScenes,
 } from '../studioViewState.mjs';
@@ -62,14 +62,15 @@ function getSignalImage(signal) {
 
 function StudioDataState({ status, area }) {
   const { t } = useI18n();
-  const generating = status === 'generating';
-  const Icon = generating ? LoaderCircle : FileQuestion;
+  const busy = status === 'generating' || status === 'loading';
+  const stateKey = status === 'loading' ? 'loading' : busy ? 'generating' : 'unavailable';
+  const Icon = busy ? LoaderCircle : FileQuestion;
 
   return (
-    <div className={`studio-data-state ${generating ? 'generating' : ''}`}>
-      <span><Icon className={generating ? 'is-spinning' : ''} size={25} /></span>
-      <strong>{t(`product.studio.states.${area}.${generating ? 'generatingTitle' : 'unavailableTitle'}`)}</strong>
-      <p>{t(`product.studio.states.${area}.${generating ? 'generatingBody' : 'unavailableBody'}`)}</p>
+    <div className={`studio-data-state ${busy ? 'generating' : ''}`} role={busy ? 'status' : undefined}>
+      <span><Icon className={busy ? 'is-spinning' : ''} size={25} /></span>
+      <strong>{t(`product.studio.states.${area}.${stateKey}Title`)}</strong>
+      <p>{t(`product.studio.states.${area}.${stateKey}Body`)}</p>
     </div>
   );
 }
@@ -182,13 +183,22 @@ function AnalysisPanel({ analysis }) {
   );
 }
 
-function AdaptationPanel({ signal, remix, scenes, onOpenScript }) {
+function AdaptationPanel({ signal, adaptation, remix, scenes, variantIndex, variantCount, onSelectVariant, onOpenScript }) {
   const { t } = useI18n();
   if (!remix) return <StudioDataState status="unavailable" area="adaptation" />;
 
   const sourceTitle = resolveCopy(signal.title, t);
   const adaptedTitle = String(remix.title || '').trim();
   const adaptedHook = String(remix.hook || '').trim();
+  const cta = String(remix.cta || '').trim();
+  const sourceMechanic = String(
+    adaptation?.result?.deconstruction?.coreMechanics
+      || signal?.importedMetadata?.qualityGate?.contentMechanic
+      || signal?.importedMetadata?.videoIntelligence?.video?.contentMechanic
+      || '',
+  ).trim();
+  const transferableMechanic = String(signal?.importedMetadata?.qualityGate?.transferableMechanic || '').trim();
+  const productionConstraints = String(adaptation?.result?.viabilityFilter?.productionFeasibility || '').trim();
   const logic = String(remix.adaptationLogic || remix.strategy || remix.rationale || '').trim();
 
   return (
@@ -211,11 +221,33 @@ function AdaptationPanel({ signal, remix, scenes, onOpenScript }) {
           {adaptedTitle && adaptedHook && <p>{adaptedHook}</p>}
         </article>
       </div>
+      {variantCount > 1 && (
+        <div className="studio-adaptation-variants" role="group" aria-label={t('product.studio.adaptation.variants')}>
+          {Array.from({ length: variantCount }, (_, index) => (
+            <button
+              key={`variant-${index + 1}`}
+              className={variantIndex === index ? 'active' : ''}
+              type="button"
+              onClick={() => onSelectVariant(index)}
+            >
+              {t('product.studio.adaptation.variant', { count: index + 1 })}
+            </button>
+          ))}
+        </div>
+      )}
       {logic && (
         <aside>
           <Lightbulb size={19} />
           <p><strong>{t('product.studio.adaptation.logic')}</strong>{logic}</p>
         </aside>
+      )}
+      {(sourceMechanic || transferableMechanic || productionConstraints || cta) && (
+        <div className="studio-adaptation-package">
+          {sourceMechanic && <p><strong>{t('product.studio.adaptation.sourceMechanic')}</strong>{sourceMechanic}</p>}
+          {transferableMechanic && <p><strong>{t('product.studio.adaptation.transferableMechanic')}</strong>{transferableMechanic}</p>}
+          {productionConstraints && <p><strong>{t('product.studio.adaptation.constraints')}</strong>{productionConstraints}</p>}
+          {cta && <p><strong>{t('product.studio.adaptation.cta')}</strong>{cta}</p>}
+        </div>
       )}
       {!!scenes.length && (
         <button type="button" onClick={onOpenScript}>
@@ -226,9 +258,55 @@ function AdaptationPanel({ signal, remix, scenes, onOpenScript }) {
   );
 }
 
-function ScriptPanel({ signal, scenes, onAddToPlan }) {
+function AdaptationStatePanel({ signal, remix, scenes, adaptationState, variantIndex, variantCount, onSelectVariant, onGenerate, onRetry, onOpenScript }) {
   const { t } = useI18n();
-  const planDraft = useMemo(() => buildStudioContentPlanDraft(signal), [signal]);
+  const status = adaptationState?.status || 'absent';
+  if (status === 'ready' && remix) {
+    return <AdaptationPanel
+      signal={signal}
+      adaptation={adaptationState?.adaptation}
+      remix={remix}
+      scenes={scenes}
+      variantIndex={variantIndex}
+      variantCount={variantCount}
+      onSelectVariant={onSelectVariant}
+      onOpenScript={onOpenScript}
+    />;
+  }
+  if (status === 'loading' || status === 'generating') {
+    return <StudioDataState status={status} area="adaptation" />;
+  }
+
+  const isError = status === 'error';
+  const isBrandIncomplete = adaptationState?.errorCode === 'product_brand_brain_incomplete';
+  const isBrandChanged = adaptationState?.errorCode === 'workspace_adaptation_brand_changed';
+  return (
+    <div className="studio-data-state studio-adaptation-state" role={isError ? 'alert' : undefined}>
+      <span><FileQuestion size={25} /></span>
+      <strong>{t(isError
+        ? (isBrandIncomplete
+          ? 'product.studio.adaptation.brandRequiredTitle'
+          : isBrandChanged
+            ? 'product.studio.adaptation.brandChangedTitle'
+          : 'product.studio.adaptation.errorTitle')
+        : 'product.studio.adaptation.absentTitle')}</strong>
+      <p>{t(isError
+        ? (isBrandIncomplete
+          ? 'product.studio.adaptation.brandRequiredBody'
+          : isBrandChanged
+            ? 'product.studio.adaptation.brandChangedBody'
+          : 'product.studio.adaptation.errorBody')
+        : 'product.studio.adaptation.absentBody')}</p>
+      <button type="button" onClick={isError ? onRetry : onGenerate}>
+        {t(isError ? 'product.studio.adaptation.retry' : 'product.studio.adaptation.generate')}
+      </button>
+    </div>
+  );
+}
+
+function ScriptPanel({ signal, adaptation, remix, variantIndex, scenes, onAddToPlan, addToPlanState }) {
+  const { t } = useI18n();
+  const planDraft = useMemo(() => buildStudioContentPlanDraft(signal, adaptation, remix), [adaptation, remix, signal]);
   if (!scenes.length || !planDraft) return <StudioDataState status="unavailable" area="script" />;
 
   return (
@@ -253,9 +331,17 @@ function ScriptPanel({ signal, scenes, onAddToPlan }) {
           </article>
         ))}
       </div>
-      <button className="studio-schedule-button" type="button" onClick={() => onAddToPlan(planDraft)}>
+      {addToPlanState?.status === 'error' && (
+        <div className="studio-action-error" role="alert">{t('product.studio.script.scheduleError')}</div>
+      )}
+      <button
+        className="studio-schedule-button"
+        type="button"
+        disabled={addToPlanState?.status === 'saving'}
+        onClick={() => onAddToPlan(planDraft)}
+      >
         <CalendarPlus size={18} />
-        {t('product.studio.script.schedule')}
+        {t(addToPlanState?.status === 'saving' ? 'product.studio.script.scheduleSaving' : 'product.studio.script.schedule')}
       </button>
     </div>
   );
@@ -265,18 +351,32 @@ export default function ProductStudioPreview({
   signal = null,
   onChooseSignal,
   onAddToPlan,
+  adaptationState = { status: 'absent', adaptation: null, errorCode: '' },
+  onGenerateAdaptation = () => {},
+  onRetryAdaptation = () => {},
+  addToPlanState = { status: 'idle', errorCode: '' },
 }) {
   const { t } = useI18n();
   const [activeTab, setActiveTab] = useState('overview');
+  const [variantIndex, setVariantIndex] = useState(0);
   const transcript = useMemo(() => deriveStudioTranscript(signal || {}), [signal]);
   const analysis = useMemo(() => deriveStudioAnalysis(signal || {}), [signal]);
   const links = useMemo(() => getStudioSourceLinks(signal || {}), [signal]);
-  const remix = useMemo(() => getStudioRemix(signal || {}), [signal]);
-  const scenes = useMemo(() => normalizeStudioScriptScenes(signal || {}), [signal]);
+  const remixes = useMemo(
+    () => getStudioRemixes(signal || {}, adaptationState?.adaptation),
+    [adaptationState?.adaptation, signal],
+  );
+  const selectedVariantIndex = Math.min(variantIndex, Math.max(0, remixes.length - 1));
+  const remix = remixes[selectedVariantIndex] || null;
+  const scenes = useMemo(
+    () => normalizeStudioScriptScenes(signal || {}, adaptationState?.adaptation, remix),
+    [adaptationState?.adaptation, remix, signal],
+  );
 
   useEffect(() => {
     setActiveTab('overview');
-  }, [signal?.id, signal?.sourceUrl]);
+    setVariantIndex(0);
+  }, [signal?.id, signal?.sourceUrl, adaptationState?.adaptation?.id]);
 
   if (!signal) {
     return (
@@ -402,8 +502,45 @@ export default function ProductStudioPreview({
           {activeTab === 'overview' && <OverviewPanel signal={signal} analysis={analysis} />}
           {activeTab === 'transcript' && <TranscriptPanel transcript={transcript} />}
           {activeTab === 'analysis' && <AnalysisPanel analysis={analysis} />}
-          {activeTab === 'adaptation' && <AdaptationPanel signal={signal} remix={remix} scenes={scenes} onOpenScript={() => setActiveTab('script')} />}
-          {activeTab === 'script' && <ScriptPanel signal={signal} scenes={scenes} onAddToPlan={onAddToPlan} />}
+          {activeTab === 'adaptation' && (
+            <AdaptationStatePanel
+              signal={signal}
+              remix={remix}
+              scenes={scenes}
+              adaptationState={adaptationState}
+              variantIndex={selectedVariantIndex}
+              variantCount={remixes.length}
+              onSelectVariant={setVariantIndex}
+              onGenerate={onGenerateAdaptation}
+              onRetry={onRetryAdaptation}
+              onOpenScript={() => setActiveTab('script')}
+            />
+          )}
+          {activeTab === 'script' && (
+            <ScriptPanel
+              signal={signal}
+              adaptation={adaptationState?.adaptation}
+              remix={remix}
+              variantIndex={selectedVariantIndex}
+              scenes={scenes}
+              addToPlanState={addToPlanState}
+              onAddToPlan={(draft) => onAddToPlan?.({
+                ...draft,
+                origin: adaptationState?.adaptation ? 'studio_adaptation' : 'product_redesign',
+                sourceAdaptationId: adaptationState?.adaptation?.id || '',
+                sourceGenerationId: adaptationState?.adaptation?.generationId || '',
+                sourceSignalId: signal.id || '',
+                sourceType: signal.sourceType || '',
+                savedUrlId: signal.savedUrlId || '',
+                sourceVariantIndex: adaptationState?.adaptation ? selectedVariantIndex : null,
+                sourceTitle: signal.title || '',
+                sourceUrl: signal.sourceUrl || '',
+                hook: remix?.hook || '',
+                cta: remix?.cta || '',
+                scenes: remix?.visualFlow || [],
+              })}
+            />
+          )}
         </article>
       </div>
     </section>

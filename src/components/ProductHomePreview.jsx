@@ -9,6 +9,7 @@ import {
   Clock3,
   Compass,
   Eye,
+  ExternalLink,
   Filter,
   FolderKanban,
   Gauge,
@@ -28,6 +29,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Trash2,
   X,
   Zap,
 } from 'lucide-react';
@@ -59,7 +61,20 @@ import {
   getProductRefreshMessageStatus,
   mergeRestoredProductBrand,
 } from '../productDiscoveryIntegration.mjs';
+import {
+  getSavedUrlPlatformLabel,
+  getSavedUrlIdentity,
+  getPersonalUrlAdaptationIdentity,
+  isCurrentSavedUrlResponse,
+  isCurrentPersonalUrlAdaptationResponse,
+  mapSavedUrlToProductSignal,
+  upsertSavedUrl,
+} from '../productSavedUrlState.mjs';
 import { buildSignalStrengthEvidence } from '../signalIntelligenceState.mjs';
+import {
+  getProductAdaptationRequestIdentity,
+  isCurrentProductAdaptationRequest,
+} from '../productAdaptationLifecycle.mjs';
 import ProductChannelsPreview from './ProductChannelsPreview.jsx';
 import ProductContentPlanPreview from './ProductContentPlanPreview.jsx';
 import ProductSettingsPreview from './ProductSettingsPreview.jsx';
@@ -74,7 +89,6 @@ const NAV_ITEMS = Object.freeze([
   { id: 'settings', label: 'product.nav.settings', icon: Settings, divider: true },
 ]);
 
-const SAVED_SIGNALS_STORAGE_KEY = 'dzhero-preview-product-saved-signals-v1';
 const OWNER_SIGNAL_EXCLUSION_REASONS = Object.freeze([
   { code: 'no_useful_mechanic_or_outcome', label: 'product.moderation.reasons.noUsefulMechanic' },
   { code: 'manipulative_or_spam', label: 'product.moderation.reasons.manipulative' },
@@ -82,15 +96,6 @@ const OWNER_SIGNAL_EXCLUSION_REASONS = Object.freeze([
   { code: 'unsafe_or_inappropriate', label: 'product.moderation.reasons.unsafe' },
   { code: 'other', label: 'product.moderation.reasons.other' },
 ]);
-
-function readSavedSignals() {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(SAVED_SIGNALS_STORAGE_KEY) || '[]');
-    return new Set(Array.isArray(value) ? value.filter(Boolean) : []);
-  } catch {
-    return new Set();
-  }
-}
 
 function renderCardText(value, t) {
   return String(value || '').startsWith('product.') ? t(value) : String(value || '');
@@ -257,11 +262,11 @@ function ProductTopbar({
             type="url"
             inputMode="url"
             value={signalUrl}
-            aria-label={t('product.search.label')}
-            placeholder={t('product.search.placeholder')}
+            aria-label={t('product.savedUrls.inputLabel')}
+            placeholder={t('product.savedUrls.inputPlaceholder')}
             onChange={(event) => onSignalUrlChange(event.target.value)}
           />
-          <button type="submit" aria-label={t('product.search.submit')} title={t('product.search.submit')} disabled={signalSearchStatus === 'loading'}>
+          <button type="submit" aria-label={t('product.savedUrls.save')} title={t('product.savedUrls.save')} disabled={signalSearchStatus === 'saving'}>
             <ArrowRight size={16} />
           </button>
         </form>
@@ -301,6 +306,7 @@ function SignalCard({
   onOpenStudio,
   saved,
   onToggleSaved,
+  savedPending = false,
   canManageSharedSignals = false,
   onExcludeSignal,
 }) {
@@ -451,6 +457,8 @@ function SignalCard({
           <button
             className={saved ? 'saved' : ''}
             type="button"
+            disabled={savedPending}
+            aria-busy={savedPending}
             aria-pressed={saved}
             aria-label={t(saved ? 'product.actions.removeSaved' : 'product.actions.save')}
             onClick={() => onToggleSaved(card.id)}
@@ -503,17 +511,25 @@ function DiscoverHome({
   onRefreshBank,
   canManageSharedSignals,
   onExcludeSignal,
+  savedIds = new Set(),
+  savedSignalState = { status: 'idle', pendingId: '', error: '' },
+  onToggleSaved,
+  onReloadSavedSignals,
+  savedUrls = [],
+  savedUrlState = { status: 'idle', pendingId: '', error: '' },
+  savedUrlAdaptationStates = {},
+  onAnalyzeSavedUrl,
+  onOpenSavedUrlStudio,
+  onDeleteSavedUrl,
+  onReloadSavedUrls,
+  authenticated = false,
+  language = 'en',
 }) {
   const { t } = useI18n();
   const [filters, setFilters] = useState(DEFAULT_SIGNAL_FILTERS);
-  const [sort, setSort] = useState('newest');
+  const [sort, setSort] = useState('match');
   const [view, setView] = useState('grid');
   const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
-  const [savedIds, setSavedIds] = useState(readSavedSignals);
-
-  useEffect(() => {
-    window.localStorage.setItem(SAVED_SIGNALS_STORAGE_KEY, JSON.stringify([...savedIds]));
-  }, [savedIds]);
 
   const visibleCards = useMemo(
     () => sortSignalCards(
@@ -576,14 +592,6 @@ function DiscoverHome({
 
   const clearFilters = () => setFilters(DEFAULT_SIGNAL_FILTERS);
   const refreshMessageStatus = getProductRefreshMessageStatus(refreshState.status, refreshState.code);
-  const toggleSaved = (cardId) => {
-    setSavedIds((current) => {
-      const next = new Set(current);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
-      return next;
-    });
-  };
 
   return (
     <div className="product-discover-layout">
@@ -626,6 +634,86 @@ function DiscoverHome({
           </div>
         )}
 
+        {savedSignalState.status === 'loading' && (
+          <div className="product-saved-signals-state" role="status">
+            {t('product.savedSignals.loading')}
+          </div>
+        )}
+        {savedSignalState.status === 'error' && (
+          <div className="product-saved-signals-state error" role="alert">
+            <span>{t('product.savedSignals.error')}</span>
+            <button type="button" onClick={onReloadSavedSignals}>{t('product.savedSignals.retry')}</button>
+          </div>
+        )}
+
+        {authenticated && (
+          <section className="product-saved-urls" aria-labelledby="product-saved-urls-title">
+            <header className="product-saved-urls-heading">
+              <div>
+                <h2 id="product-saved-urls-title">{t('product.savedUrls.title')}</h2>
+                <p>{t('product.savedUrls.subtitle')}</p>
+              </div>
+              {savedUrlState.status === 'loading' && <span role="status">{t('product.savedUrls.loading')}</span>}
+            </header>
+            {savedUrlState.status === 'saved' && <div className="product-saved-url-feedback" role="status">{t('product.savedUrls.saved')}</div>}
+            {savedUrlState.status === 'alreadySaved' && <div className="product-saved-url-feedback" role="status">{t('product.savedUrls.alreadySaved')}</div>}
+            {savedUrlState.status === 'error' && (
+              <div className="product-saved-url-feedback error" role="alert">
+                <span>{savedUrlState.error === 'saved_url_invalid'
+                  ? t('product.savedUrls.invalid')
+                  : savedUrlState.error === 'saved_url_adaptation_in_flight'
+                    ? t('product.savedUrls.adaptationInFlight')
+                    : t('product.savedUrls.error')}</span>
+                <button type="button" onClick={onReloadSavedUrls}>{t('product.savedUrls.retry')}</button>
+              </div>
+            )}
+            {savedUrls.length > 0 ? (
+              <div className="product-saved-url-grid">
+                {savedUrls.map((savedUrl) => (
+                  <article className="product-saved-url-card" key={savedUrl.id}>
+                    {(() => {
+                      const adaptationState = savedUrlAdaptationStates[savedUrl.id] || { status: 'absent' };
+                      const isReady = adaptationState.status === 'ready' && adaptationState.adaptation;
+                      const isBusy = adaptationState.status === 'loading' || adaptationState.status === 'generating';
+                      const adaptationError = adaptationState.errorCode === 'saved_url_adaptation_in_flight'
+                        ? t('product.savedUrls.adaptationInFlight')
+                        : adaptationState.status === 'error'
+                          ? t('product.savedUrls.adaptationError')
+                          : '';
+                      return (
+                        <>
+                    <div className="product-saved-url-card-topline">
+                      <span className={`product-platform-badge ${savedUrl.platform || ''}`}>{getSavedUrlPlatformLabel(savedUrl.platform)}</span>
+                      <span>{isReady ? t('product.savedUrls.analyzed') : isBusy ? t('product.savedUrls.analyzing') : t('product.savedUrls.notAnalyzed')}</span>
+                    </div>
+                    <a className="product-saved-url-link" href={savedUrl.canonicalUrl} target="_blank" rel="noreferrer">{savedUrl.canonicalUrl}<ExternalLink size={14} /></a>
+                    <small>{new Date(savedUrl.createdAt).toLocaleDateString(language === 'uk' ? 'uk-UA' : 'en-US')}</small>
+                    {adaptationError && <div className="product-saved-url-feedback error" role="alert">{adaptationError}</div>}
+                    <div className="product-saved-url-actions">
+                      <a href={savedUrl.canonicalUrl} target="_blank" rel="noreferrer">{t('product.savedUrls.open')}</a>
+                      {isReady ? (
+                        <button type="button" onClick={() => onOpenSavedUrlStudio?.(savedUrl)}>{t('product.savedUrls.openStudio')}</button>
+                      ) : (
+                        <button type="button" disabled={isBusy} onClick={() => onAnalyzeSavedUrl?.(savedUrl.id)}>
+                          <Sparkles size={14} />{t(isBusy ? 'product.savedUrls.analyzing' : adaptationState.status === 'error' ? 'product.savedUrls.retryAnalyze' : 'product.savedUrls.analyze')}
+                        </button>
+                      )}
+                      <button type="button" disabled={savedUrlState.status === 'deleting'} onClick={() => onDeleteSavedUrl(savedUrl.id)}>
+                        <Trash2 size={14} />{t('product.savedUrls.delete')}
+                      </button>
+                    </div>
+                        </>
+                      );
+                    })()}
+                  </article>
+                ))}
+              </div>
+            ) : savedUrlState.status !== 'loading' ? (
+              <p className="product-saved-url-empty">{t('product.savedUrls.empty')}</p>
+            ) : null}
+          </section>
+        )}
+
         <div className="product-signals-toolbar">
           <div className="product-signals-quick-filters">
             <label>
@@ -662,6 +750,7 @@ function DiscoverHome({
               <ArrowUpDown size={16} />
               <span>{t('product.signals.sort.label')}</span>
               <select value={sort} onChange={(event) => setSort(event.target.value)}>
+                <option value="match">{t('product.signals.sort.match')}</option>
                 <option value="views">{t('product.signals.sort.views')}</option>
                 <option value="likes">{t('product.signals.sort.likes')}</option>
                 <option value="newest">{t('product.signals.sort.newest')}</option>
@@ -721,7 +810,8 @@ function DiscoverHome({
                 card={card}
                 onOpenStudio={onOpenStudio}
                 saved={savedIds.has(card.id)}
-                onToggleSaved={toggleSaved}
+                onToggleSaved={onToggleSaved}
+                savedPending={savedSignalState.status === 'saving' && savedSignalState.pendingId === card.id}
                 canManageSharedSignals={canManageSharedSignals}
                 onExcludeSignal={onExcludeSignal}
               />
@@ -786,10 +876,18 @@ export default function ProductHomePreview({
   const [channelQuery, setChannelQuery] = useState('');
   const [studioSignal, setStudioSignal] = useState(null);
   const [studioPlanDraft, setStudioPlanDraft] = useState(null);
+  const [studioPlanState, setStudioPlanState] = useState({ status: 'idle', errorCode: '' });
   const [brands, setBrands] = useState(() => readProductBrands(window.localStorage));
   const [activeBrandId, setActiveBrandId] = useState(() => readActiveBrandId(window.localStorage, brands));
   const [creditState] = useState(() => readCreditState(window.localStorage));
   const [collectionSignals, setCollectionSignals] = useState(signals);
+  const [savedSignalIds, setSavedSignalIds] = useState(() => new Set());
+  const [savedSignalState, setSavedSignalState] = useState({ status: 'idle', pendingId: '', error: '' });
+  const [savedUrls, setSavedUrls] = useState([]);
+  const [savedUrlState, setSavedUrlState] = useState({ status: 'idle', pendingId: '', error: '' });
+  const [savedUrlAdaptations, setSavedUrlAdaptations] = useState(() => new Map());
+  const [savedUrlAdaptationStates, setSavedUrlAdaptationStates] = useState({});
+  const [adaptationState, setAdaptationState] = useState({ status: 'absent', adaptation: null, errorCode: '' });
   const [brandPersistenceStatus, setBrandPersistenceStatus] = useState('idle');
   const [logoutPending, setLogoutPending] = useState(false);
   const [refreshState, setRefreshState] = useState({ status: 'idle', code: '' });
@@ -802,10 +900,63 @@ export default function ProductHomePreview({
   const planExportRef = useRef(null);
   const brandSyncPromiseRef = useRef(Promise.resolve());
   const brandSyncRevisionRef = useRef(0);
+  const adaptationRequestRevisionRef = useRef(0);
+  const savedUrlAdaptationRevisionRef = useRef(0);
+  const studioPlanRequestRevisionRef = useRef(0);
+  const savedUrlRequestRevisionRef = useRef(0);
   const productClient = useMemo(
     () => createProductDiscoveryClient({ apiBase, workspaceId, fetcher }),
     [apiBase, fetcher, workspaceId],
   );
+  const reloadSavedSignals = async () => {
+    if (!authenticated || !workspaceId) {
+      setSavedSignalIds(new Set());
+      setSavedSignalState({ status: 'idle', pendingId: '', error: '' });
+      return;
+    }
+    setSavedSignalState({ status: 'loading', pendingId: '', error: '' });
+    try {
+      const payload = await productClient.loadSavedSignals();
+      const ids = Array.isArray(payload.savedSignals)
+        ? payload.savedSignals.map((record) => record.cardId || record.sharedSignalId || record.signalId).filter(Boolean)
+        : [];
+      setSavedSignalIds(new Set(ids));
+      setSavedSignalState({ status: 'ready', pendingId: '', error: '' });
+    } catch (error) {
+      setSavedSignalState({ status: 'error', pendingId: '', error: error?.message || 'saved_signals_load_failed' });
+      throw error;
+    }
+  };
+  const reloadSavedUrls = async () => {
+    if (!authenticated || !workspaceId) {
+      setSavedUrls([]);
+      setSavedUrlState({ status: 'idle', pendingId: '', error: '' });
+      return;
+    }
+    const requestRevision = ++savedUrlRequestRevisionRef.current;
+    const requestWorkspaceId = getSavedUrlIdentity({ workspaceId });
+    setSavedUrlState({ status: 'loading', pendingId: '', error: '' });
+    try {
+      const payload = await productClient.loadSavedUrls();
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      setSavedUrls(Array.isArray(payload.savedUrls) ? payload.savedUrls : []);
+      setSavedUrlState({ status: 'ready', pendingId: '', error: '' });
+    } catch (error) {
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      setSavedUrlState({ status: 'error', pendingId: '', error: error?.code || error?.message || 'saved_urls_load_failed' });
+      throw error;
+    }
+  };
   const handleProductLogout = async () => {
     if (logoutPending || typeof onLogout !== 'function') return;
     setLogoutPending(true);
@@ -819,6 +970,13 @@ export default function ProductHomePreview({
     () => brands.find((brand) => brand.id === activeBrandId) || null,
     [activeBrandId, brands],
   );
+  const activeBrandRevision = useMemo(() => activeBrand
+    ? [
+      activeBrand.id,
+      activeBrand.version || '',
+      activeBrand.updatedAt || activeBrand.createdAt || '',
+    ].join(':')
+    : 'none', [activeBrand]);
   const contentPlanBrandId = activeBrandId || PRODUCT_UNASSIGNED_BRAND_ID;
   const signalCards = useMemo(
     () => (signalsReady ? mapQualityAcceptedSignalsToProductCards(collectionSignals) : []),
@@ -829,6 +987,198 @@ export default function ProductHomePreview({
   useEffect(() => {
     setCollectionSignals(signals);
   }, [signals, workspaceId]);
+  useEffect(() => {
+    adaptationRequestRevisionRef.current += 1;
+    studioPlanRequestRevisionRef.current += 1;
+    setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
+  }, [activeBrandRevision]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!authenticated || !workspaceId) {
+      setSavedSignalIds(new Set());
+      setSavedSignalState({ status: 'idle', pendingId: '', error: '' });
+      return undefined;
+    }
+    setSavedSignalState({ status: 'loading', pendingId: '', error: '' });
+    productClient.loadSavedSignals()
+      .then((payload) => {
+        if (cancelled) return;
+        const ids = Array.isArray(payload.savedSignals)
+          ? payload.savedSignals.map((record) => record.cardId || record.sharedSignalId || record.signalId).filter(Boolean)
+          : [];
+        setSavedSignalIds(new Set(ids));
+        setSavedSignalState({ status: 'ready', pendingId: '', error: '' });
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setSavedSignalState({ status: 'error', pendingId: '', error: error?.message || 'saved_signals_load_failed' });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authenticated, productClient, workspaceId]);
+  useEffect(() => {
+    savedUrlRequestRevisionRef.current += 1;
+    if (!authenticated || !workspaceId) {
+      setSavedUrls([]);
+      setSavedUrlState({ status: 'idle', pendingId: '', error: '' });
+      return undefined;
+    }
+    const requestRevision = savedUrlRequestRevisionRef.current;
+    const requestWorkspaceId = getSavedUrlIdentity({ workspaceId });
+    setSavedUrlState({ status: 'loading', pendingId: '', error: '' });
+    productClient.loadSavedUrls()
+      .then((payload) => {
+        if (!isCurrentSavedUrlResponse({
+          requestRevision,
+          currentRevision: savedUrlRequestRevisionRef.current,
+          requestWorkspaceId,
+          currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+        })) return;
+        setSavedUrls(Array.isArray(payload.savedUrls) ? payload.savedUrls : []);
+        setSavedUrlState({ status: 'ready', pendingId: '', error: '' });
+      })
+      .catch((error) => {
+        if (!isCurrentSavedUrlResponse({
+          requestRevision,
+          currentRevision: savedUrlRequestRevisionRef.current,
+          requestWorkspaceId,
+          currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+        })) return;
+        setSavedUrlState({ status: 'error', pendingId: '', error: error?.code || error?.message || 'saved_urls_load_failed' });
+      });
+    return () => {
+      savedUrlRequestRevisionRef.current += 1;
+    };
+  }, [authenticated, productClient, workspaceId]);
+  useEffect(() => {
+    savedUrlAdaptationRevisionRef.current += 1;
+    if (!authenticated || !workspaceId || brandPersistenceStatus !== 'ready' || !savedUrls.length) {
+      if (!savedUrls.length) {
+        setSavedUrlAdaptations(new Map());
+        setSavedUrlAdaptationStates({});
+      }
+      return undefined;
+    }
+    const requestRevision = savedUrlAdaptationRevisionRef.current;
+    const requestIdentity = getPersonalUrlAdaptationIdentity({
+      workspaceId,
+      savedUrlId: savedUrls.map((savedUrl) => savedUrl.id).join(','),
+      brandRevision: activeBrandRevision,
+    });
+    setSavedUrlAdaptationStates((current) => Object.fromEntries(
+      savedUrls.map((savedUrl) => [savedUrl.id, { ...(current[savedUrl.id] || {}), status: 'loading', errorCode: '' }]),
+    ));
+    Promise.allSettled(savedUrls.map(async (savedUrl) => ({
+      savedUrl,
+      payload: await productClient.loadSavedUrlAdaptation(savedUrl.id),
+    }))).then((results) => {
+      if (!isCurrentPersonalUrlAdaptationResponse({
+        requestRevision,
+        currentRevision: savedUrlAdaptationRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getPersonalUrlAdaptationIdentity({
+          workspaceId,
+          savedUrlId: savedUrls.map((savedUrl) => savedUrl.id).join(','),
+          brandRevision: activeBrandRevision,
+        }),
+      })) return;
+      const nextAdaptations = new Map();
+      const nextStates = {};
+      results.forEach((result, index) => {
+        const savedUrl = savedUrls[index];
+        if (result.status === 'fulfilled') {
+          const adaptation = result.value.payload.adaptation || null;
+          if (adaptation) nextAdaptations.set(savedUrl.id, adaptation);
+          nextStates[savedUrl.id] = {
+            status: adaptation ? 'ready' : 'absent',
+            adaptation,
+            errorCode: '',
+          };
+        } else {
+          nextStates[savedUrl.id] = {
+            status: 'error',
+            adaptation: null,
+            errorCode: result.reason?.code || result.reason?.message || 'saved_url_adaptation_load_failed',
+          };
+        }
+      });
+      setSavedUrlAdaptations(nextAdaptations);
+      setSavedUrlAdaptationStates(nextStates);
+    });
+    return () => {
+      savedUrlAdaptationRevisionRef.current += 1;
+    };
+  }, [activeBrandRevision, authenticated, brandPersistenceStatus, productClient, savedUrls, workspaceId]);
+  useEffect(() => {
+    if (!authenticated || !workspaceId || !studioSignal?.id || activeTab !== 'studio') {
+      if (!studioSignal?.id) setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
+      return undefined;
+    }
+    if (brandPersistenceStatus !== 'ready') {
+      setAdaptationState({
+        status: brandPersistenceStatus === 'error' ? 'error' : 'loading',
+        adaptation: null,
+        errorCode: brandPersistenceStatus === 'error' ? 'product_brand_brain_save_failed' : '',
+      });
+      return undefined;
+    }
+    let cancelled = false;
+    const requestRevision = ++adaptationRequestRevisionRef.current;
+    const isPersonalUrl = studioSignal.sourceType === 'personal_url' && studioSignal.savedUrlId;
+    const requestIdentity = isPersonalUrl
+      ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+      : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
+    setAdaptationState({ status: 'loading', adaptation: null, errorCode: '' });
+    const loadAdaptation = isPersonalUrl
+      ? productClient.loadSavedUrlAdaptation(studioSignal.savedUrlId)
+      : productClient.loadAdaptation(studioSignal.id);
+    loadAdaptation
+      .then((payload) => {
+        const currentIdentity = isPersonalUrl
+          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+          : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
+        if (cancelled || (isPersonalUrl
+          ? !isCurrentPersonalUrlAdaptationResponse({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity })
+          : !isCurrentProductAdaptationRequest({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity }))) return;
+        if (isPersonalUrl) {
+          const savedUrl = savedUrls.find((item) => item.id === studioSignal.savedUrlId);
+          if (savedUrl) {
+            setSavedUrlAdaptations((current) => {
+              const next = new Map(current);
+              if (payload.adaptation) next.set(savedUrl.id, payload.adaptation);
+              else next.delete(savedUrl.id);
+              return next;
+            });
+            setSavedUrlAdaptationStates((current) => ({
+              ...current,
+              [savedUrl.id]: { status: payload.adaptation ? 'ready' : 'absent', adaptation: payload.adaptation || null, errorCode: '' },
+            }));
+          }
+        }
+        setAdaptationState({
+          status: payload.adaptation ? 'ready' : 'absent',
+          adaptation: payload.adaptation || null,
+          errorCode: '',
+        });
+      })
+      .catch((error) => {
+        const currentIdentity = isPersonalUrl
+          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+          : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
+        if (cancelled || (isPersonalUrl
+          ? !isCurrentPersonalUrlAdaptationResponse({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity })
+          : !isCurrentProductAdaptationRequest({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity }))) return;
+        setAdaptationState({
+          status: 'error',
+          adaptation: null,
+          errorCode: error?.code || error?.message || 'workspace_adaptation_load_failed',
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeBrandRevision, activeTab, authenticated, brandPersistenceStatus, productClient, savedUrls, studioSignal?.id, studioSignal?.savedUrlId, studioSignal?.sourceType, workspaceId]);
   useEffect(() => {
     writeProductBrands(window.localStorage, brands);
     const resolved = writeActiveBrandId(window.localStorage, brands, activeBrandId);
@@ -851,6 +1201,8 @@ export default function ProductHomePreview({
           setActiveBrandId(restored.activeBrandId);
         } else if (localActiveBrand) {
           await productClient.saveBrand(localActiveBrand);
+          const refreshed = await productClient.loadSignals();
+          if (Array.isArray(refreshed.reels)) setCollectionSignals(refreshed.reels);
         }
         if (!cancelled) setBrandPersistenceStatus('ready');
       })
@@ -879,6 +1231,16 @@ export default function ProductHomePreview({
     return operation;
   };
 
+  const persistBrandAndReloadSignals = (brand) => {
+    const revision = brandSyncRevisionRef.current + 1;
+    return persistBrand(brand).then(async () => {
+      if (brandSyncRevisionRef.current !== revision) return;
+      const payload = await productClient.loadSignals();
+      if (brandSyncRevisionRef.current !== revision) return;
+      if (Array.isArray(payload.reels)) setCollectionSignals(payload.reels);
+    });
+  };
+
   const saveBrand = (draft) => {
     const timestamp = new Date().toISOString();
     const id = draft.id || createProductBrandId(draft.name);
@@ -888,17 +1250,52 @@ export default function ProductHomePreview({
       createdAt: draft.createdAt || timestamp,
       updatedAt: timestamp,
     };
+    adaptationRequestRevisionRef.current += 1;
+    studioPlanRequestRevisionRef.current += 1;
+    setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
     setBrands((current) => upsertProductBrand(current, brand));
     setActiveBrandId(id);
-    if (authenticated && workspaceId) void persistBrand(brand);
+    if (authenticated && workspaceId) void persistBrandAndReloadSignals(brand).catch(() => {});
   };
 
   const selectBrand = (brandId) => {
     const nextActiveBrandId = resolveActiveBrandId(brands, brandId);
+    adaptationRequestRevisionRef.current += 1;
+    studioPlanRequestRevisionRef.current += 1;
+    setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
     setActiveBrandId(nextActiveBrandId);
     setStudioPlanDraft(null);
+    setStudioPlanState({ status: 'idle', errorCode: '' });
     const brand = getActiveProductBrand(brands, nextActiveBrandId);
-    if (brand && authenticated && workspaceId) void persistBrand(brand);
+    if (brand && authenticated && workspaceId) void persistBrandAndReloadSignals(brand).catch(() => {});
+  };
+
+  const addStudioDraftToPlan = async (draft) => {
+    if (!draft?.title || studioPlanState.status === 'saving') return;
+    if (!authenticated || !workspaceId) {
+      setStudioPlanDraft({
+        ...draft,
+        targetBrandId: contentPlanBrandId,
+      });
+      setStudioPlanState({ status: 'idle', errorCode: '' });
+      setActiveTab('plan');
+      return;
+    }
+    const requestRevision = ++studioPlanRequestRevisionRef.current;
+    setStudioPlanState({ status: 'saving', errorCode: '' });
+    try {
+      await productClient.createContentPlanPost(draft);
+      if (studioPlanRequestRevisionRef.current !== requestRevision) return;
+      setStudioPlanState({ status: 'ready', errorCode: '' });
+      setStudioPlanDraft(null);
+      setActiveTab('plan');
+    } catch (error) {
+      if (studioPlanRequestRevisionRef.current !== requestRevision) return;
+      setStudioPlanState({
+        status: 'error',
+        errorCode: error?.code || error?.message || 'content_plan_post_create_failed',
+      });
+    }
   };
 
   const refreshBank = async () => {
@@ -928,6 +1325,168 @@ export default function ProductHomePreview({
     notify(t('product.moderation.success'));
   };
 
+  const toggleSavedSignal = async (cardId) => {
+    if (!cardId || savedSignalState.status === 'saving') return;
+    const shouldSave = !savedSignalIds.has(cardId);
+    setSavedSignalState({ status: 'saving', pendingId: cardId, error: '' });
+    try {
+      const payload = shouldSave
+        ? await productClient.saveSignal(cardId)
+        : await productClient.unsaveSignal(cardId);
+      const resolvedCardId = payload.savedSignal?.cardId || cardId;
+      setSavedSignalIds((current) => {
+        const next = new Set(current);
+        if (shouldSave) next.add(resolvedCardId);
+        else next.delete(cardId);
+        return next;
+      });
+      setSavedSignalState({ status: 'ready', pendingId: '', error: '' });
+    } catch (error) {
+      setSavedSignalState({ status: 'error', pendingId: cardId, error: error?.message || 'saved_signal_failed' });
+    }
+  };
+
+  const analyzeSavedUrl = async (savedUrlId) => {
+    const savedUrl = savedUrls.find((item) => item.id === savedUrlId);
+    if (!savedUrl || !authenticated || !workspaceId) return;
+    const requestRevision = ++savedUrlAdaptationRevisionRef.current;
+    const requestIdentity = getPersonalUrlAdaptationIdentity({
+      workspaceId,
+      savedUrlId,
+      brandRevision: activeBrandRevision,
+    });
+    setSavedUrlAdaptationStates((current) => ({
+      ...current,
+      [savedUrlId]: { status: 'generating', adaptation: null, errorCode: '' },
+    }));
+    if (studioSignal?.savedUrlId === savedUrlId) {
+      adaptationRequestRevisionRef.current += 1;
+      setAdaptationState({ status: 'generating', adaptation: null, errorCode: '' });
+    }
+    try {
+      await brandSyncPromiseRef.current;
+      if (!isCurrentPersonalUrlAdaptationResponse({
+        requestRevision,
+        currentRevision: savedUrlAdaptationRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+      })) return;
+      const payload = await productClient.analyzeAdaptSavedUrl(savedUrlId);
+      if (!isCurrentPersonalUrlAdaptationResponse({
+        requestRevision,
+        currentRevision: savedUrlAdaptationRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+      })) return;
+      const adaptation = payload.adaptation || null;
+      setSavedUrlAdaptations((current) => {
+        const next = new Map(current);
+        if (adaptation) next.set(savedUrlId, adaptation);
+        return next;
+      });
+      setSavedUrlAdaptationStates((current) => ({
+        ...current,
+        [savedUrlId]: { status: adaptation ? 'ready' : 'absent', adaptation, errorCode: '' },
+      }));
+      if (adaptation && payload.activeBrandChanged) {
+        setAdaptationState({ status: 'error', adaptation: null, errorCode: 'workspace_adaptation_brand_changed' });
+        return;
+      }
+      if (adaptation && (studioSignal?.savedUrlId === savedUrlId || !studioSignal)) {
+        setStudioSignal(mapSavedUrlToProductSignal(savedUrl, adaptation));
+        setAdaptationState({ status: 'ready', adaptation, errorCode: '' });
+        setActiveTab('studio');
+      }
+    } catch (error) {
+      if (!isCurrentPersonalUrlAdaptationResponse({
+        requestRevision,
+        currentRevision: savedUrlAdaptationRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+      })) return;
+      const errorCode = error?.code || error?.message || 'saved_url_adaptation_generate_failed';
+      setSavedUrlAdaptationStates((current) => ({
+        ...current,
+        [savedUrlId]: { status: 'error', adaptation: null, errorCode },
+      }));
+      if (studioSignal?.savedUrlId === savedUrlId) {
+        setAdaptationState({ status: 'error', adaptation: null, errorCode });
+      }
+    }
+  };
+
+  const openSavedUrlStudio = (savedUrl) => {
+    const adaptation = savedUrlAdaptations.get(savedUrl?.id) || savedUrlAdaptationStates[savedUrl?.id]?.adaptation;
+    if (!savedUrl || !adaptation) return;
+    setStudioSignal(mapSavedUrlToProductSignal(savedUrl, adaptation));
+    setAdaptationState({ status: 'ready', adaptation, errorCode: '' });
+    setActiveTab('studio');
+  };
+
+  const generateStudioAdaptation = async () => {
+    if (!studioSignal?.id || adaptationState.status === 'generating') return;
+    if (studioSignal.sourceType === 'personal_url' && studioSignal.savedUrlId) {
+      await analyzeSavedUrl(studioSignal.savedUrlId);
+      return;
+    }
+    const requestRevision = ++adaptationRequestRevisionRef.current;
+    const requestIdentity = getProductAdaptationRequestIdentity({
+      workspaceId,
+      signalId: studioSignal.id,
+      brandRevision: activeBrandRevision,
+    });
+    setAdaptationState({ status: 'generating', adaptation: null, errorCode: '' });
+    try {
+      await brandSyncPromiseRef.current;
+      if (!isCurrentProductAdaptationRequest({
+        requestRevision,
+        currentRevision: adaptationRequestRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getProductAdaptationRequestIdentity({
+          workspaceId,
+          signalId: studioSignal.id,
+          brandRevision: activeBrandRevision,
+        }),
+      })) return;
+      const payload = await productClient.generateAdaptation(studioSignal.id);
+      if (!isCurrentProductAdaptationRequest({
+        requestRevision,
+        currentRevision: adaptationRequestRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getProductAdaptationRequestIdentity({
+          workspaceId,
+          signalId: studioSignal.id,
+          brandRevision: activeBrandRevision,
+        }),
+      })) return;
+      if (payload.activeBrandChanged) {
+        setAdaptationState({ status: 'error', adaptation: null, errorCode: 'workspace_adaptation_brand_changed' });
+        return;
+      }
+      setAdaptationState({
+        status: 'ready',
+        adaptation: payload.adaptation || null,
+        errorCode: '',
+      });
+    } catch (error) {
+      if (!isCurrentProductAdaptationRequest({
+        requestRevision,
+        currentRevision: adaptationRequestRevisionRef.current,
+        requestIdentity,
+        currentIdentity: getProductAdaptationRequestIdentity({
+          workspaceId,
+          signalId: studioSignal.id,
+          brandRevision: activeBrandRevision,
+        }),
+      })) return;
+      setAdaptationState({
+        status: 'error',
+        adaptation: null,
+        errorCode: error?.code || error?.message || 'workspace_adaptation_generate_failed',
+      });
+    }
+  };
+
   const clearDirectSearch = () => {
     window.clearTimeout(directSearchTimer.current);
     setSignalUrl('');
@@ -937,41 +1496,81 @@ export default function ProductHomePreview({
   const changeSignalUrl = (value) => {
     window.clearTimeout(directSearchTimer.current);
     setSignalUrl(value);
+    if (!['saving', 'deleting'].includes(savedUrlState.status)) {
+      setSavedUrlState({ status: 'idle', pendingId: '', error: '' });
+    }
     if (directSearch.status !== 'idle') {
       setDirectSearch({ status: 'idle', messageKey: '', directSignalId: '' });
     }
   };
 
-  const submitDirectSearch = (event) => {
+  const submitSavedUrl = async (event) => {
     event.preventDefault();
-    window.clearTimeout(directSearchTimer.current);
-
-    if (!getSupportedSignalPlatform(signalUrl)) {
-      setDirectSearch({
-        status: 'error',
-        messageKey: 'product.search.invalid',
-        directSignalId: '',
-      });
-      return;
+    const value = signalUrl.trim();
+    if (!value || !authenticated || !workspaceId || savedUrlState.status === 'saving') return;
+    const requestRevision = ++savedUrlRequestRevisionRef.current;
+    const requestWorkspaceId = getSavedUrlIdentity({ workspaceId });
+    setSavedUrlState({ status: 'saving', pendingId: value, error: '' });
+    try {
+      const payload = await productClient.saveUrl(value);
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      if (payload.savedUrl) setSavedUrls((current) => upsertSavedUrl(current, payload.savedUrl));
+      setSignalUrl('');
+      setSavedUrlState({ status: payload.alreadySaved ? 'alreadySaved' : 'saved', pendingId: '', error: '' });
+    } catch (error) {
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      setSavedUrlState({ status: 'error', pendingId: '', error: error?.code || error?.message || 'saved_url_failed' });
     }
+  };
 
-    setDirectSearch({
-      status: 'loading',
-      messageKey: 'product.search.checking',
-      directSignalId: '',
-    });
-    directSearchTimer.current = window.setTimeout(() => {
-      const signal = findSignalBySourceUrl(signalCards, signalUrl);
-      setDirectSearch(signal ? {
-        status: 'matched',
-        messageKey: 'product.search.matched',
-        directSignalId: signal.id,
-      } : {
-        status: 'error',
-        messageKey: 'product.search.notFound',
-        directSignalId: '',
+  const deleteSavedUrl = async (savedUrlId) => {
+    if (!savedUrlId || savedUrlState.status === 'deleting') return;
+    const requestRevision = ++savedUrlRequestRevisionRef.current;
+    const requestWorkspaceId = getSavedUrlIdentity({ workspaceId });
+    setSavedUrlState({ status: 'deleting', pendingId: savedUrlId, error: '' });
+    try {
+      await productClient.deleteSavedUrl(savedUrlId);
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      setSavedUrls((current) => current.filter((item) => item.id !== savedUrlId));
+      setSavedUrlAdaptations((current) => {
+        const next = new Map(current);
+        next.delete(savedUrlId);
+        return next;
       });
-    }, 350);
+      setSavedUrlAdaptationStates((current) => {
+        const next = { ...current };
+        delete next[savedUrlId];
+        return next;
+      });
+      if (studioSignal?.savedUrlId === savedUrlId) {
+        setStudioSignal(null);
+        setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
+      }
+      setSavedUrlState({ status: 'ready', pendingId: '', error: '' });
+    } catch (error) {
+      if (!isCurrentSavedUrlResponse({
+        requestRevision,
+        currentRevision: savedUrlRequestRevisionRef.current,
+        requestWorkspaceId,
+        currentWorkspaceId: getSavedUrlIdentity({ workspaceId }),
+      })) return;
+      setSavedUrlState({ status: 'error', pendingId: savedUrlId, error: error?.code || error?.message || 'saved_url_delete_failed' });
+    }
   };
 
   return (
@@ -1001,9 +1600,9 @@ export default function ProductHomePreview({
           setMobileOpen={setMobileOpen}
           onAddChannel={() => setAddChannelOpen(true)}
           signalUrl={signalUrl}
-          signalSearchStatus={directSearch.status}
+          signalSearchStatus={savedUrlState.status}
           onSignalUrlChange={changeSignalUrl}
-          onSignalUrlSubmit={submitDirectSearch}
+          onSignalUrlSubmit={submitSavedUrl}
           channelQuery={channelQuery}
           onChannelQueryChange={setChannelQuery}
           notificationsOpen={notificationsOpen}
@@ -1025,6 +1624,19 @@ export default function ProductHomePreview({
             onRefreshBank={refreshBank}
             canManageSharedSignals={canManageSharedSignals}
             onExcludeSignal={excludeSignal}
+            savedIds={savedSignalIds}
+            savedSignalState={savedSignalState}
+            onToggleSaved={toggleSavedSignal}
+            onReloadSavedSignals={() => void reloadSavedSignals().catch(() => {})}
+            savedUrls={savedUrls}
+            savedUrlState={savedUrlState}
+            savedUrlAdaptationStates={savedUrlAdaptationStates}
+            onAnalyzeSavedUrl={analyzeSavedUrl}
+            onOpenSavedUrlStudio={openSavedUrlStudio}
+            onDeleteSavedUrl={deleteSavedUrl}
+            onReloadSavedUrls={() => void reloadSavedUrls().catch(() => {})}
+            authenticated={authenticated}
+            language={language}
           />
         )}
         {activeTab === 'channels' && (
@@ -1038,23 +1650,30 @@ export default function ProductHomePreview({
         {activeTab === 'studio' && (
           <ProductStudioPreview
             signal={studioSignal}
+            adaptationState={adaptationState}
+            onGenerateAdaptation={generateStudioAdaptation}
+            onRetryAdaptation={generateStudioAdaptation}
             onChooseSignal={() => setActiveTab('discover')}
-            onAddToPlan={(draft) => {
-              setStudioPlanDraft({
-                ...draft,
-                targetBrandId: contentPlanBrandId,
-                sourceSignalId: studioSignal?.id || '',
-                sourceTitle: studioSignal?.title || '',
-                sourceUrl: studioSignal?.sourceUrl || '',
-              });
-              setActiveTab('plan');
-            }}
+            addToPlanState={studioPlanState}
+            onAddToPlan={(draft) => addStudioDraftToPlan({
+              ...draft,
+              targetBrandId: contentPlanBrandId,
+              sourceSignalId: draft.sourceSignalId || studioSignal?.id || '',
+              sourceTitle: draft.sourceTitle || studioSignal?.title || '',
+              sourceUrl: draft.sourceUrl || studioSignal?.sourceUrl || '',
+              sourceType: draft.sourceType || studioSignal?.sourceType || '',
+              savedUrlId: draft.savedUrlId || studioSignal?.savedUrlId || '',
+            })}
           />
         )}
         {activeTab === 'plan' && (
           <ProductContentPlanPreview
             incomingPost={studioPlanDraft?.targetBrandId === contentPlanBrandId ? studioPlanDraft : null}
             activeBrandId={contentPlanBrandId}
+            workspaceId={workspaceId}
+            authenticated={authenticated}
+            productClient={productClient}
+            brandPersistenceStatus={brandPersistenceStatus}
             onRegisterExport={(handler) => {
               planExportRef.current = handler;
             }}

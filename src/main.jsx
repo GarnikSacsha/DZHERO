@@ -146,7 +146,6 @@ const JERYK_LOADING_MESSAGE = '__JERYK_LOADING__';
 const SOURCES_TAB_KEY = 'dzhero-sources-tab';
 const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
-const PRODUCT_SAVED_SIGNALS_STORAGE_KEY = 'dzhero-preview-product-saved-signals-v1';
 const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'TikTok', 'Video', 'Stories'];
 
 function createInterfaceApiError(payload, fallbackCode = 'unknown_error') {
@@ -1334,7 +1333,6 @@ function App() {
       window.localStorage.removeItem(PRODUCT_BRANDS_STORAGE_KEY);
       window.localStorage.removeItem(PRODUCT_ACTIVE_BRAND_STORAGE_KEY);
       window.localStorage.removeItem(PRODUCT_CREDITS_STORAGE_KEY);
-      window.localStorage.removeItem(PRODUCT_SAVED_SIGNALS_STORAGE_KEY);
     }
     resetBrandContextForWorkspace(DEMO_WORKSPACES[0].id);
     setPage('home');

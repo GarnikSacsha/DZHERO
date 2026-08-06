@@ -65,7 +65,33 @@ const fetcher = async (url, options = {}) => {
     });
   }
   if (url.endsWith('/reels')) {
-    return jsonResponse(200, { reels: [{ id: 'accepted-signal' }] });
+    return jsonResponse(200, { reels: [{ id: 'accepted-signal', workspaceBrandMatch: 73 }] });
+  }
+  if (url.endsWith('/saved-signals')) {
+    return jsonResponse(200, { savedSignals: [{ cardId: 'accepted-signal' }] });
+  }
+  if (url.endsWith('/adaptations/accepted-signal')) {
+    return jsonResponse(200, { status: 'absent', adaptation: null });
+  }
+  if (url.endsWith('/adaptations/accepted-signal/generate')) {
+    return jsonResponse(201, { adaptation: { id: 'adaptation-1' } });
+  }
+  if (url.endsWith('/content-plan?surface=product_redesign')) {
+    return jsonResponse(200, { posts: [{ id: 'plan-1', title: 'Persisted post' }] });
+  }
+  if (url.endsWith('/content-plan/posts') && options.method === 'POST') {
+    return jsonResponse(201, { post: { id: 'plan-2', title: 'Created post' }, posts: [{ id: 'plan-1' }, { id: 'plan-2' }] });
+  }
+  if (url.endsWith('/content-plan/posts/plan-2') && options.method === 'PUT') {
+    return jsonResponse(200, { post: { id: 'plan-2', title: 'Updated post' }, posts: [{ id: 'plan-1' }, { id: 'plan-2' }] });
+  }
+  if (url.endsWith('/content-plan/posts/plan-2') && options.method === 'DELETE') {
+    return jsonResponse(200, { deletedPostId: 'plan-2', posts: [{ id: 'plan-1' }] });
+  }
+  if (url.includes('/saved-signals/')) {
+    return jsonResponse(options.method === 'PUT' ? 201 : 200, options.method === 'PUT'
+      ? { saved: true, alreadySaved: false, savedSignal: { cardId: 'accepted-signal' } }
+      : { saved: false, alreadyUnsaved: false });
   }
   throw new Error(`unexpected request: ${url}`);
 };
@@ -77,6 +103,22 @@ const client = createProductDiscoveryClient({
 });
 assert.equal((await client.loadBrand()).id, 'brand-backend');
 await client.saveBrand(backendBrand);
+const rereadSignals = await client.loadSignals();
+assert.equal(rereadSignals.reels[0].workspaceBrandMatch, 73, 'Brand Match is re-read from the current workspace projection');
+assert.deepEqual((await client.loadSavedSignals()).savedSignals, [{ cardId: 'accepted-signal' }]);
+assert.equal((await client.saveSignal('accepted-signal')).saved, true);
+assert.equal((await client.unsaveSignal('accepted-signal')).saved, false);
+assert.equal((await client.loadAdaptation('accepted-signal')).status, 'absent');
+assert.equal((await client.generateAdaptation('accepted-signal')).adaptation.id, 'adaptation-1');
+assert.deepEqual((await client.loadContentPlan()).posts, [{ id: 'plan-1', title: 'Persisted post' }]);
+const createdPlan = await client.createContentPlanPost({
+  origin: 'studio_adaptation', sourceAdaptationId: 'adaptation-1', sourceVariantIndex: 1, date: '2026-08-12',
+});
+assert.equal(createdPlan.post.id, 'plan-2');
+assert.equal(JSON.parse(calls.at(-1).options.body).post.sourceVariantIndex, 1);
+assert.equal((await client.updateContentPlanPost('plan-2', { title: 'Updated post' })).post.title, 'Updated post');
+assert.equal((await client.deleteContentPlanPost('plan-2')).deletedPostId, 'plan-2');
+assert.equal(calls.find(({ url }) => url.endsWith('/content-plan?surface=product_redesign')).url, '/api/workspaces/workspace-a/content-plan?surface=product_redesign');
 
 const firstRefresh = client.refreshBank({ activeBrandId: backendBrand.id });
 const duplicateRefresh = client.refreshBank({ activeBrandId: backendBrand.id });
@@ -93,7 +135,7 @@ assert.deepEqual(JSON.parse(runCall.options.body), {
   surface: 'product_redesign',
   activeBrandId: 'brand-backend',
 });
-assert.equal(calls.filter(({ url }) => url.endsWith('/reels')).length, 1);
+assert.equal(calls.filter(({ url }) => url.endsWith('/reels')).length, 2);
 
 let blockedCalls = 0;
 const blockedClient = createProductDiscoveryClient({
