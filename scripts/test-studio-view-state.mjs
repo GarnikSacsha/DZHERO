@@ -12,8 +12,16 @@ import {
 } from '../src/studioViewState.mjs';
 
 const signal = {
+  sourceType: 'personal_url',
+  personalUrl: true,
   sourceUrl: 'https://www.youtube.com/shorts/real-source',
   importedMetadata: {
+    grounding: {
+      status: 'full',
+      mode: 'video',
+      videoInput: { type: 'video', uri: 'https://www.youtube.com/shorts/real-source' },
+      transcript: { status: 'available', trusted: true },
+    },
     youtube: { channelId: 'UC_REAL_CHANNEL' },
     videoIntelligence: {
       transcript: {
@@ -77,6 +85,19 @@ assert.ok(analysis.items.some((item) => item.text === 'Observed source summary.'
 assert.ok(analysis.items.some((item) => item.text === 'A concrete proof point.'));
 assert.equal(deriveStudioAnalysis({ analysisStatus: 'pending' }).status, 'generating');
 assert.equal(deriveStudioAnalysis({}).status, 'unavailable');
+assert.equal(deriveStudioAnalysis({
+  sourceType: 'personal_url',
+  personalUrl: true,
+  title: 'Metadata-only title',
+  analysis: { items: [{ label: 'notes', text: 'This must not count as grounded.' }] },
+  importedMetadata: {
+    grounding: { status: 'unavailable', mode: 'metadata_only' },
+    videoIntelligence: { video: { videoSummary: 'Metadata-only summary.' } },
+  },
+}).status, 'unavailable');
+assert.equal(deriveStudioTranscript({
+  importedMetadata: { videoIntelligence: { transcript: { status: 'not_applicable' } } },
+}).status, 'not_applicable');
 
 assert.equal(getStudioRemix(signal)?.title, 'Brand-ready adaptation');
 assert.deepEqual(getStudioRemixes(signal).map(({ title }) => title), ['Brand-ready adaptation']);

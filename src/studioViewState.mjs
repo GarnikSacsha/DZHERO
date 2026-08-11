@@ -65,6 +65,19 @@ function normalizeStatus(value) {
   return cleanText(value).toLowerCase().replace(/\s+/g, '_');
 }
 
+function getSourceGrounding(signal = {}) {
+  return signal.importedMetadata?.grounding
+    || signal.importedMetadata?.sourceGrounding
+    || signal.personalUrlAdaptation?.sourceContext?.grounding
+    || null;
+}
+
+function isPersonalUrlSignal(signal = {}) {
+  return signal.personalUrl === true
+    || signal.sourceType === 'personal_url'
+    || Boolean(getSourceGrounding(signal));
+}
+
 export function getStudioSourceLinks(signal = {}) {
   const metadata = signal.importedMetadata || {};
   const youtube = metadata.youtube || {};
@@ -106,12 +119,15 @@ export function deriveStudioTranscript(signal = {}) {
     || intelligence.transcriptStatus,
   );
   const hasContent = Boolean(segments.length || transcriptText || spokenText || onScreenText);
+  const notApplicable = statusValue === 'not_applicable' || statusValue === 'not_applicable_yet';
 
   return {
     status: hasContent
       ? 'available'
       : GENERATING_STATES.has(statusValue)
         ? 'generating'
+        : notApplicable
+          ? 'not_applicable'
         : 'unavailable',
     language: cleanText(transcript.language || transcript.languageCode),
     segments,
@@ -128,13 +144,24 @@ function pushAnalysisItem(items, id, label, value) {
 export function deriveStudioAnalysis(signal = {}) {
   const analysis = signal.analysis && typeof signal.analysis === 'object' ? signal.analysis : {};
   const video = signal.importedMetadata?.videoIntelligence?.video || {};
+  const visual = signal.importedMetadata?.visual || signal.importedMetadata?.videoIntelligence?.visual || {};
+  const transcript = signal.importedMetadata?.videoIntelligence?.transcript || {};
   const items = [];
+
+  const grounding = getSourceGrounding(signal);
+  if (isPersonalUrlSignal(signal) && grounding?.status !== 'full') {
+    return { status: 'unavailable', items: [] };
+  }
 
   pushAnalysisItem(items, 'recommendation', 'recommendation', analysis.recommendation);
   pushAnalysisItem(items, 'notes', 'notes', analysis.notes);
   pushAnalysisItem(items, 'summary', 'summary', video.videoSummary);
   pushAnalysisItem(items, 'hook', 'hook', video.hook);
   pushAnalysisItem(items, 'mechanic', 'mechanic', video.contentMechanic);
+  pushAnalysisItem(items, 'transcript', 'notes', transcript.text);
+  pushAnalysisItem(items, 'visual', 'scene', visual.visualSummary);
+  pushAnalysisItem(items, 'sound', 'notes', Array.isArray(video.soundMusicCues) ? video.soundMusicCues.join('; ') : video.soundMusicCues);
+  pushAnalysisItem(items, 'confidence', 'notes', video.confidence);
 
   if (Array.isArray(analysis.signals)) {
     analysis.signals.forEach((value, index) => pushAnalysisItem(items, `signal-${index}`, 'signal', value));
@@ -143,6 +170,15 @@ export function deriveStudioAnalysis(signal = {}) {
   }
   if (Array.isArray(video.sceneBeats)) {
     video.sceneBeats.forEach((value, index) => pushAnalysisItem(items, `beat-${index}`, 'scene', value));
+  }
+  if (Array.isArray(video.scenes)) {
+    video.scenes.forEach((scene, index) => {
+      const summary = [scene.timeframe, scene.visualAction, scene.spokenContent, scene.onScreenText]
+        .map(cleanText)
+        .filter(Boolean)
+        .join(' — ');
+      pushAnalysisItem(items, `scene-${index}`, 'scene', summary);
+    });
   }
 
   const statusValue = normalizeStatus(

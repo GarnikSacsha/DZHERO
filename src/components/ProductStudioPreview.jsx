@@ -60,10 +60,23 @@ function getSignalImage(signal) {
     || '';
 }
 
+function getSourceGrounding(signal) {
+  return signal?.importedMetadata?.grounding
+    || signal?.importedMetadata?.sourceGrounding
+    || signal?.personalUrlAdaptation?.sourceContext?.grounding
+    || null;
+}
+
 function StudioDataState({ status, area }) {
   const { t } = useI18n();
   const busy = status === 'generating' || status === 'loading';
-  const stateKey = status === 'loading' ? 'loading' : busy ? 'generating' : 'unavailable';
+  const stateKey = status === 'loading'
+    ? 'loading'
+    : busy
+      ? 'generating'
+      : status === 'not_applicable'
+        ? 'notApplicable'
+        : 'unavailable';
   const Icon = busy ? LoaderCircle : FileQuestion;
 
   return (
@@ -77,11 +90,26 @@ function StudioDataState({ status, area }) {
 
 function OverviewPanel({ signal, analysis }) {
   const { t } = useI18n();
-  if (analysis.status !== 'available') return <StudioDataState status={analysis.status} area="analysis" />;
+  const grounding = getSourceGrounding(signal);
+  const readinessStatus = grounding?.status === 'full' ? 'full' : 'unavailable';
+  const readinessMode = grounding?.mode === 'video' ? 'video' : grounding?.mode === 'transcript' ? 'transcript' : 'unavailable';
 
-  const [primary, ...supporting] = analysis.items;
   return (
     <div className="studio-panel-content studio-overview">
+      {grounding && (
+        <article className="studio-source-readiness">
+          <div>
+            <small>{t('product.studio.source.readinessLabel')}</small>
+            <strong>{t(`product.studio.source.readiness.${readinessStatus}`)}</strong>
+          </div>
+          <p>{t(`product.studio.source.readinessBody.${readinessMode}`)}</p>
+        </article>
+      )}
+      {analysis.status !== 'available' && <StudioDataState status={analysis.status} area="analysis" />}
+      {analysis.status === 'available' && (() => {
+        const [primary, ...supporting] = analysis.items;
+        return (
+          <>
       <article className="studio-verdict-card">
         <span><Sparkles size={25} /></span>
         <div>
@@ -100,6 +128,9 @@ function OverviewPanel({ signal, analysis }) {
           ))}
         </div>
       )}
+          </>
+        );
+      })()}
     </div>
   );
 }
@@ -480,7 +511,6 @@ export default function ProductStudioPreview({
 
             <div className="studio-source-actions">
               <button type="button" onClick={() => setActiveTab('analysis')}><BarChart3 size={16} />{t('product.studio.source.analytics')}</button>
-              <button type="button" onClick={() => setActiveTab('overview')}><RefreshCw size={16} />{t('product.studio.source.deconstruct')}</button>
             </div>
           </article>
 

@@ -42,6 +42,12 @@ const adaptation = {
       },
     },
     transcript: { status: 'unavailable', text: '', segments: [] },
+    grounding: {
+      status: 'full',
+      mode: 'video',
+      videoInput: { type: 'video', uri: savedUrl.canonicalUrl, source: 'test-video-provider' },
+      transcript: { status: 'unavailable', trusted: false },
+    },
     analysis: { status: 'unavailable', items: [] },
   },
   result: { remixes: [{ title: 'A grounded variant', hook: 'Show the proof first.', visualFlow: [] }] },
@@ -74,6 +80,8 @@ assert.equal(signal.savedUrlId, savedUrl.id);
 assert.equal(signal.sourceUrl, savedUrl.canonicalUrl);
 assert.equal(signal.views, null);
 assert.equal(signal.importedMetadata.videoIntelligence, null);
+assert.equal(signal.importedMetadata.grounding.status, 'full');
+assert.equal(signal.importedMetadata.grounding.videoInput.uri, savedUrl.canonicalUrl);
 assert.equal(signal.personalUrlAdaptation, adaptation);
 const studioPreviewImage = signal.image
   || signal.thumbnail

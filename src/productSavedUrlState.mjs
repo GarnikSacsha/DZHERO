@@ -107,6 +107,7 @@ export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
       youtube,
       sourceStatus: sourceContext.sourceStatus || sourceMetadata.sourceStatus || '',
       readiness: sourceContext.readiness || sourceContext.videoIntelligence?.readiness || null,
+      grounding: sourceContext.grounding || sourceContext.sourceGrounding || null,
       visual: sourceContext.visual || sourceContext.videoIntelligence?.visual || null,
       videoIntelligence: sourceContext.videoIntelligence || null,
     },

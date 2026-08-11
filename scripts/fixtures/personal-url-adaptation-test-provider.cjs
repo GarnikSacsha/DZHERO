@@ -33,7 +33,12 @@ async function resolveSource(savedUrl, options = {}) {
     transcript: { status: 'available', text: `Grounded transcript for ${savedUrl.id}.`, segments: [] },
     videoIntelligence: {
       readiness: { status: 'partial', level: 'medium', gaps: ['visual frames unavailable'] },
-      video: { status: 'available', videoSummary: `Grounded summary for ${savedUrl.id}.`, contentMechanic: 'proof before explanation' },
+      video: {
+        status: 'available',
+        videoInput: { type: 'video', uri: savedUrl.canonicalUrl, source: 'mock-public-video' },
+        videoSummary: `Grounded summary for ${savedUrl.id}.`,
+        contentMechanic: 'proof before explanation',
+      },
       visual: { status: 'unavailable' },
     },
     analysis: { status: 'partial', items: [{ id: 'summary', label: 'summary', text: `Grounded summary for ${savedUrl.id}.` }] },

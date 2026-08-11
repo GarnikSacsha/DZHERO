@@ -677,9 +677,11 @@ function DiscoverHome({
                       const isBusy = adaptationState.status === 'loading' || adaptationState.status === 'generating';
                       const adaptationError = adaptationState.errorCode === 'saved_url_adaptation_in_flight'
                         ? t('product.savedUrls.adaptationInFlight')
-                        : adaptationState.status === 'error'
-                          ? t('product.savedUrls.adaptationError')
-                          : '';
+                        : adaptationState.errorCode === 'saved_url_source_unavailable'
+                          ? t('product.savedUrls.sourceUnavailable')
+                          : adaptationState.status === 'error'
+                            ? t('product.savedUrls.adaptationError')
+                            : '';
                       return (
                         <>
                     <div className="product-saved-url-card-topline">

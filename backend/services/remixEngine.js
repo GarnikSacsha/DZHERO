@@ -335,6 +335,7 @@ Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
 Original Hook: ${globalInsight.hook}
 Original Script/Text: ${globalInsight.script}
 Marketing Mechanics: ${globalInsight.marketingMechanics}
+Source Grounding Contract: ${JSON.stringify(globalInsight.sourceGrounding || {}, null, 2)}
 Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
 
 Please deconstruct and generate 3 custom adaptations. Respond strictly with a JSON object that satisfies the output schema.
@@ -395,6 +396,7 @@ Original Video Description: ${globalInsight.title || 'Viral Reels Trend'}
 Original Hook: ${globalInsight.hook}
 Original Script/Text: ${globalInsight.script}
 Marketing Mechanics: ${globalInsight.marketingMechanics}
+Source Grounding Contract: ${JSON.stringify(globalInsight.sourceGrounding || {}, null, 2)}
 Video Intelligence: ${JSON.stringify(globalInsight.videoIntelligence || {}, null, 2)}
 ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedback}\nRewrite all three variants from scratch. Do not repeat the rejected wording.` : ''}
 `;

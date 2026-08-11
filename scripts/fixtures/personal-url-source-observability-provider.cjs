@@ -50,9 +50,10 @@ async function resolveSource(savedUrl, options = {}) {
       handle: '@partial_creator',
       transcript: { status: 'unavailable', text: '', segments: [] },
       videoIntelligence: { readiness: { status: 'limited', level: 'limited', gaps: ['captions unavailable', 'video unavailable'] }, video: { status: 'unavailable' }, visual: null },
+      grounding: { status: 'unavailable', mode: 'metadata_only', videoInput: null, transcript: { status: 'unavailable', trusted: false } },
       analysis: { status: 'partial', items: [{ id: 'caption', label: 'notes', text: 'Only public caption is available.' }] },
       sourceStatus: 'partial_source',
-      missing: ['transcript', 'video_intelligence', 'visual_observations'],
+      missing: ['transcript', 'video_intelligence', 'visual_observations', 'source_grounding'],
     };
     record({ type: 'source_resolver', savedUrlId: savedUrl.id, sourceContext: partial, mode: 'partial' });
     return partial;
@@ -79,12 +80,30 @@ async function resolveSource(savedUrl, options = {}) {
     },
     videoIntelligence: {
       readiness: { status: 'ready', level: 'high', gaps: ['visual frames unavailable'] },
-      video: { status: 'available', videoSummary: 'The creator demonstrates a process before revealing the result.', contentMechanic: 'proof before explanation' },
+      video: {
+        status: 'available',
+        videoInput: { type: 'video', uri: savedUrl.canonicalUrl, source: 'mock_video_provider' },
+        videoSummary: 'The creator demonstrates a process before revealing the result.',
+        spokenText: 'Show the process first, then reveal the result.',
+        onScreenText: 'Process → result',
+        hook: 'Can you see the proof before the pitch?',
+        contentMechanic: 'proof before explanation',
+        scenes: [{ timeframe: '0:00-0:03', visualAction: 'Show the process.', spokenContent: 'Show the process first.', onScreenText: 'Process', soundMusicCues: 'Quiet room tone' }],
+        soundMusicCues: ['Quiet room tone'],
+        confidence: 'high for observed process',
+        limitations: ['visual frames are sampled by provider, not archived locally'],
+      },
       visual: { status: 'unavailable' },
     },
     analysis: {
       status: 'partial',
       items: [{ id: 'mechanic', label: 'mechanic', text: 'Proof before explanation.' }],
+    },
+    grounding: {
+      status: 'full',
+      mode: 'video',
+      videoInput: { type: 'video', uri: savedUrl.canonicalUrl, source: 'mock_video_provider' },
+      transcript: { status: 'available', trusted: true, source: 'mock_captions' },
     },
     missing: ['visual frames'],
     sourceStatus: 'partial_ready',

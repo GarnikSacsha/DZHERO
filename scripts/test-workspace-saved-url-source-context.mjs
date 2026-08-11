@@ -154,10 +154,16 @@ try {
   assert.equal(sourceContext.metadata.title, 'Grounded mocked source title');
   assert.equal(sourceContext.transcript.status, 'available');
   assert.equal(sourceContext.videoIntelligence.video.videoSummary, 'The creator demonstrates a process before revealing the result.');
+  assert.equal(sourceContext.grounding.status, 'full');
+  assert.equal(sourceContext.grounding.mode, 'video');
+  assert.equal(sourceContext.grounding.videoInput.uri, 'https://vm.tiktok.com/ZMsource');
+  assert.equal(sourceContext.grounding.transcript.trusted, true);
   assert.ok(insight.title, 'remix insight must carry grounded title');
   assert.ok(insight.description, 'remix insight must carry grounded description');
   assert.ok(insight.transcriptText, 'remix insight must carry grounded transcript');
   assert.equal(insight.videoIntelligence.video.contentMechanic, 'proof before explanation');
+  assert.equal(insight.sourceGrounding.status, 'full');
+  assert.equal(insight.sourceEvidence.grounding.mode, 'video');
 
   const richRecord = JSON.parse(await readFile(dbPath, 'utf8')).workspaceUrlAdaptations.find((record) => record.savedUrlId === 'saved_source');
   assert.equal(richRecord.sourceContext.globalInsight.title, 'Grounded mocked source title');
@@ -166,6 +172,7 @@ try {
   });
   assert.equal(reload.body.status, 'ready');
   assert.equal(reload.body.adaptation.sourceContext.transcript.status, 'available');
+  assert.equal(reload.body.adaptation.sourceContext.grounding.status, 'full');
 
   const completedFastPath = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source/analyze-adapt', {
     method: 'POST', headers: { authorization: 'Bearer session_source' },
@@ -179,11 +186,13 @@ try {
   const partial = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source_partial/analyze-adapt', {
     method: 'POST', headers: { authorization: 'Bearer session_source' },
   });
-  assert.equal(partial.response.status, 201);
-  const partialRecord = JSON.parse(await readFile(dbPath, 'utf8')).workspaceUrlAdaptations.find((record) => record.savedUrlId === 'saved_source_partial');
-  assert.equal(partialRecord.sourceContext.title, 'Partial mocked source title');
-  assert.ok(partialRecord.sourceContext.missing.includes('transcript'));
-  assert.equal(partialRecord.sourceContext.transcript.text, '', 'partial source does not invent transcript');
+  assert.equal(partial.response.status, 409);
+  assert.equal(partial.body.error, 'saved_url_source_unavailable');
+  assert.equal(partial.body.grounding.status, 'unavailable');
+  assert.equal(partial.body.grounding.mode, 'metadata_only');
+  assert.ok(partial.body.missing.includes('source_grounding'));
+  const partialDb = JSON.parse(await readFile(dbPath, 'utf8'));
+  assert.equal(partialDb.workspaceUrlAdaptations.some((record) => record.savedUrlId === 'saved_source_partial'), false, 'metadata-only source never becomes completed adaptation');
 
   const beforeEmptyDb = JSON.parse(await readFile(dbPath, 'utf8'));
   const emptyDailyBefore = readUsage(beforeEmptyDb, 'trial_remix_daily');
@@ -198,7 +207,7 @@ try {
   assert.equal(readUsage(afterEmptyDb, 'trial_remix_daily'), emptyDailyBefore, 'empty source releases daily action reservation');
   assert.ok(readUsage(afterEmptyDb, 'trial_provider_attempts_daily') > emptyAttemptsBefore, 'source attempt accounting remains honest');
   events = readEvents(await readFile(callsPath, 'utf8'));
-  assert.equal(events.filter((event) => event.type === 'remix_provider').length, 2, 'empty source never calls remix provider');
+  assert.equal(events.filter((event) => event.type === 'remix_provider').length, 1, 'unavailable sources never call remix provider');
   const emptyRetry = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source_empty/analyze-adapt', {
     method: 'POST', headers: { authorization: 'Bearer session_source' },
   });
@@ -217,7 +226,7 @@ try {
   assert.equal(afterFailureDb.workspaceUrlAdaptations.some((record) => record.savedUrlId === 'saved_source_failure'), false);
   assert.equal(readUsage(afterFailureDb, 'trial_remix_daily'), failureDailyBefore, 'source failure releases daily action reservation');
   events = readEvents(await readFile(callsPath, 'utf8'));
-  assert.equal(events.filter((event) => event.type === 'remix_provider').length, 2, 'source failure never calls remix provider');
+  assert.equal(events.filter((event) => event.type === 'remix_provider').length, 1, 'source failure never calls remix provider');
   const failedRetry = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source_failure/analyze-adapt', {
     method: 'POST', headers: { authorization: 'Bearer session_source' },
   });

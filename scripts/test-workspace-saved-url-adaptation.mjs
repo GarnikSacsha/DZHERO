@@ -172,6 +172,8 @@ try {
   assert.equal(mainA.sourceContext.metadata.title, 'Mock source saved_main', 'adaptation persists grounded metadata');
   assert.equal(mainA.sourceContext.transcript.status, 'available');
   assert.equal(mainA.sourceContext.videoIntelligence.video.contentMechanic, 'proof before explanation');
+  assert.equal(mainA.sourceContext.grounding.status, 'full');
+  assert.equal(mainA.sourceContext.grounding.mode, 'video');
   assert.ok(mainA.sourceContext.missing.includes('visual frames'));
   assert.equal(Object.hasOwn(mainA, 'decision'), false);
   assert.equal(Object.hasOwn(mainA, 'admittedToBank'), false);

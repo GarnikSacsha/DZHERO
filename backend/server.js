@@ -2407,6 +2407,31 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
   const globalInsight = input.globalInsight && typeof input.globalInsight === 'object'
     ? input.globalInsight
     : buildGlobalInsightFromReelMetadata(normalizedMetadata);
+  const hasVideoGrounding = video.status === 'available' && Boolean(video.videoInput?.uri);
+  const hasTranscriptGrounding = transcript.status === 'available'
+    && Boolean(transcriptText || transcript.segments?.length);
+  const grounding = {
+    status: hasVideoGrounding || hasTranscriptGrounding ? 'full' : 'unavailable',
+    mode: hasVideoGrounding ? 'video' : hasTranscriptGrounding ? 'transcript' : 'metadata_only',
+    sourceUrl: savedUrl.canonicalUrl,
+    videoInput: hasVideoGrounding
+      ? {
+        type: 'video',
+        uri: video.videoInput.uri,
+        source: video.videoInput?.source || video.source || 'source_resolver',
+      }
+      : null,
+    transcript: {
+      status: transcript.status || 'unavailable',
+      trusted: hasTranscriptGrounding,
+      source: transcript.source || null,
+    },
+    evidence: {
+      metadata: Boolean(metadata),
+      video: hasVideoGrounding,
+      transcript: hasTranscriptGrounding,
+    },
+  };
   const hasVideo = Boolean(
     video.videoSummary
     || video.spokenText
@@ -2424,6 +2449,7 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
     !hasVideo && 'video_intelligence',
     !hasVisual && 'visual_observations',
     !analysis.items?.length && 'analysis',
+    grounding.status !== 'full' && 'source_grounding',
   ].filter(Boolean))];
   return {
     sourceType: 'personal_url',
@@ -2441,29 +2467,15 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
     analysis: cloneJsonValue(analysis),
     sourceStatus: input.sourceStatus || rawMetadata.sourceStatus || 'url_only',
     readiness: cloneJsonValue(input.readiness || intelligence?.readiness || null),
+    grounding,
     globalInsight: cloneJsonValue(globalInsight),
     missing,
   };
 }
 
 function personalUrlSourceHasGrounding(sourceContext = {}) {
-  const transcript = sourceContext.transcript || {};
-  const video = sourceContext.videoIntelligence?.video || {};
-  const visual = sourceContext.videoIntelligence?.visual || sourceContext.visual || {};
-  return [
-    sourceContext.title,
-    sourceContext.description,
-    transcript.text,
-    video.videoSummary,
-    video.spokenText,
-    video.onScreenText,
-    video.contentMechanic,
-    video.sceneBeats?.length && 'scene_beats',
-    video.shotList?.length && 'shot_list',
-    visual.visualSummary,
-    visual.hookMechanic,
-    visual.shotSignals?.length && 'shot_signals',
-  ].some((value) => Boolean(String(value || '').trim()));
+  return sourceContext.grounding?.status === 'full'
+    && Boolean(sourceContext.grounding.videoInput || sourceContext.grounding.transcript?.trusted);
 }
 
 async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
@@ -2501,12 +2513,14 @@ function buildPersonalUrlInsight(savedUrl, sourceContext) {
     marketingMechanics: groundedInsight.marketingMechanics || '',
     transcriptText: sourceContext.transcript?.text || groundedInsight.transcriptText || '',
     videoIntelligence: sourceContext.videoIntelligence || groundedInsight.videoIntelligence || null,
+    sourceGrounding: cloneJsonValue(sourceContext.grounding),
     sourceContext: cloneJsonValue(sourceContext),
     sourceEvidence: {
       metadata: cloneJsonValue(sourceContext.metadata),
       transcript: cloneJsonValue(sourceContext.transcript),
       analysis: cloneJsonValue(sourceContext.analysis),
       visual: cloneJsonValue(sourceContext.visual),
+      grounding: cloneJsonValue(sourceContext.grounding),
     },
   };
 }
@@ -3677,7 +3691,7 @@ async function analyzeYouTubeVideoWithGemini(metadata, options = {}) {
   const prompt = [
     'Analyze this public YouTube Shorts video for Dzhero, an AI producer for Ukrainian businesses.',
     'Use the actual video frames, audio, captions, title, and description. If the video cannot be accessed, say that clearly in JSON.',
-    'Return valid JSON only with keys: videoSummary, spokenText, onScreenText, hook, twist, sceneBeats, contentMechanic, ukrainianAdaptation, shotList, ctaIdeas, guardrails.',
+    'Return valid JSON only with keys: videoSummary, spokenText, onScreenText, hook, twist, sceneBeats, scenes, contentMechanic, ukrainianAdaptation, shotList, ctaIdeas, soundMusicCues, confidence, limitations, guardrails.',
     'Make the Ukrainian adaptation specific to the observed mechanic. Do not default to generic business advice if the source is comedy, prank, story, movie, or entertainment.',
     'Do not suggest copying the original video, audio, faces, characters, or copyrighted creative.',
     `Title: ${metadata.title || ''}`,
@@ -3725,6 +3739,7 @@ async function analyzeYouTubeVideoWithGemini(metadata, options = {}) {
       source: 'gemini_youtube_video',
       status: 'available',
       model,
+      videoInput: { type: 'video', uri: videoUrl, source: 'gemini_youtube_video' },
       videoSummary: compactText(parsed.videoSummary, 700),
       spokenText: compactText(parsed.spokenText, 1200),
       onScreenText: compactText(parsed.onScreenText, 700),
@@ -3733,8 +3748,21 @@ async function analyzeYouTubeVideoWithGemini(metadata, options = {}) {
       contentMechanic: compactText(parsed.contentMechanic, 520),
       ukrainianAdaptation: compactText(parsed.ukrainianAdaptation, 700),
       sceneBeats: Array.isArray(parsed.sceneBeats) ? parsed.sceneBeats.slice(0, 8).map((item) => compactText(item, 220)) : [],
+      scenes: Array.isArray(parsed.scenes) ? parsed.scenes.slice(0, 8).map((scene) => {
+        if (!scene || typeof scene !== 'object') return { description: compactText(scene, 220) };
+        return {
+          timeframe: compactText(scene.timeframe || scene.time || scene.timestamp, 80),
+          visualAction: compactText(scene.visualAction || scene.action || scene.description, 220),
+          spokenContent: compactText(scene.spokenContent || scene.spokenText, 220),
+          onScreenText: compactText(scene.onScreenText, 160),
+          soundMusicCues: compactText(scene.soundMusicCues || scene.audio, 160),
+        };
+      }) : [],
       shotList: Array.isArray(parsed.shotList) ? parsed.shotList.slice(0, 8).map((item) => compactText(item, 220)) : [],
       ctaIdeas: Array.isArray(parsed.ctaIdeas) ? parsed.ctaIdeas.slice(0, 5).map((item) => compactText(item, 160)) : [],
+      soundMusicCues: Array.isArray(parsed.soundMusicCues) ? parsed.soundMusicCues.slice(0, 6).map((item) => compactText(item, 180)) : [],
+      confidence: compactText(parsed.confidence, 180),
+      limitations: Array.isArray(parsed.limitations) ? parsed.limitations.slice(0, 6).map((item) => compactText(item, 180)) : [],
       guardrails: Array.isArray(parsed.guardrails) ? parsed.guardrails.slice(0, 6).map((item) => compactText(item, 180)) : [],
     };
   } catch (error) {
@@ -3816,6 +3844,10 @@ async function enrichVideoIntelligence(metadata, options = {}) {
     video?.contentMechanic && `Video mechanic: ${video.contentMechanic}`,
     video?.ukrainianAdaptation && `Ukrainian adaptation: ${video.ukrainianAdaptation}`,
     video?.sceneBeats?.length && `Scene beats: ${video.sceneBeats.join('; ')}`,
+    video?.scenes?.length && `Observed scenes: ${video.scenes.map((scene) => [scene.timeframe, scene.visualAction, scene.spokenContent, scene.onScreenText].filter(Boolean).join(' — ')).join('; ')}`,
+    video?.soundMusicCues?.length && `Sound/music cues: ${video.soundMusicCues.join('; ')}`,
+    video?.confidence && `Source confidence: ${video.confidence}`,
+    video?.limitations?.length && `Source limitations: ${video.limitations.join('; ')}`,
     transcript?.text && `Transcript/captions: ${transcript.text}`,
     visual?.visualSummary && `Visible thumbnail: ${visual.visualSummary}`,
     visual?.hookMechanic && `Visual hook mechanic: ${visual.hookMechanic}`,
@@ -7976,7 +8008,9 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
         if (!personalUrlSourceHasGrounding(sourceContext)) {
           throw createProductContentPlanError('saved_url_source_unavailable', 409, {
             sourceStatus: sourceContext.sourceStatus,
+            grounding: sourceContext.grounding,
             missing: sourceContext.missing,
+            retryable: true,
           });
         }
         const generationContext = Object.freeze({
