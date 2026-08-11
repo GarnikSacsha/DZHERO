@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { buildStudioContentPlanDraft } from '../src/contentPlanUtils.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_ENTRY = path.join(ROOT, 'backend', 'server.js');
@@ -221,6 +222,23 @@ try {
   assert.equal(db.usageCounters.find((counter) => counter.workspaceId === 'ws_a' && counter.metric === 'trial_remix_daily')?.value || 0, failureDailyBefore);
   const failedRetry = await request(baseUrl, analyzePath('saved_failure'), { method: 'POST', headers: headersA });
   assert.equal(failedRetry.response.status, 500);
+
+  const studioPlanDraft = buildStudioContentPlanDraft({
+    id: `personal_url:${mainA.savedUrlId}`,
+    sourceType: 'personal_url',
+    savedUrlId: mainA.savedUrlId,
+  }, mainA);
+  assert.ok(studioPlanDraft, 'Studio produces a Content Plan draft from the persisted adaptation');
+  const studioPlan = await request(baseUrl, '/api/workspaces/ws_a/content-plan/posts', {
+    method: 'POST', headers: headersA,
+    body: JSON.stringify({ post: studioPlanDraft }),
+  });
+  assert.equal(studioPlan.response.status, 201, JSON.stringify({
+    draft: studioPlanDraft,
+    status: studioPlan.response.status,
+    body: studioPlan.body,
+  }));
+  assert.equal(studioPlan.body.post.title, studioPlanDraft.title);
 
   const plan = await request(baseUrl, '/api/workspaces/ws_a/content-plan/posts', {
     method: 'POST', headers: headersA,

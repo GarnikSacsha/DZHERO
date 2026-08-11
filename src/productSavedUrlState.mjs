@@ -31,10 +31,46 @@ export function isCurrentPersonalUrlAdaptationResponse({ requestRevision, curren
 export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
   if (!savedUrl?.id) return null;
   const sourceContext = adaptation?.sourceContext || {};
+  const sourceMetadata = sourceContext.metadata && typeof sourceContext.metadata === 'object'
+    ? sourceContext.metadata
+    : {};
+  const youtube = sourceMetadata.youtube && typeof sourceMetadata.youtube === 'object'
+    ? sourceMetadata.youtube
+    : {};
   const platformLabel = getSavedUrlPlatformLabel(savedUrl.platform);
   const title = String(sourceContext.title || '').trim() || `Personal ${platformLabel} video`;
-  const description = String(sourceContext.description || sourceContext.metadata?.description || '').trim();
-  const handle = String(sourceContext.handle || sourceContext.metadata?.handle || '').trim();
+  const description = String(sourceContext.description || sourceMetadata.description || '').trim();
+  const handle = String(sourceContext.handle || sourceMetadata.handle || '').trim();
+  const image = String(
+    sourceContext.image
+    || sourceMetadata.image
+    || sourceContext.thumbnail
+    || sourceMetadata.thumbnail
+    || youtube.thumbnail
+    || '',
+  ).trim();
+  const thumbnail = String(
+    sourceContext.thumbnail
+    || sourceMetadata.thumbnail
+    || youtube.thumbnail
+    || sourceContext.image
+    || sourceMetadata.image
+    || '',
+  ).trim();
+  const profileUrl = String(
+    sourceContext.profileUrl
+    || sourceMetadata.profileUrl
+    || sourceContext.sourceProfileUrl
+    || sourceMetadata.sourceProfileUrl
+    || youtube.channelUrl
+    || '',
+  ).trim();
+  const sourceProfileUrl = String(
+    sourceContext.sourceProfileUrl
+    || sourceMetadata.sourceProfileUrl
+    || profileUrl
+    || '',
+  ).trim();
   const canonicalUrl = String(savedUrl.canonicalUrl || sourceContext.canonicalUrl || '').trim();
   return {
     id: `personal_url:${savedUrl.id}`,
@@ -49,6 +85,10 @@ export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
     description,
     creator: handle,
     handle,
+    image,
+    thumbnail,
+    profileUrl,
+    sourceProfileUrl,
     views: null,
     likes: null,
     aiMatch: null,
@@ -60,7 +100,12 @@ export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
       title,
       description,
       handle,
-      sourceStatus: sourceContext.sourceStatus || sourceContext.metadata?.sourceStatus || '',
+      image,
+      thumbnail,
+      profileUrl,
+      sourceProfileUrl,
+      youtube,
+      sourceStatus: sourceContext.sourceStatus || sourceMetadata.sourceStatus || '',
       readiness: sourceContext.readiness || sourceContext.videoIntelligence?.readiness || null,
       visual: sourceContext.visual || sourceContext.videoIntelligence?.visual || null,
       videoIntelligence: sourceContext.videoIntelligence || null,

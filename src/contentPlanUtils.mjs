@@ -1,4 +1,5 @@
 import { createTranslator } from './i18nCore.mjs';
+import { toLocalIsoDate } from './contentPlanViewState.mjs';
 
 export function normalizeContentIdentity(value) {
   return String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -40,7 +41,7 @@ export function buildStudioContentPlanDraft(reel = {}, adaptation = null, remixO
     cta && `CTA: ${cta}`,
   ].filter(Boolean).join('\n\n');
 
-  return { title, body };
+  return { title, body, date: toLocalIsoDate() };
 }
 
 export function buildCalendarPostSourceKey(source = {}) {

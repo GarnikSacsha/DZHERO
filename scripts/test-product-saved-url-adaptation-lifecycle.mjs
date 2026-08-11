@@ -7,13 +7,17 @@ import {
   isCurrentPersonalUrlAdaptationResponse,
   mapSavedUrlToProductSignal,
 } from '../src/productSavedUrlState.mjs';
+import { getStudioSourceLinks } from '../src/studioViewState.mjs';
+
+const sourceThumbnail = 'https://i.ytimg.com/vi/personal-short/maxresdefault.jpg';
+const sourceProfileUrl = 'https://www.youtube.com/@personal-creator';
 
 const savedUrl = {
-  id: 'saved-tiktok',
+  id: 'saved-youtube',
   workspaceId: 'workspace-a',
-  platform: 'tiktok',
-  originalUrl: 'https://vm.tiktok.com/ZM123abc/?utm_source=test',
-  canonicalUrl: 'https://vm.tiktok.com/ZM123abc',
+  platform: 'youtube',
+  originalUrl: 'https://www.youtube.com/shorts/personal-short?feature=share',
+  canonicalUrl: 'https://www.youtube.com/shorts/personal-short',
 };
 const adaptation = {
   id: 'url_adaptation_1',
@@ -21,7 +25,22 @@ const adaptation = {
   savedUrlId: savedUrl.id,
   generationId: 'url_adaptation_generation_1',
   sourceContext: {
-    title: 'Personal TikTok video',
+    title: 'Personal YouTube video',
+    image: sourceThumbnail,
+    thumbnail: sourceThumbnail,
+    profileUrl: sourceProfileUrl,
+    sourceProfileUrl,
+    metadata: {
+      image: sourceThumbnail,
+      thumbnail: sourceThumbnail,
+      profileUrl: sourceProfileUrl,
+      sourceProfileUrl,
+      youtube: {
+        channelId: 'UC_PERSONAL_CREATOR',
+        channelUrl: sourceProfileUrl,
+        thumbnail: sourceThumbnail,
+      },
+    },
     transcript: { status: 'unavailable', text: '', segments: [] },
     analysis: { status: 'unavailable', items: [] },
   },
@@ -56,6 +75,21 @@ assert.equal(signal.sourceUrl, savedUrl.canonicalUrl);
 assert.equal(signal.views, null);
 assert.equal(signal.importedMetadata.videoIntelligence, null);
 assert.equal(signal.personalUrlAdaptation, adaptation);
+const studioPreviewImage = signal.image
+  || signal.thumbnail
+  || signal.importedMetadata?.thumbnail
+  || signal.importedMetadata?.youtube?.thumbnail
+  || '';
+assert.deepEqual({
+  previewImage: studioPreviewImage,
+  sourceLinks: getStudioSourceLinks(signal),
+}, {
+  previewImage: sourceThumbnail,
+  sourceLinks: {
+    originalUrl: savedUrl.canonicalUrl,
+    profileUrl: sourceProfileUrl,
+  },
+});
 
 const calls = [];
 const response = (status, payload) => ({
@@ -65,10 +99,10 @@ const response = (status, payload) => ({
 });
 const fetcher = async (url, options = {}) => {
   calls.push({ url, options });
-  if (url.endsWith('/saved-urls/saved-tiktok/adaptation')) {
+  if (url.endsWith('/saved-urls/saved-youtube/adaptation')) {
     return response(200, { sourceType: 'personal_url', savedUrl, status: 'ready', adaptation });
   }
-  if (url.endsWith('/saved-urls/saved-tiktok/analyze-adapt')) {
+  if (url.endsWith('/saved-urls/saved-youtube/analyze-adapt')) {
     assert.equal(options.method, 'POST');
     return response(201, { sourceType: 'personal_url', savedUrl, adaptation });
   }
@@ -78,8 +112,8 @@ const fetcher = async (url, options = {}) => {
 const client = createProductDiscoveryClient({ apiBase: '/api', workspaceId: 'workspace-a', fetcher });
 assert.equal((await client.loadSavedUrlAdaptation(savedUrl.id)).adaptation.id, adaptation.id);
 assert.equal((await client.analyzeAdaptSavedUrl(savedUrl.id)).sourceType, 'personal_url');
-assert.ok(calls.some(({ url }) => url.includes('/saved-urls/saved-tiktok/adaptation')));
-assert.ok(calls.some(({ url, options }) => url.includes('/saved-urls/saved-tiktok/analyze-adapt') && options.method === 'POST'));
+assert.ok(calls.some(({ url }) => url.includes('/saved-urls/saved-youtube/adaptation')));
+assert.ok(calls.some(({ url, options }) => url.includes('/saved-urls/saved-youtube/analyze-adapt') && options.method === 'POST'));
 assert.equal(calls.some(({ url }) => url.includes('/adaptations/')), false, 'personal URL flow never calls shared adaptation API');
 
 console.log('Product Personal URL adaptation lifecycle checks passed.');
