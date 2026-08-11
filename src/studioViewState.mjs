@@ -118,7 +118,9 @@ export function deriveStudioTranscript(signal = {}) {
     || signal.transcriptStatus
     || intelligence.transcriptStatus,
   );
-  const hasContent = Boolean(segments.length || transcriptText || spokenText || onScreenText);
+  // On-screen text is visual evidence, not speech. Keep it available to the
+  // Studio panel without turning a silent video into an invented transcript.
+  const hasContent = Boolean(segments.length || transcriptText || spokenText);
   const notApplicable = statusValue === 'not_applicable' || statusValue === 'not_applicable_yet';
 
   return {

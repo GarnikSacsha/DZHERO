@@ -31,6 +31,15 @@ export function isCurrentPersonalUrlAdaptationResponse({ requestRevision, curren
 export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
   if (!savedUrl?.id) return null;
   const sourceContext = adaptation?.sourceContext || {};
+  const sourceVideoIntelligence = sourceContext.videoIntelligence && typeof sourceContext.videoIntelligence === 'object'
+    ? sourceContext.videoIntelligence
+    : {};
+  const sourceTranscript = sourceContext.transcript && typeof sourceContext.transcript === 'object'
+    ? sourceContext.transcript
+    : null;
+  const videoIntelligence = sourceTranscript && Object.keys(sourceVideoIntelligence).length
+    ? { ...sourceVideoIntelligence, transcript: sourceTranscript }
+    : sourceVideoIntelligence;
   const sourceMetadata = sourceContext.metadata && typeof sourceContext.metadata === 'object'
     ? sourceContext.metadata
     : {};
@@ -109,7 +118,7 @@ export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
       readiness: sourceContext.readiness || sourceContext.videoIntelligence?.readiness || null,
       grounding: sourceContext.grounding || sourceContext.sourceGrounding || null,
       visual: sourceContext.visual || sourceContext.videoIntelligence?.visual || null,
-      videoIntelligence: sourceContext.videoIntelligence || null,
+      videoIntelligence: Object.keys(videoIntelligence).length ? videoIntelligence : null,
     },
     transcript: sourceContext.transcript?.text || '',
     analysis: sourceContext.analysis || {},

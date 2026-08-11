@@ -128,6 +128,7 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     ...process.env,
     PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'test', DB_PATH: dbPath, DATABASE_URL: '',
     APIFY_TOKEN: '', APIFY_API_TOKEN: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', AUTOMATIC_DISCOVERY_ENABLED: 'false',
+    UNLIMITED_ACCESS_EMAILS: 'workspace-a@example.com',
     REMIX_TEST_PROVIDER: PROVIDER_FIXTURE, REMIX_TEST_PROVIDER_CALLS_PATH: callsPath, REMIX_TEST_PROVIDER_RELEASE_PATH: releasePath,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
