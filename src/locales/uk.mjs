@@ -722,6 +722,8 @@ export const uk = Object.freeze({
   'product.studio.source.readinessBody.video': 'Відео джерела передано на відеоаналіз. Studio використовує спостережені кадри, аудіо й субтитри, якщо вони доступні.',
   'product.studio.source.readinessBody.transcript': 'Доступний підтверджений транскрипт джерела. Studio не вигадує відсутні візуальні докази.',
   'product.studio.source.readinessBody.unavailable': 'Доступні лише публічні метадані. Завершену адаптацію та аналіз на доказах не створено.',
+  'product.studio.source.retryAnalysis': 'Повторити аналіз із джерела',
+  'product.studio.source.retryingAnalysis': 'Повторюємо аналіз із джерела...',
   'product.studio.tags.b2b': 'B2B-стратегія',
   'product.studio.tags.product': 'Преміальний продукт',
   'product.studio.tags.educational': 'Освітній хук',

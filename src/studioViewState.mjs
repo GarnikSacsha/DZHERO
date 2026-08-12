@@ -201,6 +201,8 @@ export function deriveStudioAnalysis(signal = {}) {
 export function getStudioRemixes(signal = {}, adaptation = null) {
   const remixes = adaptation?.result?.remixes
     || adaptation?.remixes
+    || signal.personalUrlAdaptation?.result?.remixes
+    || signal.personalUrlAdaptation?.remixes
     || signal.remixResult?.remixes;
   return Array.isArray(remixes)
     ? remixes.filter((remix) => remix && typeof remix === 'object')

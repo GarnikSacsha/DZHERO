@@ -722,6 +722,8 @@ export const en = Object.freeze({
   'product.studio.source.readinessBody.video': 'The source video was passed to video analysis. Studio uses observed frames, audio, and captions where available.',
   'product.studio.source.readinessBody.transcript': 'A trusted source transcript is available. Studio will not infer missing visual evidence.',
   'product.studio.source.readinessBody.unavailable': 'Only public metadata is available. No completed adaptation or evidence-backed analysis was created.',
+  'product.studio.source.retryAnalysis': 'Retry grounded analysis',
+  'product.studio.source.retryingAnalysis': 'Retrying grounded analysis...',
   'product.studio.tags.b2b': 'B2B Strategy',
   'product.studio.tags.product': 'High-end Product',
   'product.studio.tags.educational': 'Educational Hook',

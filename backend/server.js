@@ -8004,7 +8004,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
       const latestSavedUrl = findWorkspaceSavedUrl(latestDb, req.params.workspaceId, savedUrl.id);
       if (!latestSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
       const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, generationBrand);
-      if (existing) {
+      if (existing && personalUrlSourceHasGrounding(existing.sourceContext)) {
         const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
         return {
           adaptation: existing,
@@ -8062,7 +8062,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           const currentExisting = currentBrand
             ? findWorkspaceUrlAdaptation(currentDb, req.params.workspaceId, savedUrl.id, generationBrand)
             : null;
-          if (currentExisting) {
+          if (currentExisting && personalUrlSourceHasGrounding(currentExisting.sourceContext)) {
             return {
               adaptation: currentExisting,
               alreadyGenerated: true,

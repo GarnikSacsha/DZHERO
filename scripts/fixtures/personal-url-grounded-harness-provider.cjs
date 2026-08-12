@@ -118,7 +118,7 @@ function createRemix(globalInsight, businessBrief) {
   if (globalInsight?.savedUrlId === 'saved_full' && (!videoInput || videoInput.uri !== 'mock://video/saved_full')) {
     throw new Error('video_input_missing_from_provider_payload');
   }
-  const product = businessBrief?.product || 'the product';
+  const product = businessBrief?.product || businessBrief?.offer || 'workflow audit';
   return {
     deconstruction: {
       coreMechanics: 'Show observable proof before the explanation.',
@@ -127,12 +127,28 @@ function createRemix(globalInsight, businessBrief) {
     viabilityFilter: { isAdaptable: true, productionFeasibility: 'One phone and the real product process.' },
     remixes: [1, 2, 3].map((index) => ({
       title: `Grounded variant ${index} for ${product}`,
-      hook: 'Show the proof before the explanation.',
+      hook: `Your workflow loses a handoff here — variant ${index}.`,
       visualFlow: [
-        { timeframe: '0:00-0:03', actionDescription: 'Show the observable process.', onScreenText: 'PROCESS', audioVoiceover: 'Покажи процес.' },
-        { timeframe: '0:03-0:09', actionDescription: 'Reveal the result.', onScreenText: 'RESULT', audioVoiceover: 'Покажи результат.' },
+        {
+          timeframe: '0:00-0:03',
+          actionDescription: 'Film the real task board on a laptop and point to the missed owner handoff.',
+          onScreenText: 'ДЕ ГУБИТЬСЯ ЗАДАЧА?',
+          audioVoiceover: 'Ось тут команда втрачає задачу між двома відповідальними.',
+        },
+        {
+          timeframe: '0:03-0:09',
+          actionDescription: 'Place the workflow-audit checklist beside the laptop and mark the duplicate approval step.',
+          onScreenText: '1 ЗАЙВЕ ПОГОДЖЕННЯ',
+          audioVoiceover: 'На аудиті прибираємо дубльоване погодження і залишаємо одного власника.',
+        },
+        {
+          timeframe: '0:09-0:15',
+          actionDescription: 'Refresh the cleaned task board, then hold the completed workflow-audit card toward the camera.',
+          onScreenText: 'МАРШРУТ ЗАДАЧІ ГОТОВИЙ',
+          audioVoiceover: 'Тепер видно весь маршрут задачі. Напиши «АУДИТ», якщо хочеш таку саму перевірку.',
+        },
       ],
-      cta: 'Запропонуй простий наступний крок.',
+      cta: 'Напиши «АУДИТ» у Direct, щоб перевірити один робочий процес.',
     })),
     _generation: { provider: 'mock-grounded-remix', model: 'mock-grounded-remix-v1', attempts: 1, fallback: false },
   };

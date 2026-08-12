@@ -28698,6 +28698,28 @@ nav button.active::before {
   line-height: 1.65;
 }
 
+.studio-data-retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-top: 4px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 12px;
+  background: #142033;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.studio-data-retry:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+
 .studio-adaptation-state button {
   min-width: 190px;
   min-height: 46px;

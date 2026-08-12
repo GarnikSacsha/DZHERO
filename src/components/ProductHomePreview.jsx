@@ -62,6 +62,7 @@ import {
   mergeRestoredProductBrand,
 } from '../productDiscoveryIntegration.mjs';
 import {
+  buildPersonalUrlAdaptationFailureState,
   getSavedUrlPlatformLabel,
   getSavedUrlIdentity,
   getPersonalUrlAdaptationIdentity,
@@ -679,9 +680,10 @@ function DiscoverHome({
                         ? t('product.savedUrls.adaptationInFlight')
                         : adaptationState.errorCode === 'saved_url_source_unavailable'
                           ? t('product.savedUrls.sourceUnavailable')
-                          : adaptationState.status === 'error'
+                          : adaptationState.errorCode
                             ? t('product.savedUrls.adaptationError')
                             : '';
+                      const canRetryReadyAdaptation = Boolean(isReady && adaptationState.errorCode);
                       return (
                         <>
                     <div className="product-saved-url-card-topline">
@@ -694,7 +696,14 @@ function DiscoverHome({
                     <div className="product-saved-url-actions">
                       <a href={savedUrl.canonicalUrl} target="_blank" rel="noreferrer">{t('product.savedUrls.open')}</a>
                       {isReady ? (
-                        <button type="button" onClick={() => onOpenSavedUrlStudio?.(savedUrl)}>{t('product.savedUrls.openStudio')}</button>
+                        <>
+                          <button type="button" onClick={() => onOpenSavedUrlStudio?.(savedUrl)}>{t('product.savedUrls.openStudio')}</button>
+                          {canRetryReadyAdaptation && (
+                            <button type="button" onClick={() => onAnalyzeSavedUrl?.(savedUrl.id)}>
+                              <Sparkles size={14} />{t('product.savedUrls.retryAnalyze')}
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <button type="button" disabled={isBusy} onClick={() => onAnalyzeSavedUrl?.(savedUrl.id)}>
                           <Sparkles size={14} />{t(isBusy ? 'product.savedUrls.analyzing' : adaptationState.status === 'error' ? 'product.savedUrls.retryAnalyze' : 'product.savedUrls.analyze')}
@@ -1407,12 +1416,17 @@ export default function ProductHomePreview({
         currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
       })) return;
       const errorCode = error?.code || error?.message || 'saved_url_adaptation_generate_failed';
+      const retainedAdaptation = savedUrlAdaptations.get(savedUrlId)
+        || savedUrlAdaptationStates[savedUrlId]?.adaptation
+        || (studioSignal?.savedUrlId === savedUrlId ? studioSignal.personalUrlAdaptation : null)
+        || null;
+      const failureState = buildPersonalUrlAdaptationFailureState(errorCode, retainedAdaptation);
       setSavedUrlAdaptationStates((current) => ({
         ...current,
-        [savedUrlId]: { status: 'error', adaptation: null, errorCode },
+        [savedUrlId]: failureState,
       }));
       if (studioSignal?.savedUrlId === savedUrlId) {
-        setAdaptationState({ status: 'error', adaptation: null, errorCode });
+        setAdaptationState(failureState);
       }
     }
   };

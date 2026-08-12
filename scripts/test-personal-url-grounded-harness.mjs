@@ -4,16 +4,23 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { buildStudioContentPlanDraft } from '../src/contentPlanUtils.mjs';
 import { deriveStudioAnalysis, deriveStudioTranscript, getStudioSourceLinks, getStudioRemixes, normalizeStudioScriptScenes } from '../src/studioViewState.mjs';
-import { isCurrentPersonalUrlAdaptationResponse, mapSavedUrlToProductSignal } from '../src/productSavedUrlState.mjs';
+import {
+  buildPersonalUrlAdaptationFailureState,
+  isCurrentPersonalUrlAdaptationResponse,
+  mapSavedUrlToProductSignal,
+} from '../src/productSavedUrlState.mjs';
 import { createProductDiscoveryClient } from '../src/productDiscoveryIntegration.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_ENTRY = path.join(ROOT, 'backend', 'server.js');
 const PROVIDER_FIXTURE = path.join(ROOT, 'scripts', 'fixtures', 'personal-url-grounded-harness-provider.cjs');
+const require = createRequire(import.meta.url);
+const { normalizeProductBrand } = require('../backend/services/productBrandBrain.cjs');
 
 const brand = {
   version: 1,
@@ -39,19 +46,68 @@ const savedUrl = (id, platform = 'youtube') => ({
   status: 'not_analyzed',
 });
 
+const normalizedBrand = normalizeProductBrand(brand);
+const brandKey = JSON.stringify({ id: normalizedBrand.id, version: normalizedBrand.version, brain: normalizedBrand.brain });
+
+function legacyUngroundedAdaptation() {
+  return {
+    id: 'url_adaptation_legacy_ungrounded',
+    workspaceId: 'ws_harness',
+    savedUrlId: 'saved_legacy_ungrounded',
+    sourceType: 'personal_url',
+    canonicalUrl: 'https://example.test/saved_legacy_ungrounded',
+    platform: 'youtube',
+    brandId: brand.id,
+    brandVersion: brand.version,
+    brandUpdatedAt: brand.updatedAt,
+    brandKey,
+    brandSnapshot: brand,
+    sourceContext: {
+      sourceType: 'personal_url',
+      savedUrlId: 'saved_legacy_ungrounded',
+      title: 'Legacy metadata-only adaptation',
+      metadata: { title: 'Legacy metadata-only adaptation', sourceStatus: 'public_metadata' },
+      transcript: { status: 'unavailable', text: '', segments: [] },
+      videoIntelligence: { video: { status: 'unavailable' }, transcript: { status: 'unavailable', text: '', segments: [] } },
+      analysis: { status: 'unavailable', items: [] },
+      sourceStatus: 'public_metadata',
+      missing: ['source_grounding'],
+    },
+    result: {
+      remixes: [1, 2, 3].map((index) => ({
+        title: `Legacy useful variant ${index}`,
+        hook: `Legacy hook ${index}`,
+        visualFlow: [{
+          timeframe: '0:00-0:03',
+          actionDescription: `Legacy shootable direction ${index}`,
+          onScreenText: `LEGACY ${index}`,
+          audioVoiceover: `Legacy voiceover ${index}`,
+        }],
+        cta: `Legacy CTA ${index}`,
+      })),
+    },
+    status: 'completed',
+    generationId: 'url_adaptation_generation_legacy_ungrounded',
+    createdAt: '2026-08-08T10:00:00.000Z',
+    updatedAt: '2026-08-08T10:00:00.000Z',
+    completedAt: '2026-08-08T10:00:00.000Z',
+  };
+}
+
 function seededDb() {
   return {
     users: [{ id: 'user_harness', name: 'Harness User', email: 'harness@example.com', role: 'owner', workspaceId: 'ws_harness' }],
     sessions: [{ token: 'session_harness', userId: 'user_harness', expiresAt: '2030-01-01T00:00:00.000Z' }],
     workspaces: [{ id: 'ws_harness', name: 'Harness Workspace', owner: 'Harness User', brief: {}, productBrandBrain: brand, contentPlanPosts: [] }],
     subscriptions: [{ id: 'sub_harness', workspaceId: 'ws_harness', planId: 'trial', status: 'trialing' }],
-    reels: [], workspaceSavedSignals: [], workspaceAdaptations: [], workspaceUrlAdaptations: [],
+    reels: [], workspaceSavedSignals: [], workspaceAdaptations: [], workspaceUrlAdaptations: [legacyUngroundedAdaptation()],
     workspaceSavedUrls: [
       savedUrl('saved_full'),
       savedUrl('saved_metadata_only', 'tiktok'),
       savedUrl('saved_no_speech', 'instagram'),
       savedUrl('saved_transcript_unavailable'),
       savedUrl('saved_provider_failure'),
+      savedUrl('saved_legacy_ungrounded'),
     ],
     usageCounters: [], plans: [], competitors: [], ideas: [], leads: [], syncJobs: [], sources: [], metaStates: [], instagramAccounts: [], tiktokAccounts: [],
     aiMemory: [], aiJobs: [], remixes: [], contentPlanItems: [], videoJobs: [], dataDeletionRequests: [], demoSessions: [], discoveryRuns: [], testerAccess: [],
@@ -99,6 +155,80 @@ async function stop(child) {
     new Promise((resolve) => child.once('exit', resolve)),
     new Promise((resolve) => setTimeout(resolve, 3_000)),
   ]);
+}
+
+async function verifyStudioScriptUi(signal, adaptation, legacyFixture) {
+  const vitePackagePath = require.resolve('vite/package.json');
+  const vitePackage = JSON.parse(await readFile(vitePackagePath, 'utf8'));
+  const viteEntry = path.resolve(path.dirname(vitePackagePath), vitePackage.exports['.']);
+  const { createServer } = await import(pathToFileURL(viteEntry).href);
+  const { chromium } = require('playwright');
+  const port = await getFreePort();
+  const server = await createServer({
+    root: ROOT,
+    configFile: false,
+    logLevel: 'error',
+    server: { host: '127.0.0.1', port, strictPort: true },
+    optimizeDeps: {
+      entries: ['scripts/fixtures/product-studio-script-ui.html'],
+      include: ['react', 'react-dom/client', 'lucide-react'],
+    },
+    resolve: {
+      alias: [
+        { find: /^react\/jsx-dev-runtime$/, replacement: require.resolve('react/jsx-dev-runtime') },
+        { find: /^react\/jsx-runtime$/, replacement: require.resolve('react/jsx-runtime') },
+        { find: /^react$/, replacement: require.resolve('react') },
+        { find: /^react-dom\/client$/, replacement: require.resolve('react-dom/client') },
+        { find: /^react-dom$/, replacement: require.resolve('react-dom') },
+        { find: /^lucide-react$/, replacement: require.resolve('lucide-react') },
+      ],
+    },
+  });
+  let browser;
+  try {
+    await server.listen();
+    browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.addInitScript((fixture) => {
+      window.__DZHERO_PRODUCT_STUDIO_FIXTURE__ = fixture;
+    }, { signal, adaptation });
+    await page.goto(`http://127.0.0.1:${port}/scripts/fixtures/product-studio-script-ui.html`, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: 'Adaptation' }).click();
+    const variants = page.getByRole('group', { name: 'Adaptation variants' }).getByRole('button');
+    assert.equal(await variants.count(), 3, 'the successful manual-video flow still displays three adaptation variants');
+    await variants.nth(1).click();
+    await page.getByRole('button', { name: 'Open production script' }).click();
+    const script = page.locator('.studio-script');
+    await script.waitFor({ state: 'visible' });
+    assert.match(await script.locator('h2').innerText(), /Grounded variant 2 for workflow audit/);
+    const renderedScenes = script.locator('.studio-scenes article');
+    assert.equal(await renderedScenes.count(), 3, 'Script Editor displays all structured scenes for the selected adaptation');
+    const renderedText = await script.innerText();
+    assert.match(renderedText, /real task board on a laptop/i);
+    assert.match(renderedText, /ДЕ ГУБИТЬСЯ ЗАДАЧА\?/);
+    assert.match(renderedText, /Ось тут команда втрачає задачу/);
+    assert.doesNotMatch(renderedText, /Analysis unavailable/);
+
+    const retryPage = await browser.newPage();
+    await retryPage.addInitScript((fixture) => {
+      window.__DZHERO_PRODUCT_STUDIO_FIXTURE__ = fixture;
+    }, legacyFixture);
+    await retryPage.goto(`http://127.0.0.1:${port}/scripts/fixtures/product-studio-script-ui.html`, { waitUntil: 'networkidle' });
+    const retryButton = retryPage.getByRole('button', { name: 'Retry grounded analysis' });
+    await retryButton.click();
+    assert.equal(await retryPage.evaluate(() => window.__DZHERO_GROUNDED_RETRY_COUNT__), 1, 'ungrounded Studio state exposes an actionable retry');
+    await retryPage.getByRole('button', { name: 'Adaptation' }).click();
+    assert.equal(
+      await retryPage.getByRole('group', { name: 'Adaptation variants' }).getByRole('button').count(),
+      3,
+      'existing variants remain visible while grounded analysis is unavailable',
+    );
+    await retryPage.getByRole('button', { name: 'Open production script' }).click();
+    assert.match(await retryPage.locator('.studio-script').innerText(), /Legacy shootable direction 1/);
+  } finally {
+    await browser?.close();
+    await server.close();
+  }
 }
 
 function parseEvents(value) {
@@ -152,6 +282,30 @@ try {
   await request(baseUrl, '/api/workspaces/ws_harness/content-plan?surface=product_redesign', { headers: auth });
   assert.equal(parseEvents(await readFile(callsPath, 'utf8')).length, 0, 'save, Studio load and tab-style reads are provider-free');
 
+  // A completed pre-grounding record must not permanently short-circuit Analyze & Adapt.
+  const legacyBefore = await request(baseUrl, adaptationPath('saved_legacy_ungrounded'), { headers: auth });
+  assert.equal(legacyBefore.response.status, 200);
+  assert.equal(legacyBefore.body.status, 'ready');
+  assert.equal(legacyBefore.body.adaptation.sourceContext.grounding, undefined);
+  assert.equal(legacyBefore.body.adaptation.result.remixes.length, 3, 'existing useful variants remain readable before retry');
+  const legacySignal = mapSavedUrlToProductSignal(savedUrl('saved_legacy_ungrounded'), legacyBefore.body.adaptation);
+  assert.equal(deriveStudioAnalysis(legacySignal).status, 'unavailable');
+  assert.equal(getStudioRemixes(legacySignal).length, 3, 'Studio keeps the existing variants while grounded analysis is unavailable');
+  assert.deepEqual(
+    buildPersonalUrlAdaptationFailureState('saved_url_source_unavailable', legacyBefore.body.adaptation),
+    { status: 'ready', adaptation: legacyBefore.body.adaptation, errorCode: 'saved_url_source_unavailable' },
+    'a failed grounded retry retains the existing adaptation and exposes its retryable error',
+  );
+
+  const legacyRetry = await request(baseUrl, analyzePath('saved_legacy_ungrounded'), { method: 'POST', headers: auth });
+  assert.equal(legacyRetry.response.status, 201);
+  assert.equal(legacyRetry.body.alreadyGenerated, false);
+  assert.equal(legacyRetry.body.adaptation.sourceContext.grounding.status, 'full');
+  assert.notEqual(legacyRetry.body.adaptation.generationId, 'url_adaptation_generation_legacy_ungrounded');
+  let legacyEvents = parseEvents(await readFile(callsPath, 'utf8'));
+  assert.equal(countEvents(legacyEvents, 'source_resolver', 'saved_legacy_ungrounded'), 1);
+  assert.equal(countEvents(legacyEvents, 'remix_provider', 'saved_legacy_ungrounded'), 1);
+
   // Single-flight full flow: both requests resolve to one source + one remix call.
   const [fullFirst, fullSecond] = await Promise.all([
     request(baseUrl, analyzePath('saved_full'), { method: 'POST', headers: auth }),
@@ -187,13 +341,30 @@ try {
   assert.equal(deriveStudioAnalysis(fullSignal).status, 'available');
   assert.ok(deriveStudioAnalysis(fullSignal).items.some((item) => item.text === 'A process is shown before the result is revealed.'));
   assert.equal(getStudioRemixes(fullSignal, fullAdaptation).length, 3);
-  assert.equal(normalizeStudioScriptScenes(fullSignal, fullAdaptation)[0].time, '0:00-0:03');
+  const scriptScenes = normalizeStudioScriptScenes(fullSignal, fullAdaptation);
+  assert.equal(scriptScenes.length, 3, 'Script Editor receives a structured, shootable scenario rather than an idea list');
+  assert.equal(scriptScenes[0].time, '0:00-0:03');
+  scriptScenes.forEach((scene) => {
+    assert.ok(scene.time, 'every script scene has a timeframe');
+    assert.ok(scene.direction, 'every script scene has a concrete filming direction');
+    assert.ok(scene.onScreenText, 'every script scene has on-screen copy');
+    assert.ok(scene.voiceover, 'every script scene has spoken copy');
+  });
+  assert.match(scriptScenes.map((scene) => scene.direction).join(' '), /task board|workflow-audit checklist|laptop/i);
+  assert.match(scriptScenes.map((scene) => scene.voiceover).join(' '), /аудит|задач/i);
   assert.deepEqual(getStudioSourceLinks(fullSignal), {
     originalUrl: 'https://example.test/saved_full',
     profileUrl: 'https://example.test/profiles/saved_full',
   });
   const contentPlanDraft = buildStudioContentPlanDraft(fullSignal, fullAdaptation);
   assert.ok(contentPlanDraft);
+  assert.match(contentPlanDraft.body, /0:00-0:03/);
+  assert.match(contentPlanDraft.body, /task board/i);
+  assert.match(contentPlanDraft.body, /Озвучка:/);
+  await verifyStudioScriptUi(fullSignal, fullAdaptation, {
+    signal: legacySignal,
+    adaptation: legacyBefore.body.adaptation,
+  });
   const plan = await request(baseUrl, '/api/workspaces/ws_harness/content-plan/posts', {
     method: 'POST', headers: auth,
     body: JSON.stringify({ post: {

@@ -28,6 +28,17 @@ export function isCurrentPersonalUrlAdaptationResponse({ requestRevision, curren
     && requestIdentity === currentIdentity;
 }
 
+export function buildPersonalUrlAdaptationFailureState(errorCode, retainedAdaptation = null) {
+  const adaptation = retainedAdaptation && typeof retainedAdaptation === 'object'
+    ? retainedAdaptation
+    : null;
+  return {
+    status: adaptation ? 'ready' : 'error',
+    adaptation,
+    errorCode: String(errorCode || 'saved_url_adaptation_generate_failed'),
+  };
+}
+
 export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {
   if (!savedUrl?.id) return null;
   const sourceContext = adaptation?.sourceContext || {};

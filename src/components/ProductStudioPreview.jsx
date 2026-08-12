@@ -67,7 +67,7 @@ function getSourceGrounding(signal) {
     || null;
 }
 
-function StudioDataState({ status, area }) {
+function StudioDataState({ status, area, onRetry, retrying = false }) {
   const { t } = useI18n();
   const busy = status === 'generating' || status === 'loading';
   const stateKey = status === 'loading'
@@ -84,11 +84,17 @@ function StudioDataState({ status, area }) {
       <span><Icon className={busy ? 'is-spinning' : ''} size={25} /></span>
       <strong>{t(`product.studio.states.${area}.${stateKey}Title`)}</strong>
       <p>{t(`product.studio.states.${area}.${stateKey}Body`)}</p>
+      {onRetry && !busy && (
+        <button className="studio-data-retry" type="button" disabled={retrying} onClick={onRetry}>
+          <RefreshCw className={retrying ? 'is-spinning' : ''} size={16} />
+          {t(retrying ? 'product.studio.source.retryingAnalysis' : 'product.studio.source.retryAnalysis')}
+        </button>
+      )}
     </div>
   );
 }
 
-function OverviewPanel({ signal, analysis }) {
+function OverviewPanel({ signal, analysis, onRetryAnalysis, retryingAnalysis }) {
   const { t } = useI18n();
   const grounding = getSourceGrounding(signal);
   const readinessStatus = grounding?.status === 'full' ? 'full' : 'unavailable';
@@ -105,7 +111,14 @@ function OverviewPanel({ signal, analysis }) {
           <p>{t(`product.studio.source.readinessBody.${readinessMode}`)}</p>
         </article>
       )}
-      {analysis.status !== 'available' && <StudioDataState status={analysis.status} area="analysis" />}
+      {analysis.status !== 'available' && (
+        <StudioDataState
+          status={analysis.status}
+          area="analysis"
+          onRetry={onRetryAnalysis}
+          retrying={retryingAnalysis}
+        />
+      )}
       {analysis.status === 'available' && (() => {
         const [primary, ...supporting] = analysis.items;
         return (
@@ -135,9 +148,18 @@ function OverviewPanel({ signal, analysis }) {
   );
 }
 
-function TranscriptPanel({ transcript }) {
+function TranscriptPanel({ transcript, onRetryAnalysis, retryingAnalysis }) {
   const { t } = useI18n();
-  if (transcript.status !== 'available') return <StudioDataState status={transcript.status} area="transcript" />;
+  if (transcript.status !== 'available') {
+    return (
+      <StudioDataState
+        status={transcript.status}
+        area="transcript"
+        onRetry={onRetryAnalysis}
+        retrying={retryingAnalysis}
+      />
+    );
+  }
 
   return (
     <div className="studio-panel-content studio-transcript">
@@ -185,9 +207,18 @@ function TranscriptPanel({ transcript }) {
   );
 }
 
-function AnalysisPanel({ analysis }) {
+function AnalysisPanel({ analysis, onRetryAnalysis, retryingAnalysis }) {
   const { t } = useI18n();
-  if (analysis.status !== 'available') return <StudioDataState status={analysis.status} area="analysis" />;
+  if (analysis.status !== 'available') {
+    return (
+      <StudioDataState
+        status={analysis.status}
+        area="analysis"
+        onRetry={onRetryAnalysis}
+        retrying={retryingAnalysis}
+      />
+    );
+  }
 
   return (
     <div className="studio-panel-content studio-deep-analysis">
@@ -392,6 +423,10 @@ export default function ProductStudioPreview({
   const [variantIndex, setVariantIndex] = useState(0);
   const transcript = useMemo(() => deriveStudioTranscript(signal || {}), [signal]);
   const analysis = useMemo(() => deriveStudioAnalysis(signal || {}), [signal]);
+  const sourceGrounding = getSourceGrounding(signal);
+  const needsGroundedAnalysis = signal?.sourceType === 'personal_url' && sourceGrounding?.status !== 'full';
+  const retryingGroundedAnalysis = adaptationState?.status === 'generating' || adaptationState?.status === 'loading';
+  const retryGroundedAnalysis = needsGroundedAnalysis ? onRetryAdaptation : undefined;
   const links = useMemo(() => getStudioSourceLinks(signal || {}), [signal]);
   const remixes = useMemo(
     () => getStudioRemixes(signal || {}, adaptationState?.adaptation),
@@ -529,9 +564,28 @@ export default function ProductStudioPreview({
               </button>
             ))}
           </nav>
-          {activeTab === 'overview' && <OverviewPanel signal={signal} analysis={analysis} />}
-          {activeTab === 'transcript' && <TranscriptPanel transcript={transcript} />}
-          {activeTab === 'analysis' && <AnalysisPanel analysis={analysis} />}
+          {activeTab === 'overview' && (
+            <OverviewPanel
+              signal={signal}
+              analysis={analysis}
+              onRetryAnalysis={retryGroundedAnalysis}
+              retryingAnalysis={retryingGroundedAnalysis}
+            />
+          )}
+          {activeTab === 'transcript' && (
+            <TranscriptPanel
+              transcript={transcript}
+              onRetryAnalysis={retryGroundedAnalysis}
+              retryingAnalysis={retryingGroundedAnalysis}
+            />
+          )}
+          {activeTab === 'analysis' && (
+            <AnalysisPanel
+              analysis={analysis}
+              onRetryAnalysis={retryGroundedAnalysis}
+              retryingAnalysis={retryingGroundedAnalysis}
+            />
+          )}
           {activeTab === 'adaptation' && (
             <AdaptationStatePanel
               signal={signal}
