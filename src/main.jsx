@@ -148,6 +148,18 @@ const PRODUCT_TOUR_KEY = 'jero_tour_completed';
 const PRODUCT_TOUR_VERSION = 'v5';
 const CONTENT_FORMATS = ['Post', 'Reels', 'Shorts', 'TikTok', 'Video', 'Stories'];
 
+function getGoogleAuthDestination() {
+  if (!isBrowser) return '';
+  const url = new URL(window.location.href);
+  const preview = url.searchParams.get('preview') || '';
+  if (!['product', 'onboarding'].includes(preview)) return '';
+  const params = new URLSearchParams({ preview });
+  if (preview === 'product' && url.searchParams.get('tab')) {
+    params.set('tab', url.searchParams.get('tab'));
+  }
+  return `/?${params.toString()}`;
+}
+
 function createInterfaceApiError(payload, fallbackCode = 'unknown_error') {
   const code = extractInterfaceErrorCode(payload, fallbackCode);
   const error = new Error(code);
@@ -1172,7 +1184,8 @@ function App() {
         window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
         setCurrentUser(null);
         setAuthStatus('guest');
-        if (productPreview) {
+        const authReturn = new URL(window.location.href).searchParams.get('auth') === 'google';
+        if (productPreview && !authReturn) {
           const publicUrl = new URL(window.location.href);
           publicUrl.searchParams.delete('preview');
           publicUrl.searchParams.delete('tab');
@@ -3388,7 +3401,9 @@ function BrandScanGate({ onAuth, notify, theme, themeMode, setThemeMode, languag
       if (scanResult) {
         window.localStorage.setItem(BRAND_SCAN_PENDING_KEY, JSON.stringify(scanResult));
       }
-      const response = await fetch(`${API_BASE}/auth/google/start`, { credentials: 'include' });
+      const destination = getGoogleAuthDestination();
+      const startUrl = `${API_BASE}/auth/google/start${destination ? `?destination=${encodeURIComponent(destination)}` : ''}`;
+      const response = await fetch(startUrl, { credentials: 'include' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;
@@ -3676,7 +3691,9 @@ function AuthGate({ onAuth, notify, theme, themeMode, setThemeMode, language, se
     setError('');
     setPendingAuthAction('google');
     try {
-      const response = await fetch(`${API_BASE}/auth/google/start`, { credentials: 'include' });
+      const destination = getGoogleAuthDestination();
+      const startUrl = `${API_BASE}/auth/google/start${destination ? `?destination=${encodeURIComponent(destination)}` : ''}`;
+      const response = await fetch(startUrl, { credentials: 'include' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'google_not_configured');
       window.location.href = payload.authUrl;

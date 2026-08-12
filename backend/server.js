@@ -4557,6 +4557,26 @@ function isTrustedRequestUrl(value) {
   }
 }
 
+function normalizeOAuthDestination(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '/';
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/';
+  try {
+    const destination = new URL(raw, CLIENT_URL);
+    const client = new URL(CLIENT_URL);
+    if (destination.origin !== client.origin || destination.pathname !== '/') return '/';
+    const preview = destination.searchParams.get('preview') || '';
+    const tab = destination.searchParams.get('tab') || '';
+    if (preview && !['product', 'onboarding'].includes(preview)) return '/';
+    const params = new URLSearchParams();
+    if (preview) params.set('preview', preview);
+    if (preview === 'product' && tab) params.set('tab', tab);
+    return params.toString() ? `/?${params.toString()}` : '/';
+  } catch {
+    return '/';
+  }
+}
+
 function verifyTrustedWriteRequest(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
     next();
@@ -6045,7 +6065,9 @@ app.get('/api/auth/google/start', async (req, res) => {
     return;
   }
   const db = await readDb();
-  const state = createOAuthState(db, 'google');
+  const state = createOAuthState(db, 'google', {
+    destination: normalizeOAuthDestination(req.query.destination),
+  });
   await writeDb(db);
   const { authUrl } = buildGoogleAuthUrl(state);
   res.json({ authUrl, state, redirectUri: GOOGLE_REDIRECT_URI, scopes: GOOGLE_SCOPES.split(' ') });
@@ -6194,7 +6216,9 @@ app.get('/api/auth/callback/google', async (req, res) => {
     await writeDb(db);
     scheduleCrmSync(user);
     setSessionCookie(res, session.token);
-    res.redirect(`${CLIENT_URL}/?auth=google`);
+    const redirectUrl = new URL(normalizeOAuthDestination(stateRecord.destination), CLIENT_URL);
+    redirectUrl.searchParams.set('auth', 'google');
+    res.redirect(redirectUrl.toString());
   } catch (err) {
     console.error('[GoogleLogin]', err);
     res.status(502).send('Google Login could not be completed. Please try again.');
