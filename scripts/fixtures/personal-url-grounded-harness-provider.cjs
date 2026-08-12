@@ -88,6 +88,13 @@ async function resolveSource(savedUrl, options = {}) {
       videoIntelligence: { readiness: { status: 'limited', level: 'limited', gaps: ['video unavailable'] }, video: { status: 'unavailable' } },
       analysis: { status: 'unavailable', items: [] },
       sourceStatus: 'metadata_only',
+      diagnostic: {
+        platform: 'tiktok',
+        stage: 'capability',
+        reasonCode: 'public_url_analysis_unsupported',
+        retryable: false,
+        fallback: 'user_owned_upload_or_owner_authorized_captions',
+      },
       missing: ['transcript', 'video_intelligence', 'source_grounding'],
     };
   } else if (savedUrl.id === 'saved_no_speech') {

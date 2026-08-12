@@ -28698,6 +28698,49 @@ nav button.active::before {
   line-height: 1.65;
 }
 
+.studio-source-diagnostic {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 22px 0;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, #b45309 36%, var(--product-border));
+  border-radius: 14px;
+  background: color-mix(in srgb, #f59e0b 9%, var(--product-surface));
+}
+
+.studio-source-diagnostic > span {
+  display: grid;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f59e0b 18%, var(--product-surface));
+  color: #b45309;
+}
+
+.studio-source-diagnostic > div {
+  display: grid;
+  gap: 4px;
+}
+
+.studio-source-diagnostic strong {
+  font-size: 12px;
+}
+
+.studio-source-diagnostic p,
+.studio-source-diagnostic small {
+  margin: 0;
+  color: var(--product-muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.studio-source-diagnostic small {
+  font-weight: 750;
+}
+
 .studio-data-retry {
   display: inline-flex;
   align-items: center;

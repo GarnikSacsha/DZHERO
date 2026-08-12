@@ -28,15 +28,19 @@ export function isCurrentPersonalUrlAdaptationResponse({ requestRevision, curren
     && requestIdentity === currentIdentity;
 }
 
-export function buildPersonalUrlAdaptationFailureState(errorCode, retainedAdaptation = null) {
+export function buildPersonalUrlAdaptationFailureState(errorCode, retainedAdaptation = null, diagnostic = null) {
   const adaptation = retainedAdaptation && typeof retainedAdaptation === 'object'
     ? retainedAdaptation
     : null;
-  return {
+  const state = {
     status: adaptation ? 'ready' : 'error',
     adaptation,
     errorCode: String(errorCode || 'saved_url_adaptation_generate_failed'),
   };
+  if (diagnostic && typeof diagnostic === 'object' && !Array.isArray(diagnostic)) {
+    state.diagnostic = diagnostic;
+  }
+  return state;
 }
 
 export function mapSavedUrlToProductSignal(savedUrl, adaptation = null) {

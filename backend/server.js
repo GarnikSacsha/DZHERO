@@ -35,6 +35,10 @@ const {
   uploadGeminiVideoBytes,
   deleteGeminiFile,
 } = require('./services/agentStudioVideoTool.cjs');
+const {
+  analyzePublicVideoUrlWithGemini,
+  detectPublicVideoPlatform,
+} = require('./services/publicVideoGrounding.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
 const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage.cjs');
 const agentStudioCoffeeFixture = require('../scripts/fixtures/agent-studio-coffee-shop.cjs');
@@ -2377,6 +2381,13 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
       : { status: 'unavailable', text: '', segments: [] };
   const video = intelligence?.video && typeof intelligence.video === 'object' ? intelligence.video : {};
   const visual = intelligence?.visual && typeof intelligence.visual === 'object' ? intelligence.visual : null;
+  const diagnostic = input.diagnostic && typeof input.diagnostic === 'object'
+    ? input.diagnostic
+    : intelligence?.diagnostic && typeof intelligence.diagnostic === 'object'
+      ? intelligence.diagnostic
+      : rawMetadata.publicVideoGroundingDiagnostic && typeof rawMetadata.publicVideoGroundingDiagnostic === 'object'
+        ? rawMetadata.publicVideoGroundingDiagnostic
+        : null;
   const title = String(input.title || rawMetadata.title || '').trim();
   const description = String(input.description || rawMetadata.description || '').trim();
   const handle = String(input.handle || rawMetadata.handle || '').trim();
@@ -2467,6 +2478,7 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
     analysis: cloneJsonValue(analysis),
     sourceStatus: input.sourceStatus || rawMetadata.sourceStatus || 'url_only',
     readiness: cloneJsonValue(input.readiness || intelligence?.readiness || null),
+    diagnostic: cloneJsonValue(diagnostic),
     grounding,
     globalInsight: cloneJsonValue(globalInsight),
     missing,
@@ -2488,6 +2500,7 @@ async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
   }
   const metadata = await fetchPublicSourceMetadata(savedUrl.canonicalUrl, {
     beforeProviderAttempt: options.beforeProviderAttempt,
+    publicVideoGrounding: true,
   });
   return buildPersonalUrlSourceContext(savedUrl, {
     metadata,
@@ -3862,6 +3875,82 @@ async function enrichVideoIntelligence(metadata, options = {}) {
   };
 }
 
+async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
+  const platform = detectPublicVideoPlatform(metadata?.url)
+    || (metadata?.source?.tone === 'shorts' ? 'youtube' : metadata?.source?.tone || '');
+  const grounded = await analyzePublicVideoUrlWithGemini({
+    platform,
+    sourceUrl: metadata?.url || '',
+    metadata,
+    apiKey: GEMINI_API_KEY,
+    model: process.env.GEMINI_VIDEO_MODEL || 'gemini-3.6-flash',
+    beforeProviderAttempt: options.beforeProviderAttempt,
+  });
+  const videoAvailable = grounded.video?.status === 'available';
+  const transcriptAvailable = grounded.transcript?.status === 'available';
+  const visualAvailable = grounded.visual?.status === 'available';
+  const readiness = {
+    score: videoAvailable ? 90 : 12,
+    level: videoAvailable ? 'high' : 'limited',
+    adaptationReady: videoAvailable || transcriptAvailable,
+    gaps: [
+      !videoAvailable && 'public video evidence unavailable',
+      !transcriptAvailable && grounded.transcript?.status !== 'not_applicable' && 'spoken transcript unavailable',
+      !visualAvailable && 'visual observations unavailable',
+    ].filter(Boolean),
+    summary: videoAvailable
+      ? 'Gemini public video understanding'
+      : `source unavailable: ${grounded.diagnostic?.reasonCode || 'unknown'}`,
+  };
+  const intelligence = {
+    sourceStatus: metadata.sourceStatus,
+    sourceLabel: metadata.source?.label || '',
+    confidence: {
+      metadata: metadata.sourceStatus === 'youtube_api' ? 'official' : 'limited',
+      transcript: transcriptAvailable ? 'gemini_public_video_audio' : grounded.transcript?.status || 'missing',
+      visual: visualAvailable ? 'gemini_public_video' : 'missing',
+      video: videoAvailable ? 'gemini_public_video' : 'missing',
+      frames: videoAvailable ? 'gemini_public_video' : 'not_sampled',
+    },
+    readiness,
+    transcript: grounded.transcript,
+    video: grounded.video,
+    visual: grounded.visual,
+    analysis: grounded.analysis,
+    diagnostic: grounded.diagnostic,
+    usage: grounded.usage,
+    facts: {
+      title: metadata.title || '',
+      description: metadata.description || '',
+      handle: metadata.handle || '',
+      stats: metadata.stats || {},
+      rawStats: metadata.rawStats || {},
+      duration: metadata.youtube?.duration || '',
+      publishedAt: metadata.publishedAt || '',
+    },
+  };
+  const groundedAnalysisText = [
+    grounded.video?.videoSummary,
+    grounded.video?.spokenText,
+    grounded.video?.onScreenText,
+    grounded.video?.contentMechanic,
+    grounded.visual?.visualSummary,
+  ].filter(Boolean).join(' ');
+  return {
+    ...metadata,
+    transcriptText: grounded.transcript?.text || '',
+    videoIntelligence: intelligence,
+    publicVideoGroundingDiagnostic: grounded.diagnostic,
+    analysisText: compactText([metadata.analysisText, groundedAnalysisText].filter(Boolean).join(' '), 4200),
+  };
+}
+
+function enrichVideoIntelligenceForContext(metadata, options = {}) {
+  return options.publicVideoGrounding
+    ? enrichPersonalPublicVideoIntelligence(metadata, options)
+    : enrichVideoIntelligence(metadata, options);
+}
+
 function parseYouTubeInput(rawInput) {
   const raw = String(rawInput || '').trim();
   const withProtocol = raw.startsWith('www.') ? `https://${raw}` : raw;
@@ -4216,10 +4305,14 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
   const url = normalizePublicSourceUrl(rawInput, source.tone);
   if (!url) return { ...fallback, sourceStatus: 'invalid_public_url' };
 
+  if (options.publicVideoGrounding && ['tiktok', 'instagram'].includes(detectPublicVideoPlatform(url))) {
+    return await enrichPersonalPublicVideoIntelligence({ ...fallback, url }, options);
+  }
+
   if (source.tone === 'instagram') {
     try {
       const instagramMetadata = await fetchInstagramWebProfileMetadata(url, fallback);
-      if (instagramMetadata) return await enrichVideoIntelligence(instagramMetadata, options);
+      if (instagramMetadata) return await enrichVideoIntelligenceForContext(instagramMetadata, options);
     } catch (error) {
       if (error?.status === 402) throw error;
       fallback.instagramWebProfileError = error.message;
@@ -4229,14 +4322,14 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
   if (source.tone === 'shorts') {
     try {
       const youtubeMetadata = await fetchYouTubeMetadata(rawInput);
-      if (youtubeMetadata) return await enrichVideoIntelligence(youtubeMetadata, options);
+      if (youtubeMetadata) return await enrichVideoIntelligenceForContext(youtubeMetadata, options);
     } catch (error) {
       if (error?.status === 402) throw error;
       fallback.youtubeError = error.message;
     }
     try {
       const oEmbedMetadata = await fetchYouTubeOEmbedMetadata(rawInput);
-      if (oEmbedMetadata) return await enrichVideoIntelligence({
+      if (oEmbedMetadata) return await enrichVideoIntelligenceForContext({
         ...oEmbedMetadata,
         youtubeError: fallback.youtubeError,
       }, options);
@@ -4254,7 +4347,10 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
       },
     });
     if (!response.ok) {
-      return { ...fallback, url, sourceStatus: `metadata_unavailable_${response.status}` };
+      const unavailableMetadata = { ...fallback, url, sourceStatus: `metadata_unavailable_${response.status}` };
+      return options.publicVideoGrounding
+        ? await enrichPersonalPublicVideoIntelligence(unavailableMetadata, options)
+        : unavailableMetadata;
     }
 
     const html = response.text;
@@ -4275,7 +4371,7 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
     const image = extractMetaContent(html, 'og:image');
     const analysisText = [title, description, handle, rawInput].filter(Boolean).join(' ');
 
-    return await enrichVideoIntelligence({
+    return await enrichVideoIntelligenceForContext({
       ...fallback,
       url,
       title,
@@ -4288,7 +4384,10 @@ async function fetchPublicSourceMetadata(rawInput, options = {}) {
     }, options);
   } catch (error) {
     if (error?.status === 402) throw error;
-    return { ...fallback, url, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
+    const failedMetadata = { ...fallback, url, sourceStatus: 'metadata_fetch_failed', fetchError: error.message };
+    return options.publicVideoGrounding
+      ? await enrichPersonalPublicVideoIntelligence(failedMetadata, options)
+      : failedMetadata;
   }
 }
 
@@ -8034,7 +8133,8 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             sourceStatus: sourceContext.sourceStatus,
             grounding: sourceContext.grounding,
             missing: sourceContext.missing,
-            retryable: true,
+            diagnostic: sourceContext.diagnostic,
+            retryable: sourceContext.diagnostic?.retryable ?? true,
           });
         }
         const generationContext = Object.freeze({

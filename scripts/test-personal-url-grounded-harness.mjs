@@ -387,6 +387,22 @@ try {
   assert.equal(metadataOnly.response.status, 409);
   assert.equal(metadataOnly.body.error, 'saved_url_source_unavailable');
   assert.equal(metadataOnly.body.grounding.mode, 'metadata_only');
+  assert.deepEqual(metadataOnly.body.diagnostic, {
+    platform: 'tiktok',
+    stage: 'capability',
+    reasonCode: 'public_url_analysis_unsupported',
+    retryable: false,
+    fallback: 'user_owned_upload_or_owner_authorized_captions',
+  });
+  assert.equal(metadataOnly.body.retryable, false, 'unsupported platform URLs fail closed instead of suggesting a futile retry');
+  const retainedFailure = buildPersonalUrlAdaptationFailureState(
+    metadataOnly.body.error,
+    legacyBefore.body.adaptation,
+    metadataOnly.body.diagnostic,
+  );
+  assert.equal(retainedFailure.status, 'ready');
+  assert.equal(retainedFailure.adaptation.id, legacyBefore.body.adaptation.id);
+  assert.equal(retainedFailure.diagnostic.reasonCode, 'public_url_analysis_unsupported');
   assert.equal(countEvents(parseEvents(await readFile(callsPath, 'utf8')), 'remix_provider', 'saved_metadata_only'), 0);
   assert.equal(JSON.parse(await readFile(dbPath, 'utf8')).workspaceUrlAdaptations.some((record) => record.savedUrlId === 'saved_metadata_only'), false);
   assert.equal(buildStudioContentPlanDraft(mapSavedUrlToProductSignal(savedUrl('saved_metadata_only'), null), null), null);

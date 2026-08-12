@@ -676,14 +676,20 @@ function DiscoverHome({
                       const adaptationState = savedUrlAdaptationStates[savedUrl.id] || { status: 'absent' };
                       const isReady = adaptationState.status === 'ready' && adaptationState.adaptation;
                       const isBusy = adaptationState.status === 'loading' || adaptationState.status === 'generating';
+                      const diagnostic = adaptationState.diagnostic || null;
+                      const isUnsupportedPublicUrl = diagnostic?.reasonCode === 'public_url_analysis_unsupported'
+                        || diagnostic?.reasonCode === 'unsupported_platform';
                       const adaptationError = adaptationState.errorCode === 'saved_url_adaptation_in_flight'
                         ? t('product.savedUrls.adaptationInFlight')
                         : adaptationState.errorCode === 'saved_url_source_unavailable'
-                          ? t('product.savedUrls.sourceUnavailable')
+                          ? t(isUnsupportedPublicUrl
+                            ? 'product.savedUrls.sourceUnsupported'
+                            : 'product.savedUrls.sourceUnavailable')
                           : adaptationState.errorCode
                             ? t('product.savedUrls.adaptationError')
                             : '';
-                      const canRetryReadyAdaptation = Boolean(isReady && adaptationState.errorCode);
+                      const canRetryAnalysis = diagnostic?.retryable !== false;
+                      const canRetryReadyAdaptation = Boolean(isReady && adaptationState.errorCode && canRetryAnalysis);
                       return (
                         <>
                     <div className="product-saved-url-card-topline">
@@ -705,9 +711,16 @@ function DiscoverHome({
                           )}
                         </>
                       ) : (
-                        <button type="button" disabled={isBusy} onClick={() => onAnalyzeSavedUrl?.(savedUrl.id)}>
-                          <Sparkles size={14} />{t(isBusy ? 'product.savedUrls.analyzing' : adaptationState.status === 'error' ? 'product.savedUrls.retryAnalyze' : 'product.savedUrls.analyze')}
-                        </button>
+                        <>
+                          {adaptationState.status === 'error' && (
+                            <button type="button" onClick={() => onOpenSavedUrlStudio?.(savedUrl)}>{t('product.savedUrls.openStudio')}</button>
+                          )}
+                          {(canRetryAnalysis || isBusy) && (
+                            <button type="button" disabled={isBusy} onClick={() => onAnalyzeSavedUrl?.(savedUrl.id)}>
+                              <Sparkles size={14} />{t(isBusy ? 'product.savedUrls.analyzing' : adaptationState.status === 'error' ? 'product.savedUrls.retryAnalyze' : 'product.savedUrls.analyze')}
+                            </button>
+                          )}
+                        </>
                       )}
                       <button type="button" disabled={savedUrlState.status === 'deleting'} onClick={() => onDeleteSavedUrl(savedUrl.id)}>
                         <Trash2 size={14} />{t('product.savedUrls.delete')}
@@ -1420,7 +1433,11 @@ export default function ProductHomePreview({
         || savedUrlAdaptationStates[savedUrlId]?.adaptation
         || (studioSignal?.savedUrlId === savedUrlId ? studioSignal.personalUrlAdaptation : null)
         || null;
-      const failureState = buildPersonalUrlAdaptationFailureState(errorCode, retainedAdaptation);
+      const failureState = buildPersonalUrlAdaptationFailureState(
+        errorCode,
+        retainedAdaptation,
+        error?.payload?.diagnostic || null,
+      );
       setSavedUrlAdaptationStates((current) => ({
         ...current,
         [savedUrlId]: failureState,
@@ -1432,10 +1449,13 @@ export default function ProductHomePreview({
   };
 
   const openSavedUrlStudio = (savedUrl) => {
-    const adaptation = savedUrlAdaptations.get(savedUrl?.id) || savedUrlAdaptationStates[savedUrl?.id]?.adaptation;
-    if (!savedUrl || !adaptation) return;
+    const savedState = savedUrlAdaptationStates[savedUrl?.id] || null;
+    const adaptation = savedUrlAdaptations.get(savedUrl?.id) || savedState?.adaptation;
+    if (!savedUrl) return;
     setStudioSignal(mapSavedUrlToProductSignal(savedUrl, adaptation));
-    setAdaptationState({ status: 'ready', adaptation, errorCode: '' });
+    setAdaptationState(savedState?.errorCode
+      ? { ...savedState, status: adaptation ? 'ready' : 'error', adaptation: adaptation || null }
+      : { status: adaptation ? 'ready' : 'absent', adaptation: adaptation || null, errorCode: '' });
     setActiveTab('studio');
   };
 

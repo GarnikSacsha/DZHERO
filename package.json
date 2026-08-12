@@ -19,6 +19,7 @@
     "test:saved-urls": "node scripts/test-workspace-saved-urls.mjs && node scripts/test-product-saved-url-lifecycle.mjs",
     "test:personal-url-adaptation": "node scripts/test-product-saved-url-adaptation-lifecycle.mjs",
     "test:personal-url-grounded-harness": "node scripts/test-personal-url-grounded-harness.mjs",
+    "test:public-video-grounding": "node scripts/test-public-video-grounding.mjs",
     "test:workspace-saved-url-adaptation": "node scripts/test-workspace-saved-url-adaptation.mjs",
     "test:mvp-discovery-integration": "node scripts/test-product-discovery-client.mjs && node scripts/test-mvp-discovery-integration.mjs && node scripts/test-product-brand-brain-api.mjs",
     "test:product-entry-routing": "node scripts/test-product-entry-routing.mjs",

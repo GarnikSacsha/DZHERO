@@ -47,6 +47,24 @@ const ANALYSIS_ICONS = Object.freeze({
   scene: Image,
 });
 
+const SOURCE_DIAGNOSTIC_COPY = Object.freeze({
+  public_url_analysis_unsupported: 'unsupported',
+  unsupported_platform: 'unsupported',
+  source_private_or_login_required: 'restricted',
+  source_age_restricted: 'restricted',
+  source_region_restricted: 'restricted',
+  captions_unavailable: 'captions',
+  provider_rate_limited: 'temporary',
+  provider_unavailable: 'temporary',
+  provider_budget_exceeded: 'temporary',
+  provider_response_invalid: 'invalidResponse',
+  provider_source_inaccessible: 'inaccessible',
+  grounded_observations_unavailable: 'inaccessible',
+  provider_not_configured: 'configuration',
+  provider_rejected: 'inaccessible',
+  source_url_invalid: 'inaccessible',
+});
+
 function resolveCopy(value, t) {
   const text = String(value || '').trim();
   return text.startsWith('product.') ? t(text) : text;
@@ -90,6 +108,25 @@ function StudioDataState({ status, area, onRetry, retrying = false }) {
           {t(retrying ? 'product.studio.source.retryingAnalysis' : 'product.studio.source.retryAnalysis')}
         </button>
       )}
+    </div>
+  );
+}
+
+function SourceDiagnosticBanner({ diagnostic }) {
+  const { t } = useI18n();
+  if (!diagnostic?.reasonCode) return null;
+  const copyKey = SOURCE_DIAGNOSTIC_COPY[diagnostic.reasonCode] || 'generic';
+  const ownerAuthorizedCaptions = diagnostic.fallback === 'user_owned_upload_or_owner_authorized_captions';
+  return (
+    <div className="studio-source-diagnostic" role="alert" data-reason={diagnostic.reasonCode}>
+      <span><FileQuestion size={20} /></span>
+      <div>
+        <strong>{t(`product.studio.source.diagnostics.${copyKey}Title`)}</strong>
+        <p>{t(`product.studio.source.diagnostics.${copyKey}Body`)}</p>
+        <small>{t(ownerAuthorizedCaptions
+          ? 'product.studio.source.diagnostics.fallbackOwnedOrCaptions'
+          : 'product.studio.source.diagnostics.fallbackOwned')}</small>
+      </div>
     </div>
   );
 }
@@ -424,9 +461,14 @@ export default function ProductStudioPreview({
   const transcript = useMemo(() => deriveStudioTranscript(signal || {}), [signal]);
   const analysis = useMemo(() => deriveStudioAnalysis(signal || {}), [signal]);
   const sourceGrounding = getSourceGrounding(signal);
+  const sourceDiagnostic = adaptationState?.diagnostic
+    || signal?.personalUrlAdaptation?.sourceContext?.diagnostic
+    || null;
   const needsGroundedAnalysis = signal?.sourceType === 'personal_url' && sourceGrounding?.status !== 'full';
   const retryingGroundedAnalysis = adaptationState?.status === 'generating' || adaptationState?.status === 'loading';
-  const retryGroundedAnalysis = needsGroundedAnalysis ? onRetryAdaptation : undefined;
+  const retryGroundedAnalysis = needsGroundedAnalysis && sourceDiagnostic?.retryable !== false
+    ? onRetryAdaptation
+    : undefined;
   const links = useMemo(() => getStudioSourceLinks(signal || {}), [signal]);
   const remixes = useMemo(
     () => getStudioRemixes(signal || {}, adaptationState?.adaptation),
@@ -564,6 +606,7 @@ export default function ProductStudioPreview({
               </button>
             ))}
           </nav>
+          {signal?.sourceType === 'personal_url' && <SourceDiagnosticBanner diagnostic={sourceDiagnostic} />}
           {activeTab === 'overview' && (
             <OverviewPanel
               signal={signal}
