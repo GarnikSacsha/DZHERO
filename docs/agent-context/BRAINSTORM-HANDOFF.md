@@ -1,6 +1,6 @@
 # DZHERO brainstorm handoff
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-12**
 
 ## 1. Purpose and operating model
 
@@ -187,14 +187,21 @@ Brand Brain
 → save
 ```
 
-Additional path:
+Personal public-video path:
 
 ```text
-Public Reel / TikTok / Short URL
-→ transcript/analysis
-→ Signal Filter
-→ possible admission to the shared bank
+personal public-video URL
+→ platform capability check
+→ grounded transcript and analysis
+→ three adaptations
+→ structured shootable script
 ```
+
+Public YouTube is supported through Gemini's official public URL input. TikTok
+and Instagram/Reels arbitrary public-page analysis currently fails closed; the
+fallback is a user-owned upload or owner-authorized captions. Personal Studio
+analysis does not automatically admit a URL to the shared bank, and metadata
+alone never becomes transcript, observations, or scenes.
 
 Validate with 5–7 target users. Success requires at least 3 users to actually
 adapt a signal, at least 2 to return, and at least 2 to actually pay `$15`.
@@ -246,12 +253,17 @@ contract, provider-backed evidence, and regression command.
 
 ## 12. Current product frontier
 
-The pipeline-connectivity milestone is complete. The next discussion must
-choose what behavior to validate next rather than automatically accumulating
-more paid signals.
+The pipeline-connectivity milestone and one real manual-YouTube grounding run
+are complete. On 2026-08-12 the owner accepted grounded Overview, verified
+evidence, spoken Transcript, and Deep Analysis on Railway staging. Deterministic
+tests separately prove the retained three variants and structured Script Editor
+contract. The next discussion must choose what repeat user behavior to validate
+rather than automatically accumulating more paid signals.
 
 Live possibilities include:
 
+- wire the user-owned upload / owner-authorized captions fallback, without
+  adding an arbitrary platform downloader;
 - improve personal Brand Match/Collection ranking so weak matches do not
   dominate the user's view;
 - test the existing Collection → Studio → adaptation loop with the admitted
@@ -274,6 +286,8 @@ must choose which product uncertainty matters most.
 - Rebase is not automatically preferable to merge; choose only after
   inspecting divergence and risk.
 - Staging currently deploys the redesign branch and uses PostgreSQL.
+- Commit `0093e4f` was successfully deployed to both staging services on
+  2026-08-12; direct and frontend-proxied health returned 200.
 - Do not use the production environment for this validation.
 
 ## 14. Railway staging state
@@ -282,6 +296,11 @@ The separate frontend and backend staging services are live and use PostgreSQL.
 Provider secrets remain backend-only, staging credentials and budgets remain
 separate, Automatic Discovery stays disabled, and manual Refresh is protected
 by daily, concurrent-run, per-provider, per-run, and monthly limits.
+
+Browser authentication uses the frontend's same-origin `/api` proxy. The owner
+manually verified logout, repeat login, and iPhone login. A reversible tester
+grant exists only for the staging acceptance workspace and is not production or
+public billing semantics.
 
 The public health endpoint does not expose deployed Git SHA. Use Railway
 deployment metadata when exact revision proof is required. Do not infer the SHA
@@ -311,7 +330,11 @@ from health alone.
 - author-relative history is insufficient;
 - one admitted fitness signal was weakly useful despite topic fit;
 - a personal Brand Match/Collection policy is not yet validated;
-- adaptation quality is not separately validated;
+- adaptation usefulness across multiple real users/signals is not validated;
+- user-owned upload and owner-authorized captions are not yet wired into the
+  redesign personal-video fallback;
+- TikTok/Instagram arbitrary public-page audiovisual analysis remains
+  intentionally unsupported without an approved compliant path;
 - willingness to pay is unproven.
 
 Do not resolve these by silently widening scope. Signal Filter changes,

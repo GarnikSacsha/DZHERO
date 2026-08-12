@@ -2,6 +2,45 @@
 
 DZHERO is an AI producer for small businesses, creators, SMM specialists, and multi-brand teams. It turns real short-form content signals into brand-specific scripts, production instructions, and an actionable content plan.
 
+## Current redesign staging state
+
+The active product surface is the redesign on `codex/product-live-core`. The
+Build Week Agent Studio material below is retained as historical implementation
+and submission context; it is not the current product boundary.
+
+```text
+Local product:     http://127.0.0.1:5180/?preview=product&tab=discover
+Local backend:     http://127.0.0.1:3000/
+Staging frontend:  https://frontend-staging-c899.up.railway.app/
+Staging backend:   https://backend-staging-470a.up.railway.app
+Staging health:    https://backend-staging-470a.up.railway.app/api/health
+```
+
+On 2026-08-12 the staging frontend and backend deployed commit `0093e4f`
+successfully. Direct and frontend-proxied health returned HTTP 200 with
+PostgreSQL storage.
+
+Current redesign milestones:
+
+- same-origin Google OAuth and API proxying are deployed; the owner manually
+  verified logout, repeat login, and iPhone login on staging;
+- manual public YouTube signals use Gemini's official public-video URL input
+  and current Interactions structured output;
+- grounded evidence feeds Studio Overview, Transcript, Deep Analysis, the
+  existing three adaptations, and a structured shootable Script Editor;
+- metadata never substitutes for video/audio evidence;
+- TikTok and Instagram/Reels share the platform capability contract but
+  arbitrary public-page audiovisual analysis currently fails closed with a
+  user-owned upload / owner-authorized captions fallback;
+- Signal Filter v3.1 and `maxVideoAnalysesPerRun=1` remain unchanged.
+
+The owner manually accepted one real YouTube staging run with grounded Overview,
+verified source evidence, spoken Transcript, and Deep Analysis. Deterministic
+tests cover the retained adaptations and Script Editor contract. See
+[`STATE.md`](STATE.md) and
+[`docs/agent-context/PROJECT-SNAPSHOT.md`](docs/agent-context/PROJECT-SNAPSHOT.md)
+for the active status and evidence boundary.
+
 ## Product analytics and communication consent
 
 The public product loads the anonymous-only DZHERO tracker v1.4. Page paths, allowlisted CTA identifiers, UTM attribution, an anonymous visitor ID, and successful-generation identifiers may be sent to the CRM; browser requests never contain email, Google subject, name, or avatar.
@@ -91,6 +130,12 @@ The roles have different failure modes and should not approve their own work:
 Every OpenAI specialist returns a strict Zod-validated artifact. The backend owns the state machine, limits, persistence, error classification, and workspace writes.
 
 ## Grounding and source handling
+
+This section describes the historical Build Week Agent Studio source resolver.
+The active redesign personal-URL contract is stricter: public YouTube URLs use
+Gemini's official URL input; TikTok and Instagram/Reels public-page URLs fail
+closed unless a compliant audiovisual input is available. No arbitrary media
+downloader was added to the redesign flow.
 
 - YouTube URLs are passed to Gemini as native video input.
 - Instagram and TikTok URLs are resolved through narrow Apify actors.

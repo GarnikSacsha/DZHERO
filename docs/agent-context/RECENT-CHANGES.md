@@ -1,6 +1,31 @@
 # Recent changes
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-12**
+
+## Same-origin auth and grounded manual-video Studio
+
+- `99be0a6` added the staging frontend `/api` proxy and same-origin Google OAuth
+  session flow. Staging keeps the frontend origin and Google callback URI as
+  separate configuration concepts.
+- After the staging origin correction, CORS preflight returned 204 and the
+  owner manually verified logout, repeat login, and iPhone login.
+- `95b95a7`, `83adfea`, and `ac12fa6` established grounded personal-URL
+  requirements, a deterministic backend/browser harness, actionable retry, and
+  structured Studio script rendering.
+- `0093e4f` added `backend/services/publicVideoGrounding.cjs`, current Gemini
+  Interactions `steps[]` parsing and response schema, normalized grounded
+  evidence, three-platform capability diagnostics, retained adaptations, and
+  Script Editor regression coverage.
+- Railway reported frontend and backend staging `Success` for `0093e4f`.
+  Frontend, direct backend health, and frontend-proxied health returned 200.
+- The owner then accepted one real YouTube flow with grounded Overview,
+  verified evidence, spoken Transcript, and Deep Analysis. Deterministic tests
+  separately prove the retained three variants and structured shootable script.
+- TikTok and Instagram/Reels arbitrary public-page analysis intentionally fails
+  closed with a user-owned upload / owner-authorized captions fallback. No
+  downloader or new provider dependency was added.
+- Signal Filter v3.1, `maxVideoAnalysesPerRun=1`, production, legacy UI,
+  `backend/data/db.json`, and package lock were unchanged.
 
 ## Redesign Discovery integration and staging proof
 

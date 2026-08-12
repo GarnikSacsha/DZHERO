@@ -1,6 +1,6 @@
 # Open issues
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-12**
 
 ## Verified integration and remaining evidence gap
 
@@ -43,11 +43,29 @@ Last updated: **2026-08-05**
 
 ## Adaptation and end-to-end product
 
-- Adaptation-generation quality has not been validated separately.
+- Grounded manual YouTube acquisition now has one live staging acceptance for
+  Overview, verified evidence, spoken Transcript, and Deep Analysis.
+- Deterministic coverage proves the three retained adaptations and structured
+  shootable Script Editor; live Script Editor usability still needs a focused
+  user audit across more than one signal.
 - Brand Brain → Collection → Studio is verified; the next unproven step is
-  whether users can turn admitted signals into genuinely useful adaptations.
+  whether users repeatedly turn signals into useful adaptations and return.
 - The product must prove that users can distinguish DZHERO from a collection of
   saved Reels by actually adapting useful ideas.
+
+## Public-video acquisition backlog
+
+- Wire a user-owned video upload into the redesign fallback.
+- Add owner-authorized captions only when permission and provenance can be
+  verified.
+- TikTok and Instagram/Reels arbitrary public-page URLs must remain
+  `public_url_analysis_unsupported` unless an official compliant audiovisual
+  path is approved. Do not add a downloader or generic scraping dependency.
+- Expand live acceptance to a small diverse set of public YouTube formats and
+  record safe reason codes for private/login/age/region/provider rejection.
+- Capture usage/token/cost evidence in a later explicitly budgeted audit if
+  exact accounting is required; it was not persisted in the 2026-08-12 owner
+  acceptance record.
 
 ## Data boundaries
 
@@ -73,7 +91,9 @@ Last updated: **2026-08-05**
 ## Railway staging
 
 - Separate frontend and backend staging services are live and use PostgreSQL.
-- Backend and frontend health returned HTTP 200 on 2026-08-05.
+- Frontend, direct backend health, and frontend-proxied health returned HTTP 200
+  on 2026-08-12 for commit `0093e4f`.
+- Same-origin logout, repeat login, and iPhone login are manually accepted.
 - The public health endpoint does not expose deployed Git SHA; exact revision
   checks still require Railway deployment metadata.
 - Keep secrets in backend environment variables only, with separate staging
@@ -81,6 +101,8 @@ Last updated: **2026-08-05**
 - Keep Automatic Discovery disabled until a separate owner decision; manual
   Refresh remains the bounded staging path.
 - Production remains untouched.
+- A reversible tester grant exists only for the staging acceptance workspace;
+  do not treat it as production billing configuration or general access.
 
 ## MVP validation
 

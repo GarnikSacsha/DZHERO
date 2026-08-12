@@ -1,104 +1,104 @@
-# DZHERO technical state
+# DZHERO current technical state
 
-Last updated: **2026-07-17**
+Last updated: **2026-08-12**
 
-## Git
+## Current objective
 
-```text
-Repository: https://github.com/GarnikSacsha/insta-producer-.git
-Branch:     hackathon/openai-build-week
-Baseline:   3529d80 fix: authenticate Apify TikTok media downloads
-UI/docs:    be3ab33 feat: polish Build Week judge experience
-```
+The core redesign MVP path is connected on Railway staging. The next phase is
+product validation and closing the remaining honest-input fallbacks—not another
+broad architecture rewrite or Signal Filter revision.
 
-Use `git log -1 --oneline` as the source of truth for the final judge checkout because the verification-record commit follows the UI/docs implementation commit above.
+## Verified staging state
 
-## Runtime profiles
+- Branch: `codex/product-live-core`.
+- Manual-video implementation commit: `0093e4f`.
+- Railway staging frontend and backend both reported `Success` for that SHA.
+- Frontend `/`, direct backend `/api/health`, and frontend-proxied
+  `/api/health` returned HTTP 200.
+- Staging uses PostgreSQL.
+- Production remains untouched.
 
-Standard local profile:
+## Completed on 2026-08-12
 
-```text
-Frontend: http://127.0.0.1:5173/
-Backend:  http://127.0.0.1:3000/
-```
+### Same-origin authentication
 
-Isolated Build Week profile:
+- The staging frontend proxies `/api/*` to the backend.
+- Google OAuth callback uses the frontend origin.
+- `CLIENT_URL` is the frontend origin, while the Google redirect URI retains
+  the full callback path.
+- CORS preflight from the frontend origin returned 204 after configuration was
+  corrected.
+- The owner manually verified logout, repeat login, and mobile iPhone login.
 
-```text
-Frontend: http://127.0.0.1:5180/
-Backend:  http://127.0.0.1:3100/
-```
+### Grounded personal-video Studio flow
 
-Production:
+- Gemini Interactions `steps[]` parsing and current structured output are
+  implemented.
+- Public YouTube URLs use Gemini's official URL input with one video-analysis
+  invocation and no automatic retry.
+- Trusted evidence is normalized into Overview, Transcript, Deep Analysis,
+  Adaptation, and Script Editor state.
+- TikTok and Instagram/Reels fail closed with a safe capability diagnostic;
+  metadata is never promoted to analysis.
+- Existing adaptations survive a failed refresh, and non-retryable failures do
+  not expose a futile retry.
+- The owner accepted one real staging YouTube run with populated Overview,
+  verified source evidence, spoken Transcript, and Deep Analysis.
+- Deterministic regressions prove three retained adaptations and a structured,
+  shootable Script Editor scenario.
 
-```text
-Application: https://openaibuildweek.up.railway.app
-Health:      https://openaibuildweek.up.railway.app/api/health
-Storage:     PostgreSQL
-```
+### Staging test entitlement
 
-Start locally:
+- One acceptance workspace has a reversible staging-only tester grant.
+- No subscription record, public plan semantics, production access, or Railway
+  configuration is changed by this documentation state.
+
+## Frozen contracts
+
+- Signal Filter v3.1 prompt, schema, policy, and thresholds.
+- `maxVideoAnalysesPerRun=1`.
+- Separate `decision` and `admittedToBank` fields.
+- Redesign-only product work; legacy UI and main domain remain untouched.
+- Paid providers require explicit permission, preflight, and hard budget.
+
+## Current backlog
+
+1. Wire a user-owned video upload into the redesign personal-URL fallback.
+2. Add owner-authorized captions where platform permission and provenance can
+   be verified.
+3. Keep TikTok/Instagram arbitrary public URLs fail-closed unless an official,
+   compliant audiovisual input path is approved; do not add a downloader.
+4. Run 5–7 target-user MVP tests and measure adaptation, return use, and actual
+   payment.
+5. Validate adaptation quality across a small diverse signal set, including
+   live Script Editor usability, without changing Signal Filter v3.1.
+6. Capture provider usage/cost evidence in a future explicitly budgeted live
+   audit if exact accounting is needed.
+
+## Known risks
+
+- Gemini public YouTube URL analysis is a preview feature and may reject some
+  otherwise public videos or change rate/pricing behavior.
+- Private, unlisted, login, age, region, safety, or empty-evidence restrictions
+  must continue to fail honestly.
+- The large `backend/server.js`, `src/main.jsx`, and `src/styles.css` remain
+  maintainability debt; no broad refactor is currently authorized.
+- Staging tester access is operational state and should not be mistaken for
+  validated billing behavior.
+
+## Verification commands
 
 ```powershell
-npm install
-npm run dev:backend
-npm run dev:build-week
+npm.cmd run test:public-video-grounding
+npm.cmd run test:personal-url-grounded-harness
+npm.cmd run test:saved-urls
+npm.cmd run test:studio-view
+npm.cmd run test:i18n-core
+npm.cmd run test:i18n-components
+node scripts/test-signal-quality-gate.cjs
+node scripts/test-signal-quality-policy-v3-regression.cjs
+npm.cmd run build
 ```
 
-Verify:
-
-```powershell
-npm run test:agent-studio
-npm run build
-```
-
-## Architecture
-
-- React 19 and Vite 8 provide the workspace UI.
-- Express 5 serves authenticated APIs and the production frontend bundle.
-- OpenAI Agents SDK specialists produce, critique, plan, and manage Agent Studio artifacts.
-- Gemini performs video observation.
-- Apify resolves supported Instagram/TikTok sources and supplies fresh-signal discovery.
-- The backend owns schemas, limits, retries, state transitions, persistence, safe serialization, and workspace writes.
-- Production uses PostgreSQL with a transactional `app_state` JSONB document.
-- Local development falls back to `backend/data/db.json` when `DATABASE_URL` is absent.
-
-## Agent Studio state model
-
-The workflow is bounded and persisted:
-
-```text
-Trend Analyst
--> Gemini Video Analyst
--> Brand Strategist
--> Creative Producer
--> Critic
--> optional single revision
--> Content Planner
--> Jeryk Manager
--> human approval
-```
-
-Only a production-ready hero or Hybrid package can be approved. Approval writes exactly seven normalized Content Plan items once.
-
-## Signal discovery state
-
-- Manual URL/API import remains available.
-- **Find fresh signals** runs the same budget-aware planner on demand.
-- The production worker is enabled for scheduled discovery.
-- Discovery mixes connected accounts, brand keywords, hashtags, and trends across Instagram and TikTok.
-- Per-workspace settings, leases, checkpoints, daily budgets, deduplication, and run history are persisted.
-
-## Deployment notes
-
-- Railway builds from `hackathon/openai-build-week` and serves the application on its assigned `PORT`.
-- `DATABASE_URL` selects PostgreSQL; the JSON file is only the local fallback/seed.
-- Provider keys remain server-side and must never use a `VITE_` prefix.
-- The final deployed commit must be recorded in the verification document after Railway reports success.
-
-## Known technical debt
-
-- `src/main.jsx`, `src/styles.css`, and `backend/server.js` remain large.
-- Cross-device latest-run discovery and a durable queue are post-hackathon work; the current browser already restores its remembered run after refresh.
-- The current PostgreSQL adapter serializes one application-state document; normalized tables are a future scaling step.
-- Route-level bundle splitting is deferred unless the final production rehearsal reveals a judge-visible problem.
+The public-video and personal-URL harnesses are deterministic and make zero
+real provider/network calls.

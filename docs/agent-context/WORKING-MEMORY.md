@@ -1,6 +1,6 @@
 # Working Memory
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-12**
 
 ## Current direction
 
@@ -42,6 +42,37 @@ frozen Signal Filter v3.1 baseline. Full evidence and regression rules are in
 
 Paid Gemini or Apify work always requires explicit permission, a preflight, and
 an established budget.
+
+## 2026-08-12 authentication and Studio decisions
+
+- Keep deployed browser authentication same-origin through the staging
+  frontend `/api` proxy. `CLIENT_URL` is the frontend origin only; the Google
+  redirect URI is the full frontend callback.
+- The owner manually verified logout, repeat login, and iPhone login after the
+  staging configuration correction. Do not undo this separation.
+- Treat ordinary accessible public YouTube videos, including conversational
+  videos, as analyzable through Gemini's official public URL capability.
+- Parse current Interactions responses from `steps[]` and request structured
+  evidence. Never manufacture transcript, observations, scenes, or analysis
+  from title/description metadata.
+- Use one shared platform capability contract for YouTube, TikTok, and
+  Instagram/Reels. YouTube is supported today; TikTok/Instagram arbitrary
+  public pages fail closed until an approved compliant audiovisual path exists.
+- The fallback is a user-owned upload or owner-authorized captions. Do not add
+  a downloader or scraper without a separate legal/provider decision.
+- Preserve the existing three adaptation variants. Script Editor must receive
+  a genuinely adapted, shootable structured scenario, not an idea list.
+- Preserve old adaptations when a refresh fails and show the safe diagnostic
+  even while retained content remains available.
+- One public-video attempt means one video-analysis invocation, retries=0, and
+  at most one remix only after grounding succeeds.
+- A reversible staging-only tester grant was used for acceptance. It does not
+  change production or public billing semantics.
+
+Live acceptance on 2026-08-12 confirmed a real YouTube signal populated
+Overview, verified evidence, spoken Transcript, and Deep Analysis. Deterministic
+tests confirm all three adaptations and the structured Script Editor contract;
+do not broaden the live claim beyond that recorded evidence.
 
 ## Product architecture
 

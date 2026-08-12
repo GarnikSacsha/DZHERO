@@ -1,6 +1,6 @@
 # Project snapshot
 
-Last updated: **2026-08-05**
+Last updated: **2026-08-12**
 
 ## Active product
 
@@ -37,6 +37,19 @@ The limited MVP direction is defined in [`MVP-SCOPE.md`](MVP-SCOPE.md).
   Brand Brain → Refresh Bank → admitted Collection signal → Studio flow.
 - The successful 2026-08-05 run displayed one admitted TikTok fitness signal
   with 318K views, 11K likes, quality 51, and AI Match 42.
+- Staging authentication is same-origin through the frontend `/api` proxy.
+  Logout, repeat Google login, and iPhone login were manually accepted on
+  2026-08-12 after separating the frontend origin from the Google callback URI.
+- Personal saved YouTube URLs now use Gemini's official public URL input and
+  current Interactions `steps[]` structured-output parsing.
+- On 2026-08-12 the owner accepted one real YouTube run with grounded Overview,
+  verified source evidence, spoken Transcript, and Deep Analysis. Deterministic
+  regressions cover all three adaptations and the structured shootable Script
+  Editor contract.
+- TikTok and Instagram/Reels personal URLs use the shared platform capability
+  contract but fail closed before legacy page acquisition while no compliant
+  arbitrary-public audiovisual path exists. The authorized fallback is a
+  user-owned upload or owner-authorized captions.
 
 `backend/data/db.json` is local runtime state, not a product source of truth.
 Do not edit or commit it without an explicit user request.
@@ -97,11 +110,11 @@ staging. Brand Brain persists through the backend, manual Refresh Bank launches
 the bounded discovery path, Collection enforces the two-part admission guard,
 and an admitted signal opens in Studio.
 
-The next product question is no longer pipeline connectivity. It is whether an
-admitted shared-bank signal is useful enough for a particular user. The first
-fitness result had only AI Match 42 and was judged weakly useful by the owner.
-Treat this as Brand Match/Collection evidence; do not silently change the
-frozen Signal Filter v3.1 baseline.
+The next product question is no longer basic pipeline connectivity. It is
+whether users repeatedly receive useful enough adaptations and shootable
+scripts to return and pay. The first fitness result had only AI Match 42 and was
+judged weakly useful by the owner. Treat this as Brand Match/Collection evidence;
+do not silently change the frozen Signal Filter v3.1 baseline.
 
 See [`DISCOVERY-VERIFICATION.md`](DISCOVERY-VERIFICATION.md) for the permanent
 contract, run evidence, and free regression suite.
@@ -145,7 +158,10 @@ The three decisions are intentionally separate:
   unchanged.
 - The current branch has a persistent Railway staging frontend and backend.
 - Staging storage is PostgreSQL.
-- Backend and frontend health returned HTTP 200 on 2026-08-05.
+- Current URLs are `https://frontend-staging-c899.up.railway.app/` and
+  `https://backend-staging-470a.up.railway.app`.
+- Backend, frontend, and frontend-proxied backend health returned HTTP 200 on
+  2026-08-12 for deployed commit `0093e4f`.
 - Production remains untouched.
 - The health endpoint does not expose deployed Git SHA; use Railway deployment
   metadata when exact revision proof is required.
@@ -164,5 +180,8 @@ direction.
 - Keep provider keys server-side.
 - Never make paid Gemini or Apify calls without explicit permission, a
   preflight, and a defined budget.
+- A reversible tester grant exists only for the staging acceptance workspace.
+  It is non-production operational access, not public plan or subscription
+  semantics.
 - Keep decisions (`accept`, `reject`, `uncertain`) separate from
   `admittedToBank`.

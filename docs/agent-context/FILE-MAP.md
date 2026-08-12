@@ -1,6 +1,6 @@
 # File Map
 
-Last reviewed: **2026-08-05**
+Last reviewed: **2026-08-12**
 
 ## Start files
 
@@ -60,6 +60,9 @@ Last reviewed: **2026-08-05**
 - `backend/services/usageLimits.cjs` - plan and usage limit checks.
 - `backend/services/youtubePopularFallback.cjs` - YouTube category fallback logic.
 - `backend/services/agentStudio*.cjs` - Agent Studio contracts, orchestration, video/source tools, quality, and usage.
+- `backend/services/publicVideoGrounding.cjs` - active redesign personal-video
+  platform capability, Gemini Interactions parser/schema, evidence
+  normalization, and safe diagnostics.
 - `backend/services/automaticDiscovery*.js` - fresh-signal planning, policy, and storage helpers.
 - `backend/data/db.json` - local runtime DB. Do not commit casually.
 
@@ -68,6 +71,8 @@ Last reviewed: **2026-08-05**
 - `scripts/test-source-context.js`
 - `scripts/test-usage-limits.js`
 - `scripts/test-youtube-popular-fallback.js`
+- `scripts/test-public-video-grounding.mjs`
+- `scripts/test-personal-url-grounded-harness.mjs`
 - `scripts/check-calendar-overflow.js`
 
 Run:
@@ -76,6 +81,8 @@ Run:
 node scripts/test-source-context.js
 node scripts/test-usage-limits.js
 node scripts/test-youtube-popular-fallback.js
+npm.cmd run test:public-video-grounding
+npm.cmd run test:personal-url-grounded-harness
 npm.cmd run build
 npm.cmd run test:agent-studio
 ```

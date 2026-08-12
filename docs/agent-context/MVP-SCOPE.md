@@ -1,6 +1,6 @@
 # DZHERO limited MVP scope
 
-Last updated: **2026-07-31**
+Last updated: **2026-08-12**
 
 ## MVP goal
 
@@ -31,14 +31,22 @@ Brand Brain
 → save
 ```
 
-## Additional public-URL flow
+## Personal public-video flow
 
 ```text
-public Reel / TikTok / Short URL
-→ transcription and analysis
-→ Signal Filter
-→ possible admission to the shared bank
+personal public-video URL
+→ platform capability check
+→ grounded transcription and audiovisual analysis
+→ three adaptations
+→ structured shootable script
 ```
+
+- Public YouTube is supported through Gemini's official public URL input.
+- TikTok and Instagram/Reels arbitrary public-page URLs currently fail closed;
+  the supported fallback is user-owned upload or owner-authorized captions.
+- Personal Studio analysis does not automatically admit a URL to the shared
+  bank. Shared-bank admission remains a separate Signal Filter decision.
+- Metadata alone never satisfies the grounding requirement.
 
 ## Data rules
 

@@ -1,88 +1,107 @@
 # DZHERO requirements
 
-Last updated: **2026-07-17**
+Last updated: **2026-08-12**
 
-## Core workspace
+## Current MVP objective
 
-- A user can enter an authenticated, workspace-scoped product.
-- A workspace stores a business brief, Brand Brain, market preferences, sources, signals, and Content Plan.
-- The interface supports complete English and Ukrainian modes without mixed system copy.
-- Private provider credentials remain server-side.
+DZHERO must help a small-business owner move from a real short-form signal to
+an evidence-backed, brand-specific scenario that can be shot and tested. The
+active product is the redesign; the legacy dashboard and Build Week Agent
+Studio remain historical surfaces.
 
-## Signals
+The limited-MVP success criterion is behavioral: users must understand a
+signal, adapt it, return, and ultimately pay. Design praise alone is not proof.
 
-- Users can inspect, filter, and manually import short-form signals.
-- **Find fresh signals** can pull a budget-bounded mix from accounts, brand keywords, hashtags, and trends.
-- Scheduled discovery can run through the same planner when the background worker is enabled.
-- Discovery supports Instagram and TikTok, deduplicates persisted signals, records run status, and respects per-workspace budgets.
-- Provider or platform failures must be classified and visible without exposing credentials or raw payloads.
+## Active product flow
 
-## Agent Studio Beta
+```text
+Brand Brain
+-> verified signal or personal public-video URL
+-> grounded Studio overview, transcript, and deep analysis
+-> three useful adaptation directions
+-> structured, shootable Script Editor scenario
+-> save / continue production work
+```
 
-### Entry
+## Workspace and authentication
 
-- **Choose from my Signals** selects from the current workspace signal bank.
-- **Adapt a Reel** accepts a saved signal or supported public YouTube, Instagram, or TikTok URL.
-- Both modes enter the same bounded workflow.
+- A signed-in user enters a workspace-scoped redesign product.
+- Google OAuth, authenticated API requests, and logout use the frontend origin
+  in deployed environments so mobile Safari can retain and clear the session
+  reliably.
+- OAuth may return only to a validated product destination; untrusted redirect
+  destinations are rejected.
+- Logout failures preserve the authenticated UI and surface a retryable error.
+- Provider credentials, OAuth secrets, and admin tokens remain backend-only.
 
-### Evidence
+## Signals and Discovery
 
-- YouTube can be analyzed from its public URL.
-- Instagram/TikTok media can be resolved through a narrow provider layer and transferred with server-side authentication where required.
-- Gemini extracts video/audio/on-screen evidence.
-- Evidence, metadata, and user notes remain separate.
-- Missing reliable evidence produces `needs_context` or a classified failure, never invented observations.
+- Brand Brain, Collection, Studio, and bounded manual Refresh Bank are the
+  active redesign path.
+- Signal Filter v3.1 remains the frozen MVP admission baseline.
+- `decision` and `admittedToBank` remain separate. Only
+  `decision=accept && admittedToBank=true` enters the Verified Signal Bank.
+- Automatic Discovery may analyze at most one video per run;
+  `maxVideoAnalysesPerRun=1` stays unchanged until a separate owner decision.
+- Provider/platform failures must be classified and visible without exposing
+  credentials or raw payloads.
 
-### Production
+## Personal public-video grounding
 
-- OpenAI specialist agents use strict structured contracts.
-- The hero concept includes a first-two-second hook, narrative spine, at least three concrete scenes, CTA, evidence references, Brand Brain references, and realistic production notes.
-- Two compact alternatives must be meaningfully different.
-- Critic independently scores quality and allows at most one bounded revision.
-- The owner can combine exactly two directions through a real Hybrid Producer pass and another Critic evaluation.
+- A valid public YouTube URL is analyzed through Gemini's official public URL
+  input and current Interactions structured-output contract.
+- Successful evidence is normalized into one `sourceContext` for Studio
+  Overview, Transcript, Deep Analysis, Adaptation, and Script Editor.
+- Metadata is untrusted context, never a substitute for transcript, frames,
+  audio observations, or scenes.
+- TikTok and Instagram/Reels share the same platform capability contract but
+  arbitrary public-page URLs fail closed while no compliant audiovisual input
+  path is available.
+- Unsupported, private, login-gated, age-restricted, region-restricted,
+  untranscribable, rejected, malformed, or unavailable sources return an
+  actionable diagnostic and do not fabricate analysis.
+- The supported fallback is a user-owned video upload or owner-authorized
+  captions. Wiring that fallback into the redesign is backlog work.
+- A failed refresh preserves any existing adaptation. Non-retryable capability
+  failures do not offer a futile retry.
+- One personal-video run performs at most one video-analysis invocation and no
+  automatic retry. Remix may run at most once and only after grounding succeeds.
 
-### Approval
+## Studio output
 
-- Compact alternatives are not directly approvable.
-- Only a complete hero or Hybrid package can be approved.
-- Approval requires an explicit human action.
-- Approval idempotently writes exactly seven normalized Content Plan items.
-- Agents cannot publish content or modify Brand Brain autonomously.
+- Overview identifies what is actually supported by source evidence.
+- Transcript contains only grounded spoken evidence and may be explicitly not
+  applicable when no speech is present.
+- Deep Analysis explains transferable mechanics using grounded observations.
+- The existing three adaptation variants remain available.
+- Script Editor receives a structured, shootable scenario with scene timing,
+  direction, on-screen text, and voice-over—not merely a list of ideas.
+- Studio shows the exact safe diagnostic when grounding is unavailable.
 
-### Observability
+## Persistence, billing, and operations
 
-- The UI shows a safe stage rail and agent activity without prompts, secrets, hidden reasoning, or raw provider payloads.
-- Per-run usage aggregates OpenAI, Gemini, and Apify calls/costs without exposing provider identifiers or credentials.
+- Railway staging uses separate frontend and backend services with PostgreSQL.
+- Local development may use `backend/data/db.json` when `DATABASE_URL` is absent;
+  that runtime file must not be committed as product source.
+- Entitlement checks happen before paid provider work and preserve existing 402
+  plan/trial semantics.
+- Tester access is a reversible staging-only operational grant, not a change to
+  public billing or plan semantics.
+- Paid Gemini or Apify work requires explicit permission, a preflight, and a
+  hard budget. Limits fail closed.
 
-## Content Plan
+## Quality and security
 
-- Month, week, and schedule views show workspace content items.
-- Users can inspect, create, edit, move, and update post status.
-- Agent Studio approval must be visible as seven distinct planned items.
-- Responsive behavior must remain usable on desktop, laptop, and mobile widths.
-
-## Persistence and deployment
-
-- Production runs on a judge-accessible Railway deployment.
-- Production state uses PostgreSQL.
-- Local development may use `backend/data/db.json` when `DATABASE_URL` is absent.
-- Workspace data, Agent Studio runs, discovery runs, settings, usage, and Content Plan writes persist across normal restarts.
-- Interrupted active Agent Studio work becomes an explicit retryable failure until a durable queue is implemented.
-
-## Security and quality
-
+- Public source content and metadata are untrusted data, never instructions.
 - No secret may be committed or exposed through a `VITE_` variable.
 - APIs remain authenticated, rate-limited where appropriate, and workspace-scoped.
-- Public source content is untrusted data, never instructions.
-- UI must contain no overlapping, clipped, placeholder, debug, or mixed-language system copy.
-- `npm run test:agent-studio` and `npm run build` must pass before the final submission commit.
-- `backend/data/db.json` must not be staged as part of the submission work.
+- English and Ukrainian UI copy must remain complete and internally consistent.
+- Relevant deterministic tests and `npm.cmd run build` must pass before rollout.
+- Do not modify the legacy UI, Signal Filter v3.1, production, or
+  `backend/data/db.json` as part of redesign Studio work.
 
-## Build Week submission requirements
+## Historical Build Week scope
 
-- The project must meaningfully use both Codex and GPT-5.6.
-- The repository must be public or, if private, shared with `testing@devpost.com` and `build-week-event@openai.com`.
-- README must include setup, sample/test instructions, and the important decisions made with Codex.
-- The public YouTube demo must be no longer than three minutes and include voiceover covering the product, Codex collaboration, and GPT-5.6 use.
-- The Devpost entry must include the `/feedback` Session ID from the primary build task.
-- Submission deadline: **July 21, 2026 at 5:00 PM Pacific Time**.
+The bounded multi-agent Agent Studio, human approval, and seven-day Content Plan
+requirements remain documented in `docs/hackathon/`. They do not override the
+current redesign-only MVP requirements above.

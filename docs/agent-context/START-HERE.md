@@ -37,6 +37,14 @@ C:\Users\Денис\Desktop\Всякое вайбкодинг\insta-producer-red
 
 Current branch: `codex/product-live-core`.
 
+Current Railway staging:
+
+```text
+Frontend: https://frontend-staging-c899.up.railway.app/
+Backend:  https://backend-staging-470a.up.railway.app
+Health:   https://backend-staging-470a.up.railway.app/api/health
+```
+
 ## Ground rules for this repo
 
 - All current product work targets the redesign at
@@ -46,11 +54,15 @@ Current branch: `codex/product-live-core`.
 - Do not commit `backend/data/db.json` unless the user explicitly asks. It often contains local runtime/demo data.
 - For Build Week submission context, read `docs/hackathon/README.md`.
 - Prefer small focused fixes over large rewrites. The app is a large full-stack
-  MVP with a large `src/main.jsx`; deployment of the current branch is not
-  verified.
+  MVP with large `src/main.jsx`, `src/styles.css`, and `backend/server.js` files.
+  Commit `0093e4f` is verified on both Railway staging services; later commits
+  still require their own deployment evidence.
 - Keep UI copy clean in Ukrainian and English. The user is very sensitive to mixed-language screens.
 - After behavior changes, run the smallest relevant checks, then `npm.cmd run build` when feasible.
 - If a YouTube/Gemini flow looks instant, fake, duplicated, or generic, verify that the frontend is calling the backend AI route and not only rendering fallback data.
+- For personal saved URLs, read `backend/services/publicVideoGrounding.cjs` and
+  `scripts/test-public-video-grounding.mjs`. Never infer transcript, frames, or
+  scenes from metadata.
 
 ## Fast verification commands
 
