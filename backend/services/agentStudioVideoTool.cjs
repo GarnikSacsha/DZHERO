@@ -2,6 +2,7 @@ const { tool } = require('@openai/agents');
 const { z } = require('zod');
 const crypto = require('node:crypto');
 const { EvidencePackageSchema } = require('./agentStudioSchemas.cjs');
+const { safeFetchPublicBuffer } = require('./safePublicFetch.cjs');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_UPLOAD_API = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
@@ -205,38 +206,49 @@ async function uploadGeminiVideoBytes({
   const uploadUrl = getHeader(start, 'x-goog-upload-url');
   if (!uploadUrl) throw new Error('gemini_upload_url_missing');
 
-  const upload = await fetchImpl(uploadUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Length': String(bytes.length),
-      'Content-Type': mimeType,
-      'X-Goog-Upload-Offset': '0',
-      'X-Goog-Upload-Command': 'upload, finalize',
-    },
-    body: bytes,
-  });
-  const uploadPayload = await upload.json().catch(() => ({}));
-  if (!upload.ok) throw new Error(uploadPayload?.error?.message || `gemini_upload_failed_${upload.status}`);
-  let file = uploadPayload.file || uploadPayload;
-  if (!file?.name || !file?.uri) throw new Error('gemini_uploaded_file_missing');
-
-  const deadline = Date.now() + 90000;
-  while (String(file.state || '').toUpperCase() !== 'ACTIVE') {
-    if (String(file.state || '').toUpperCase() === 'FAILED') throw new Error('gemini_video_processing_failed');
-    if (Date.now() > deadline) throw new Error('gemini_video_processing_timeout');
-    await sleepImpl(2000);
-    const status = await fetchImpl(`${GEMINI_API_BASE}/${file.name}`, {
-      headers: { 'x-goog-api-key': apiKey },
+  let file = null;
+  let knownFileName = '';
+  try {
+    const upload = await fetchImpl(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Length': String(bytes.length),
+        'Content-Type': mimeType,
+        'X-Goog-Upload-Offset': '0',
+        'X-Goog-Upload-Command': 'upload, finalize',
+      },
+      body: bytes,
     });
-    const statusPayload = await status.json().catch(() => ({}));
-    if (!status.ok) throw new Error(statusPayload?.error?.message || `gemini_file_status_failed_${status.status}`);
-    file = statusPayload.file || statusPayload;
+    const uploadPayload = await upload.json().catch(() => ({}));
+    file = uploadPayload.file || uploadPayload;
+    knownFileName = String(file?.name || '');
+    if (!upload.ok) throw new Error(uploadPayload?.error?.message || `gemini_upload_failed_${upload.status}`);
+    if (!file?.name || !file?.uri) throw new Error('gemini_uploaded_file_missing');
+
+    const deadline = Date.now() + 90000;
+    while (String(file.state || '').toUpperCase() !== 'ACTIVE') {
+      if (String(file.state || '').toUpperCase() === 'FAILED') throw new Error('gemini_video_processing_failed');
+      if (Date.now() > deadline) throw new Error('gemini_video_processing_timeout');
+      await sleepImpl(2000);
+      const status = await fetchImpl(`${GEMINI_API_BASE}/${file.name}`, {
+        headers: { 'x-goog-api-key': apiKey },
+      });
+      const statusPayload = await status.json().catch(() => ({}));
+      if (!status.ok) throw new Error(statusPayload?.error?.message || `gemini_file_status_failed_${status.status}`);
+      file = statusPayload.file || statusPayload;
+      if (file?.name) knownFileName = String(file.name);
+    }
+    return {
+      name: file.name,
+      uri: file.uri,
+      mimeType: file.mimeType || file.mime_type || mimeType,
+    };
+  } catch (error) {
+    if (knownFileName) {
+      await deleteGeminiFile({ fileName: knownFileName, apiKey, fetchImpl });
+    }
+    throw error;
   }
-  return {
-    name: file.name,
-    uri: file.uri,
-    mimeType: file.mimeType || file.mime_type || mimeType,
-  };
 }
 
 async function uploadGeminiVideoFromUrl({
@@ -244,20 +256,34 @@ async function uploadGeminiVideoFromUrl({
   apiKey,
   requestHeaders = {},
   fetchImpl = globalThis.fetch,
+  safeFetchImpl = safeFetchPublicBuffer,
+  lookup,
   sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
 }) {
-  const download = await fetchImpl(sourceUrl, {
+  const download = await safeFetchImpl(sourceUrl, {
     headers: { Accept: 'video/*,*/*;q=0.8', ...requestHeaders },
-    redirect: 'follow',
+    lookup,
+    maxBytes,
+    allowSensitiveHeadersOnRedirect: (currentUrl, nextUrl) => (
+      currentUrl.protocol === 'https:'
+      && nextUrl.protocol === 'https:'
+      && currentUrl.hostname.toLowerCase() === nextUrl.hostname.toLowerCase()
+      && isProtectedApifyMediaUrl(currentUrl)
+      && isProtectedApifyMediaUrl(nextUrl)
+    ),
   });
   if (!download.ok) throw new Error(`video_download_failed_${download.status}`);
-  const declaredLength = Number(getHeader(download, 'content-length') || 0);
-  if (declaredLength > maxBytes) throw new Error('video_download_too_large');
-  const bytes = Buffer.from(await download.arrayBuffer());
+  const bytes = Buffer.from(download.bytes || []);
+  if (!bytes.length) throw new Error('video_download_empty');
+  if (bytes.length > maxBytes) throw new Error('video_download_too_large');
+  const responseHeaders = download.headers || {};
+  const contentType = typeof responseHeaders.get === 'function'
+    ? responseHeaders.get('content-type')
+    : responseHeaders['content-type'];
   const uploadedFile = await uploadGeminiVideoBytes({
     bytes,
-    mimeType: getHeader(download, 'content-type') || 'video/mp4',
+    mimeType: contentType || 'video/mp4',
     displayName: 'dzhero-agent-studio-reel',
     apiKey,
     fetchImpl,
@@ -371,6 +397,8 @@ async function analyzeAgentStudioVideo({
   mediaApiToken = process.env.APIFY_TOKEN || '',
   model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || 'gemini-3.5-flash',
   fetchImpl = globalThis.fetch,
+  safeFetchImpl = safeFetchPublicBuffer,
+  lookup,
   resolveSource,
   sleepImpl,
   uploadedFile: providedUpload = null,
@@ -450,6 +478,8 @@ async function analyzeAgentStudioVideo({
           apiKey,
           requestHeaders,
           fetchImpl,
+          safeFetchImpl,
+          lookup,
           sleepImpl,
         });
         break;

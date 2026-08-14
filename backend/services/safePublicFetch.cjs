@@ -7,6 +7,11 @@ const DEFAULT_TIMEOUT_MS = 8_000;
 const DEFAULT_MAX_BYTES = 1_000_000;
 const DEFAULT_MAX_REDIRECTS = 4;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+const SENSITIVE_REDIRECT_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'proxy-authorization',
+]);
 
 const blockedIpv4Addresses = new net.BlockList();
 const blockedIpv6Addresses = new net.BlockList();
@@ -215,6 +220,94 @@ function requestPublicTextOnce(url, options) {
   });
 }
 
+function requestPublicBufferOnce(url, options) {
+  const {
+    address,
+    headers,
+    maxBytes,
+    timeoutMs,
+  } = options;
+  const transport = url.protocol === 'https:' ? https : http;
+  let activeResponse;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      callback(value);
+    };
+    const fail = (error) => finish(reject, error);
+    const timer = setTimeout(() => {
+      request.destroy(publicFetchError('public_url_timeout'));
+    }, timeoutMs);
+
+    const request = transport.request(url, {
+      method: 'GET',
+      headers: {
+        ...headers,
+        'accept-encoding': 'identity',
+      },
+      lookup(_hostname, lookupOptions, callback) {
+        if (lookupOptions?.all) {
+          callback(null, [{ address: address.address, family: address.family }]);
+          return;
+        }
+        callback(null, address.address, address.family);
+      },
+    }, (incoming) => {
+      activeResponse = incoming;
+      const status = Number(incoming.statusCode || 0);
+      const location = incoming.headers.location || '';
+      if (REDIRECT_STATUSES.has(status) && location) {
+        incoming.resume();
+        finish(resolve, { status, headers: incoming.headers, location, bytes: Buffer.alloc(0) });
+        return;
+      }
+
+      const contentLength = Number(incoming.headers['content-length'] || 0);
+      if (contentLength > maxBytes) {
+        incoming.destroy();
+        fail(publicFetchError('public_url_response_too_large'));
+        return;
+      }
+
+      const chunks = [];
+      let totalBytes = 0;
+      incoming.on('data', (chunk) => {
+        if (settled) return;
+        const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        totalBytes += bytes.length;
+        if (totalBytes > maxBytes) {
+          incoming.destroy();
+          fail(publicFetchError('public_url_response_too_large'));
+          return;
+        }
+        chunks.push(bytes);
+      });
+      incoming.on('end', () => finish(resolve, {
+        status,
+        headers: incoming.headers,
+        location: '',
+        bytes: Buffer.concat(chunks, totalBytes),
+      }));
+      incoming.on('error', fail);
+    });
+
+    request.on('error', fail);
+    request.end();
+  }).finally(() => {
+    if (activeResponse && !activeResponse.complete) activeResponse.destroy();
+  });
+}
+
+function stripSensitiveRedirectHeaders(headers = {}) {
+  return Object.fromEntries(Object.entries(headers).filter(([name]) => (
+    !SENSITIVE_REDIRECT_HEADERS.has(String(name).toLowerCase())
+  )));
+}
+
 async function safeFetchPublicText(input, options = {}) {
   const timeoutMs = Math.max(100, Number(options.timeoutMs || DEFAULT_TIMEOUT_MS));
   const maxBytes = Math.max(1_024, Number(options.maxBytes || DEFAULT_MAX_BYTES));
@@ -255,8 +348,55 @@ async function safeFetchPublicText(input, options = {}) {
   throw publicFetchError('public_url_redirect_limit');
 }
 
+async function safeFetchPublicBuffer(input, options = {}) {
+  const timeoutMs = Math.max(100, Number(options.timeoutMs || DEFAULT_TIMEOUT_MS));
+  const maxBytes = Math.max(1, Number(options.maxBytes || DEFAULT_MAX_BYTES));
+  const maxRedirects = Math.max(0, Number(options.maxRedirects ?? DEFAULT_MAX_REDIRECTS));
+  const deadline = Date.now() + timeoutMs;
+  let url = validatePublicUrl(input);
+  let headers = { ...(options.headers || {}) };
+
+  for (let redirects = 0; redirects <= maxRedirects; redirects += 1) {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) throw publicFetchError('public_url_timeout');
+    const address = await resolvePublicAddress(url.hostname, {
+      lookup: options.lookup,
+      timeoutMs: remainingMs,
+    });
+    const requestRemainingMs = deadline - Date.now();
+    if (requestRemainingMs <= 0) throw publicFetchError('public_url_timeout');
+    const response = await requestPublicBufferOnce(url, {
+      address,
+      headers,
+      maxBytes,
+      timeoutMs: requestRemainingMs,
+    });
+
+    if (REDIRECT_STATUSES.has(response.status) && response.location) {
+      if (redirects >= maxRedirects) throw publicFetchError('public_url_redirect_limit');
+      const nextUrl = validatePublicUrl(new URL(response.location, url));
+      const preserveSensitive = typeof options.allowSensitiveHeadersOnRedirect === 'function'
+        && options.allowSensitiveHeadersOnRedirect(url, nextUrl) === true;
+      if (!preserveSensitive) headers = stripSensitiveRedirectHeaders(headers);
+      url = nextUrl;
+      continue;
+    }
+
+    return {
+      ok: response.status >= 200 && response.status < 300,
+      status: response.status,
+      url: url.toString(),
+      headers: response.headers,
+      bytes: response.bytes,
+    };
+  }
+
+  throw publicFetchError('public_url_redirect_limit');
+}
+
 module.exports = {
   isBlockedPublicAddress,
+  safeFetchPublicBuffer,
   safeFetchPublicText,
   validatePublicUrl,
 };

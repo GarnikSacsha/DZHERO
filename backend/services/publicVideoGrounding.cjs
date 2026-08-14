@@ -1,5 +1,10 @@
 'use strict';
 
+const {
+  deleteGeminiFile,
+  uploadGeminiVideoFromUrl,
+} = require('./agentStudioVideoTool.cjs');
+
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_PUBLIC_VIDEO_MODEL = 'gemini-3.6-flash';
 
@@ -168,8 +173,10 @@ function getPublicVideoPlatformCapability(platformValue = '') {
   if (platform === 'instagram' || platform === 'tiktok') {
     return {
       platform,
-      supported: false,
-      acquisition: 'public_url_analysis_unsupported',
+      supported: true,
+      acquisition: platform === 'instagram'
+        ? 'apify_instagram_video_then_gemini'
+        : 'apify_tiktok_video_then_gemini',
       fallback: 'user_owned_upload_or_owner_authorized_captions',
     };
   }
@@ -179,6 +186,15 @@ function getPublicVideoPlatformCapability(platformValue = '') {
     acquisition: 'unsupported_platform',
     fallback: 'user_owned_upload_or_owner_authorized_captions',
   };
+}
+
+function isProtectedApifyMediaUrl(value = '') {
+  try {
+    const host = new URL(String(value || '')).hostname.toLowerCase();
+    return host === 'api.apify.com' || host.endsWith('.api.apify.com');
+  } catch {
+    return false;
+  }
 }
 
 function classifyPublicVideoProviderFailure({ status = 0, message = '', interactionStatus = '' } = {}) {
@@ -409,6 +425,10 @@ async function analyzePublicVideoUrlWithGemini({
   model = process.env.GEMINI_VIDEO_MODEL || DEFAULT_PUBLIC_VIDEO_MODEL,
   fetchImpl = globalThis.fetch,
   beforeProviderAttempt = null,
+  resolveSocialSource = null,
+  uploadSocialVideo = uploadGeminiVideoFromUrl,
+  deleteUploadedVideo = deleteGeminiFile,
+  mediaApiToken = '',
 } = {}) {
   const platform = normalizePlatform(platformValue) || detectPublicVideoPlatform(sourceUrl);
   const capability = getPublicVideoPlatformCapability(platform);
@@ -451,10 +471,106 @@ async function analyzePublicVideoUrlWithGemini({
     }));
   }
 
+  const isSocialPlatform = platform === 'instagram' || platform === 'tiktok';
+  let uploadedFile = null;
+  let analysisUri = sourceUrl;
+  let geminiAttemptReserved = false;
+  const cleanupUploadedVideo = async () => {
+    if (!uploadedFile?.name || typeof deleteUploadedVideo !== 'function') return;
+    const fileName = uploadedFile.name;
+    uploadedFile = null;
+    await deleteUploadedVideo({ fileName, apiKey, fetchImpl });
+  };
+
+  if (isSocialPlatform) {
+    if (typeof resolveSocialSource !== 'function') {
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'source_resolution',
+        reasonCode: 'social_video_unavailable',
+        retryable: true,
+        fallback: capability.fallback,
+      }));
+    }
+    let resolved;
+    try {
+      resolved = await resolveSocialSource({
+        platform,
+        sourceUrl,
+        beforeProviderAttempt,
+      });
+    } catch (error) {
+      if (error?.providerAttemptBlocked) throw error;
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'source_resolution',
+        reasonCode: 'social_video_unavailable',
+        retryable: true,
+        fallback: capability.fallback,
+      }));
+    }
+    const transferCandidates = [...new Set([
+      resolved?.videoUrl,
+      resolved?.importedMetadata?.apify?.videoUrl,
+      ...(Array.isArray(resolved?.importedMetadata?.mediaUrls) ? resolved.importedMetadata.mediaUrls : []),
+      ...(Array.isArray(resolved?.importedMetadata?.apify?.mediaUrls) ? resolved.importedMetadata.apify.mediaUrls : []),
+    ].map((value) => String(value || '').trim()).filter(Boolean))];
+    if (resolved?.unresolved || transferCandidates.length === 0) {
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'source_resolution',
+        reasonCode: 'social_video_unavailable',
+        retryable: true,
+        fallback: capability.fallback,
+      }));
+    }
+    if (typeof uploadSocialVideo !== 'function') {
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'source_transfer',
+        reasonCode: 'social_video_transfer_failed',
+        retryable: true,
+        fallback: capability.fallback,
+      }));
+    }
+    if (typeof beforeProviderAttempt === 'function') {
+      await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
+      geminiAttemptReserved = true;
+    }
+    for (const candidateUrl of transferCandidates) {
+      try {
+        const requestHeaders = isProtectedApifyMediaUrl(candidateUrl) && mediaApiToken
+          ? { Authorization: `Bearer ${mediaApiToken}` }
+          : {};
+        uploadedFile = await uploadSocialVideo({
+          sourceUrl: candidateUrl,
+          apiKey,
+          requestHeaders,
+          fetchImpl,
+        });
+        if (uploadedFile?.uri) break;
+        uploadedFile = null;
+      } catch (error) {
+        uploadedFile = null;
+      }
+    }
+    if (!uploadedFile?.uri) {
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'source_transfer',
+        reasonCode: 'social_video_transfer_failed',
+        retryable: true,
+        fallback: capability.fallback,
+        model,
+      }));
+    }
+    analysisUri = uploadedFile.uri;
+  }
+
   let response;
   let payload = {};
   try {
-    if (typeof beforeProviderAttempt === 'function') {
+    if (!geminiAttemptReserved && typeof beforeProviderAttempt === 'function') {
       await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
     }
     response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
@@ -466,7 +582,11 @@ async function analyzePublicVideoUrlWithGemini({
       body: JSON.stringify({
         model,
         input: [
-          { type: 'video', uri: sourceUrl },
+          {
+            type: 'video',
+            uri: analysisUri,
+            ...(uploadedFile?.mimeType ? { mime_type: uploadedFile.mimeType } : {}),
+          },
           { type: 'text', text: buildPrompt({ metadata }) },
         ],
         response_format: PUBLIC_VIDEO_RESPONSE_FORMAT,
@@ -474,6 +594,7 @@ async function analyzePublicVideoUrlWithGemini({
     });
     payload = await response.json().catch(() => ({}));
   } catch (error) {
+    await cleanupUploadedVideo();
     if (error?.providerAttemptBlocked) throw error;
     return emptyEvidence(buildDiagnostic({
       platform,
@@ -492,7 +613,7 @@ async function analyzePublicVideoUrlWithGemini({
       message: payload?.error?.message,
       interactionStatus,
     });
-    return emptyEvidence(buildDiagnostic({
+    const unavailable = emptyEvidence(buildDiagnostic({
       platform,
       stage: 'provider_response',
       reasonCode,
@@ -502,11 +623,13 @@ async function analyzePublicVideoUrlWithGemini({
       httpStatus: response.status,
       interactionStatus,
     }));
+    await cleanupUploadedVideo();
+    return unavailable;
   }
 
   const parsed = normalizeProviderEvidence(parseJson(parseGeminiInteractionText(payload)));
   if (!parsed) {
-    return emptyEvidence(buildDiagnostic({
+    const unavailable = emptyEvidence(buildDiagnostic({
       platform,
       stage: 'normalization',
       reasonCode: 'provider_response_invalid',
@@ -516,9 +639,11 @@ async function analyzePublicVideoUrlWithGemini({
       httpStatus: response.status,
       interactionStatus,
     }));
+    await cleanupUploadedVideo();
+    return unavailable;
   }
   if (!parsed.accessible || parsed.observations.length === 0) {
-    return emptyEvidence(buildDiagnostic({
+    const unavailable = emptyEvidence(buildDiagnostic({
       platform,
       stage: 'source_access',
       reasonCode: parsed.accessible ? 'grounded_observations_unavailable' : 'provider_source_inaccessible',
@@ -528,8 +653,12 @@ async function analyzePublicVideoUrlWithGemini({
       httpStatus: response.status,
       interactionStatus,
     }));
+    await cleanupUploadedVideo();
+    return unavailable;
   }
-  return buildAvailableEvidence({ platform, sourceUrl, model, payload, evidence: parsed });
+  const available = buildAvailableEvidence({ platform, sourceUrl, model, payload, evidence: parsed });
+  await cleanupUploadedVideo();
+  return available;
 }
 
 module.exports = {

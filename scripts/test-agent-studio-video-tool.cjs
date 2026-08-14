@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const http = require('node:http');
 
 const {
   analyzeAgentStudioVideo,
@@ -6,8 +8,11 @@ const {
   createGeminiVideoAnalysisTool,
   normalizeGeminiVideoResult,
   parseGeminiInteractionText,
+  uploadGeminiVideoBytes,
+  uploadGeminiVideoFromUrl,
 } = require('../backend/services/agentStudioVideoTool.cjs');
 const { EvidencePackageSchema } = require('../backend/services/agentStudioSchemas.cjs');
+const { safeFetchPublicBuffer } = require('../backend/services/safePublicFetch.cjs');
 
 assert.match(buildGeminiPrompt({
   input: { objective: 'Drive visits', outputLanguage: 'en' },
@@ -38,7 +43,175 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   };
 }
 
+function offlineSafeFetch(fetchImpl) {
+  return async (url, options = {}) => {
+    const result = await fetchImpl(url, {
+      headers: options.headers || {},
+      redirect: 'manual',
+    });
+    return {
+      ok: result.ok,
+      status: result.status,
+      url,
+      headers: {
+        'content-type': result.headers.get('content-type') || '',
+        'content-length': result.headers.get('content-length') || '',
+      },
+      bytes: Buffer.from(await result.arrayBuffer()),
+    };
+  };
+}
+
+function installMockHttpResponses(responses) {
+  const originalRequest = http.request;
+  const calls = [];
+  http.request = (url, options, callback) => {
+    const next = responses.shift();
+    assert.ok(next, 'unexpected public-media request');
+    const request = new EventEmitter();
+    request.destroy = (error) => {
+      if (error) queueMicrotask(() => request.emit('error', error));
+    };
+    request.end = () => {};
+    calls.push({ url: String(url), options });
+    queueMicrotask(() => {
+      options.lookup(new URL(url).hostname, { all: false }, (error) => {
+        if (error) {
+          request.emit('error', error);
+          return;
+        }
+        const incoming = new EventEmitter();
+        incoming.statusCode = next.statusCode ?? 200;
+        incoming.headers = next.headers || { 'content-type': 'video/mp4' };
+        incoming.complete = false;
+        incoming.destroy = () => { incoming.complete = true; };
+        incoming.resume = () => {};
+        callback(incoming);
+        if (!next.headers?.location) {
+          const chunks = next.chunks || [next.body || Buffer.alloc(0)];
+          for (const chunk of chunks) incoming.emit('data', Buffer.from(chunk));
+          incoming.complete = true;
+          incoming.emit('end');
+        }
+      });
+    });
+    return request;
+  };
+  return {
+    calls,
+    restore() {
+      http.request = originalRequest;
+    },
+  };
+}
+
 (async () => {
+  await assert.rejects(
+    uploadGeminiVideoFromUrl({
+      sourceUrl: 'http://127.0.0.1/private-video',
+      apiKey: 'test-key',
+    }),
+    (error) => error?.code === 'public_url_private_address_denied',
+    'literal loopback media must be rejected before transport',
+  );
+  await assert.rejects(
+    uploadGeminiVideoFromUrl({
+      sourceUrl: 'file:///tmp/private-video.mp4',
+      apiKey: 'test-key',
+    }),
+    (error) => error?.code === 'public_url_protocol_denied',
+    'only http/https media targets are accepted',
+  );
+
+  {
+    const mock = installMockHttpResponses([{
+      statusCode: 302,
+      headers: { location: 'http://169.254.169.254/latest/meta-data' },
+    }]);
+    try {
+      await assert.rejects(
+        safeFetchPublicBuffer('http://public-media.audit.test/video.mp4', {
+          lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+          maxBytes: 32,
+        }),
+        (error) => error?.code === 'public_url_private_address_denied',
+        'redirects to link-local targets must stop before a second request',
+      );
+      assert.equal(mock.calls.length, 1);
+    } finally {
+      mock.restore();
+    }
+  }
+
+  {
+    const mock = installMockHttpResponses([{
+      statusCode: 302,
+      headers: { location: 'http://cdn.audit.test/video.mp4' },
+    }, {
+      body: Buffer.from([1, 2, 3]),
+    }]);
+    try {
+      const downloaded = await safeFetchPublicBuffer('http://api.apify.com/video.mp4', {
+        lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+        headers: { Authorization: 'Bearer must-not-leak' },
+        maxBytes: 32,
+      });
+      assert.equal(downloaded.bytes.length, 3);
+      assert.equal(mock.calls[0].options.headers.Authorization, 'Bearer must-not-leak');
+      assert.equal(mock.calls[1].options.headers.Authorization, undefined, 'credentials are stripped on redirect host changes');
+    } finally {
+      mock.restore();
+    }
+  }
+
+  {
+    const mock = installMockHttpResponses([{
+      chunks: [Buffer.alloc(6), Buffer.alloc(6)],
+    }]);
+    try {
+      await assert.rejects(
+        safeFetchPublicBuffer('http://oversized.audit.test/video.mp4', {
+          lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+          maxBytes: 10,
+        }),
+        (error) => error?.code === 'public_url_response_too_large',
+        'chunked responses are aborted at the hard byte ceiling',
+      );
+    } finally {
+      mock.restore();
+    }
+  }
+
+  {
+    const cleanupRequests = [];
+    await assert.rejects(
+      uploadGeminiVideoBytes({
+        bytes: Buffer.from([1, 2, 3]),
+        apiKey: 'test-key',
+        sleepImpl: async () => {},
+        fetchImpl: async (url, options = {}) => {
+          cleanupRequests.push({ url, options });
+          if (url.endsWith('/upload/v1beta/files')) {
+            return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.test/session' } });
+          }
+          if (url === 'https://upload.example.test/session') {
+            return response({ file: { name: 'files/cleanup-on-failure', uri: 'https://gemini.test/files/cleanup-on-failure', mimeType: 'video/mp4', state: 'PROCESSING' } });
+          }
+          if (url.endsWith('/v1beta/files/cleanup-on-failure') && options.method === 'DELETE') return response({});
+          if (url.endsWith('/v1beta/files/cleanup-on-failure')) return response({ error: { message: 'poll failed' } }, { ok: false, status: 503 });
+          throw new Error(`Unexpected cleanup URL: ${url}`);
+        },
+      }),
+      /poll failed/,
+      'the original polling failure remains visible',
+    );
+    assert.equal(
+      cleanupRequests.some(({ url, options }) => url.endsWith('/v1beta/files/cleanup-on-failure') && options.method === 'DELETE'),
+      true,
+      'a known Gemini file is deleted after post-upload failure',
+    );
+  }
+
   const requests = [];
   const reliable = await analyzeAgentStudioVideo({
     input: { mode: 'adapt_reel', objective: 'Drive visits', signalId: 'signal_1' },
@@ -110,6 +283,37 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   assert.equal('maxItems' in requestBody.response_format.schema.properties.unknowns, false);
 
   const instagramRequests = [];
+  const instagramFetch = async (url, options = {}) => {
+    instagramRequests.push({ url, options });
+    if (url === 'https://cdn.example.com/source123.mp4') {
+      return response({}, {
+        headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+        bytes: new Uint8Array([1, 2, 3, 4, 5]),
+      });
+    }
+    if (url.endsWith('/upload/v1beta/files')) {
+      return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/session' } });
+    }
+    if (url === 'https://upload.example.com/session') {
+      return response({ file: { name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'PROCESSING' } });
+    }
+    if (url.endsWith('/v1beta/files/source123') && options.method === 'DELETE') return response({});
+    if (url.endsWith('/v1beta/files/source123')) {
+      return response({ name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'ACTIVE' });
+    }
+    if (url.endsWith('/v1beta/interactions')) {
+      return response({
+        output_text: JSON.stringify({
+          accessible: true,
+          summary: 'Gemini inspected the Apify-resolved Instagram video.',
+          transferableMechanic: 'reaction hook followed by a product reveal',
+          observations: [{ sourceType: 'video_observation', text: 'A reaction cuts to a coffee reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
+          unknowns: [],
+        }),
+      });
+    }
+    throw new Error(`Unexpected test URL: ${url}`);
+  };
   const instagram = await analyzeAgentStudioVideo({
     input: {
       mode: 'adapt_reel',
@@ -131,37 +335,8 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
       importedMetadata: { provider: 'apify', videoUrl: 'https://cdn.example.com/source123.mp4' },
     }),
     sleepImpl: async () => {},
-    fetchImpl: async (url, options = {}) => {
-      instagramRequests.push({ url, options });
-      if (url === 'https://cdn.example.com/source123.mp4') {
-        return response({}, {
-          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
-          bytes: new Uint8Array([1, 2, 3, 4, 5]),
-        });
-      }
-      if (url.endsWith('/upload/v1beta/files')) {
-        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/session' } });
-      }
-      if (url === 'https://upload.example.com/session') {
-        return response({ file: { name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'PROCESSING' } });
-      }
-      if (url.endsWith('/v1beta/files/source123') && options.method === 'DELETE') return response({});
-      if (url.endsWith('/v1beta/files/source123')) {
-        return response({ name: 'files/source123', uri: 'https://gemini.example/files/source123', mimeType: 'video/mp4', state: 'ACTIVE' });
-      }
-      if (url.endsWith('/v1beta/interactions')) {
-        return response({
-          output_text: JSON.stringify({
-            accessible: true,
-            summary: 'Gemini inspected the Apify-resolved Instagram video.',
-            transferableMechanic: 'reaction hook followed by a product reveal',
-            observations: [{ sourceType: 'video_observation', text: 'A reaction cuts to a coffee reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
-            unknowns: [],
-          }),
-        });
-      }
-      throw new Error(`Unexpected test URL: ${url}`);
-    },
+    fetchImpl: instagramFetch,
+    safeFetchImpl: offlineSafeFetch(instagramFetch),
   });
   assert.equal(instagram.availability, 'reliable');
   assert.equal(instagram.source.url, 'https://www.instagram.com/reel/source123/');
@@ -176,6 +351,44 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
   const invalidDownloadedVideoUrl = 'https://api.apify.com/v2/key-value-stores/store/records/instagram.mp4';
   const originalInstagramVideoUrl = 'https://scontent.example.com/original-instagram.mp4';
   const instagramFallbackRequests = [];
+  const instagramFallbackFetch = async (url, options = {}) => {
+    instagramFallbackRequests.push({ url, options });
+    if (url === invalidDownloadedVideoUrl) {
+      assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
+      return response({}, {
+        headers: { 'content-type': 'text/html', 'content-length': '18' },
+        bytes: '<html>blocked</html>',
+      });
+    }
+    if (url === originalInstagramVideoUrl) {
+      return response({}, {
+        headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+        bytes: new Uint8Array([1, 2, 3, 4, 5]),
+      });
+    }
+    if (url.endsWith('/upload/v1beta/files')) {
+      return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/instagram-fallback-session' } });
+    }
+    if (url === 'https://upload.example.com/instagram-fallback-session') {
+      return response({ file: { name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'PROCESSING' } });
+    }
+    if (url.endsWith('/v1beta/files/instagram-fallback') && options.method === 'DELETE') return response({});
+    if (url.endsWith('/v1beta/files/instagram-fallback')) {
+      return response({ name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'ACTIVE' });
+    }
+    if (url.endsWith('/v1beta/interactions')) {
+      return response({
+        output_text: JSON.stringify({
+          accessible: true,
+          summary: 'Gemini inspected the original Instagram media URL after the downloaded copy failed.',
+          transferableMechanic: 'fast hook followed by a product reveal',
+          observations: [{ sourceType: 'video_observation', text: 'A fast hook cuts to a product reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
+          unknowns: [],
+        }),
+      });
+    }
+    throw new Error(`Unexpected Instagram fallback test URL: ${url}`);
+  };
   const instagramFallback = await analyzeAgentStudioVideo({
     input: {
       mode: 'adapt_reel',
@@ -203,50 +416,46 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
       },
     }),
     sleepImpl: async () => {},
-    fetchImpl: async (url, options = {}) => {
-      instagramFallbackRequests.push({ url, options });
-      if (url === invalidDownloadedVideoUrl) {
-        assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
-        return response({}, {
-          headers: { 'content-type': 'text/html', 'content-length': '18' },
-          bytes: '<html>blocked</html>',
-        });
-      }
-      if (url === originalInstagramVideoUrl) {
-        return response({}, {
-          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
-          bytes: new Uint8Array([1, 2, 3, 4, 5]),
-        });
-      }
-      if (url.endsWith('/upload/v1beta/files')) {
-        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/instagram-fallback-session' } });
-      }
-      if (url === 'https://upload.example.com/instagram-fallback-session') {
-        return response({ file: { name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'PROCESSING' } });
-      }
-      if (url.endsWith('/v1beta/files/instagram-fallback') && options.method === 'DELETE') return response({});
-      if (url.endsWith('/v1beta/files/instagram-fallback')) {
-        return response({ name: 'files/instagram-fallback', uri: 'https://gemini.example/files/instagram-fallback', mimeType: 'video/mp4', state: 'ACTIVE' });
-      }
-      if (url.endsWith('/v1beta/interactions')) {
-        return response({
-          output_text: JSON.stringify({
-            accessible: true,
-            summary: 'Gemini inspected the original Instagram media URL after the downloaded copy failed.',
-            transferableMechanic: 'fast hook followed by a product reveal',
-            observations: [{ sourceType: 'video_observation', text: 'A fast hook cuts to a product reveal.', timestamp: '0:00-0:04', confidence: 0.94 }],
-            unknowns: [],
-          }),
-        });
-      }
-      throw new Error(`Unexpected Instagram fallback test URL: ${url}`);
-    },
+    fetchImpl: instagramFallbackFetch,
+    safeFetchImpl: offlineSafeFetch(instagramFallbackFetch),
   });
   assert.equal(instagramFallback.availability, 'reliable');
   assert.equal(instagramFallbackRequests.some(({ url }) => url === originalInstagramVideoUrl), true);
 
   const apifyMediaUrl = 'https://api.apify.com/v2/key-value-stores/store/records/tiktok.mp4';
   const tiktokRequests = [];
+  const tiktokFetch = async (url, options = {}) => {
+    tiktokRequests.push({ url, options });
+    if (url === apifyMediaUrl) {
+      assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
+      return response({}, {
+        headers: { 'content-type': 'video/mp4', 'content-length': '5' },
+        bytes: new Uint8Array([1, 2, 3, 4, 5]),
+      });
+    }
+    if (url.endsWith('/upload/v1beta/files')) {
+      return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/tiktok-session' } });
+    }
+    if (url === 'https://upload.example.com/tiktok-session') {
+      return response({ file: { name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'PROCESSING' } });
+    }
+    if (url.endsWith('/v1beta/files/tiktok123') && options.method === 'DELETE') return response({});
+    if (url.endsWith('/v1beta/files/tiktok123')) {
+      return response({ name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'ACTIVE' });
+    }
+    if (url.endsWith('/v1beta/interactions')) {
+      return response({
+        output_text: JSON.stringify({
+          accessible: true,
+          summary: 'Gemini inspected the authenticated Apify TikTok video.',
+          transferableMechanic: 'fast problem reveal followed by a product demonstration',
+          observations: [{ sourceType: 'video_observation', text: 'The creator demonstrates a before-and-after workflow.', timestamp: '0:00-0:05', confidence: 0.94 }],
+          unknowns: [],
+        }),
+      });
+    }
+    throw new Error(`Unexpected TikTok test URL: ${url}`);
+  };
   const tiktok = await analyzeAgentStudioVideo({
     input: {
       mode: 'adapt_reel',
@@ -267,38 +476,8 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
       importedMetadata: { provider: 'apify', videoUrl: apifyMediaUrl },
     }),
     sleepImpl: async () => {},
-    fetchImpl: async (url, options = {}) => {
-      tiktokRequests.push({ url, options });
-      if (url === apifyMediaUrl) {
-        assert.equal(options.headers.Authorization, 'Bearer test-apify-token');
-        return response({}, {
-          headers: { 'content-type': 'video/mp4', 'content-length': '5' },
-          bytes: new Uint8Array([1, 2, 3, 4, 5]),
-        });
-      }
-      if (url.endsWith('/upload/v1beta/files')) {
-        return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.com/tiktok-session' } });
-      }
-      if (url === 'https://upload.example.com/tiktok-session') {
-        return response({ file: { name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'PROCESSING' } });
-      }
-      if (url.endsWith('/v1beta/files/tiktok123') && options.method === 'DELETE') return response({});
-      if (url.endsWith('/v1beta/files/tiktok123')) {
-        return response({ name: 'files/tiktok123', uri: 'https://gemini.example/files/tiktok123', mimeType: 'video/mp4', state: 'ACTIVE' });
-      }
-      if (url.endsWith('/v1beta/interactions')) {
-        return response({
-          output_text: JSON.stringify({
-            accessible: true,
-            summary: 'Gemini inspected the authenticated Apify TikTok video.',
-            transferableMechanic: 'fast problem reveal followed by a product demonstration',
-            observations: [{ sourceType: 'video_observation', text: 'The creator demonstrates a before-and-after workflow.', timestamp: '0:00-0:05', confidence: 0.94 }],
-            unknowns: [],
-          }),
-        });
-      }
-      throw new Error(`Unexpected TikTok test URL: ${url}`);
-    },
+    fetchImpl: tiktokFetch,
+    safeFetchImpl: offlineSafeFetch(tiktokFetch),
   });
   assert.equal(tiktok.availability, 'reliable');
   const tiktokInteraction = tiktokRequests.find(({ url }) => url.endsWith('/v1beta/interactions'));

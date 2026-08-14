@@ -137,11 +137,14 @@ async function runGroundingContract() {
     acquisition: 'gemini_public_youtube_url',
     fallback: 'user_owned_upload_or_owner_authorized_captions',
   });
-  for (const platform of ['tiktok', 'instagram']) {
+  for (const [platform, acquisition] of [
+    ['instagram', 'apify_instagram_video_then_gemini'],
+    ['tiktok', 'apify_tiktok_video_then_gemini'],
+  ]) {
     const capability = getPublicVideoPlatformCapability(platform);
     assert.equal(capability.platform, platform);
-    assert.equal(capability.supported, false);
-    assert.equal(capability.acquisition, 'public_url_analysis_unsupported');
+    assert.equal(capability.supported, true);
+    assert.equal(capability.acquisition, acquisition);
     assert.equal(capability.fallback, 'user_owned_upload_or_owner_authorized_captions');
   }
 
@@ -196,26 +199,111 @@ async function runGroundingContract() {
   assert.equal(audioOnly.visual.status, 'unavailable', 'audio evidence must not be relabeled as visual evidence');
   assert.equal(audioOnly.visual.visualSummary, '');
 
-  for (const platform of ['tiktok', 'instagram']) {
-    let providerCalled = false;
-    const unsupported = await analyzePublicVideoUrlWithGemini({
+  for (const platform of ['instagram', 'tiktok']) {
+    const sourceUrl = platform === 'tiktok'
+      ? 'https://tiktok.com/@creator/video/123456789'
+      : 'https://instagram.com/reel/abc123';
+    const playableUrl = platform === 'instagram'
+      ? 'https://api.apify.com/v2/key-value-stores/test/records/instagram.mp4'
+      : 'https://cdn.example.test/tiktok.mp4';
+    const uploadedFile = {
+      name: `files/${platform}-saved-url`,
+      uri: `https://gemini.test/files/${platform}-saved-url`,
+      mimeType: 'video/mp4',
+    };
+    const sequence = [];
+    let resolverInput = null;
+    let uploadInput = null;
+    let interactionBody = null;
+    let cleanupInput = null;
+    const social = await analyzePublicVideoUrlWithGemini({
       platform,
-      sourceUrl: platform === 'tiktok'
-        ? 'https://tiktok.com/@creator/video/123456789'
-        : 'https://instagram.com/reel/abc123',
+      sourceUrl,
       metadata: { title: 'Metadata must not become analysis.' },
       apiKey: 'test-key',
-      fetchImpl: async () => { providerCalled = true; return response({}); },
+      model: 'gemini-test',
+      mediaApiToken: 'test-apify-token',
+      resolveSocialSource: async (input) => {
+        sequence.push('resolve');
+        resolverInput = input;
+        return {
+          sourceUrl,
+          videoUrl: playableUrl,
+          resolvedBy: 'offline-social-resolver',
+          importedMetadata: { apify: { videoUrl: playableUrl, mediaUrls: [playableUrl] } },
+        };
+      },
+      uploadSocialVideo: async (input) => {
+        sequence.push('upload');
+        uploadInput = input;
+        return uploadedFile;
+      },
+      fetchImpl: async (url, options) => {
+        sequence.push('interaction');
+        interactionBody = JSON.parse(options.body);
+        return response({
+          status: 'completed',
+          model: 'gemini-test',
+          steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(providerEvidence) }] }],
+        });
+      },
+      deleteUploadedVideo: async (input) => {
+        sequence.push('cleanup');
+        cleanupInput = input;
+      },
     });
-    assert.equal(providerCalled, false, `${platform} unsupported public URL must not call Gemini or a downloader`);
-    assert.equal(unsupported.status, 'unavailable');
-    assert.equal(unsupported.video.status, 'unavailable');
-    assert.equal(unsupported.transcript.text, '');
-    assert.deepEqual(unsupported.analysis.items, []);
-    assert.equal(unsupported.diagnostic.platform, platform);
-    assert.equal(unsupported.diagnostic.reasonCode, 'public_url_analysis_unsupported');
-    assert.equal(unsupported.diagnostic.fallback, 'user_owned_upload_or_owner_authorized_captions');
+    assert.deepEqual(sequence, ['resolve', 'upload', 'interaction', 'cleanup'], `${platform} acquisition is bounded and always cleans up`);
+    assert.equal(resolverInput.platform, platform);
+    assert.equal(resolverInput.sourceUrl, sourceUrl);
+    assert.equal(uploadInput.sourceUrl, playableUrl);
+    assert.deepEqual(
+      uploadInput.requestHeaders,
+      platform === 'instagram' ? { Authorization: 'Bearer test-apify-token' } : {},
+      `${platform}: Apify token must only be sent to the Apify API host`,
+    );
+    assert.equal(interactionBody.input[0].uri, uploadedFile.uri, `${platform} Gemini receives acquired media, not the public page`);
+    assert.equal(interactionBody.input[0].mime_type, uploadedFile.mimeType);
+    assert.equal(cleanupInput.fileName, uploadedFile.name);
+    assert.equal(social.status, 'available');
+    assert.equal(social.video.status, 'available');
+    assert.equal(social.video.videoInput.uri, sourceUrl);
+    assert.equal(social.transcript.status, 'available');
+    assert.equal(social.transcript.text, providerEvidence.spokenText);
+    assert.equal(social.visual.status, 'available');
+    assert.equal(social.analysis.status, 'available');
+    assert.equal(social.diagnostic, null);
   }
+
+  let failedUploadCalled = false;
+  let failedInteractionCalled = false;
+  let failedCleanupCalled = false;
+  const unavailableSocial = await analyzePublicVideoUrlWithGemini({
+    platform: 'instagram',
+    sourceUrl: 'https://instagram.com/reel/unavailable123',
+    apiKey: 'test-key',
+    mediaApiToken: 'test-apify-token',
+    resolveSocialSource: async () => ({
+      unresolved: true,
+      sourceUrl: 'https://instagram.com/reel/unavailable123',
+      platform: 'instagram',
+      attempts: [{ actor: 'platform-default', outcome: 'empty' }],
+    }),
+    uploadSocialVideo: async () => { failedUploadCalled = true; return null; },
+    fetchImpl: async () => { failedInteractionCalled = true; return response({}); },
+    deleteUploadedVideo: async () => { failedCleanupCalled = true; },
+  });
+  assert.equal(failedUploadCalled, false, 'unresolved social acquisition must not upload an empty source');
+  assert.equal(failedInteractionCalled, false, 'unresolved social acquisition must not call Gemini');
+  assert.equal(failedCleanupCalled, false, 'no cleanup call is needed when no upload was created');
+  assert.equal(unavailableSocial.status, 'unavailable');
+  assert.equal(unavailableSocial.video.status, 'unavailable');
+  assert.equal(unavailableSocial.transcript.text, '');
+  assert.deepEqual(unavailableSocial.analysis.items, []);
+  assert.equal(unavailableSocial.diagnostic.platform, 'instagram');
+  assert.equal(unavailableSocial.diagnostic.stage, 'source_resolution');
+  assert.equal(unavailableSocial.diagnostic.reasonCode, 'social_video_unavailable');
+  assert.equal(unavailableSocial.diagnostic.retryable, true);
+  assert.equal(unavailableSocial.diagnostic.fallback, 'user_owned_upload_or_owner_authorized_captions');
 
   const rejected = await analyzePublicVideoUrlWithGemini({
     platform: 'youtube',
@@ -354,12 +442,8 @@ async function runGroundingContract() {
   assert.match(homeSource, /onOpenSavedUrlStudio\?\.\(savedUrl\)/);
   assert.match(serverSource, /diagnostic:\s*sourceContext\.diagnostic/);
   assert.match(serverSource, /publicVideoGrounding:\s*true/);
-  assert.match(
-    serverSource,
-    /options\.publicVideoGrounding\s*&&\s*\['tiktok', 'instagram'\]\.includes\(detectPublicVideoPlatform\(url\)\)/,
-    'unsupported public-page URLs fail closed before legacy metadata acquisition',
-  );
-  assert.doesNotMatch(groundingSource, /yt-dlp|youtube-dl|playwright|puppeteer|apify/i);
+  assert.match(groundingSource, /resolveSocialSource/);
+  assert.doesNotMatch(groundingSource, /yt-dlp|youtube-dl|playwright|puppeteer/i);
 }
 
 if (existsSync(GROUNDING_PATH)) {

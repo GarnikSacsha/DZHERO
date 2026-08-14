@@ -33,6 +33,7 @@ const {
 const {
   analyzeAgentStudioVideo,
   uploadGeminiVideoBytes,
+  uploadGeminiVideoFromUrl,
   deleteGeminiFile,
 } = require('./services/agentStudioVideoTool.cjs');
 const {
@@ -247,6 +248,16 @@ const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidco
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
+const DEFAULT_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = 0.05;
+const MAX_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = 0.25;
+const SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = (() => {
+  const configured = String(process.env.SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD || '').trim();
+  if (!configured) return DEFAULT_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD;
+  const value = Number(configured);
+  return Number.isFinite(value) && value > 0
+    ? Math.min(value, MAX_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD)
+    : null;
+})();
 const SHARED_SIGNAL_BANK_WORKSPACE_ID = String(process.env.SHARED_SIGNAL_BANK_WORKSPACE_ID || '').trim();
 const SHARED_SIGNAL_BANK_OWNER_EMAIL = String(process.env.SHARED_SIGNAL_BANK_OWNER_EMAIL || '').trim();
 const SHARED_SIGNAL_BANK_LIMIT = Number(process.env.SHARED_SIGNAL_BANK_LIMIT || 250);
@@ -2519,6 +2530,18 @@ async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
   const metadata = await fetchPublicSourceMetadata(savedUrl.canonicalUrl, {
     beforeProviderAttempt: options.beforeProviderAttempt,
     publicVideoGrounding: true,
+    mediaApiToken: APIFY_TOKEN,
+    resolveSocialSource: ({ sourceUrl, beforeProviderAttempt }) => resolveAgentStudioVideoSource({
+      token: APIFY_TOKEN,
+      sourceUrl,
+      workspaceId: savedUrl.workspaceId,
+      market: options.market || 'global',
+      maxTotalChargeUsd: SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD,
+      onUsage: options.onSocialSourceUsage,
+      beforeProviderAttempt,
+    }),
+    uploadSocialVideo: uploadGeminiVideoFromUrl,
+    deleteUploadedVideo: deleteGeminiFile,
   });
   return buildPersonalUrlSourceContext(savedUrl, {
     metadata,
@@ -2840,13 +2863,18 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
 
 function createPersonalUrlProviderAttemptGuard({ workspaceId, actorUser, tracker }) {
   const paidAttemptGuard = createSerializedPaidAiAttemptGuard({ workspaceId, actorUser });
-  const attempts = { analysis: 0, remix: 0 };
+  const attempts = { apify: 0, analysis: 0, remix: 0 };
+  const limits = { apify: 2, analysis: 1, remix: 1 };
   return async (event = {}) => {
-    const category = event.operation === 'remix' ? 'remix' : 'analysis';
-    if (attempts[category] >= 1) {
+    const category = event.operation === 'remix'
+      ? 'remix'
+      : event.provider === 'apify'
+        ? 'apify'
+        : 'analysis';
+    if (attempts[category] >= limits[category]) {
       const error = createProductContentPlanError('personal_url_provider_attempt_limit_exceeded', 429, {
         operation: category,
-        limit: 1,
+        limit: limits[category],
         retryable: false,
       });
       error.providerAttemptBlocked = true;
@@ -3940,6 +3968,10 @@ async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
     apiKey: GEMINI_API_KEY,
     model: process.env.GEMINI_VIDEO_MODEL || 'gemini-3.6-flash',
     beforeProviderAttempt: options.beforeProviderAttempt,
+    resolveSocialSource: options.resolveSocialSource,
+    uploadSocialVideo: options.uploadSocialVideo,
+    deleteUploadedVideo: options.deleteUploadedVideo,
+    mediaApiToken: options.mediaApiToken,
   });
   const videoAvailable = grounded.video?.status === 'available';
   const transcriptAvailable = grounded.transcript?.status === 'available';
@@ -5629,6 +5661,7 @@ async function executeAgentStudioRun(runId) {
           sourceUrl,
           workspaceId: run.workspaceId,
           market: workspace.market || 'global',
+          maxTotalChargeUsd: SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD,
           phase,
           invocationId,
           onUsage: (entry) => usageCollector.recordApify(entry),
@@ -8193,9 +8226,18 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
         });
         startPersonalUrlRunStage(runTracker, 'source_resolution');
         let resolvedSourceContext;
+        let socialApifyActualCostUsd = 0;
         try {
           resolvedSourceContext = await resolvePersonalUrlSourceContext(latestSavedUrl, {
             beforeProviderAttempt,
+            onSocialSourceUsage: (entry = {}) => {
+              const actualCostUsd = Number(entry.usageTotalUsd);
+              if (!Number.isFinite(actualCostUsd) || actualCostUsd < 0) return;
+              socialApifyActualCostUsd += actualCostUsd;
+              recordPersonalUrlProviderUsage(runTracker, 'apify', {
+                actualCostUsd: socialApifyActualCostUsd,
+              });
+            },
           });
         } finally {
           finishPersonalUrlRunStage(runTracker, 'source_resolution');
