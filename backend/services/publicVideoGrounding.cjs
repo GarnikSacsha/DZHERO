@@ -413,7 +413,38 @@ function buildAvailableEvidence({ platform, sourceUrl, model, payload, evidence 
       items: analysisItems,
     },
     diagnostic: null,
-    usage: cloneJson(payload?.usage || null),
+    usage: cloneJson(payload?.usage || payload?.usageMetadata || null),
+  };
+}
+
+function toGeminiResponseSchema(value) {
+  if (Array.isArray(value)) return value.map(toGeminiResponseSchema);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => key !== 'additionalProperties')
+      .map(([key, child]) => [key, toGeminiResponseSchema(child)]),
+  );
+}
+
+function buildGeminiGenerateContentRequest({ analysisUri, mimeType, metadata }) {
+  return {
+    contents: [{
+      role: 'user',
+      parts: [
+        {
+          file_data: {
+            file_uri: analysisUri,
+            mime_type: mimeType || 'video/mp4',
+          },
+        },
+        { text: buildPrompt({ metadata }) },
+      ],
+    }],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      responseSchema: toGeminiResponseSchema(PUBLIC_VIDEO_RESPONSE_FORMAT.schema),
+    },
   };
 }
 
@@ -573,13 +604,16 @@ async function analyzePublicVideoUrlWithGemini({
     if (!geminiAttemptReserved && typeof beforeProviderAttempt === 'function') {
       await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
     }
-    response = await fetchImpl(`${GEMINI_API_BASE}/interactions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey,
-      },
-      body: JSON.stringify({
+    const requestUrl = isSocialPlatform
+      ? `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`
+      : `${GEMINI_API_BASE}/interactions`;
+    const requestBody = isSocialPlatform
+      ? buildGeminiGenerateContentRequest({
+        analysisUri,
+        mimeType: uploadedFile?.mimeType,
+        metadata,
+      })
+      : {
         model,
         input: [
           {
@@ -590,7 +624,14 @@ async function analyzePublicVideoUrlWithGemini({
           { type: 'text', text: buildPrompt({ metadata }) },
         ],
         response_format: PUBLIC_VIDEO_RESPONSE_FORMAT,
-      }),
+      };
+    response = await fetchImpl(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
     });
     payload = await response.json().catch(() => ({}));
   } catch (error) {

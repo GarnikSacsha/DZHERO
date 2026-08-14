@@ -47,6 +47,21 @@ const {
     model: 'apify/instagram-reel-scraper',
   }]);
 
+  const tiktokCalls = [];
+  const tiktokResolved = await resolveAgentStudioVideoSource({
+    token: 'test-apify-token',
+    sourceUrl: 'https://www.tiktok.com/@demo/video/123',
+    maxTotalChargeUsd: 0.50,
+    fetchSignals: async (options) => {
+      tiktokCalls.push(options);
+      return [{ sourceUrl: options.inputValue, videoUrl: 'https://cdn.example.com/tiktok.mp4' }];
+    },
+  });
+  assert.equal(tiktokResolved.videoUrl, 'https://cdn.example.com/tiktok.mp4');
+  assert.equal(tiktokCalls.length, 1);
+  assert.equal(tiktokCalls[0].maxItems, 1);
+  assert.equal(tiktokCalls[0].maxTotalChargeUsd, 0.50);
+
   const fallbackCalls = [];
   const fallbackUsage = [];
   const fallbackAttempts = [];
@@ -106,6 +121,20 @@ const {
       },
     }),
     (error) => error?.code === 'saved_url_social_cost_cap_required' && error?.status === 503,
+  );
+  assert.equal(uncappedProviderCalled, false);
+
+  await assert.rejects(
+    resolveAgentStudioVideoSource({
+      token: 'test-apify-token',
+      sourceUrl: 'https://www.tiktok.com/@demo/video/oversized-cap',
+      maxTotalChargeUsd: 0.51,
+      fetchSignals: async () => {
+        uncappedProviderCalled = true;
+        return [];
+      },
+    }),
+    (error) => error?.code === 'saved_url_social_cost_cap_required',
   );
   assert.equal(uncappedProviderCalled, false);
 

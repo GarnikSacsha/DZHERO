@@ -29,6 +29,13 @@ function response(payload, { ok = true, status = 200 } = {}) {
   };
 }
 
+function hasPropertyRecursively(value, propertyName) {
+  if (Array.isArray(value)) return value.some((item) => hasPropertyRecursively(item, propertyName));
+  if (!value || typeof value !== 'object') return false;
+  return Object.hasOwn(value, propertyName)
+    || Object.values(value).some((item) => hasPropertyRecursively(item, propertyName));
+}
+
 const providerEvidence = {
   accessible: true,
   summary: 'A founder explains a workflow problem, demonstrates the handoff, and shows the corrected board.',
@@ -171,6 +178,11 @@ async function runGroundingContract() {
   assert.equal(requestBody.input[0].uri, 'https://youtube.com/watch?v=steps123');
   assert.equal(requestBody.response_format.type, 'text');
   assert.equal(requestBody.response_format.mime_type, 'application/json');
+  assert.equal(
+    hasPropertyRecursively(requestBody.response_format.schema, 'additionalProperties'),
+    true,
+    'YouTube Interactions keeps the original response schema unchanged',
+  );
   assert.equal(youtube.status, 'available');
   assert.equal(youtube.video.status, 'available');
   assert.equal(youtube.video.videoInput.uri, 'https://youtube.com/watch?v=steps123');
@@ -214,7 +226,8 @@ async function runGroundingContract() {
     const sequence = [];
     let resolverInput = null;
     let uploadInput = null;
-    let interactionBody = null;
+    let providerUrl = null;
+    let providerBody = null;
     let cleanupInput = null;
     const social = await analyzePublicVideoUrlWithGemini({
       platform,
@@ -240,11 +253,11 @@ async function runGroundingContract() {
       },
       fetchImpl: async (url, options) => {
         sequence.push('interaction');
-        interactionBody = JSON.parse(options.body);
+        providerUrl = String(url);
+        providerBody = JSON.parse(options.body);
         return response({
-          status: 'completed',
-          model: 'gemini-test',
-          steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(providerEvidence) }] }],
+          candidates: [{ content: { parts: [{ text: JSON.stringify(providerEvidence) }] }, finishReason: 'STOP' }],
+          usageMetadata: { promptTokenCount: 900, candidatesTokenCount: 240, totalTokenCount: 1140 },
         });
       },
       deleteUploadedVideo: async (input) => {
@@ -261,8 +274,19 @@ async function runGroundingContract() {
       platform === 'instagram' ? { Authorization: 'Bearer test-apify-token' } : {},
       `${platform}: Apify token must only be sent to the Apify API host`,
     );
-    assert.equal(interactionBody.input[0].uri, uploadedFile.uri, `${platform} Gemini receives acquired media, not the public page`);
-    assert.equal(interactionBody.input[0].mime_type, uploadedFile.mimeType);
+    assert.match(providerUrl, /\/v1beta\/models\/gemini-test:generateContent$/);
+    assert.equal(providerBody.contents[0].parts[0].file_data.file_uri, uploadedFile.uri, `${platform} Gemini receives acquired media, not the public page`);
+    assert.equal(providerBody.contents[0].parts[0].file_data.mime_type, uploadedFile.mimeType);
+    assert.equal(providerBody.generationConfig.responseMimeType, 'application/json');
+    assert.equal(providerBody.generationConfig.responseSchema.type, 'object');
+    assert.ok(providerBody.generationConfig.responseSchema.required.includes('observations'));
+    assert.equal(providerBody.generationConfig.responseSchema.properties.observations.type, 'array');
+    assert.equal(providerBody.generationConfig.responseSchema.properties.observations.items.properties.text.type, 'string');
+    assert.equal(
+      hasPropertyRecursively(providerBody.generationConfig.responseSchema, 'additionalProperties'),
+      false,
+      `${platform}: generateContent receives the Gemini-supported schema subset`,
+    );
     assert.equal(cleanupInput.fileName, uploadedFile.name);
     assert.equal(social.status, 'available');
     assert.equal(social.video.status, 'available');
@@ -272,6 +296,7 @@ async function runGroundingContract() {
     assert.equal(social.visual.status, 'available');
     assert.equal(social.analysis.status, 'available');
     assert.equal(social.diagnostic, null);
+    assert.deepEqual(social.usage, { promptTokenCount: 900, candidatesTokenCount: 240, totalTokenCount: 1140 });
   }
 
   let failedUploadCalled = false;
@@ -443,6 +468,9 @@ async function runGroundingContract() {
   assert.match(serverSource, /diagnostic:\s*sourceContext\.diagnostic/);
   assert.match(serverSource, /publicVideoGrounding:\s*true/);
   assert.match(groundingSource, /resolveSocialSource/);
+  assert.match(groundingSource, /:generateContent/);
+  assert.match(serverSource, /INSTAGRAM_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD\s*=\s*0\.05/);
+  assert.match(serverSource, /TIKTOK_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD\s*=\s*0\.50/);
   assert.doesNotMatch(groundingSource, /yt-dlp|youtube-dl|playwright|puppeteer/i);
 }
 

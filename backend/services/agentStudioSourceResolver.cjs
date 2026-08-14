@@ -6,7 +6,8 @@ const {
 const crypto = require('node:crypto');
 
 const INSTAGRAM_FALLBACK_ACTOR = 'apify/instagram-scraper';
-const MAX_SOCIAL_SOURCE_CHARGE_USD = 0.25;
+const INSTAGRAM_MAX_SOCIAL_SOURCE_CHARGE_USD = 0.05;
+const TIKTOK_MAX_SOCIAL_SOURCE_CHARGE_USD = 0.50;
 
 function detectAgentStudioSocialPlatform(value = '') {
   try {
@@ -37,10 +38,13 @@ async function resolveAgentStudioVideoSource({
   const platform = detectAgentStudioSocialPlatform(sourceUrl);
   if (!token || !platform || typeof fetchSignals !== 'function') return null;
   const boundedMaxTotalChargeUsd = Number(maxTotalChargeUsd);
+  const platformMaxTotalChargeUsd = platform === 'tiktok'
+    ? TIKTOK_MAX_SOCIAL_SOURCE_CHARGE_USD
+    : INSTAGRAM_MAX_SOCIAL_SOURCE_CHARGE_USD;
   if (
     !Number.isFinite(boundedMaxTotalChargeUsd)
     || boundedMaxTotalChargeUsd <= 0
-    || boundedMaxTotalChargeUsd > MAX_SOCIAL_SOURCE_CHARGE_USD
+    || boundedMaxTotalChargeUsd > platformMaxTotalChargeUsd
   ) {
     const error = new Error('saved_url_social_cost_cap_required');
     error.code = 'saved_url_social_cost_cap_required';
@@ -167,6 +171,7 @@ async function resolveAgentStudioVideoSource({
 module.exports = {
   detectAgentStudioSocialPlatform,
   INSTAGRAM_FALLBACK_ACTOR,
-  MAX_SOCIAL_SOURCE_CHARGE_USD,
+  INSTAGRAM_MAX_SOCIAL_SOURCE_CHARGE_USD,
+  TIKTOK_MAX_SOCIAL_SOURCE_CHARGE_USD,
   resolveAgentStudioVideoSource,
 };

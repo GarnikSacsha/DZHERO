@@ -248,16 +248,15 @@ const GOOGLE_USERINFO_URL = process.env.GOOGLE_USERINFO_URL || 'https://openidco
 const GOOGLE_SCOPES = process.env.GOOGLE_SCOPES || 'openid email profile';
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || '';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || '';
-const DEFAULT_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = 0.05;
-const MAX_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = 0.25;
-const SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD = (() => {
-  const configured = String(process.env.SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD || '').trim();
-  if (!configured) return DEFAULT_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD;
-  const value = Number(configured);
-  return Number.isFinite(value) && value > 0
-    ? Math.min(value, MAX_SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD)
-    : null;
-})();
+const INSTAGRAM_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD = 0.05;
+const TIKTOK_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD = 0.50;
+
+function getSavedUrlSocialApifyMaxTotalChargeUsd(platformValue = '') {
+  const platform = String(platformValue || '').trim().toLowerCase();
+  if (platform === 'instagram') return INSTAGRAM_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD;
+  if (platform === 'tiktok') return TIKTOK_SAVED_URL_APIFY_MAX_TOTAL_CHARGE_USD;
+  return null;
+}
 const SHARED_SIGNAL_BANK_WORKSPACE_ID = String(process.env.SHARED_SIGNAL_BANK_WORKSPACE_ID || '').trim();
 const SHARED_SIGNAL_BANK_OWNER_EMAIL = String(process.env.SHARED_SIGNAL_BANK_OWNER_EMAIL || '').trim();
 const SHARED_SIGNAL_BANK_LIMIT = Number(process.env.SHARED_SIGNAL_BANK_LIMIT || 250);
@@ -2536,7 +2535,7 @@ async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
       sourceUrl,
       workspaceId: savedUrl.workspaceId,
       market: options.market || 'global',
-      maxTotalChargeUsd: SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD,
+      maxTotalChargeUsd: getSavedUrlSocialApifyMaxTotalChargeUsd(savedUrl.platform),
       onUsage: options.onSocialSourceUsage,
       beforeProviderAttempt,
     }),
@@ -5661,7 +5660,7 @@ async function executeAgentStudioRun(runId) {
           sourceUrl,
           workspaceId: run.workspaceId,
           market: workspace.market || 'global',
-          maxTotalChargeUsd: SAVED_URL_SOCIAL_APIFY_MAX_TOTAL_CHARGE_USD,
+          maxTotalChargeUsd: getSavedUrlSocialApifyMaxTotalChargeUsd(detectPublicVideoPlatform(sourceUrl)),
           phase,
           invocationId,
           onUsage: (entry) => usageCollector.recordApify(entry),
