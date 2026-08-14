@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -28,6 +29,117 @@ for (const address of [
 }
 for (const address of ['8.8.8.8', '104.20.23.154', '2606:4700:4700::1111']) {
   assert.equal(isBlockedPublicAddress(address), false, `${address} must remain reachable`);
+}
+
+for (const input of [
+  'http://127.0.0.1/',
+  'http://10.0.0.1/',
+  'http://[::1]/',
+  'http://[::ffff:127.0.0.1]/',
+  'http://2130706433/',
+  'http://0x7f000001/',
+  'http://0177.0.0.1/',
+]) {
+  await assert.rejects(
+    safeFetchPublicText(input),
+    (error) => error?.code === 'public_url_private_address_denied',
+    `${input} must resolve to a denied private address without a network request`,
+  );
+}
+
+await assert.rejects(
+  safeFetchPublicText('http://mixed-dns.audit.test/', {
+    lookup: async () => [
+      { address: '93.184.216.34', family: 4 },
+      { address: '127.0.0.1', family: 4 },
+    ],
+  }),
+  (error) => error?.code === 'public_url_private_address_denied',
+  'a hostname with any private DNS answer must be denied before transport',
+);
+
+function installMockHttpResponses(responses) {
+  const originalRequest = http.request;
+  const calls = [];
+  http.request = (url, options, callback) => {
+    const next = responses.shift();
+    assert.ok(next, 'unexpected HTTP request in SSRF harness');
+    const request = new EventEmitter();
+    request.destroy = (error) => {
+      if (error) request.emit('error', error);
+    };
+    request.end = () => {};
+    calls.push({ url: String(url), options });
+    queueMicrotask(() => {
+      options.lookup(new URL(url).hostname, { all: false }, (error, address, family) => {
+        if (error) {
+          request.emit('error', error);
+          return;
+        }
+        next.onLookup?.({ address, family });
+        const response = new EventEmitter();
+        response.statusCode = next.statusCode ?? 200;
+        response.headers = next.headers || { 'content-type': 'text/plain' };
+        response.complete = true;
+        response.destroy = () => {};
+        response.resume = () => {};
+        callback(response);
+        if (!next.headers?.location) {
+          if (next.body) response.emit('data', Buffer.from(next.body));
+          response.emit('end');
+        }
+      });
+    });
+    return request;
+  };
+  return {
+    calls,
+    restore() {
+      http.request = originalRequest;
+    },
+  };
+}
+
+{
+  let resolverCalls = 0;
+  let pinnedAddress = '';
+  const mock = installMockHttpResponses([{
+    onLookup: ({ address }) => { pinnedAddress = address; },
+    body: 'public response',
+  }]);
+  try {
+    const result = await safeFetchPublicText('http://rebind.audit.test/', {
+      lookup: async () => {
+        resolverCalls += 1;
+        return [{ address: '93.184.216.34', family: 4 }];
+      },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(resolverCalls, 1, 'the original DNS resolver must run only for validation');
+    assert.equal(pinnedAddress, '93.184.216.34', 'transport must use the validated address, not a later DNS answer');
+    assert.equal(mock.calls.length, 1);
+  } finally {
+    mock.restore();
+  }
+}
+
+{
+  const mock = installMockHttpResponses([{
+    statusCode: 302,
+    headers: { location: 'http://127.0.0.1/private-target' },
+  }]);
+  try {
+    await assert.rejects(
+      safeFetchPublicText('http://redirect.audit.test/', {
+        lookup: async () => [{ address: '93.184.216.34', family: 4 }],
+      }),
+      (error) => error?.code === 'public_url_private_address_denied',
+      'redirects to a private address must be denied before a second request',
+    );
+    assert.equal(mock.calls.length, 1, 'private redirect must not receive a follow-up request');
+  } finally {
+    mock.restore();
+  }
 }
 
 await assert.rejects(

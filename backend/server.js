@@ -135,6 +135,7 @@ const {
   buildFreeTrialState,
 } = require('./services/freeTrialAccess.cjs');
 const { safeFetchPublicText } = require('./services/safePublicFetch.cjs');
+const { getInstagramUsernameFromUrl } = require('./services/instagramUrl.cjs');
 const { parseProductSavedUrl } = require('./services/productSavedUrlLibrary.cjs');
 
 const OWNER_SIGNAL_EXCLUSION_REASONS = new Set([
@@ -3283,18 +3284,6 @@ function getPublicHandleFromMeta(source, url, title = '', description = '') {
   }
 }
 
-function getInstagramUsernameFromUrl(url = '') {
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.toLowerCase().includes('instagram.com')) return '';
-    const firstPath = parsed.pathname.split('/').filter(Boolean)[0] || '';
-    if (!firstPath || /^(p|reel|reels|stories|explore|accounts|about|developer)$/i.test(firstPath)) return '';
-    return firstPath.replace(/^@/, '');
-  } catch {
-    return '';
-  }
-}
-
 function isGenericInstagramMeta(value = '') {
   const text = String(value || '').trim();
   return /^instagram$/i.test(text) || /create an account|log in to instagram|share what you're into|people who get you/i.test(text);
@@ -6268,7 +6257,7 @@ app.get('/api/auth/tiktok/start', async (req, res) => {
 
 app.get('/api/auth/meta/callback', async (req, res) => {
   if (req.query.error) {
-    res.status(400).send(`Meta Login error: ${req.query.error_description || req.query.error}`);
+    res.status(400).json({ error: 'oauth_provider_error' });
     return;
   }
   if (!req.query.code) {
@@ -6345,7 +6334,7 @@ app.get('/api/auth/meta/callback', async (req, res) => {
 
 app.get('/api/auth/callback/google', async (req, res) => {
   if (req.query.error) {
-    res.status(400).send(`Google Login error: ${req.query.error_description || req.query.error}`);
+    res.status(400).json({ error: 'oauth_provider_error' });
     return;
   }
   if (!req.query.code) {
@@ -6393,7 +6382,7 @@ app.get('/api/auth/callback/google', async (req, res) => {
 
 app.get('/api/auth/instagram/callback', async (req, res) => {
   if (req.query.error) {
-    res.status(400).send(`Instagram Login error: ${req.query.error_description || req.query.error}`);
+    res.status(400).json({ error: 'oauth_provider_error' });
     return;
   }
   if (!req.query.code) {
@@ -6473,7 +6462,7 @@ app.get('/api/auth/instagram/callback', async (req, res) => {
 
 app.get('/api/auth/tiktok/callback', async (req, res) => {
   if (req.query.error) {
-    res.status(400).send(`TikTok Login error: ${req.query.error_description || req.query.error}`);
+    res.status(400).json({ error: 'oauth_provider_error' });
     return;
   }
   if (!req.query.code) {
