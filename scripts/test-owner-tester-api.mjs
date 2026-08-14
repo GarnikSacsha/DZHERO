@@ -11,6 +11,7 @@ const SERVER_ENTRY = path.join(ROOT_DIR, 'backend', 'server.js');
 
 function createDb() {
   const now = '2026-07-14T10:00:00.000Z';
+  const currentUsagePeriod = new Date().toISOString().slice(0, 7);
   return {
     users: [
       { id: 'usr_owner', name: 'Owner', email: 'owner@example.com', role: 'owner', workspaceId: 'ws_owner', createdAt: now },
@@ -42,7 +43,7 @@ function createDb() {
       id: 'usage_regular_ai',
       workspaceId: 'ws_regular',
       metric: 'ai_operations',
-      period: '2026-07',
+      period: currentUsagePeriod,
       value: 50,
       createdAt: now,
       updatedAt: now,
@@ -207,8 +208,9 @@ try {
   assert.equal(blockedAiAttempt.body.remaining, 0);
 
   const ownerBilling = await requestJson(baseUrl, '/api/workspaces/ws_owner/billing', { headers: ownerHeaders });
-  assert.equal(ownerBilling.body.plan.id, 'owner_unlimited');
-  assert.equal(ownerBilling.body.accessSource, 'owner_unlimited');
+  assert.equal(ownerBilling.body.plan.id, 'trial');
+  assert.equal(ownerBilling.body.unlimited, false);
+  assert.equal(ownerBilling.body.accessSource, 'subscription', 'operator administration does not bypass product quotas');
 
   const publicPlans = await requestJson(baseUrl, '/api/billing/plans');
   assert.equal(publicPlans.body.plans.some((plan) => plan.id === 'tester_pro'), false);

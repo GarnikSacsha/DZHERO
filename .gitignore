@@ -13,6 +13,22 @@ pnpm-debug.log*
 Thumbs.db
 .worktrees/
 .superpowers/
+
+# Local runtime state and generated provider artifacts. Keep curated synthetic
+# fixtures in scripts/fixtures and documentation outside these directories.
+/backend/data/db.json
+/backend/data/db.json.*.tmp
+outputs/
+raw-output/
+raw-outputs/
+*.raw-output.*
+tmp/
+temp/
+downloads/
+media/
+evidence-frames/
+coverage/
+
 audit/evidence/*
 audit/screenshots/*
 audit/traces/*
@@ -23,8 +39,3 @@ audit/logs/*
 !audit/logs/README.md
 
 # Local provider/benchmark evidence. Preserve curated fixtures and docs instead.
-outputs/production-automatic-discovery-e2e-*/
-outputs/signal-filter-v2/
-outputs/signal-filter-v3/
-outputs/signal-filter-v3-1/
-outputs/staging-*.png

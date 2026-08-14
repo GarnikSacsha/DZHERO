@@ -137,7 +137,7 @@ GOOGLE_REDIRECT_URI=https://dzhero.com.ua/api/auth/callback/google
 GOOGLE_SCOPES=openid email profile
 ```
 
-An account listed in `UNLIMITED_ACCESS_EMAILS` can open **Settings → Testers** and manage Tester Pro by Google email. A grant may be created before the tester's first sign-in; it becomes active only after the same verified Google email signs in. Grants do not expire automatically and are revoked manually.
+An account listed in `UNLIMITED_ACCESS_EMAILS` can open **Settings → Testers** and manage Tester Pro by Google email. This operator allowlist does not bypass product quotas. A grant may be created before the tester's first sign-in; it becomes active only after the same verified Google email signs in and is then bound to that user's immutable ID and primary workspace ID. Grants do not expire automatically and are revoked manually.
 
 Tester Pro limits:
 

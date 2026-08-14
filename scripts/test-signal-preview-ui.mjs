@@ -72,7 +72,7 @@ async function stopProcess(processHandle) {
 }
 
 function createDatabase(tempDirectory) {
-  const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
+  const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.example.json'), 'utf8'));
   const workspace = source.workspaces.find((item) => item.id === DEMO_WORKSPACE_ID);
   assert.ok(workspace, 'Demo workspace fixture is missing');
   workspace.brief = {

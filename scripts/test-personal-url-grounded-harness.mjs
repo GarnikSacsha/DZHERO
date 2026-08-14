@@ -111,6 +111,7 @@ function seededDb() {
     ],
     usageCounters: [], plans: [], competitors: [], ideas: [], leads: [], syncJobs: [], sources: [], metaStates: [], instagramAccounts: [], tiktokAccounts: [],
     aiMemory: [], aiJobs: [], remixes: [], contentPlanItems: [], videoJobs: [], dataDeletionRequests: [], demoSessions: [], discoveryRuns: [], testerAccess: [],
+    personalUrlRunTelemetry: [],
   };
 }
 
@@ -254,6 +255,8 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'test', DB_PATH: dbPath, DATABASE_URL: '',
     APIFY_TOKEN: '', APIFY_API_TOKEN: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', AUTOMATIC_DISCOVERY_ENABLED: 'false',
     UNLIMITED_ACCESS_EMAILS: 'harness@example.com',
+    BETA_OWNER_TEST_ENABLED: 'true', BETA_OWNER_TEST_SCOPE: 'staging',
+    BETA_OWNER_TEST_USER_ID: 'user_harness', BETA_OWNER_TEST_WORKSPACE_ID: 'ws_harness',
     REMIX_TEST_PROVIDER: PROVIDER_FIXTURE, REMIX_TEST_PROVIDER_CALLS_PATH: callsPath,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -332,6 +335,7 @@ try {
   assert.equal(fullAdaptation.sourceContext.videoIntelligence.video.confidence, 'high for observed process and reveal');
   assert.deepEqual(fullAdaptation.sourceContext.videoIntelligence.video.limitations, ['local fixture does not archive provider frames']);
   assert.equal(Object.hasOwn(fullAdaptation, 'decision'), false, 'personal URL adaptation is not a shared-bank decision');
+  assert.equal(Object.hasOwn(fullAdaptation, 'admittedToBank'), false, 'personal URL adaptation cannot admit content to the Signal Bank');
   const sourceSnapshot = JSON.stringify(fullAdaptation.sourceContext);
 
   // Studio receives the persisted source context, transcript, deep analysis, scenes, links and remix.
@@ -440,6 +444,18 @@ try {
   assert.equal(failedRetry.response.status, 500);
   events = parseEvents(await readFile(callsPath, 'utf8'));
   assert.equal(countEvents(events, 'remix_provider', 'saved_provider_failure'), 2, 'failed provider requests remain retryable');
+  db = JSON.parse(await readFile(dbPath, 'utf8'));
+  const telemetryText = JSON.stringify(db.personalUrlRunTelemetry);
+  assert.equal(telemetryText.includes('ws_harness'), false);
+  assert.equal(telemetryText.includes('user_harness'), false);
+  assert.equal(telemetryText.includes('example.test'), false);
+  assert.equal(telemetryText.includes('Show the process first'), false);
+  assert.ok(db.personalUrlRunTelemetry.some((record) => (
+    record.terminalReason === 'completed'
+    && record.providers.filter((provider) => provider.operation === 'source_resolution').length === 1
+    && record.providers.filter((provider) => provider.operation === 'remix').length === 1
+    && record.providers.every((provider) => provider.attemptCount === 1)
+  )), 'a completed personal action records one grounding and one remix invocation');
 
   // Existing frontend lifecycle guards remain deterministic and stale responses cannot commit.
   assert.equal(isCurrentPersonalUrlAdaptationResponse({ requestRevision: 1, currentRevision: 1, requestIdentity: 'ws:saved:brand', currentIdentity: 'ws:saved:brand' }), true);

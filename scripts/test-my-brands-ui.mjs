@@ -160,7 +160,7 @@ function createDatabase(tempDirectory, brief, {
   secondaryBrief = {},
   emptySignals = false,
 } = {}) {
-  const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
+  const source = JSON.parse(readFileSync(path.join(ROOT, 'backend', 'data', 'db.example.json'), 'utf8'));
   const workspace = source.workspaces.find((item) => item.id === DEMO_WORKSPACE_ID);
   const demoUser = source.users.find((item) => item.workspaceId === DEMO_WORKSPACE_ID);
   assert.ok(workspace, 'Demo workspace fixture is missing');

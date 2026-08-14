@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +7,6 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
 const ROOT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = path.join(ROOT_DIR, 'backend', 'data', 'db.json');
 const previousPreviewFlag = process.env.VITE_ENABLE_PRODUCT_PREVIEW;
 process.env.VITE_ENABLE_PRODUCT_PREVIEW = 'true';
 
@@ -46,10 +43,6 @@ const productBrand = {
 const PRODUCT_BRANDS_STORAGE_KEY = 'dzhero-preview-product-brands-v1';
 const PRODUCT_ACTIVE_BRAND_STORAGE_KEY = 'dzhero-preview-product-active-brand-v1';
 const PRODUCT_TEST_SEED_KEY = 'codex-product-entry-test-seeded';
-
-function sha256File(filePath) {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
-}
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -156,7 +149,6 @@ async function expectLanding(page, trigger) {
   assert.equal(url.searchParams.has('preview'), false, `${trigger} must remove the private product preview route`);
 }
 
-const dbBefore = sha256File(DB_PATH);
 const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const vite = await createServer({
@@ -258,14 +250,11 @@ try {
 
   assert.deepEqual(runtimeErrors, [], 'Auth routing must not emit runtime errors');
   assert.deepEqual(providerCalls, [], 'Auth routing regression must make zero provider calls');
-  assert.equal(sha256File(DB_PATH), dbBefore, 'Auth routing regression must not modify backend/data/db.json');
   console.log('GREEN product logout/auth routing regression passed.');
   console.log('provider calls: 0');
-  console.log('backend/data/db.json: unchanged');
 } catch (error) {
   console.log(`RED assertion: ${error.message.split('\n')[0]}`);
   console.log(`provider calls: ${providerCalls.length}`);
-  console.log(`backend/data/db.json: ${sha256File(DB_PATH) === dbBefore ? 'unchanged' : 'CHANGED'}`);
   throw error;
 } finally {
   await browser.close().catch(() => {});

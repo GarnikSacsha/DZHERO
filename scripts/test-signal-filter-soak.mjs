@@ -57,7 +57,7 @@ assert.equal(loadResult.report.providerCalls.paid, 0);
 assert.equal(loadResult.report.providerCalls.gemini, 0);
 assert.equal(loadResult.report.providerCalls.apify, 0);
 assert.equal(loadResult.report.providerCalls.unexpectedNetworkAttempts, 0);
-assert.equal(loadResult.report.runtimeDb.unchanged, true);
+assert.equal(loadResult.report.runtimeDb.inspected, false);
 assert.equal(loadResult.report.automaticDiscovery.metadataCandidateCount, 50);
 assert.equal(loadResult.report.automaticDiscovery.qualityAttempts, 1);
 assert.equal(loadResult.report.automaticDiscovery.withinLimit, true);
@@ -68,8 +68,6 @@ assert.equal(fs.existsSync(loadResult.artifacts.summaryPath), true);
 const mediaPersistenceOutputDirectory = fs.mkdtempSync(
   path.join(os.tmpdir(), 'dzhero-signal-filter-media-test-'),
 );
-const runtimeDbPath = path.resolve('backend/data/db.json');
-const runtimeDbBeforeMediaPersistence = fs.readFileSync(runtimeDbPath);
 const mockMediaBytes = Buffer.from([
   0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
   0x6d, 0x70, 0x34, 0x32, 0x6d, 0x6f, 0x63, 0x6b,
@@ -147,7 +145,6 @@ assert.throws(
 const serializedMediaReport = JSON.stringify(mediaPersistenceReport);
 assert.equal(serializedMediaReport.includes('signed-secret-never-write'), false);
 assert.equal(serializedMediaReport.includes('authorization-never-write'), false);
-assert.deepEqual(fs.readFileSync(runtimeDbPath), runtimeDbBeforeMediaPersistence);
 
 const mockConfig = loadSignalQualityGateConfig();
 const mockParsedGeminiOutput = {

@@ -28,7 +28,7 @@ const {
   createPostgresSignalFilterAuditStore,
 } = require('../backend/services/stagingSignalFilterAuditStorage.cjs');
 
-const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.json');
+const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.example.json');
 const dbHashBefore = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
 const commitSha = '9'.repeat(40);
 const auditId = 'metadata_audit_1785539862647_d5f3d44ba5bc';
@@ -744,7 +744,7 @@ async function main() {
   await postgresStore.close();
 
   const dbHashAfter = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
-  assert.equal(dbHashAfter, dbHashBefore, 'backend/data/db.json must remain unchanged');
+  assert.equal(dbHashAfter, dbHashBefore, 'backend/data/db.example.json must remain unchanged');
   console.log('Staging Signal Filter one-shot audit gate tests passed with provider/network calls = 0.');
 }
 

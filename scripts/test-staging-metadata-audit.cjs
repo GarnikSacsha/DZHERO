@@ -17,7 +17,7 @@ const {
   sanitizeAuditValue,
 } = require('../backend/services/stagingMetadataAudit.cjs');
 
-const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.json');
+const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.example.json');
 const dbHashBefore = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
 const commitA = 'a'.repeat(40);
 const commitB = 'b'.repeat(40);
@@ -69,7 +69,10 @@ function createEnv(commit = commitA) {
     DATABASE_URL: 'postgresql://audit:database-secret@postgres.internal/audit',
     APIFY_TOKEN: 'apify-secret-never-persist',
     GEMINI_API_KEY: '',
-    UNLIMITED_ACCESS_EMAILS: 'audit@example.test',
+    BETA_OWNER_TEST_ENABLED: 'true',
+    BETA_OWNER_TEST_SCOPE: 'staging',
+    BETA_OWNER_TEST_USER_ID: 'user_audit',
+    BETA_OWNER_TEST_WORKSPACE_ID: 'ws_audit',
   };
 }
 
@@ -361,7 +364,7 @@ assert.equal(sanitized.signedMediaUrl, 'https://media.example.test/video.mp4');
 assert.deepEqual(sanitized.auditCounts, { raw: 5, normalized: 5, rankingVersion: 'b_soft_v1' });
 
 const dbHashAfter = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
-assert.equal(dbHashAfter, dbHashBefore, 'backend/data/db.json must remain unchanged');
+assert.equal(dbHashAfter, dbHashBefore, 'backend/data/db.example.json must remain unchanged');
 
 console.log('Staging metadata audit guard, budget, provider, ranking, mutation, redaction, and storage tests passed with zero network calls.');
 }

@@ -108,7 +108,13 @@ async function resolveSource(savedUrl, options = {}) {
   return resolved;
 }
 
-function createRemix(globalInsight, businessBrief) {
+async function createRemix(globalInsight, businessBrief, options = {}) {
+  await options.beforeProviderAttempt?.({
+    provider: 'mock-grounded-remix',
+    model: 'mock-grounded-remix-v1',
+    operation: 'remix',
+    attempt: 1,
+  });
   const videoInput = globalInsight?.videoIntelligence?.video?.videoInput;
   record({
     type: 'remix_provider',

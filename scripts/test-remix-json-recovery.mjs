@@ -105,6 +105,18 @@ await assert.rejects(
 );
 assert.equal(fetchCalls, 2, 'Configured provider must stop after two failed attempts');
 
+fetchCalls = 0;
+responses.splice(0, responses.length, '{"broken":', '{"wouldRetry":');
+await assert.rejects(
+  remixEngine.generateRemix(source, {
+    niche: 'кафе',
+    product: 'десерти',
+    location: 'Чернівці',
+  }, { maxAttempts: 1 }),
+  (error) => error.code === 'ai_provider_failed',
+);
+assert.equal(fetchCalls, 1, 'Personal-flow maxAttempts=1 disables provider repair retries');
+
 delete process.env.GEMINI_API_KEY;
 await assert.rejects(
   remixEngine.generateRemix(source, {

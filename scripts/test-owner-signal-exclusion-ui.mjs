@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,12 +7,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DB_PATH = path.join(ROOT, 'backend', 'data', 'db.json');
 process.env.VITE_ENABLE_PRODUCT_PREVIEW = 'true';
-
-function sha256File(filePath) {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
-}
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -95,7 +88,6 @@ async function seedLanguage(page) {
   });
 }
 
-const dbBefore = sha256File(DB_PATH);
 const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 const vite = await createServer({
@@ -143,10 +135,8 @@ try {
   }
 
   assert.deepEqual(providerCalls, []);
-  assert.equal(sha256File(DB_PATH), dbBefore);
   console.log('Owner signal exclusion UI regression passed.');
   console.log('provider calls: 0');
-  console.log('backend/data/db.json: unchanged');
 } finally {
   await browser.close().catch(() => {});
   await vite.close().catch(() => {});

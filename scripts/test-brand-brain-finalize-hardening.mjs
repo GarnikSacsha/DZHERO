@@ -158,7 +158,7 @@ function currentPeriod() {
 async function run() {
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-brand-brain-hardening-'));
   const databasePath = path.join(tempDirectory, 'db.json');
-  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.json'), 'utf8'));
+  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.example.json'), 'utf8'));
   const originalSubscription = structuredClone(
     database.subscriptions.find((item) => item.workspaceId === workspaceId),
   );

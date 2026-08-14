@@ -63,7 +63,7 @@ async function stop(child) {
 
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'tiktok-thumbnail-api-'));
 const dbPath = path.join(tempDir, 'db.json');
-const seed = JSON.parse(await readFile(path.join(ROOT, 'backend', 'data', 'db.json'), 'utf8'));
+const seed = JSON.parse(await readFile(path.join(ROOT, 'backend', 'data', 'db.example.json'), 'utf8'));
 seed.users = [];
 seed.sessions = [];
 seed.workspaces = [];
@@ -114,10 +114,15 @@ try {
       workspaceId: owner.user.workspaceId,
       sourceUrl: 'https://www.tiktok.com/@dzhero/video/7380000000000000000',
       image: 'https://expired.example/cover.jpeg',
+      curationStatus: 'approved',
       importedMetadata: {
         platform: 'tiktok',
         url: 'https://www.tiktok.com/@dzhero/video/7380000000000000000',
         image: 'https://expired.example/cover.jpeg',
+        qualityGate: {
+          decision: 'accept',
+          admittedToBank: true,
+        },
       },
     },
     {

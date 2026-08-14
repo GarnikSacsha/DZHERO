@@ -18,6 +18,10 @@ const {
 const {
   sanitizeDiagnosticExport,
 } = require('./diagnosticExportSanitizer.cjs');
+const {
+  matchesBetaOwnerTestPair,
+  readBetaOwnerTestAccessConfig,
+} = require('./betaOwnerTestAccess.cjs');
 
 const MAX_COMMAND_BUDGET_USD = 0.50;
 const MAX_RESULT_LIMIT = 5;
@@ -80,13 +84,13 @@ function snapshotsEqual(left, right) {
 
 function hasWorkspaceDiscoveryEntitlement(state = {}, workspaceId = '', env = {}) {
   if (workspaceId.startsWith('ws_demo_')) return false;
-  const unlimitedEmails = new Set(String(env.UNLIMITED_ACCESS_EMAILS || '')
-    .split(',')
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean));
+  const betaOwnerTestConfig = readBetaOwnerTestAccessConfig(env);
   const workspaceUsers = (Array.isArray(state.users) ? state.users : [])
-    .filter((user) => user?.workspaceId === workspaceId);
-  if (workspaceUsers.some((user) => user?.role === 'admin' || unlimitedEmails.has(String(user?.email || '').toLowerCase()))) {
+    .filter((user) => (
+      user?.workspaceId === workspaceId
+      || (Array.isArray(user?.workspaceIds) && user.workspaceIds.includes(workspaceId))
+    ));
+  if (workspaceUsers.some((user) => matchesBetaOwnerTestPair(betaOwnerTestConfig, user, workspaceId))) {
     return true;
   }
   const subscription = (Array.isArray(state.subscriptions) ? state.subscriptions : [])

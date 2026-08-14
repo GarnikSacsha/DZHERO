@@ -36,15 +36,30 @@ assert.equal(db.testerAccessGrants.length, 1);
 
 const user = { id: 'usr_tester', email: 'TESTER@example.com', workspaceId: 'ws_tester' };
 assert.equal(linkTesterGrant(db, { user, now }).status, 'active');
-assert.equal(getActiveTesterGrant(db, user).workspaceId, 'ws_tester');
+assert.equal(getActiveTesterGrant(db, user, 'ws_tester').workspaceId, 'ws_tester');
+assert.equal(getActiveTesterGrant(db, user, 'ws_other'), null, 'one user cannot spread tester access to another workspace');
+assert.equal(
+  getActiveTesterGrant(db, { id: 'usr_other', email: user.email }, 'ws_tester'),
+  null,
+  'matching email alone cannot activate a tester grant',
+);
 
 const basePlan = { id: 'trial' };
 const testerPlan = { id: 'tester_pro' };
 assert.equal(resolveAccessPlan({ basePlan, testerPlan, grant, unlimited: false }).plan.id, 'tester_pro');
-assert.equal(resolveAccessPlan({ basePlan, testerPlan, grant, unlimited: true }).accessSource, 'owner_unlimited');
+assert.equal(
+  resolveAccessPlan({
+    basePlan,
+    testerPlan,
+    grant,
+    unlimited: true,
+    unlimitedAccessSource: 'beta_owner_test_pair',
+  }).accessSource,
+  'beta_owner_test_pair',
+);
 
 assert.equal(revokeTesterGrant(db, { grantId: grant.id, now }).status, 'revoked');
-assert.equal(getActiveTesterGrant(db, user), null);
+assert.equal(getActiveTesterGrant(db, user, 'ws_tester'), null);
 assert.equal(resolveAccessPlan({ basePlan, testerPlan, grant, unlimited: false }).plan.id, 'trial');
 
 const reactivated = upsertTesterGrant(db, {

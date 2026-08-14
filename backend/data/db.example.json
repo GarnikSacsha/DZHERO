@@ -1,0 +1,67 @@
+{
+  "users": [
+    {
+      "id": "usr_demo_fixture",
+      "name": "Demo User",
+      "email": "demo@dzhero.app",
+      "role": "owner",
+      "workspaceId": "ws_demo_ua",
+      "workspaceIds": ["ws_demo_ua"],
+      "authProvider": "demo",
+      "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "sessions": [],
+  "workspaces": [
+    {
+      "id": "ws_demo_ua",
+      "name": "Demo Coffee Kyiv",
+      "owner": "Demo User",
+      "ownerUserId": "usr_demo_fixture",
+      "mode": "demo",
+      "marketFocus": ["ua"],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "brief": {}
+    }
+  ],
+  "subscriptions": [
+    {
+      "id": "sub_demo_fixture",
+      "workspaceId": "ws_demo_ua",
+      "planId": "demo",
+      "status": "demo",
+      "provider": "fixture",
+      "currentPeriodStart": "2026-01-01T00:00:00.000Z",
+      "currentPeriodEnd": "2099-01-01T00:00:00.000Z",
+      "trialEndsAt": null,
+      "cancelAtPeriodEnd": false,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "reels": [],
+  "ideas": [],
+  "leads": [],
+  "syncJobs": [],
+  "discoveryRuns": [],
+  "sources": [],
+  "metaStates": [],
+  "instagramAccounts": [],
+  "tiktokAccounts": [],
+  "aiMemory": [],
+  "aiJobs": [],
+  "remixes": [],
+  "contentPlanItems": [],
+  "videoJobs": [],
+  "dataDeletionRequests": [],
+  "usageCounters": [],
+  "testerAccessGrants": [],
+  "demoSessions": [],
+  "agentStudioRuns": [],
+  "agentStudioUploads": [],
+  "workspaceSavedSignals": [],
+  "workspaceSavedUrls": [],
+  "workspaceAdaptations": [],
+  "workspaceUrlAdaptations": [],
+  "personalUrlRunTelemetry": []
+}

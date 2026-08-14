@@ -38,6 +38,7 @@ const {
 const {
   analyzePublicVideoUrlWithGemini,
   detectPublicVideoPlatform,
+  getPublicVideoPlatformCapability,
 } = require('./services/publicVideoGrounding.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
 const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage.cjs');
@@ -162,6 +163,20 @@ const {
   revokeTesterGrant,
   upsertTesterGrant,
 } = require('./services/testerAccess.cjs');
+const {
+  getSafeBetaOwnerTestDiagnostic,
+  matchesBetaOwnerTestPair,
+  readBetaOwnerTestAccessConfig,
+} = require('./services/betaOwnerTestAccess.cjs');
+const {
+  appendPersonalUrlRunTelemetry,
+  createPersonalUrlRunTracker,
+  finalizePersonalUrlRun,
+  finishPersonalUrlRunStage,
+  recordPersonalUrlProviderAttempt,
+  recordPersonalUrlProviderUsage,
+  startPersonalUrlRunStage,
+} = require('./services/personalUrlRunTelemetry.cjs');
 
 function loadLocalEnv() {
   const envPath = path.join(__dirname, '..', '.env');
@@ -186,6 +201,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || '0.0.0.0';
 const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'db.json');
+const DEFAULT_DB_SEED_PATH = path.join(__dirname, 'data', 'db.example.json');
 const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const DATABASE_SSL = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require';
@@ -252,12 +268,13 @@ const TIKTOK_AUTH_BASE_URL = process.env.TIKTOK_AUTH_BASE_URL || 'https://www.ti
 const TIKTOK_TOKEN_URL = process.env.TIKTOK_TOKEN_URL || 'https://open.tiktokapis.com/v2/oauth/token/';
 const TIKTOK_USERINFO_URL = process.env.TIKTOK_USERINFO_URL || 'https://open.tiktokapis.com/v2/user/info/';
 const TIKTOK_SCOPES = process.env.TIKTOK_SCOPES || 'user.info.basic,user.info.profile,user.info.stats';
-const UNLIMITED_ACCESS_EMAILS = new Set(
+const OWNER_OPERATOR_EMAILS = new Set(
   String(process.env.UNLIMITED_ACCESS_EMAILS || process.env.ADMIN_EMAILS || '')
     .split(',')
     .map((email) => normalizeEmail(email))
     .filter(Boolean)
 );
+const BETA_OWNER_TEST_ACCESS_CONFIG = readBetaOwnerTestAccessConfig(process.env);
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
@@ -597,6 +614,7 @@ app.use('/api/workspaces/:workspaceId/agent/chat', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/agent/actions', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/remix/generate', expensiveLimiter);
 app.use('/api/workspaces/:workspaceId/adaptations/:signalId/generate', expensiveLimiter);
+app.use('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', expensiveLimiter);
 
 let pgPool;
 
@@ -642,6 +660,7 @@ function normalizeDbShape(db = {}) {
     'workspaceSavedUrls',
     'workspaceAdaptations',
     'workspaceUrlAdaptations',
+    'personalUrlRunTelemetry',
   ];
   for (const key of collectionKeys) {
     if (!Array.isArray(db[key])) db[key] = [];
@@ -655,6 +674,7 @@ const automaticDiscoveryWorkspacesInFlight = new Set();
 const brandBrainFinalizeFlights = new Map();
 const workspaceAdaptationFlights = new Map();
 const workspaceUrlAdaptationFlights = new Map();
+const workspaceUrlAdaptationActiveFlights = new Map();
 const automaticDiscoveryFileMutex = createKeyedMutex();
 let automaticDiscoveryTestProvider = null;
 let agentStudioTestProvider = null;
@@ -684,7 +704,7 @@ if (AGENT_STUDIO_TEST_PROVIDER) {
 }
 
 async function readSeedDb() {
-  const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
+  const seed = await fs.readFile(DEFAULT_DB_SEED_PATH, 'utf8');
   return normalizeDbShape(JSON.parse(seed));
 }
 
@@ -815,7 +835,7 @@ async function ensureDbFile() {
     await fs.access(DB_PATH);
   } catch {
     await fs.mkdir(path.dirname(DB_PATH), { recursive: true });
-    const seed = await fs.readFile(DEFAULT_DB_PATH, 'utf8');
+    const seed = await fs.readFile(DEFAULT_DB_SEED_PATH, 'utf8');
     await fs.writeFile(DB_PATH, seed, 'utf8');
   }
 }
@@ -1833,8 +1853,8 @@ function publicUser(user) {
     role: user.role,
     provider,
     isDemo: provider === 'demo',
-    canManageTesters: provider !== 'demo' && userHasUnlimitedAccess(user),
-    canManageSharedSignals: provider !== 'demo' && userHasUnlimitedAccess(user),
+    canManageTesters: provider !== 'demo' && userHasOwnerOperationsAccess(user),
+    canManageSharedSignals: provider !== 'demo' && userHasOwnerOperationsAccess(user),
     workspaceId: user.workspaceId,
     avatarUrl: user.avatarUrl || null,
     createdAt: user.createdAt,
@@ -1919,40 +1939,36 @@ function getWorkspaceUsers(db, workspaceId) {
   ));
 }
 
-function userHasUnlimitedAccess(user) {
+function userHasOwnerOperationsAccess(user) {
   return Boolean(
     user
     && (
       user.role === 'admin'
-      || UNLIMITED_ACCESS_EMAILS.has(normalizeEmail(user.email))
+      || OWNER_OPERATOR_EMAILS.has(normalizeEmail(user.email))
     )
   );
 }
 
-function workspaceHasUnlimitedAccess(db, workspaceId, actorUser = null) {
+function actorHasBetaOwnerTestQuotaAccess(workspaceId, actorUser = null) {
   if (String(workspaceId || '').startsWith('ws_demo_') || getPublicUserProvider(actorUser || {}) === 'demo') {
     return false;
   }
-  if (userHasUnlimitedAccess(actorUser)) return true;
-  return getWorkspaceUsers(db, workspaceId).some((user) => (
-    user.role === 'admin'
-    || UNLIMITED_ACCESS_EMAILS.has(normalizeEmail(user.email))
-  ));
+  return matchesBetaOwnerTestPair(BETA_OWNER_TEST_ACCESS_CONFIG, actorUser, workspaceId);
 }
 
-function buildUnlimitedPlan(basePlan) {
+function buildBetaOwnerTestPlan(basePlan) {
   const limits = Object.fromEntries(
     Object.keys(basePlan.limits || {}).map((key) => [key, null])
   );
   return {
     ...basePlan,
-    id: 'owner_unlimited',
-    name: 'Owner Unlimited',
+    id: 'beta_owner_test',
+    name: 'Beta Owner Test',
     billingPeriod: 'internal',
     priceUah: 0,
     limits,
     dailyLimits: null,
-    features: Array.from(new Set([...(basePlan.features || []), 'owner_unlimited'])),
+    features: Array.from(new Set([...(basePlan.features || []), 'beta_owner_test_unlimited'])),
   };
 }
 
@@ -2021,17 +2037,18 @@ function getUsageCounter(db, workspaceId, metric, period = getUsagePeriod()) {
 function buildEntitlements(db, workspaceId, actorUser = null, now = new Date()) {
   const subscription = ensureWorkspaceSubscription(db, workspaceId);
   const basePlan = getPlan(subscription.planId);
-  const unlimited = workspaceHasUnlimitedAccess(db, workspaceId, actorUser);
+  const unlimited = actorHasBetaOwnerTestQuotaAccess(workspaceId, actorUser);
   const workspaceUser = actorUser || getWorkspaceUsers(db, workspaceId)[0] || null;
-  const testerGrant = getActiveTesterGrant(db, workspaceUser);
+  const testerGrant = getActiveTesterGrant(db, workspaceUser, workspaceId);
   const testerPlan = PLAN_CATALOG.find((item) => item.id === 'tester_pro');
   const resolvedAccess = resolveAccessPlan({
     basePlan,
     testerPlan,
     grant: testerGrant,
     unlimited,
+    unlimitedAccessSource: 'beta_owner_test_pair',
   });
-  const plan = unlimited ? buildUnlimitedPlan(basePlan) : resolvedAccess.plan;
+  const plan = unlimited ? buildBetaOwnerTestPlan(basePlan) : resolvedAccess.plan;
   const period = getUsagePeriod(now);
   const usage = {
     aiOperations: getUsageCounter(db, workspaceId, USAGE_METRICS.aiOperations, period).value,
@@ -2140,7 +2157,7 @@ function reserveAiProviderAttempt(db, workspaceId, actorUser, now = new Date()) 
     });
   } catch (error) {
     if (
-      budget.metric === 'trial_provider_attempts_daily'
+      ['trial_provider_attempts_daily', 'beta_owner_test_provider_attempts_daily'].includes(budget.metric)
       && error?.payload?.error === 'plan_limit_reached'
     ) {
       const capacityError = new Error('ai_provider_capacity_reached');
@@ -2191,7 +2208,7 @@ function getAccessibleWorkspaceSignals(db, workspaceId, authUser) {
     ? buildSharedSignalBankReels(db, {
         targetWorkspaceId: workspaceId,
         workspaceId: SHARED_SIGNAL_BANK_WORKSPACE_ID,
-        ownerEmail: SHARED_SIGNAL_BANK_OWNER_EMAIL || Array.from(UNLIMITED_ACCESS_EMAILS)[0] || '',
+        ownerEmail: SHARED_SIGNAL_BANK_OWNER_EMAIL || Array.from(OWNER_OPERATOR_EMAILS)[0] || '',
         limit: SHARED_SIGNAL_BANK_LIMIT,
       })
     : { reels: [] };
@@ -2731,16 +2748,26 @@ function runWorkspaceAdaptationSingleFlight(key, task) {
   return flight;
 }
 
-function runWorkspaceUrlAdaptationSingleFlight(key, task) {
+function runWorkspaceUrlAdaptationSingleFlight(workspaceId, key, task) {
   const existing = workspaceUrlAdaptationFlights.get(key);
-  if (existing) return existing;
+  if (existing) return { promise: existing, reused: true };
+  const active = workspaceUrlAdaptationActiveFlights.get(workspaceId);
+  if (active) {
+    throw createProductContentPlanError('saved_url_workspace_busy', 409, {
+      retryable: true,
+    });
+  }
   const flight = Promise.resolve().then(task);
   workspaceUrlAdaptationFlights.set(key, flight);
+  workspaceUrlAdaptationActiveFlights.set(workspaceId, { key, flight });
   const cleanup = () => {
     if (workspaceUrlAdaptationFlights.get(key) === flight) workspaceUrlAdaptationFlights.delete(key);
+    if (workspaceUrlAdaptationActiveFlights.get(workspaceId)?.flight === flight) {
+      workspaceUrlAdaptationActiveFlights.delete(workspaceId);
+    }
   };
   flight.then(cleanup, cleanup);
-  return flight;
+  return { promise: flight, reused: false };
 }
 
 function isWorkspaceUrlAdaptationInFlight(workspaceId, savedUrlId) {
@@ -2808,6 +2835,45 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
     }));
     return providerAttemptQueue;
   };
+}
+
+function createPersonalUrlProviderAttemptGuard({ workspaceId, actorUser, tracker }) {
+  const paidAttemptGuard = createSerializedPaidAiAttemptGuard({ workspaceId, actorUser });
+  const attempts = { analysis: 0, remix: 0 };
+  return async (event = {}) => {
+    const category = event.operation === 'remix' ? 'remix' : 'analysis';
+    if (attempts[category] >= 1) {
+      const error = createProductContentPlanError('personal_url_provider_attempt_limit_exceeded', 429, {
+        operation: category,
+        limit: 1,
+        retryable: false,
+      });
+      error.providerAttemptBlocked = true;
+      throw error;
+    }
+    await paidAttemptGuard(event);
+    attempts[category] += 1;
+    recordPersonalUrlProviderAttempt(tracker, event);
+  };
+}
+
+async function persistPersonalUrlRunRecord(record) {
+  await serializeBackgroundMutation(async () => {
+    const db = await readDb();
+    db.personalUrlRunTelemetry = appendPersonalUrlRunTelemetry(
+      db.personalUrlRunTelemetry,
+      record,
+    );
+    await writeDb(db);
+  });
+}
+
+async function persistPersonalUrlRunRecordSafe(record) {
+  try {
+    await persistPersonalUrlRunRecord(record);
+  } catch {
+    console.error('[PersonalUrlRunTelemetry] persistence_failed');
+  }
 }
 
 function assertAiTrialActive(billing) {
@@ -4786,7 +4852,7 @@ function requireAuthUser(db, req, res) {
 function requireOwnerUser(db, req, res) {
   const user = requireAuthUser(db, req, res);
   if (!user) return null;
-  if (!userHasUnlimitedAccess(user)) {
+  if (!userHasOwnerOperationsAccess(user)) {
     res.status(403).json({ error: 'owner_access_required' });
     return null;
   }
@@ -5896,6 +5962,7 @@ app.get('/api/health', async (req, res) => {
     service: 'dzhero-api',
     version: '0.1.0',
     storage: DATABASE_URL ? 'postgres' : 'json',
+    betaOwnerTestEntitlement: getSafeBetaOwnerTestDiagnostic(BETA_OWNER_TEST_ACCESS_CONFIG),
   };
   if (!IS_PRODUCTION || (ADMIN_TOKEN && getAdminToken(req) === ADMIN_TOKEN)) {
     health.counts = {
@@ -8080,6 +8147,8 @@ app.get('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/adaptation', async 
 });
 
 app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', async (req, res, next) => {
+  let runTracker = null;
+  let runSingleFlightState = 'leader';
   try {
     const db = await readDb();
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
@@ -8097,7 +8166,13 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
     const generationBrand = cloneJsonValue(productBrand);
     const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
     const flightKey = `${req.params.workspaceId}:${savedUrl.id}:${generationBrandKey}`;
-    const result = await runWorkspaceUrlAdaptationSingleFlight(flightKey, async () => {
+    const capability = getPublicVideoPlatformCapability(savedUrl.platform);
+    runTracker = createPersonalUrlRunTracker({
+      runId: `personal_url_run_${crypto.randomUUID().replaceAll('-', '')}`,
+      platform: savedUrl.platform,
+      acquisitionMode: capability.acquisition,
+    });
+    const flight = runWorkspaceUrlAdaptationSingleFlight(req.params.workspaceId, flightKey, async () => {
       const latestDb = await readDb();
       const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
       const latestSavedUrl = findWorkspaceSavedUrl(latestDb, req.params.workspaceId, savedUrl.id);
@@ -8110,6 +8185,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           alreadyGenerated: true,
           generationId: existing.generationId,
           activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+          runState: { reuseState: 'cache_hit' },
         };
       }
 
@@ -8121,13 +8197,26 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           action: 'remix',
         });
         reservation = reserved.reservation;
-        const beforeProviderAttempt = createSerializedPaidAiAttemptGuard({
+        const beforeProviderAttempt = createPersonalUrlProviderAttemptGuard({
           workspaceId: req.params.workspaceId,
           actorUser: latestCurrent.actorUser,
+          tracker: runTracker,
         });
-        const sourceContext = Object.freeze(cloneJsonValue(await resolvePersonalUrlSourceContext(latestSavedUrl, {
-          beforeProviderAttempt,
-        })));
+        startPersonalUrlRunStage(runTracker, 'source_resolution');
+        let resolvedSourceContext;
+        try {
+          resolvedSourceContext = await resolvePersonalUrlSourceContext(latestSavedUrl, {
+            beforeProviderAttempt,
+          });
+        } finally {
+          finishPersonalUrlRunStage(runTracker, 'source_resolution');
+        }
+        const sourceContext = Object.freeze(cloneJsonValue(resolvedSourceContext));
+        recordPersonalUrlProviderUsage(
+          runTracker,
+          sourceContext.videoIntelligence?.video?.model ? 'gemini' : 'source',
+          sourceContext.videoIntelligence?.usage,
+        );
         if (!personalUrlSourceHasGrounding(sourceContext)) {
           throw createProductContentPlanError('saved_url_source_unavailable', 409, {
             sourceStatus: sourceContext.sourceStatus,
@@ -8147,12 +8236,27 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           sourceContext,
         });
         const remixGenerator = remixTestProvider || generateRemix;
-        const generated = await remixGenerator(
-          generationContext.source,
-          buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
-          { beforeProviderAttempt },
+        startPersonalUrlRunStage(runTracker, 'remix');
+        let generated;
+        try {
+          generated = await remixGenerator(
+            generationContext.source,
+            buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
+            { beforeProviderAttempt, maxAttempts: 1 },
+          );
+        } finally {
+          finishPersonalUrlRunStage(runTracker, 'remix');
+        }
+        recordPersonalUrlProviderUsage(
+          runTracker,
+          generated?._generation?.provider || 'remix',
+          {
+            ...(generated?._generation?.usage || {}),
+            ...(generated?._generation?.cost || {}),
+          },
         );
         const generationId = `url_adaptation_generation_${crypto.randomUUID().replaceAll('-', '')}`;
+        startPersonalUrlRunStage(runTracker, 'persistence');
         const persisted = await serializeBackgroundMutation(async () => {
           const currentDb = await readDb();
           const currentAccess = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
@@ -8202,10 +8306,17 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             activeBrandChanged: currentBrandKey !== generationContext.brandKey,
           };
         });
+        finishPersonalUrlRunStage(runTracker, 'persistence');
         if (persisted.alreadyGenerated) await releaseSerializedDailyAiAction(reservation);
         reservation = null;
         const billing = await readSerializedBilling(req.params.workspaceId, req.authUser);
-        return { ...persisted, daily: billing.daily };
+        return {
+          ...persisted,
+          daily: billing.daily,
+          runState: {
+            reuseState: persisted.alreadyGenerated ? 'cache_hit_after_generation' : 'none',
+          },
+        };
       } catch (error) {
         try {
           await releaseSerializedDailyAiAction(reservation);
@@ -8215,9 +8326,39 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
         throw error;
       }
     });
-
-    res.status(result.alreadyGenerated ? 200 : 201).json({ ...result, sourceType: 'personal_url' });
+    runSingleFlightState = flight.reused ? 'joined' : 'leader';
+    const result = await flight.promise;
+    const singleFlightState = runSingleFlightState;
+    const reuseState = flight.reused ? 'single_flight_join' : result.runState?.reuseState || 'none';
+    const terminalReason = result.alreadyGenerated ? 'reused' : 'completed';
+    const telemetry = finalizePersonalUrlRun(runTracker, {
+      terminalReason,
+      reuseState,
+      singleFlightState,
+    });
+    await persistPersonalUrlRunRecordSafe(telemetry);
+    const { runState, ...publicResult } = result;
+    res.status(result.alreadyGenerated ? 200 : 201).json({
+      ...publicResult,
+      sourceType: 'personal_url',
+      runId: runTracker.runId,
+      singleFlightState,
+      reuseState,
+    });
   } catch (error) {
+    if (runTracker) {
+      for (const stage of ['source_resolution', 'remix', 'persistence']) {
+        finishPersonalUrlRunStage(runTracker, stage);
+      }
+      const telemetry = finalizePersonalUrlRun(runTracker, {
+        terminalReason: error?.payload?.error || error?.code || 'unclassified_error',
+        reuseState: runSingleFlightState === 'joined' ? 'single_flight_join' : 'none',
+        singleFlightState: error?.payload?.error === 'saved_url_workspace_busy'
+          ? 'blocked'
+          : runSingleFlightState,
+      });
+      await persistPersonalUrlRunRecordSafe(telemetry);
+    }
     next(error);
   }
 });

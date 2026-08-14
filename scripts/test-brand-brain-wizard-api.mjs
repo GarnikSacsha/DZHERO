@@ -84,7 +84,7 @@ function seedWizardFixture(database) {
 async function testDraftFinalizeAndSharedBankAccess() {
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-brand-brain-wizard-'));
   const databasePath = path.join(tempDirectory, 'db.json');
-  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.json'), 'utf8'));
+  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.example.json'), 'utf8'));
   seedWizardFixture(database);
   writeFileSync(databasePath, JSON.stringify(database));
   const port = await freePort();

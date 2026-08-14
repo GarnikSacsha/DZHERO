@@ -7,6 +7,8 @@
     "build": "vite build",
     "start:frontend": "node frontend/server.mjs",
     "test:frontend-api-proxy-target": "node scripts/test-frontend-api-proxy-target.mjs",
+    "test:local-db-bootstrap": "node scripts/test-local-db-bootstrap.cjs",
+    "test:pipeline-safety-foundation": "node scripts/test-beta-owner-test-access.mjs && node scripts/test-tester-access.js && node scripts/test-owner-tester-api.mjs && node scripts/test-personal-url-run-telemetry.cjs && node scripts/test-remix-json-recovery.mjs && node scripts/test-workspace-saved-url-adaptation.mjs && node scripts/test-public-video-grounding.mjs && node scripts/test-personal-url-grounded-harness.mjs",
     "test:google-oauth-same-origin": "node scripts/test-google-oauth-session-flow.mjs",
     "test:i18n-core": "node scripts/test-i18n-core.mjs",
     "test:i18n-provider": "node scripts/test-i18n-provider.mjs",

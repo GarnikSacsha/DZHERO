@@ -77,7 +77,7 @@ async function testDirectApiWriteBoundary() {
   const root = path.resolve(__dirname, '..');
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-brand-brain-'));
   const databasePath = path.join(tempDirectory, 'db.json');
-  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.json'), 'utf8'));
+  const database = JSON.parse(readFileSync(path.join(root, 'backend', 'data', 'db.example.json'), 'utf8'));
   const workspace = database.workspaces.find((item) => item.id === 'ws_demo_ua');
   assert.ok(workspace, 'Demo workspace fixture is missing');
   workspace.brief = {};

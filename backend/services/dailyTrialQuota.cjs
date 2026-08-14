@@ -179,6 +179,14 @@ function releaseDailyTrialAction(db, reservation, options = {}) {
 
 function resolveProviderAttemptBudget(entitlements = {}, now = new Date()) {
   const planId = entitlements.plan?.id || entitlements.planId;
+  if (entitlements.accessSource === 'beta_owner_test_pair') {
+    return {
+      metric: 'beta_owner_test_provider_attempts_daily',
+      limit: TRIAL_DAILY_LIMITS.providerAttempts,
+      period: getKyivDayKey(now),
+      unlimited: false,
+    };
+  }
   const isTrial = isDailyTrialAccess({
     planId,
     unlimited: entitlements.unlimited,

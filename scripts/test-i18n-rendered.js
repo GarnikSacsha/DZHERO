@@ -313,7 +313,7 @@ async function main() {
   const appUrl = `http://127.0.0.1:${frontendPort}/`;
   const tempDirectory = mkdtempSync(path.join(os.tmpdir(), 'dzhero-i18n-'));
   const tempDatabase = path.join(tempDirectory, 'db.json');
-  copyFileSync(path.join(ROOT, 'backend', 'data', 'db.json'), tempDatabase);
+  copyFileSync(path.join(ROOT, 'backend', 'data', 'db.example.json'), tempDatabase);
 
   const backend = startNode(['backend/server.js'], {
     PORT: String(backendPort),

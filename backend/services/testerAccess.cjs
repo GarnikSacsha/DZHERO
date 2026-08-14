@@ -73,17 +73,18 @@ function revokeTesterGrant(db, { grantId, now = new Date() }) {
   return grant;
 }
 
-function getActiveTesterGrant(db, user) {
-  const email = normalizeTesterEmail(user?.email);
+function getActiveTesterGrant(db, user, workspaceId) {
+  if (!user?.id || !workspaceId) return null;
   return ensureTesterGrants(db).find((item) => (
     item.status === 'active'
     && item.planId === TESTER_PLAN_ID
-    && (item.userId === user?.id || normalizeTesterEmail(item.email) === email)
+    && item.userId === user.id
+    && item.workspaceId === workspaceId
   )) || null;
 }
 
-function resolveAccessPlan({ basePlan, testerPlan, grant, unlimited }) {
-  if (unlimited) return { plan: basePlan, accessSource: 'owner_unlimited' };
+function resolveAccessPlan({ basePlan, testerPlan, grant, unlimited, unlimitedAccessSource = 'quota_override' }) {
+  if (unlimited) return { plan: basePlan, accessSource: unlimitedAccessSource };
   if (grant?.status === 'active' && testerPlan) {
     return { plan: testerPlan, accessSource: 'tester_grant' };
   }

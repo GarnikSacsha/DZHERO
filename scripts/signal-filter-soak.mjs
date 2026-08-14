@@ -26,7 +26,7 @@ const {
 const SCRIPT_PATH = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(SCRIPT_PATH), '..');
 const DEFAULT_MANIFEST = path.join(REPO_ROOT, 'scripts', 'fixtures', 'signal-filter-benchmark.json');
-const RUNTIME_DB_PATH = path.join(REPO_ROOT, 'backend', 'data', 'db.json');
+const RUNTIME_DB_REFERENCE = 'backend/data/db.json';
 const SIGNAL_POLICY_PATH = path.join(REPO_ROOT, 'backend', 'services', 'signalQualityGate.cjs');
 const SIGNAL_CONFIG_PATH = path.join(REPO_ROOT, 'backend', 'config', 'signal-quality-gate.json');
 const DEFAULT_GEMINI_CEILING_USD = 0.12;
@@ -1112,7 +1112,7 @@ function buildLoadSummary(report) {
     `Generated: ${report.generatedAt}`,
     `Seed: ${report.seed}`,
     `Paid provider calls: ${report.providerCalls.paid}`,
-    `Runtime DB unchanged: ${report.runtimeDb.unchanged}`,
+    `Runtime DB inspected: ${report.runtimeDb.inspected}`,
     `Unexpected network attempts: ${report.providerCalls.unexpectedNetworkAttempts}`,
     '',
     '| Signals | Throughput/s | Accept | Reject | Uncertain | Errors | Schema failures | Retries | p50 ms | p95 ms | Deterministic |',
@@ -1165,7 +1165,6 @@ export async function runLoadMode(options = {}) {
     { min: 1, integer: true },
   );
   const outputDirectory = resolveOutputDirectory(options['output-dir']);
-  const runtimeDbHashBefore = hashFileIfPresent(RUNTIME_DB_PATH);
   const originalFetch = globalThis.fetch;
   let unexpectedNetworkAttempts = 0;
   globalThis.fetch = async () => {
@@ -1199,7 +1198,6 @@ export async function runLoadMode(options = {}) {
       maxQualityEvaluations,
       config,
     });
-    const runtimeDbHashAfter = hashFileIfPresent(RUNTIME_DB_PATH);
     const report = {
       reportVersion: 1,
       mode: 'load',
@@ -1221,16 +1219,14 @@ export async function runLoadMode(options = {}) {
         unexpectedNetworkAttempts,
       },
       runtimeDb: {
-        path: RUNTIME_DB_PATH,
-        sha256Before: runtimeDbHashBefore,
-        sha256After: runtimeDbHashAfter,
-        unchanged: runtimeDbHashBefore === runtimeDbHashAfter,
+        path: RUNTIME_DB_REFERENCE,
+        inspected: false,
+        unchanged: null,
       },
       runs,
       automaticDiscovery,
     };
     if (unexpectedNetworkAttempts !== 0) throw new Error('mock_load_attempted_network_access');
-    if (!report.runtimeDb.unchanged) throw new Error('runtime_db_changed_during_mock_load');
     const summary = buildLoadSummary(report);
     const artifacts = writeReportArtifacts(report, summary, outputDirectory);
     return { report, summary, artifacts };
@@ -1943,7 +1939,7 @@ function buildLiveSummary({ mode, report }) {
     `Gemini interactions: ${report.providerCalls.gemini}`,
     `Gemini attempts: ${report.providerCalls.geminiAttempts}`,
     `Total tokens: ${report.usageTotals?.totalTokens ?? 'unknown'}`,
-    `Runtime DB unchanged: ${report.runtimeDb.unchanged}`,
+    `Runtime DB inspected: ${report.runtimeDb.inspected}`,
     `Production policy unchanged: ${report.integrity.signalPolicyUnchanged}`,
     `Production config unchanged: ${report.integrity.signalConfigUnchanged}`,
     '',
@@ -2041,7 +2037,6 @@ function buildLiveSummary({ mode, report }) {
 }
 
 async function runLiveMode(mode, options = {}) {
-  const runtimeDbHashBefore = hashFileIfPresent(RUNTIME_DB_PATH);
   const policyHashBefore = hashFileIfPresent(SIGNAL_POLICY_PATH);
   const configHashBefore = hashFileIfPresent(SIGNAL_CONFIG_PATH);
   const outputDirectory = resolveOutputDirectory(options['output-dir']);
@@ -2082,7 +2077,7 @@ async function runLiveMode(mode, options = {}) {
       downloadOncePerBenchmark: true,
     },
     evidenceFrameExtraction: frameExtractorProbe,
-    runtimeDbSha256: runtimeDbHashBefore,
+    runtimeDbInspected: false,
   };
   const baseReport = {
     reportVersion: 2,
@@ -2118,9 +2113,8 @@ async function runLiveMode(mode, options = {}) {
       retries: 0,
     },
     runtimeDb: {
-      path: RUNTIME_DB_PATH,
-      sha256Before: runtimeDbHashBefore,
-      sha256After: null,
+      path: RUNTIME_DB_REFERENCE,
+      inspected: false,
       unchanged: null,
     },
     integrity: {
@@ -2154,11 +2148,7 @@ async function runLiveMode(mode, options = {}) {
     const report = {
       ...baseReport,
       status: 'preflight_passed',
-      runtimeDb: {
-        ...baseReport.runtimeDb,
-        sha256After: runtimeDbHashBefore,
-        unchanged: true,
-      },
+      runtimeDb: baseReport.runtimeDb,
       integrity: {
         ...baseReport.integrity,
         signalPolicySha256After: policyHashBefore,
@@ -2181,7 +2171,7 @@ async function runLiveMode(mode, options = {}) {
       `Planned Apify runs: ${preflight.plannedApifyRuns}`,
       `Budget ceiling: $${preflight.upperBoundUsd} / $${preflight.maxPaidUsd}`,
       `Benchmark IDs: ${preflight.benchmarkIds.join(', ')}`,
-      `Runtime DB SHA-256: ${runtimeDbHashBefore}`,
+      'Runtime DB: not inspected.',
       `Credentials: Gemini ${preflight.credentialsPresent.gemini ? 'available' : 'missing'}; Apify ${preflight.credentialsPresent.apify ? 'available' : 'missing'} (values omitted).`,
       `Media persistence: enabled; exact bytes; output writable=${outputDirectoryProbe.writable}; directory=media/.`,
       `Evidence frames: enabled; method=${frameExtractorProbe.method}; MP4 support=${frameExtractorProbe.codecSupport.mp4 || 'none'}.`,
@@ -2305,7 +2295,6 @@ async function runLiveMode(mode, options = {}) {
       selectedCases.map((item) => item.id),
     );
   } catch (error) {
-    const runtimeDbHashAfter = hashFileIfPresent(RUNTIME_DB_PATH);
     const policyHashAfter = hashFileIfPresent(SIGNAL_POLICY_PATH);
     const configHashAfter = hashFileIfPresent(SIGNAL_CONFIG_PATH);
     const report = {
@@ -2326,11 +2315,7 @@ async function runLiveMode(mode, options = {}) {
         stopped: true,
         skippedEvaluations: preflight.plannedEvaluations,
       },
-      runtimeDb: {
-        ...baseReport.runtimeDb,
-        sha256After: runtimeDbHashAfter,
-        unchanged: runtimeDbHashBefore === runtimeDbHashAfter,
-      },
+      runtimeDb: baseReport.runtimeDb,
       integrity: {
         ...baseReport.integrity,
         signalPolicySha256After: policyHashAfter,
@@ -2652,18 +2637,12 @@ async function runLiveMode(mode, options = {}) {
     evaluations: completedEvaluations,
     skippedEvaluations,
   };
-  const runtimeDbHashAfter = hashFileIfPresent(RUNTIME_DB_PATH);
   const policyHashAfter = hashFileIfPresent(SIGNAL_POLICY_PATH);
   const configHashAfter = hashFileIfPresent(SIGNAL_CONFIG_PATH);
-  report.runtimeDb.sha256After = runtimeDbHashAfter;
-  report.runtimeDb.unchanged = runtimeDbHashBefore === runtimeDbHashAfter;
   report.integrity.signalPolicySha256After = policyHashAfter;
   report.integrity.signalPolicyUnchanged = policyHashBefore === policyHashAfter;
   report.integrity.signalConfigSha256After = configHashAfter;
   report.integrity.signalConfigUnchanged = configHashBefore === configHashAfter;
-  if (!report.runtimeDb.unchanged) {
-    throw new Error('runtime_db_changed_during_live_soak');
-  }
   if (!report.integrity.signalPolicyUnchanged || !report.integrity.signalConfigUnchanged) {
     throw new Error('signal_quality_production_files_changed_during_live_soak');
   }

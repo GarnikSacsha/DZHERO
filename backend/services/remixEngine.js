@@ -205,6 +205,7 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
         generate: (qualityFeedback = '') => generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
         globalInsight,
         beforeProviderAttempt: options.beforeProviderAttempt,
+        maxAttempts: options.maxAttempts,
       });
     } catch (err) {
       console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -219,6 +220,7 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
         generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
         globalInsight,
         beforeProviderAttempt: options.beforeProviderAttempt,
+        maxAttempts: options.maxAttempts,
       });
     } catch (err) {
       console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -266,7 +268,12 @@ function parseGeminiResponse(payload) {
     throw error;
   }
 
-  return parseProviderJson(text);
+  const result = parseProviderJson(text);
+  Object.defineProperty(result, '_providerUsage', {
+    value: payload?.usageMetadata || null,
+    enumerable: false,
+  });
+  return result;
 }
 
 async function generateValidatedProviderResult({
@@ -275,10 +282,12 @@ async function generateValidatedProviderResult({
   generate,
   globalInsight,
   beforeProviderAttempt,
+  maxAttempts = 2,
 }) {
+  const attemptLimit = Math.min(2, Math.max(1, Number(maxAttempts) || 2));
   let qualityFeedback = '';
   let lastError = null;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
+  for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
     let result;
     try {
       if (typeof beforeProviderAttempt === 'function') {
@@ -295,7 +304,13 @@ async function generateValidatedProviderResult({
     }
     const assessment = assessRemixQuality(result, { globalInsight });
     if (assessment.ok) {
-      result._generation = { provider, model, attempts: attempt, fallback: false };
+      result._generation = {
+        provider,
+        model,
+        attempts: attempt,
+        fallback: false,
+        ...(result._providerUsage ? { usage: result._providerUsage } : {}),
+      };
       console.log(`[RemixEngine] ${provider}/${model} accepted on attempt ${attempt}`);
       return result;
     }
@@ -429,7 +444,12 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
     throw new Error("Empty response from OpenAI API");
   }
 
-  return JSON.parse(textResponse.trim());
+  const result = JSON.parse(textResponse.trim());
+  Object.defineProperty(result, '_providerUsage', {
+    value: jsonResult.usage || null,
+    enumerable: false,
+  });
+  return result;
 }
 
 function cleanBriefValue(value, fallback) {

@@ -48,10 +48,12 @@ function emptyDb() {
     workspaceSavedSignals: [],
     workspaceAdaptations: [],
     workspaceUrlAdaptations: [],
+    personalUrlRunTelemetry: [],
     workspaceSavedUrls: [
       { id: 'saved_main', workspaceId: 'ws_a', platform: 'tiktok', originalUrl: 'https://vm.tiktok.com/ZM123abc/?utm_source=test', canonicalUrl: 'https://vm.tiktok.com/ZM123abc', createdAt: '2026-08-07T08:00:00.000Z', status: 'not_analyzed' },
       { id: 'saved_race', workspaceId: 'ws_a', platform: 'instagram', originalUrl: 'https://instagram.com/reel/race', canonicalUrl: 'https://instagram.com/reel/race', createdAt: '2026-08-07T08:01:00.000Z', status: 'not_analyzed' },
       { id: 'saved_failure', workspaceId: 'ws_a', platform: 'youtube', originalUrl: 'https://youtube.com/shorts/failure', canonicalUrl: 'https://youtube.com/shorts/failure', createdAt: '2026-08-07T08:02:00.000Z', status: 'not_analyzed' },
+      { id: 'saved_parallel', workspaceId: 'ws_a', platform: 'youtube', originalUrl: 'https://youtube.com/shorts/parallel', canonicalUrl: 'https://youtube.com/shorts/parallel', createdAt: '2026-08-07T08:03:00.000Z', status: 'not_analyzed' },
     ],
     usageCounters: [],
     plans: [], competitors: [], ideas: [], leads: [], syncJobs: [], sources: [], metaStates: [], instagramAccounts: [], tiktokAccounts: [],
@@ -129,6 +131,8 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     PORT: String(port), HOST: '127.0.0.1', NODE_ENV: 'test', DB_PATH: dbPath, DATABASE_URL: '',
     APIFY_TOKEN: '', APIFY_API_TOKEN: '', GEMINI_API_KEY: '', OPENAI_API_KEY: '', AUTOMATIC_DISCOVERY_ENABLED: 'false',
     UNLIMITED_ACCESS_EMAILS: 'workspace-a@example.com',
+    BETA_OWNER_TEST_ENABLED: 'true', BETA_OWNER_TEST_SCOPE: 'staging',
+    BETA_OWNER_TEST_USER_ID: 'user_a', BETA_OWNER_TEST_WORKSPACE_ID: 'ws_a',
     REMIX_TEST_PROVIDER: PROVIDER_FIXTURE, REMIX_TEST_PROVIDER_CALLS_PATH: callsPath, REMIX_TEST_PROVIDER_RELEASE_PATH: releasePath,
   },
   stdio: ['ignore', 'pipe', 'pipe'],
@@ -166,6 +170,12 @@ try {
     [first.response.status, second.response.status].every((status) => [200, 201].includes(status)),
     JSON.stringify({ first: first.body, second: second.body }),
   );
+  assert.deepEqual(
+    [first.body.singleFlightState, second.body.singleFlightState].sort(),
+    ['joined', 'leader'],
+    'same-source requests share one in-flight action',
+  );
+  assert.notEqual(first.body.runId, second.body.runId, 'each request receives an opaque run id');
   let db = JSON.parse(await readFile(dbPath, 'utf8'));
   assert.equal(db.workspaceUrlAdaptations.filter((record) => record.savedUrlId === 'saved_main').length, 1);
   const mainA = db.workspaceUrlAdaptations.find((record) => record.savedUrlId === 'saved_main');
@@ -193,6 +203,10 @@ try {
 
   const race = request(baseUrl, analyzePath('saved_race'), { method: 'POST', headers: headersA });
   await waitForMode(callsPath, 'waiting_for_release');
+  const blockedParallel = await request(baseUrl, analyzePath('saved_parallel'), { method: 'POST', headers: headersA });
+  assert.equal(blockedParallel.response.status, 409);
+  assert.equal(blockedParallel.body.error, 'saved_url_workspace_busy');
+  assert.equal(blockedParallel.body.retryable, true);
   const switchedB = await switchBrand(brandB);
   assert.equal(switchedB.response.status, 200);
   const blockedDelete = await request(baseUrl, '/api/workspaces/ws_a/saved-urls/saved_race', { method: 'DELETE', headers: headersA });
@@ -265,6 +279,32 @@ try {
 
   db = JSON.parse(await readFile(dbPath, 'utf8'));
   assert.deepEqual({ reels: db.reels, workspaceSavedSignals: db.workspaceSavedSignals, workspaceAdaptations: db.workspaceAdaptations }, baselineProtected);
+  const telemetryText = JSON.stringify(db.personalUrlRunTelemetry);
+  assert.equal(telemetryText.includes('workspace-a@example.com'), false);
+  assert.equal(telemetryText.includes('ws_a'), false);
+  assert.equal(telemetryText.includes('saved_main'), false);
+  assert.equal(telemetryText.includes('youtube.com'), false);
+  assert.equal(telemetryText.includes('Grounded transcript'), false);
+  const completedRuns = db.personalUrlRunTelemetry.filter((record) => record.terminalReason === 'completed');
+  assert.ok(completedRuns.some((record) => (
+    record.providers.filter((provider) => provider.operation === 'source_resolution').length === 1
+    && record.providers.filter((provider) => provider.operation === 'remix').length === 1
+    && record.providers.every((provider) => provider.attemptCount === 1)
+  )), 'completed run records exactly one analysis and one remix attempt');
+  assert.ok(db.personalUrlRunTelemetry.some((record) => (
+    record.terminalReason === 'saved_url_workspace_busy'
+    && record.singleFlightState === 'blocked'
+    && record.providers.length === 0
+  )));
+  const providerEventsBeforeDelete = (await readFile(callsPath, 'utf8'))
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  assert.equal(
+    providerEventsBeforeDelete.some((event) => event.savedUrlId === 'saved_parallel'),
+    false,
+    'workspace concurrency rejection occurs before a provider call',
+  );
   const deleted = await request(baseUrl, '/api/workspaces/ws_a/saved-urls/saved_main', { method: 'DELETE', headers: headersA });
   assert.equal(deleted.response.status, 200);
   const afterDelete = await request(baseUrl, adaptationPath('saved_main'), { headers: headersA });

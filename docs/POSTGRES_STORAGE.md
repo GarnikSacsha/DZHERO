@@ -2,7 +2,7 @@
 
 Dzhero can now run in two storage modes:
 
-- local/dev JSON mode: `DATABASE_URL` is empty, data is stored in `backend/data/db.json`;
+- local/dev JSON mode: `DATABASE_URL` is empty, data is stored in the ignored runtime file `backend/data/db.json`;
 - production Postgres mode: `DATABASE_URL` is set, data is stored in the `app_state` table as JSONB.
 
 This is an MVP-safe migration step. It keeps the current backend API unchanged, but moves persistent app data out of the container filesystem.
@@ -38,7 +38,9 @@ CREATE TABLE IF NOT EXISTS app_state (
 );
 ```
 
-If there is no row for `APP_STATE_KEY`, it seeds the row from `backend/data/db.json`.
+If there is no row for `APP_STATE_KEY`, it seeds the row from the wholly
+fictional `backend/data/db.example.json` fixture. Local JSON mode likewise
+creates the ignored runtime file from that fixture on first use.
 
 ## Next step
 

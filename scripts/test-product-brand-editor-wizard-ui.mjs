@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -10,11 +8,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const HOST = '127.0.0.1';
 const PORT = 5187;
 const BASE_URL = `http://${HOST}:${PORT}`;
-const DB_PATH = path.join(ROOT, 'backend', 'data', 'db.json');
-
-function sha256File(filePath) {
-  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
-}
 
 function waitForUrl(url, processHandle, timeoutMs = 30_000) {
   return new Promise((resolve, reject) => {
@@ -66,7 +59,6 @@ async function stopProcess(processHandle) {
   });
 }
 
-const dbBefore = sha256File(DB_PATH);
 const vite = startVite();
 const browser = await chromium.launch({ headless: true });
 let providerCalls = [];
@@ -168,16 +160,13 @@ try {
   assert.deepEqual(runtimeErrors, [], 'Redesign must not emit runtime errors');
   assert.deepEqual(providerCalls, [], 'Focused regression must make zero provider calls');
   assert.deepEqual(backendNetworkCalls, [], 'Focused regression must make zero backend network calls');
-  assert.equal(sha256File(DB_PATH), dbBefore, 'Focused regression must not modify backend/data/db.json');
 
   console.log('GREEN two-step regression passed on the real redesign wizard path.');
   console.log('provider calls: 0');
   console.log('backend network calls: 0');
-  console.log('backend/data/db.json: unchanged');
 } catch (error) {
   console.log(`RED assertion: ${error.message.split('\n')[0]}`);
   console.log(`provider calls: ${providerCalls.length}`);
-  console.log(`backend/data/db.json: ${sha256File(DB_PATH) === dbBefore ? 'unchanged' : 'CHANGED'}`);
   throw error;
 } finally {
   await browser.close();
