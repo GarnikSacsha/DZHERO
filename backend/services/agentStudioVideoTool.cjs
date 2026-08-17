@@ -65,7 +65,13 @@ function assertDownloadedVideoDuration({
   const capEnabled = Number.isFinite(configuredMaximum) && configuredMaximum > 0;
   if (!capEnabled && !requireDuration) return null;
   const normalizedMimeType = String(mimeType || '').split(';')[0].trim().toLowerCase();
-  const durationSeconds = normalizedMimeType === 'video/mp4' || normalizedMimeType === 'video/quicktime' || !normalizedMimeType
+  const durationSeconds = [
+    '',
+    'video/mp4',
+    'video/quicktime',
+    'application/octet-stream',
+    'binary/octet-stream',
+  ].includes(normalizedMimeType)
     ? readMp4DurationSeconds(bytes)
     : null;
   if (!durationSeconds) {
@@ -364,9 +370,15 @@ async function uploadGeminiVideoFromUrl({
     maxDurationSeconds,
     requireDuration,
   });
+  const normalizedContentType = String(contentType || '').split(';')[0].trim().toLowerCase();
+  const genericBinaryMimeType = !normalizedContentType
+    || ['application/octet-stream', 'binary/octet-stream'].includes(normalizedContentType);
+  const uploadMimeType = genericBinaryMimeType && durationSeconds
+    ? 'video/mp4'
+    : contentType || 'video/mp4';
   const uploadedFile = await uploadGeminiVideoBytes({
     bytes,
-    mimeType: contentType || 'video/mp4',
+    mimeType: uploadMimeType,
     displayName: 'dzhero-agent-studio-reel',
     apiKey,
     fetchImpl,

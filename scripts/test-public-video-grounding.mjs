@@ -636,6 +636,135 @@ async function runGroundingContract() {
     );
   });
 
+  const firstDurationlessCandidate = 'https://cdn.example.test/dadgr-durationless.bin';
+  const secondPlayableCandidate = 'https://cdn.example.test/dadgr-playable.mp4';
+  const multiCandidateTransferCalls = [];
+  let multiCandidateGuardCalls = 0;
+  let multiCandidateCountCalls = 0;
+  let multiCandidateGenerationCalls = 0;
+  const multiCandidateGrounding = await analyzePublicVideoUrlWithGemini({
+    platform: 'instagram',
+    sourceUrl: 'https://instagram.com/reel/dadgr-multi-candidate',
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    maxInputTokens: 25_000,
+    resolveSocialSource: async () => ({
+      sourceUrl: 'https://instagram.com/reel/dadgr-multi-candidate',
+      videoUrl: firstDurationlessCandidate,
+      title: 'Dadgr multi-candidate source',
+      handle: '@dadgr_source',
+      image: 'https://cdn.example.test/dadgr-poster.jpg',
+      importedMetadata: { mediaUrls: [secondPlayableCandidate] },
+      attempts: [{
+        actor: 'apify/instagram-reel-scraper',
+        outcome: 'empty',
+      }, {
+        actor: 'apify/instagram-scraper',
+        outcome: 'resolved',
+      }],
+    }),
+    uploadSocialVideo: async ({ sourceUrl }) => {
+      multiCandidateTransferCalls.push(sourceUrl);
+      if (sourceUrl === firstDurationlessCandidate) {
+        throw Object.assign(new Error('video_duration_unavailable'), {
+          code: 'video_duration_unavailable',
+        });
+      }
+      return {
+        name: 'files/dadgr-playable',
+        uri: 'https://gemini.test/files/dadgr-playable',
+        mimeType: 'video/mp4',
+      };
+    },
+    beforeProviderAttempt: async () => { multiCandidateGuardCalls += 1; },
+    fetchImpl: async (url) => {
+      if (String(url).endsWith(':countTokens')) {
+        multiCandidateCountCalls += 1;
+        return response({ totalTokens: 24_999 });
+      }
+      multiCandidateGenerationCalls += 1;
+      return response({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(providerEvidence) }] }, finishReason: 'STOP' }],
+      });
+    },
+    deleteUploadedVideo: async () => {},
+  });
+  await captureGateOneContract('a durationless first transfer falls through to the second media candidate', async () => {
+    assert.deepEqual(
+      multiCandidateTransferCalls,
+      [firstDurationlessCandidate, secondPlayableCandidate],
+      'all bounded media candidates must be tried before declaring the source unavailable',
+    );
+  });
+  await captureGateOneContract('the playable second media candidate makes grounding available', async () => {
+    assert.equal(multiCandidateGrounding.status, 'available');
+  });
+  await captureGateOneContract('the successful candidate enters one guarded Gemini envelope', async () => {
+    assert.equal(multiCandidateGuardCalls, 1);
+    assert.equal(multiCandidateCountCalls, 1);
+    assert.equal(multiCandidateGenerationCalls, 1);
+  });
+
+  const boundedTitle = 'T'.repeat(500);
+  const boundedHandle = `@${'h'.repeat(199)}`;
+  const boundedPoster = `https://cdn.example.test/${'p'.repeat(1968)}.jpg`;
+  const allFailedAcquisitionHistory = [{
+    actor: 'apify/instagram-reel-scraper',
+    outcome: 'empty',
+    error: 'raw primary provider detail',
+  }, {
+    actor: 'apify/instagram-scraper',
+    outcome: 'resolved',
+    error: 'raw fallback provider detail',
+  }];
+  let allFailedProviderCalls = 0;
+  const allCandidatesFailed = await analyzePublicVideoUrlWithGemini({
+    platform: 'instagram',
+    sourceUrl: 'https://instagram.com/reel/dadgr-all-candidates-fail',
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    maxInputTokens: 25_000,
+    resolveSocialSource: async () => ({
+      sourceUrl: 'https://instagram.com/reel/dadgr-all-candidates-fail',
+      videoUrl: firstDurationlessCandidate,
+      title: boundedTitle,
+      handle: boundedHandle,
+      image: boundedPoster,
+      importedMetadata: { mediaUrls: [secondPlayableCandidate] },
+      attempts: allFailedAcquisitionHistory,
+    }),
+    uploadSocialVideo: async () => {
+      throw Object.assign(new Error('video_duration_unavailable'), {
+        code: 'video_duration_unavailable',
+      });
+    },
+    beforeProviderAttempt: async () => { allFailedProviderCalls += 1; },
+    fetchImpl: async () => {
+      allFailedProviderCalls += 1;
+      throw new Error('Gemini must not execute when every transfer candidate fails');
+    },
+    deleteUploadedVideo: async () => {},
+  });
+  await captureGateOneContract('all-candidates-fail keeps bounded source title handle and poster', async () => {
+    assert.equal(allCandidatesFailed.status, 'unavailable');
+    assert.equal(allCandidatesFailed.title, boundedTitle);
+    assert.equal(allCandidatesFailed.handle, boundedHandle);
+    assert.equal(allCandidatesFailed.image, boundedPoster);
+  });
+  await captureGateOneContract('all-candidates-fail keeps only sanitized acquisition history', async () => {
+    assert.deepEqual(allCandidatesFailed.diagnostic.sourceResolutionAttempts, [{
+      actor: 'apify/instagram-reel-scraper',
+      outcome: 'empty',
+    }, {
+      actor: 'apify/instagram-scraper',
+      outcome: 'resolved',
+    }]);
+    assert.equal(hasPropertyRecursively(allCandidatesFailed.diagnostic, 'error'), false);
+  });
+  await captureGateOneContract('all-candidates-fail never reaches Gemini', async () => {
+    assert.equal(allFailedProviderCalls, 0);
+  });
+
   assert.deepEqual(
     gateOneContractFailures,
     [],

@@ -265,10 +265,16 @@ function buildDiagnostic({
   };
 }
 
-function emptyEvidence(diagnostic) {
+function emptyEvidence(diagnostic, sourceMetadata = {}) {
+  const title = compactText(sourceMetadata.title, 500);
+  const handle = compactText(sourceMetadata.handle, 200);
+  const image = compactText(sourceMetadata.image, 2000);
   return {
     source: 'public_video_grounding',
     status: 'unavailable',
+    ...(title ? { title } : {}),
+    ...(handle ? { handle } : {}),
+    ...(image ? { image } : {}),
     transcript: { source: null, status: 'unavailable', text: '', segments: [] },
     video: { source: 'public_video_grounding', status: 'unavailable' },
     visual: { source: 'public_video_grounding', status: 'unavailable' },
@@ -613,7 +619,7 @@ async function analyzePublicVideoUrlWithGemini({
       resolved?.importedMetadata?.apify?.videoUrl,
       ...(Array.isArray(resolved?.importedMetadata?.mediaUrls) ? resolved.importedMetadata.mediaUrls : []),
       ...(Array.isArray(resolved?.importedMetadata?.apify?.mediaUrls) ? resolved.importedMetadata.apify.mediaUrls : []),
-    ].map((value) => String(value || '').trim()).filter(Boolean))];
+    ].map((value) => String(value || '').trim()).filter(Boolean))].slice(0, 4);
     if (resolved?.unresolved || transferCandidates.length === 0) {
       return emptyEvidence(buildDiagnostic({
         platform,
@@ -631,7 +637,8 @@ async function analyzePublicVideoUrlWithGemini({
         reasonCode: 'social_video_transfer_failed',
         retryable: true,
         fallback: capability.fallback,
-      }));
+        sourceResolutionAttempts,
+      }), resolvedSourceMetadata);
     }
     let transferFailureCode = '';
     for (const candidateUrl of transferCandidates) {
@@ -652,7 +659,7 @@ async function analyzePublicVideoUrlWithGemini({
       } catch (error) {
         uploadedFile = null;
         transferFailureCode = String(error?.code || error?.message || '');
-        if (['video_duration_unavailable', 'video_duration_exceeds_limit'].includes(transferFailureCode)) break;
+        if (transferFailureCode === 'video_duration_exceeds_limit') break;
       }
     }
     if (!uploadedFile?.uri) {
@@ -666,7 +673,7 @@ async function analyzePublicVideoUrlWithGemini({
         fallback: capability.fallback,
         model,
         sourceResolutionAttempts,
-      }));
+      }), resolvedSourceMetadata);
     }
     analysisUri = uploadedFile.uri;
   }

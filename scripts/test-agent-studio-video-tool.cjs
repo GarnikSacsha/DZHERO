@@ -164,6 +164,96 @@ function installMockHttpResponses(responses) {
   );
   assert.equal(cappedUploadProviderCalls, 0);
 
+  const dadgrContractFailures = [];
+  const captureDadgrContract = async (label, assertion) => {
+    try {
+      await assertion();
+    } catch (error) {
+      dadgrContractFailures.push(`${label}: ${error?.message || error}`);
+    }
+  };
+
+  await captureDadgrContract('a structurally valid MP4 with generic MIME reaches Gemini upload', async () => {
+    const genericMimeProviderRequests = [];
+    const uploaded = await uploadGeminiVideoFromUrl({
+      sourceUrl: 'https://cdn.example.com/dadgr-generic-mime.bin',
+      apiKey: 'test-key',
+      maxDurationSeconds: 60,
+      requireDuration: true,
+      safeFetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream' },
+        bytes: sixtySecondMp4,
+      }),
+      fetchImpl: async (url, options = {}) => {
+        genericMimeProviderRequests.push({ url, options });
+        if (url.endsWith('/upload/v1beta/files')) {
+          return response({}, { headers: { 'x-goog-upload-url': 'https://upload.example.test/dadgr-generic-session' } });
+        }
+        if (url === 'https://upload.example.test/dadgr-generic-session') {
+          return response({
+            file: {
+              name: 'files/dadgr-generic-mp4',
+              uri: 'https://gemini.test/files/dadgr-generic-mp4',
+              mimeType: 'video/mp4',
+              state: 'ACTIVE',
+            },
+          });
+        }
+        throw new Error(`Unexpected generic-MIME fixture URL: ${url}`);
+      },
+      sleepImpl: async () => {},
+    });
+    assert.equal(uploaded.durationSeconds, 60);
+    assert.equal(uploaded.mimeType, 'video/mp4');
+    assert.equal(
+      genericMimeProviderRequests.filter(({ url }) => url.endsWith('/upload/v1beta/files')).length,
+      1,
+      'valid MP4 bytes must start exactly one Gemini Files upload',
+    );
+  });
+
+  for (const invalidMedia of [{
+    label: 'HTML',
+    contentType: 'text/html',
+    bytes: Buffer.from('<html>not a video</html>'),
+  }, {
+    label: 'HLS',
+    contentType: 'application/vnd.apple.mpegurl',
+    bytes: Buffer.from('#EXTM3U\n#EXT-X-VERSION:3'),
+  }]) {
+    await captureDadgrContract(`${invalidMedia.label} remains fail-closed before Gemini upload`, async () => {
+      let invalidMediaProviderCalls = 0;
+      await assert.rejects(
+        uploadGeminiVideoFromUrl({
+          sourceUrl: `https://cdn.example.com/dadgr-${invalidMedia.label.toLowerCase()}`,
+          apiKey: 'test-key',
+          maxDurationSeconds: 60,
+          requireDuration: true,
+          safeFetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            headers: { 'content-type': invalidMedia.contentType },
+            bytes: invalidMedia.bytes,
+          }),
+          fetchImpl: async () => {
+            invalidMediaProviderCalls += 1;
+            throw new Error('Gemini must not receive HTML or HLS playlist bytes');
+          },
+        }),
+        (error) => error?.code === 'video_duration_unavailable',
+      );
+      assert.equal(invalidMediaProviderCalls, 0);
+    });
+  }
+
+  assert.deepEqual(
+    dadgrContractFailures,
+    [],
+    `DadgrA9PDMs media-transfer contracts failed:\n${dadgrContractFailures.join('\n')}`,
+  );
+
   await assert.rejects(
     uploadGeminiVideoFromUrl({
       sourceUrl: 'http://127.0.0.1/private-video',
