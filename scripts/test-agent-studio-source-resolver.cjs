@@ -63,6 +63,7 @@ const {
   assert.equal(tiktokCalls[0].maxTotalChargeUsd, 0.50);
 
   const fallbackCalls = [];
+  const fallbackPrimaryCalls = [];
   const fallbackUsage = [];
   const fallbackAttempts = [];
   const fallbackResolved = await resolveAgentStudioVideoSource({
@@ -70,7 +71,15 @@ const {
     sourceUrl: 'https://www.instagram.com/reel/fallback/',
     workspaceId: 'ws_test',
     maxTotalChargeUsd: 0.05,
-    fetchSignals: async () => [],
+    fetchSignals: async (options) => {
+      fallbackPrimaryCalls.push(options);
+      return [{
+        sourceUrl: options.inputValue,
+        title: 'Metadata-only primary result',
+        handle: '@metadata_only',
+        importedMetadata: { provider: 'apify', actor: 'apify/instagram-reel-scraper' },
+      }];
+    },
     runActor: async (options) => {
       fallbackCalls.push(options);
       return {
@@ -84,6 +93,7 @@ const {
   });
   assert.equal(fallbackResolved.videoUrl, 'https://cdn.example.com/fallback.mp4');
   assert.equal(fallbackResolved.resolvedBy, 'apify-instagram-fallback');
+  assert.equal(fallbackPrimaryCalls.length, 1, 'default policy must try the primary actor once');
   assert.equal(fallbackCalls[0].actorId, INSTAGRAM_FALLBACK_ACTOR);
   assert.deepEqual(fallbackCalls[0].input.directUrls, ['https://www.instagram.com/reel/fallback/']);
   assert.equal(fallbackCalls[0].maxItems, 1);
@@ -118,6 +128,7 @@ const {
   assert.deepEqual(aggregateCaps, [0.025, 0.025], 'aggregate exposure is divided across bounded actor starts');
 
   let disabledFallbackCalls = 0;
+  const controlledPrimaryAttempts = [];
   const fallbackDisabled = await resolveAgentStudioVideoSource({
     token: 'test-apify-token',
     sourceUrl: 'https://www.instagram.com/reel/no-fallback/',
@@ -127,14 +138,28 @@ const {
     allowInstagramFallback: false,
     fetchSignals: async (options) => {
       assert.equal(options.maxTotalChargeUsd, 0.05);
-      return [];
+      return [{
+        sourceUrl: options.inputValue,
+        title: 'Metadata-only primary result',
+        handle: '@metadata_only',
+        importedMetadata: { provider: 'apify', actor: 'apify/instagram-reel-scraper' },
+      }];
     },
     runActor: async () => {
       disabledFallbackCalls += 1;
       return { items: [] };
     },
+    beforeProviderAttempt: async (entry) => controlledPrimaryAttempts.push(entry),
   });
   assert.equal(fallbackDisabled.unresolved, true);
+  assert.deepEqual(controlledPrimaryAttempts.map(({ provider, model }) => ({ provider, model })), [{
+    provider: 'apify',
+    model: 'apify/instagram-reel-scraper',
+  }], 'controlled policy must stop after exactly one primary actor attempt');
+  assert.deepEqual(fallbackDisabled.attempts, [{
+    actor: 'apify/instagram-reel-scraper',
+    outcome: 'empty',
+  }]);
   assert.equal(disabledFallbackCalls, 0, 'disabled Instagram fallback must never start its actor');
 
   const unresolved = await resolveAgentStudioVideoSource({

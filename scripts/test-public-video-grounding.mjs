@@ -474,6 +474,7 @@ async function runGroundingContract() {
   let failedUploadCalled = false;
   let failedInteractionCalled = false;
   let failedCleanupCalled = false;
+  const overlongResolutionActor = 'x'.repeat(180);
   const unavailableSocial = await analyzePublicVideoUrlWithGemini({
     platform: 'instagram',
     sourceUrl: 'https://instagram.com/reel/unavailable123',
@@ -483,7 +484,26 @@ async function runGroundingContract() {
       unresolved: true,
       sourceUrl: 'https://instagram.com/reel/unavailable123',
       platform: 'instagram',
-      attempts: [{ actor: 'platform-default', outcome: 'empty' }],
+      attempts: [{
+        actor: 'apify/instagram-reel-scraper',
+        outcome: 'empty',
+        error: 'raw provider detail must not cross the grounding boundary',
+      }, {
+        actor: overlongResolutionActor,
+        outcome: 'failed',
+      }, {
+        actor: 'ignored/untrusted-outcome',
+        outcome: 'provider_payload',
+      }, {
+        actor: 'apify/instagram-scraper',
+        outcome: 'blocked_by_cap',
+      }, {
+        actor: 'clockworks/tiktok-scraper',
+        outcome: 'failed',
+      }, {
+        actor: 'ignored/overflow',
+        outcome: 'empty',
+      }],
     }),
     uploadSocialVideo: async () => { failedUploadCalled = true; return null; },
     fetchImpl: async () => { failedInteractionCalled = true; return response({}); },
@@ -501,6 +521,19 @@ async function runGroundingContract() {
   assert.equal(unavailableSocial.diagnostic.reasonCode, 'social_video_unavailable');
   assert.equal(unavailableSocial.diagnostic.retryable, true);
   assert.equal(unavailableSocial.diagnostic.fallback, 'user_owned_upload_or_owner_authorized_captions');
+  assert.deepEqual(unavailableSocial.diagnostic.sourceResolutionAttempts, [{
+    actor: 'apify/instagram-reel-scraper',
+    outcome: 'empty',
+  }, {
+    actor: `${'x'.repeat(119)}…`,
+    outcome: 'failed',
+  }, {
+    actor: 'apify/instagram-scraper',
+    outcome: 'blocked_by_cap',
+  }, {
+    actor: 'clockworks/tiktok-scraper',
+    outcome: 'failed',
+  }], 'terminal diagnostics must preserve only sanitized source-resolution actor/outcome details');
 
   const rejected = await analyzePublicVideoUrlWithGemini({
     platform: 'youtube',

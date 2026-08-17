@@ -149,7 +149,7 @@ async function resolveAgentStudioVideoSource({
         resolvedBy: 'apify-platform-actor',
       };
     }
-    attempts.push({ actor: 'platform-default', outcome: 'empty' });
+    attempts.push({ actor: primaryActor, outcome: 'empty' });
   } catch (error) {
     if (error?.providerAttemptBlocked) throw error;
     await reportUsage({
@@ -157,8 +157,8 @@ async function resolveAgentStudioVideoSource({
       status: 'failed',
       usageTotalUsd: error?.actualCostUsd ?? error?.run?.usageTotalUsd,
     });
-    attempts.push({ actor: 'platform-default', outcome: 'failed', error: error?.message || 'unknown' });
-  } else attempts.push({ actor: 'platform-default', outcome: 'blocked_by_cap' });
+    attempts.push({ actor: primaryActor, outcome: 'failed', error: error?.message || 'unknown' });
+  } else attempts.push({ actor: primaryActor, outcome: 'blocked_by_cap' });
 
   if (
     platform === 'instagram'

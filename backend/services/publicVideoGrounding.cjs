@@ -7,6 +7,9 @@ const {
 
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const DEFAULT_PUBLIC_VIDEO_MODEL = 'gemini-3.6-flash';
+const SOURCE_RESOLUTION_ATTEMPT_LIMIT = 4;
+const SOURCE_RESOLUTION_ACTOR_MAX_LENGTH = 120;
+const SOURCE_RESOLUTION_OUTCOMES = new Set(['empty', 'failed', 'blocked_by_cap']);
 
 const PUBLIC_VIDEO_RESPONSE_FORMAT = Object.freeze({
   type: 'text',
@@ -216,6 +219,18 @@ function classifyPublicVideoProviderFailure({ status = 0, message = '', interact
   return 'provider_rejected';
 }
 
+function sanitizeSourceResolutionAttempts(value = []) {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((attempt) => {
+    if (!attempt || typeof attempt !== 'object') return [];
+    if (typeof attempt.actor !== 'string' || typeof attempt.outcome !== 'string') return [];
+    const actor = compactText(attempt.actor, SOURCE_RESOLUTION_ACTOR_MAX_LENGTH);
+    const outcome = attempt.outcome.trim().toLowerCase();
+    if (!actor || !SOURCE_RESOLUTION_OUTCOMES.has(outcome)) return [];
+    return [{ actor, outcome }];
+  }).slice(0, SOURCE_RESOLUTION_ATTEMPT_LIMIT);
+}
+
 function buildDiagnostic({
   platform,
   stage,
@@ -225,7 +240,12 @@ function buildDiagnostic({
   model = '',
   httpStatus = null,
   interactionStatus = '',
+  sourceResolutionAttempts = [],
 } = {}) {
+  const normalizedStage = compactText(stage, 80) || 'source_acquisition';
+  const sanitizedSourceResolutionAttempts = normalizedStage === 'source_resolution'
+    ? sanitizeSourceResolutionAttempts(sourceResolutionAttempts)
+    : [];
   const provider = model || httpStatus || interactionStatus
     ? {
       name: 'gemini',
@@ -236,11 +256,14 @@ function buildDiagnostic({
     : null;
   return {
     platform: normalizePlatform(platform) || 'unknown',
-    stage: compactText(stage, 80) || 'source_acquisition',
+    stage: normalizedStage,
     reasonCode: compactText(reasonCode, 120) || 'source_unavailable',
     retryable: Boolean(retryable),
     fallback: compactText(fallback, 120) || 'user_owned_upload_or_owner_authorized_captions',
     ...(provider ? { provider } : {}),
+    ...(sanitizedSourceResolutionAttempts.length > 0
+      ? { sourceResolutionAttempts: sanitizedSourceResolutionAttempts }
+      : {}),
   };
 }
 
@@ -598,6 +621,7 @@ async function analyzePublicVideoUrlWithGemini({
         reasonCode: 'social_video_unavailable',
         retryable: true,
         fallback: capability.fallback,
+        sourceResolutionAttempts: resolved?.attempts,
       }));
     }
     if (typeof uploadSocialVideo !== 'function') {
