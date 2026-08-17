@@ -8,6 +8,81 @@ const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_UPLOAD_API = 'https://generativelanguage.googleapis.com/upload/v1beta/files';
 const MAX_AGENT_STUDIO_VIDEO_BYTES = 100 * 1024 * 1024;
 
+function readMp4DurationSeconds(rawBytes) {
+  const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes || []);
+  const scanBoxes = (start, end) => {
+    let offset = start;
+    while (offset + 8 <= end) {
+      let size = bytes.readUInt32BE(offset);
+      const type = bytes.toString('ascii', offset + 4, offset + 8);
+      let headerSize = 8;
+      if (size === 1) {
+        if (offset + 16 > end) return null;
+        const largeSize = bytes.readBigUInt64BE(offset + 8);
+        if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+        size = Number(largeSize);
+        headerSize = 16;
+      } else if (size === 0) {
+        size = end - offset;
+      }
+      if (size < headerSize || offset + size > end) return null;
+      const payloadStart = offset + headerSize;
+      const boxEnd = offset + size;
+      if (type === 'mvhd') {
+        if (payloadStart + 4 > boxEnd) return null;
+        const version = bytes[payloadStart];
+        if (version === 0 && payloadStart + 20 <= boxEnd) {
+          const timescale = bytes.readUInt32BE(payloadStart + 12);
+          const duration = bytes.readUInt32BE(payloadStart + 16);
+          if (timescale > 0 && duration > 0) return duration / timescale;
+        }
+        if (version === 1 && payloadStart + 32 <= boxEnd) {
+          const timescale = bytes.readUInt32BE(payloadStart + 20);
+          const duration = bytes.readBigUInt64BE(payloadStart + 24);
+          if (timescale > 0 && duration > 0n) return Number(duration) / timescale;
+        }
+        return null;
+      }
+      if (type === 'moov') {
+        const nested = scanBoxes(payloadStart, boxEnd);
+        if (nested) return nested;
+      }
+      offset = boxEnd;
+    }
+    return null;
+  };
+  const duration = scanBoxes(0, bytes.length);
+  return Number.isFinite(duration) && duration > 0 ? duration : null;
+}
+
+function assertDownloadedVideoDuration({
+  bytes,
+  mimeType = '',
+  maxDurationSeconds = null,
+  requireDuration = false,
+} = {}) {
+  const configuredMaximum = Number(maxDurationSeconds);
+  const capEnabled = Number.isFinite(configuredMaximum) && configuredMaximum > 0;
+  if (!capEnabled && !requireDuration) return null;
+  const normalizedMimeType = String(mimeType || '').split(';')[0].trim().toLowerCase();
+  const durationSeconds = normalizedMimeType === 'video/mp4' || normalizedMimeType === 'video/quicktime' || !normalizedMimeType
+    ? readMp4DurationSeconds(bytes)
+    : null;
+  if (!durationSeconds) {
+    const error = new Error('video_duration_unavailable');
+    error.code = 'video_duration_unavailable';
+    throw error;
+  }
+  if (capEnabled && durationSeconds > configuredMaximum) {
+    const error = new Error('video_duration_exceeds_limit');
+    error.code = 'video_duration_exceeds_limit';
+    error.durationSeconds = durationSeconds;
+    error.maxDurationSeconds = configuredMaximum;
+    throw error;
+  }
+  return durationSeconds;
+}
+
 const GeminiObservationSchema = z.object({
   sourceType: z.enum(['video_observation', 'audio_observation', 'on_screen_text']),
   text: z.string().trim().min(1).max(5000),
@@ -260,6 +335,8 @@ async function uploadGeminiVideoFromUrl({
   lookup,
   sleepImpl = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   maxBytes = MAX_AGENT_STUDIO_VIDEO_BYTES,
+  maxDurationSeconds = null,
+  requireDuration = false,
 }) {
   const download = await safeFetchImpl(sourceUrl, {
     headers: { Accept: 'video/*,*/*;q=0.8', ...requestHeaders },
@@ -281,6 +358,12 @@ async function uploadGeminiVideoFromUrl({
   const contentType = typeof responseHeaders.get === 'function'
     ? responseHeaders.get('content-type')
     : responseHeaders['content-type'];
+  const durationSeconds = assertDownloadedVideoDuration({
+    bytes,
+    mimeType: contentType || 'video/mp4',
+    maxDurationSeconds,
+    requireDuration,
+  });
   const uploadedFile = await uploadGeminiVideoBytes({
     bytes,
     mimeType: contentType || 'video/mp4',
@@ -294,6 +377,7 @@ async function uploadGeminiVideoFromUrl({
     ...uploadedFile,
     sha256: crypto.createHash('sha256').update(bytes).digest('hex'),
     byteLength: bytes.length,
+    ...(durationSeconds ? { durationSeconds } : {}),
   };
 }
 
@@ -633,6 +717,8 @@ function createGeminiVideoAnalysisTool({ analyzeVideo = analyzeAgentStudioVideo 
 
 module.exports = {
   GeminiVideoResultSchema,
+  assertDownloadedVideoDuration,
+  readMp4DurationSeconds,
   parseGeminiInteractionText,
   normalizeGeminiVideoResult,
   buildGeminiPrompt,

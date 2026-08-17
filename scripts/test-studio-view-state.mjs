@@ -38,6 +38,26 @@ const signal = {
         onScreenText: 'Observed overlay.',
         hook: 'Observed hook.',
         contentMechanic: 'Observed mechanic.',
+        observations: [
+          { sourceType: 'on_screen_text', timestamp: '0:02', text: 'ORIGINAL OCR', localizedText: 'ЛОКАЛІЗОВАНИЙ OCR' },
+          { sourceType: 'on_screen_text', timestamp: '0:12', text: 'LATE OCR', localizedText: 'ПІЗНІЙ OCR' },
+          { sourceType: 'on_screen_text', timestamp: '0:14', text: 'SAME OCR', localizedText: 'SAME OCR' },
+        ],
+        scenes: [
+          {
+            timeframe: '0:00-0:05',
+            visualAction: 'Локалізований опис першої сцени.',
+            spokenContent: 'Original spoken scene evidence.',
+            onScreenText: 'ORIGINAL OCR',
+            localizedOnScreenText: 'ЛОКАЛІЗОВАНИЙ OCR',
+          },
+          {
+            timeframe: '0:05-0:09',
+            visualAction: 'Локалізований опис другої сцени.',
+            spokenContent: 'Original second spoken fragment.',
+            onScreenText: 'SECOND OCR\nSEPARATE CTA',
+          },
+        ],
       },
     },
   },
@@ -74,15 +94,42 @@ assert.equal(transcript.language, 'en');
 assert.deepEqual(transcript.segments.map(({ time }) => time), ['00:00', '00:06']);
 assert.equal(transcript.spokenText, '');
 assert.equal(transcript.onScreenText, 'Observed overlay.');
+assert.deepEqual(transcript.ocrEntries, [
+  { id: 'ocr-scene-1', sceneNumber: 1, time: '0:00-0:05', texts: ['ORIGINAL OCR'], localizedTexts: ['ЛОКАЛІЗОВАНИЙ OCR'] },
+  { id: 'ocr-scene-2', sceneNumber: 2, time: '0:05-0:09', texts: ['SECOND OCR', 'SEPARATE CTA'], localizedTexts: [] },
+  { id: 'ocr-observation-2', sceneNumber: null, time: '0:12', texts: ['LATE OCR'], localizedTexts: ['ПІЗНІЙ OCR'] },
+  { id: 'ocr-observation-3', sceneNumber: null, time: '0:14', texts: ['SAME OCR'], localizedTexts: [] },
+]);
 assert.equal(deriveStudioTranscript({
   importedMetadata: { videoIntelligence: { transcript: { status: 'processing' } } },
 }).status, 'generating');
 assert.equal(deriveStudioTranscript({}).status, 'unavailable');
+const ocrOnlyEvidence = deriveStudioTranscript({
+  importedMetadata: {
+    videoIntelligence: {
+      transcript: { status: 'not_applicable' },
+      video: { scenes: [{ timeframe: '0:03-0:06', onScreenText: 'SILENT SOURCE TEXT' }] },
+    },
+  },
+});
+assert.equal(ocrOnlyEvidence.status, 'available', 'visual OCR must remain available without inventing speech');
+assert.equal(ocrOnlyEvidence.spokenText, '');
+assert.deepEqual(ocrOnlyEvidence.ocrEntries[0], {
+  id: 'ocr-scene-1',
+  sceneNumber: 1,
+  time: '0:03-0:06',
+  texts: ['SILENT SOURCE TEXT'],
+  localizedTexts: [],
+});
 
 const analysis = deriveStudioAnalysis(signal);
 assert.equal(analysis.status, 'available');
 assert.ok(analysis.items.some((item) => item.text === 'Observed source summary.'));
 assert.ok(analysis.items.some((item) => item.text === 'A concrete proof point.'));
+assert.ok(analysis.items.some((item) => item.text.includes('Локалізований опис першої сцени.')));
+const localizedAnalysisText = analysis.items.map(({ text }) => text).join('\n');
+assert.doesNotMatch(localizedAnalysisText, /A real caption segment|Original spoken scene evidence|Original second spoken fragment/);
+assert.doesNotMatch(localizedAnalysisText, /ORIGINAL OCR|SECOND OCR|SEPARATE CTA|LATE OCR/);
 assert.equal(deriveStudioAnalysis({ analysisStatus: 'pending' }).status, 'generating');
 assert.equal(deriveStudioAnalysis({}).status, 'unavailable');
 assert.equal(deriveStudioAnalysis({

@@ -8,18 +8,31 @@ delete process.env.GEMINI_API_BASE;
 delete process.env.OPENAI_API_KEY;
 
 const requestedUrls = [];
+const requestedBodies = [];
 globalThis.fetch = async (url, options = {}) => {
   requestedUrls.push(String(url));
   const payload = JSON.parse(options.body || '{}');
+  requestedBodies.push(payload);
   const isRemix = payload.generationConfig?.responseMimeType === 'application/json';
   const text = isRemix
     ? JSON.stringify({
-        remixes: Array.from({ length: 3 }, (_, index) => ({
-          title: `Dynamic title ${index + 1}`,
-          hook: `Dynamic hook ${index + 1}`,
+        remixes: [
+          ['visible_source_conflict', 'Dynamic conflict title', 'Dynamic conflict needs visible proof before explanation.', 'Dynamic conflict needs visible proof before explanation.'],
+          ['mechanism_walkthrough', 'Dynamic mechanism title', 'Dynamic mechanism becomes a concrete action sequence.', 'Dynamic mechanism becomes a concrete action sequence.'],
+          ['viewer_decision', 'Dynamic viewer title', 'Dynamic viewer chooses the next verification step.', 'Dynamic viewer chooses the next verification step.'],
+        ].map(([semanticAngle, title, hook, centralClaim], index) => ({
+          title,
+          hook,
+          semanticAngle,
+          centralClaim,
+          sourceConflict: 'Dynamic source conflict needs a visible proof.',
+          preservedMechanic: 'Dynamic concrete action sequence reveals proof.',
+          brandTranslation: 'Dynamic consultant translation keeps the source action without inventing a brand.',
+          productionProof: 'One phone, one screen, and one concrete action.',
+          adaptationLogic: 'Dynamic source conflict becomes a visible action and next verification.',
           visualFlow: Array.from({ length: 3 }, (_, beat) => ({
             timeframe: `0:0${beat}-0:0${beat + 1}`,
-            actionDescription: `Dynamic concrete action description ${index + 1}-${beat + 1}.`,
+            actionDescription: `Dynamic concrete action sequence reveals proof for the source conflict ${index + 1}-${beat + 1}.`,
             onScreenText: `Dynamic text ${index + 1}-${beat + 1}`,
             audioVoiceover: `Dynamic voiceover ${index + 1}-${beat + 1}`,
           })),
@@ -53,10 +66,13 @@ const remixResult = await remixEngine.generateRemix({
   title: 'Original dynamic source',
   hook: 'Original dynamic hook',
   script: 'Original dynamic script',
-}, {});
+}, {}, { language: 'en' });
 assert.equal(remixResult._generation.provider, 'gemini');
 assert.equal(requestedUrls.length, 2);
 assert.ok(requestedUrls.every((url) => url.startsWith(process.env.GEMINI_API_BASE)));
+const remixRequest = requestedBodies.find((payload) => payload.generationConfig?.responseMimeType === 'application/json');
+assert.match(remixRequest.systemInstruction.parts[0].text, /user-visible output field in natural English/);
+assert.match(remixRequest.systemInstruction.parts[0].text, /do not copy non-English speech or OCR/);
 
 if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
 else process.env.GEMINI_API_KEY = previousGeminiKey;

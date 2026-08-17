@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import remixEngine from '../backend/services/remixEngine.js';
+import qualityModule from '../backend/services/remixQuality.cjs';
 
 const { generateHighFidelityFallback, REMIX_SYSTEM_PROMPT } = remixEngine;
+const { SEMANTIC_ANGLES, assessRemixQuality } = qualityModule;
 
 const sourceTitle = 'A person stretches leg over head and everyone is shocked';
 const result = generateHighFidelityFallback({
@@ -34,6 +36,17 @@ for (const remix of result.remixes) {
     assert.ok(step.audioVoiceover.length > 20);
   }
 }
+assert.deepEqual(result.remixes.map(({ semanticAngle }) => semanticAngle), SEMANTIC_ANGLES);
+assert.equal(assessRemixQuality(result, {
+  globalInsight: {
+    title: sourceTitle,
+    hook: sourceTitle,
+    script: 'A creator shows an impossible-looking flexibility move, then reveals it is a simple daily routine.',
+  },
+  businessBrief: {
+    niche: 'студія пілатесу', product: 'перше пробне тренування', location: 'Київ',
+  },
+}).ok, true);
 
 assert.match(REMIX_SYSTEM_PROMPT, /Do not copy/i);
 assert.match(REMIX_SYSTEM_PROMPT, /brand/i);
@@ -57,5 +70,13 @@ for (const remix of consultantResult.remixes) {
   assert.match(output, /сюрприз|винагород|реакц|покуп|клієнт/i);
   assert.ok(remix.visualFlow.every((step) => step.actionDescription.length >= 25));
 }
+assert.deepEqual(consultantResult.remixes.map(({ semanticAngle }) => semanticAngle), SEMANTIC_ANGLES);
+assert.equal(assessRemixQuality(consultantResult, {
+  globalInsight: {
+    title: 'thank you edwin!! #kpop #SmallBusiness #kpopfyp #ateez #fyp',
+    hook: 'thank you edwin!!',
+    script: 'A customer uses a prize machine after checkout and reacts to the surprise reward.',
+  },
+}).ok, true);
 
 console.log('consultant remix quality tests passed');

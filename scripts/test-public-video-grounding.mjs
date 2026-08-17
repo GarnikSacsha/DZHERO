@@ -62,11 +62,66 @@ const providerEvidence = {
   limitations: ['Fine text outside the highlighted card is unreadable.'],
 };
 
+function providerEvidenceForLanguage(language) {
+  const isEnglish = language === 'en';
+  return {
+    ...providerEvidence,
+    summary: isEnglish
+      ? 'A founder shows the corrected workflow after exposing the ownership gap.'
+      : 'Засновник показує виправлений процес після демонстрації прогалини у відповідальності.',
+    hook: isEnglish ? 'Expose the missing owner before the explanation.' : 'Спочатку покажи відсутнього відповідального, а потім пояснення.',
+    contentMechanic: isEnglish ? 'observable ownership gap followed by a correction' : 'видима прогалина у відповідальності з подальшим виправленням',
+    spokenText: 'Original spoken evidence stays in the source language.',
+    spokenSegments: [{ timeframe: '0:00-0:04', text: 'Original spoken evidence stays in the source language.' }],
+    onScreenText: 'ORIGINAL ROOT OCR',
+    observations: [
+      {
+        sourceType: 'video_observation',
+        text: isEnglish ? 'The founder points to the unowned task.' : 'Засновник показує задачу без відповідального.',
+        timestamp: '0:01',
+        confidence: 0.97,
+      },
+      {
+        sourceType: 'on_screen_text',
+        text: 'ORIGINAL OBSERVATION OCR',
+        localizedText: isEnglish ? 'Localized observation OCR' : 'Локалізований OCR спостереження',
+        timestamp: '0:02',
+        confidence: 0.99,
+      },
+    ],
+    scenes: [{
+      timeframe: '0:00-0:04',
+      visualAction: isEnglish ? 'Point to the task without an owner.' : 'Покажи задачу без відповідального.',
+      spokenContent: 'Original scene speech stays in the source language.',
+      onScreenText: 'ORIGINAL SCENE OCR',
+      localizedOnScreenText: isEnglish ? 'Localized scene OCR' : 'Локалізований OCR сцени',
+      soundMusicCues: isEnglish ? 'Quiet room tone' : 'Тихий кімнатний шум',
+    }],
+  };
+}
+
 function extractLegacyFunction(source, startMarker, endMarker) {
   const start = source.indexOf(startMarker);
   const end = source.indexOf(endMarker, start);
   assert.ok(start >= 0 && end > start, `Could not extract ${startMarker}`);
   return source.slice(start, end);
+}
+
+function createPersonalPublicVideoEnricher(grounded) {
+  const source = readFileSync(SERVER_PATH, 'utf8');
+  const enrich = extractLegacyFunction(
+    source,
+    'async function enrichPersonalPublicVideoIntelligence',
+    'function enrichVideoIntelligenceForContext',
+  );
+  return vm.runInNewContext(`(() => { ${enrich}\nreturn enrichPersonalPublicVideoIntelligence; })()`, {
+    GEMINI_API_KEY: 'test-key',
+    analyzePublicVideoUrlWithGemini: async () => grounded,
+    compactText: (value) => String(value || '').trim(),
+    detectPublicVideoPlatform: (url) => String(url).includes('tiktok.com') ? 'tiktok' : 'instagram',
+    normalizePersonalUrlLanguage: (value) => String(value || '').trim().toLowerCase() === 'en' ? 'en' : 'uk',
+    process: { env: {} },
+  });
 }
 
 async function runLegacyStepsRegression() {
@@ -192,6 +247,46 @@ async function runGroundingContract() {
   assert.equal(youtube.analysis.status, 'available');
   assert.equal(youtube.diagnostic, null);
 
+  for (const language of ['uk', 'en']) {
+    const languageCalls = [];
+    const expected = providerEvidenceForLanguage(language);
+    const localized = await analyzePublicVideoUrlWithGemini({
+      platform: 'youtube',
+      sourceUrl: `https://youtube.com/watch?v=localized-${language}`,
+      apiKey: 'test-key',
+      language,
+      fetchImpl: async (url, options) => {
+        languageCalls.push({ url, options });
+        return response({
+          status: 'completed',
+          steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(expected) }] }],
+        });
+      },
+    });
+    const request = JSON.parse(languageCalls[0].options.body);
+    const prompt = request.input.find((part) => part.type === 'text')?.text || '';
+    assert.match(prompt, language === 'en' ? /descriptive fields in English/ : /descriptive fields in Ukrainian/);
+    assert.match(prompt, /never translate or replace them/);
+    assert.equal(request.response_format.schema.properties.observations.items.properties.localizedText.type, 'string');
+    assert.equal(request.response_format.schema.properties.scenes.items.properties.localizedOnScreenText.type, 'string');
+    assert.equal(localized.language, language);
+    assert.equal(localized.video.analysisLanguage, language);
+    assert.equal(localized.analysis.language, language);
+    assert.equal(localized.video.videoSummary, expected.summary, 'descriptive video fields follow the requested workspace language');
+    assert.equal(localized.transcript.text, 'Original spoken evidence stays in the source language.');
+    assert.equal(localized.video.onScreenText, 'ORIGINAL ROOT OCR');
+    assert.deepEqual(localized.video.observations.find((item) => item.sourceType === 'on_screen_text'), {
+      sourceType: 'on_screen_text',
+      text: 'ORIGINAL OBSERVATION OCR',
+      localizedText: expected.observations[1].localizedText,
+      timestamp: '0:02',
+      confidence: 0.99,
+    });
+    assert.deepEqual(localized.video.scenes[0], {
+      ...expected.scenes[0],
+    });
+  }
+
   const audioOnly = await analyzePublicVideoUrlWithGemini({
     platform: 'youtube',
     sourceUrl: 'https://youtube.com/watch?v=audio123',
@@ -211,6 +306,7 @@ async function runGroundingContract() {
   assert.equal(audioOnly.visual.status, 'unavailable', 'audio evidence must not be relabeled as visual evidence');
   assert.equal(audioOnly.visual.visualSummary, '');
 
+  const socialSourceIdentityResults = [];
   for (const platform of ['instagram', 'tiktok']) {
     const sourceUrl = platform === 'tiktok'
       ? 'https://tiktok.com/@creator/video/123456789'
@@ -218,6 +314,9 @@ async function runGroundingContract() {
     const playableUrl = platform === 'instagram'
       ? 'https://api.apify.com/v2/key-value-stores/test/records/instagram.mp4'
       : 'https://cdn.example.test/tiktok.mp4';
+    const sourceTitle = `Offline ${platform} source title`;
+    const sourceHandle = `@offline_${platform}_creator`;
+    const sourcePoster = `https://cdn.example.test/${platform}-poster.jpg`;
     const uploadedFile = {
       name: `files/${platform}-saved-url`,
       uri: `https://gemini.test/files/${platform}-saved-url`,
@@ -235,6 +334,10 @@ async function runGroundingContract() {
       metadata: { title: 'Metadata must not become analysis.' },
       apiKey: 'test-key',
       model: 'gemini-test',
+      maxOutputTokens: 2048,
+      maxRequestBytes: 100_000,
+      maxVideoDurationSeconds: 60,
+      requireVideoDuration: true,
       mediaApiToken: 'test-apify-token',
       resolveSocialSource: async (input) => {
         sequence.push('resolve');
@@ -242,8 +345,16 @@ async function runGroundingContract() {
         return {
           sourceUrl,
           videoUrl: playableUrl,
+          title: sourceTitle,
+          handle: sourceHandle,
+          image: sourcePoster,
           resolvedBy: 'offline-social-resolver',
-          importedMetadata: { apify: { videoUrl: playableUrl, mediaUrls: [playableUrl] } },
+          importedMetadata: {
+            title: sourceTitle,
+            handle: sourceHandle,
+            image: sourcePoster,
+            apify: { videoUrl: playableUrl, mediaUrls: [playableUrl] },
+          },
         };
       },
       uploadSocialVideo: async (input) => {
@@ -269,6 +380,8 @@ async function runGroundingContract() {
     assert.equal(resolverInput.platform, platform);
     assert.equal(resolverInput.sourceUrl, sourceUrl);
     assert.equal(uploadInput.sourceUrl, playableUrl);
+    assert.equal(uploadInput.maxDurationSeconds, 60);
+    assert.equal(uploadInput.requireDuration, true);
     assert.deepEqual(
       uploadInput.requestHeaders,
       platform === 'instagram' ? { Authorization: 'Bearer test-apify-token' } : {},
@@ -277,11 +390,15 @@ async function runGroundingContract() {
     assert.match(providerUrl, /\/v1beta\/models\/gemini-test:generateContent$/);
     assert.equal(providerBody.contents[0].parts[0].file_data.file_uri, uploadedFile.uri, `${platform} Gemini receives acquired media, not the public page`);
     assert.equal(providerBody.contents[0].parts[0].file_data.mime_type, uploadedFile.mimeType);
+    assert.match(providerBody.contents[0].parts[1].text, /descriptive fields in Ukrainian/);
     assert.equal(providerBody.generationConfig.responseMimeType, 'application/json');
+    assert.equal(providerBody.generationConfig.maxOutputTokens, 2048);
     assert.equal(providerBody.generationConfig.responseSchema.type, 'object');
     assert.ok(providerBody.generationConfig.responseSchema.required.includes('observations'));
     assert.equal(providerBody.generationConfig.responseSchema.properties.observations.type, 'array');
     assert.equal(providerBody.generationConfig.responseSchema.properties.observations.items.properties.text.type, 'string');
+    assert.equal(providerBody.generationConfig.responseSchema.properties.observations.items.properties.localizedText.type, 'string');
+    assert.equal(providerBody.generationConfig.responseSchema.properties.scenes.items.properties.localizedOnScreenText.type, 'string');
     assert.equal(
       hasPropertyRecursively(providerBody.generationConfig.responseSchema, 'additionalProperties'),
       false,
@@ -297,7 +414,62 @@ async function runGroundingContract() {
     assert.equal(social.analysis.status, 'available');
     assert.equal(social.diagnostic, null);
     assert.deepEqual(social.usage, { promptTokenCount: 900, candidatesTokenCount: 240, totalTokenCount: 1140 });
+
+    const enrichPersonalPublicVideoIntelligence = createPersonalPublicVideoEnricher(social);
+    const enrichedMetadata = await enrichPersonalPublicVideoIntelligence({
+      source: { label: platform, tone: platform },
+      url: sourceUrl,
+      title: '',
+      handle: '',
+      image: '',
+      sourceStatus: 'url_only',
+      analysisText: sourceUrl,
+    });
+    const savedUrlSignal = mapSavedUrlToProductSignal({
+      id: `saved_${platform}`,
+      platform,
+      canonicalUrl: sourceUrl,
+      originalUrl: sourceUrl,
+    }, {
+      sourceContext: {
+        title: enrichedMetadata.title,
+        handle: enrichedMetadata.handle,
+        metadata: enrichedMetadata,
+      },
+    });
+    socialSourceIdentityResults.push({
+      platform,
+      grounding: {
+        title: social.title,
+        handle: social.handle,
+        image: social.image,
+      },
+      studio: {
+        title: savedUrlSignal.title,
+        handle: savedUrlSignal.handle,
+        image: savedUrlSignal.image,
+        thumbnail: savedUrlSignal.thumbnail,
+      },
+    });
   }
+  assert.deepEqual(
+    socialSourceIdentityResults,
+    ['instagram', 'tiktok'].map((platform) => ({
+      platform,
+      grounding: {
+        title: `Offline ${platform} source title`,
+        handle: `@offline_${platform}_creator`,
+        image: `https://cdn.example.test/${platform}-poster.jpg`,
+      },
+      studio: {
+        title: `Offline ${platform} source title`,
+        handle: `@offline_${platform}_creator`,
+        image: `https://cdn.example.test/${platform}-poster.jpg`,
+        thumbnail: `https://cdn.example.test/${platform}-poster.jpg`,
+      },
+    })),
+    'resolved social title, handle, and poster must survive grounding into the Saved URL Studio signal',
+  );
 
   let failedUploadCalled = false;
   let failedInteractionCalled = false;

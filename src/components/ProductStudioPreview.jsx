@@ -185,7 +185,7 @@ function OverviewPanel({ signal, analysis, onRetryAnalysis, retryingAnalysis }) 
   );
 }
 
-function TranscriptPanel({ transcript, onRetryAnalysis, retryingAnalysis }) {
+export function TranscriptPanel({ transcript, onRetryAnalysis, retryingAnalysis }) {
   const { t } = useI18n();
   if (transcript.status !== 'available') {
     return (
@@ -213,6 +213,8 @@ function TranscriptPanel({ transcript, onRetryAnalysis, retryingAnalysis }) {
         </span>
       </header>
 
+      <p className="studio-evidence-note">{t('product.studio.transcript.boundary')}</p>
+
       {!!transcript.segments.length && (
         <section className="studio-transcript-group">
           <h3><Captions size={17} />{t('product.studio.transcript.spoken')}</h3>
@@ -234,17 +236,41 @@ function TranscriptPanel({ transcript, onRetryAnalysis, retryingAnalysis }) {
         </section>
       )}
 
-      {transcript.onScreenText && (
-        <section className="studio-transcript-text on-screen">
+      {!!transcript.ocrEntries.length && (
+        <section className="studio-ocr-group">
           <h3><MonitorUp size={17} />{t('product.studio.transcript.onScreen')}</h3>
-          <p>{transcript.onScreenText}</p>
+          <p className="studio-ocr-description">{t('product.studio.transcript.ocrDescription')}</p>
+          <div>
+            {transcript.ocrEntries.map((entry) => (
+              <article key={entry.id}>
+                <div className="studio-ocr-context">
+                  <strong>{entry.sceneNumber
+                    ? t('product.studio.transcript.scene', { count: entry.sceneNumber })
+                    : t('product.studio.transcript.sourceEntry')}</strong>
+                  {entry.time && <time>{entry.time}</time>}
+                </div>
+                <div className="studio-ocr-strings">
+                  <div className="studio-ocr-text-block original">
+                    <small>{t('product.studio.transcript.ocrOriginal')}</small>
+                    {entry.texts.map((text, index) => <p key={`${entry.id}-original-${index}`}>{text}</p>)}
+                  </div>
+                  {!!entry.localizedTexts?.length && (
+                    <div className="studio-ocr-text-block localized">
+                      <small>{t('product.studio.transcript.ocrLocalized')}</small>
+                      {entry.localizedTexts.map((text, index) => <p key={`${entry.id}-localized-${index}`}>{text}</p>)}
+                    </div>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
         </section>
       )}
     </div>
   );
 }
 
-function AnalysisPanel({ analysis, onRetryAnalysis, retryingAnalysis }) {
+export function AnalysisPanel({ analysis, onRetryAnalysis, retryingAnalysis }) {
   const { t } = useI18n();
   if (analysis.status !== 'available') {
     return (
@@ -264,6 +290,7 @@ function AnalysisPanel({ analysis, onRetryAnalysis, retryingAnalysis }) {
         <div>
           <small>{t('product.studio.analysis.label')}</small>
           <h2>{t('product.studio.analysis.title')}</h2>
+          <p>{t('product.studio.analysis.localizedBoundary')}</p>
         </div>
       </div>
       <div className="studio-analysis-grid">

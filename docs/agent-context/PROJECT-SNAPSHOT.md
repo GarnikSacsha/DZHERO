@@ -1,6 +1,6 @@
 # Project snapshot
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-17**
 
 ## Active product
 
@@ -46,6 +46,26 @@ The limited MVP direction is defined in [`MVP-SCOPE.md`](MVP-SCOPE.md).
   verified source evidence, spoken Transcript, and Deep Analysis. Deterministic
   regressions cover all three adaptations and the structured shootable Script
   Editor contract.
+- An offline integration on base
+  `0e4252c70f112a61213eed4deaa681a31ed4f9ca` now preserves resolved
+  Instagram/TikTok title, handle, and poster through grounding into Saved URL
+  Studio. Personal URL analysis is explicitly `uk` or `en` (default `uk`), and
+  adaptation lookup, single-flight work, persistence, and UI request identity
+  are language-scoped. Old records without a language remain readable as `uk`.
+- Original speech and OCR remain immutable source evidence. Optional
+  `localizedText` and `localizedOnScreenText` are separate fields; Studio shows
+  scene/time/original OCR plus a distinct translation only when it differs.
+  Localized Deep Analysis excludes direct transcript, spoken-scene, and OCR
+  fields.
+- New adaptation results add exactly three bounded semantic angles:
+  `visible_source_conflict`, `mechanism_walkthrough`, and `viewer_decision`,
+  with source-conflict, preserved-mechanic, Brand Brain, production-proof, and
+  adaptation-logic fields. Existing persisted results remain readable.
+- The synthetic offline benchmark passes 5/5 source packages, 15/15 faithful
+  variants, 3/3 bounded angles per package, and 5/5 unique visible packages;
+  the collapsed generic AI-marketing fixture is rejected 5/5. A deterministic
+  Saved URL lifecycle separately proves Studio selection, a three-scene
+  production script, and content-plan draft creation.
 - TikTok and Instagram/Reels personal URLs use the shared platform capability
   contract but fail closed before legacy page acquisition while no compliant
   arbitrary-public audiovisual path exists. The authorized fallback is a
@@ -53,6 +73,67 @@ The limited MVP direction is defined in [`MVP-SCOPE.md`](MVP-SCOPE.md).
 
 `backend/data/db.json` is local runtime state, not a product source of truth.
 Do not edit or commit it without an explicit user request.
+
+### 2026-08-15 evidence boundary
+
+The poster/language/OCR/semantic integration above is deterministic and
+offline. Provider keys were forced empty except in tests that install their own
+fake keys and fetch mocks; the harnesses report zero real provider/network
+calls. It is not deployed and does not prove diverse live-provider output
+quality or language purity. The last live-provider claim remains the single
+owner-accepted YouTube run from 2026-08-12.
+
+### 2026-08-15 capped live-run preflight
+
+The integrated worktree now has additive run-local controls for total Apify
+charge and actor-start count per platform, Instagram fallback disabling,
+downloaded-MP4 duration verification, Gemini input/request/output bounds, and
+one-attempt generation forwarding. Defaults preserve the prior behavior when
+the cap environment is absent. Focused regressions fail closed for unknown or
+overlong media, actor/fallback oversubscription, uncountable or oversized
+Gemini requests, and an expired or unknown model-pricing table.
+
+For the approved one-Instagram plus one-TikTok acceptance, the configured
+worst-case exposure was `$0.718600` of a `$0.75` ceiling: `$0.55` Apify,
+`$0.075` reserved video input, `$0.01152` video output, `$0.036` remix input,
+and `$0.04608` remix output. That cap applies only to the redesign Saved URL
+route.
+
+During the user-driven fallback, root `/` opened the legacy Signals surface.
+Its Instagram import bypassed the Saved URL guard and made three Gemini
+operations: one thumbnail analysis and two remix generations. Apify operations
+were `0`, Gemini video-analysis operations were `0`, both remix outputs were
+rejected, and no Saved URL or Reel was persisted. Exact Gemini cost was not
+recorded and is **unknown**; do not report `$0` actual cost. The local evidence
+store is the ignored `backend/data/db.json`: its `ai_operations=4` also includes
+one earlier Brand Brain derivation. Both services were stopped and the evidence
+store was preserved.
+
+`PERSONAL_URL_STRICT_LIVE_RUN=true` now blocks legacy Signals, Brand Brain,
+public Brand Scan, legacy Apify, Agent Studio, Discovery, and other unrelated
+paid-provider scopes before their provider attempt. Only the redesign Saved URL
+provider guard may pass, and only inside the `$0.718600` budget envelope. The
+separate frontend flag `VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY=true` maps
+root `/` to `/?preview=product&tab=discover`; both flags are opt-in and ordinary
+defaults remain unchanged. An isolated route-level integration harness starts a
+temporary backend with local fake providers and an outbound-network trap: all
+forbidden routes remain at zero provider attempts, while parallel Saved URL
+requests produce exactly one primary Apify actor, one video analysis, and one
+remix, with the configured duration/token/request bounds and no Instagram
+fallback. The harness loads neither the repository `.env` nor real credentials.
+
+On 2026-08-17, the default-off
+`PERSONAL_URL_CREDENTIALLESS_PREFLIGHT=true` mode was added for a zero-spend
+local readiness session. It is valid only with strict mode and the complete
+personal-URL cap configuration. The flag is recognized before local `.env`
+loading, so that file is not read at all; every provider-capable Saved URL
+request returns structured `provider_not_configured` / `controlled_preflight`
+before provider or network access, while unrelated scopes remain
+`controlled_live_run_scope_blocked`. A dynamic isolated-backend regression
+uses a sentinel credential file and proves the sentinel is absent, parallel
+requests stay at zero provider calls, and deferred CRM, Discovery, and Gemini
+cleanup make zero outbound attempts. Strict paid mode remains unchanged and
+still refuses startup without its required real credential/configuration.
 
 ## Signal Filter v3.1 baseline
 

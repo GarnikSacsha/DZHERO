@@ -3,11 +3,17 @@ import {
   createProductDiscoveryClient,
 } from '../src/productDiscoveryIntegration.mjs';
 import {
+  getPersonalUrlAdaptationForLanguage,
   getPersonalUrlAdaptationIdentity,
   isCurrentPersonalUrlAdaptationResponse,
   mapSavedUrlToProductSignal,
 } from '../src/productSavedUrlState.mjs';
-import { getStudioSourceLinks } from '../src/studioViewState.mjs';
+import { buildStudioContentPlanDraft } from '../src/contentPlanUtils.mjs';
+import {
+  getStudioRemixes,
+  getStudioSourceLinks,
+  normalizeStudioScriptScenes,
+} from '../src/studioViewState.mjs';
 
 const sourceThumbnail = 'https://i.ytimg.com/vi/personal-short/maxresdefault.jpg';
 const sourceProfileUrl = 'https://www.youtube.com/@personal-creator';
@@ -50,10 +56,34 @@ const adaptation = {
     },
     analysis: { status: 'unavailable', items: [] },
   },
-  result: { remixes: [{ title: 'A grounded variant', hook: 'Show the proof first.', visualFlow: [] }] },
+  result: {
+    remixes: ['visible_source_conflict', 'mechanism_walkthrough', 'viewer_decision'].map((semanticAngle, index) => ({
+      title: `Grounded semantic variant ${index + 1}`,
+      hook: `Show grounded proof angle ${index + 1} first.`,
+      semanticAngle,
+      centralClaim: `Distinct grounded claim ${index + 1}`,
+      sourceConflict: 'A visible process has to prove the result before the pitch.',
+      preservedMechanic: 'Show the process, reveal the result, then offer a concrete next step.',
+      brandTranslation: 'Translate the setting through Brand Brain facts without replacing the source conflict.',
+      productionProof: 'One phone, one real process, and one visible result.',
+      adaptationLogic: 'Grounded conflict becomes a shootable brand proof sequence.',
+      visualFlow: [0, 1, 2].map((beat) => ({
+        timeframe: `0:0${beat}-0:0${beat + 1}`,
+        actionDescription: `Shoot production action ${index + 1}.${beat + 1} with the real process visible.`,
+        onScreenText: `Proof ${index + 1}.${beat + 1}`,
+        audioVoiceover: `Explain production beat ${index + 1}.${beat + 1}.`,
+      })),
+      cta: `Take grounded next step ${index + 1}.`,
+    })),
+  },
 };
 
 const identity = getPersonalUrlAdaptationIdentity({ workspaceId: 'workspace-a', savedUrlId: savedUrl.id, brandRevision: 'brand-a:1' });
+const englishIdentity = getPersonalUrlAdaptationIdentity({ workspaceId: 'workspace-a', savedUrlId: savedUrl.id, brandRevision: 'brand-a:1', language: 'en' });
+assert.notEqual(identity, englishIdentity, 'Saved URL response identity must distinguish localized analysis requests');
+assert.equal(getPersonalUrlAdaptationForLanguage({ ...adaptation, language: 'en' }, 'uk'), null);
+assert.equal(getPersonalUrlAdaptationForLanguage({ ...adaptation, language: 'en' }, 'en')?.id, adaptation.id);
+assert.equal(getPersonalUrlAdaptationForLanguage(adaptation, 'uk')?.id, adaptation.id, 'legacy records without language remain Ukrainian-readable');
 assert.equal(isCurrentPersonalUrlAdaptationResponse({
   requestRevision: 2,
   currentRevision: 2,
@@ -83,6 +113,22 @@ assert.equal(signal.importedMetadata.videoIntelligence, null);
 assert.equal(signal.importedMetadata.grounding.status, 'full');
 assert.equal(signal.importedMetadata.grounding.videoInput.uri, savedUrl.canonicalUrl);
 assert.equal(signal.personalUrlAdaptation, adaptation);
+const studioRemixes = getStudioRemixes(signal, adaptation);
+assert.deepEqual(
+  studioRemixes.map((remix) => remix.semanticAngle),
+  ['visible_source_conflict', 'mechanism_walkthrough', 'viewer_decision'],
+  'Saved URL Studio exposes all three bounded semantic angles',
+);
+const selectedRemix = studioRemixes[1];
+const productionScenes = normalizeStudioScriptScenes(signal, adaptation, selectedRemix);
+assert.equal(productionScenes.length, 3, 'selected adaptation angle becomes a three-scene production script');
+assert.ok(productionScenes.every((scene) => scene.direction && scene.onScreenText && scene.voiceover));
+const contentPlanDraft = buildStudioContentPlanDraft(signal, adaptation, selectedRemix);
+assert.equal(contentPlanDraft.title, selectedRemix.title);
+assert.match(contentPlanDraft.body, /Кадр:/);
+assert.match(contentPlanDraft.body, /Текст на екрані:/);
+assert.match(contentPlanDraft.body, /Озвучка:/);
+assert.match(contentPlanDraft.body, /CTA:/);
 const studioPreviewImage = signal.image
   || signal.thumbnail
   || signal.importedMetadata?.thumbnail
@@ -107,20 +153,21 @@ const response = (status, payload) => ({
 });
 const fetcher = async (url, options = {}) => {
   calls.push({ url, options });
-  if (url.endsWith('/saved-urls/saved-youtube/adaptation')) {
+  if (url.endsWith('/saved-urls/saved-youtube/adaptation?language=en')) {
     return response(200, { sourceType: 'personal_url', savedUrl, status: 'ready', adaptation });
   }
   if (url.endsWith('/saved-urls/saved-youtube/analyze-adapt')) {
     assert.equal(options.method, 'POST');
+    assert.deepEqual(JSON.parse(options.body), { language: 'en' });
     return response(201, { sourceType: 'personal_url', savedUrl, adaptation });
   }
   throw new Error(`unexpected URL: ${url}`);
 };
 
 const client = createProductDiscoveryClient({ apiBase: '/api', workspaceId: 'workspace-a', fetcher });
-assert.equal((await client.loadSavedUrlAdaptation(savedUrl.id)).adaptation.id, adaptation.id);
-assert.equal((await client.analyzeAdaptSavedUrl(savedUrl.id)).sourceType, 'personal_url');
-assert.ok(calls.some(({ url }) => url.includes('/saved-urls/saved-youtube/adaptation')));
+assert.equal((await client.loadSavedUrlAdaptation(savedUrl.id, 'en')).adaptation.id, adaptation.id);
+assert.equal((await client.analyzeAdaptSavedUrl(savedUrl.id, 'en')).sourceType, 'personal_url');
+assert.ok(calls.some(({ url }) => url.includes('/saved-urls/saved-youtube/adaptation?language=en')));
 assert.ok(calls.some(({ url, options }) => url.includes('/saved-urls/saved-youtube/analyze-adapt') && options.method === 'POST'));
 assert.equal(calls.some(({ url }) => url.includes('/adaptations/')), false, 'personal URL flow never calls shared adaptation API');
 

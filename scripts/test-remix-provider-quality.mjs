@@ -27,10 +27,35 @@ const copiedAssessment = assessRemixQuality(copied, { globalInsight: source });
 assert.equal(copiedAssessment.ok, false);
 assert.match(copiedAssessment.reasons.join(' '), /source|copy|hashtag|variant/i);
 
+const semanticPlans = [
+  {
+    semanticAngle: 'visible_source_conflict',
+    title: 'Сюрприз у звичайній покупці',
+    hook: 'Клієнт обирає товар, а випадковий бонус змінює звичайну покупку.',
+    centralClaim: 'Випадковий бонус перетворює звичайну покупку на сюрприз для клієнта.',
+  },
+  {
+    semanticAngle: 'mechanism_walkthrough',
+    title: 'Вибір відкриває фінал',
+    hook: 'Покажи руку клієнта, відкриття бонусу і справжню реакцію без постановки.',
+    centralClaim: 'Відкриття випадкового бонусу показує механіку вибору та живу реакцію клієнта.',
+  },
+  {
+    semanticAngle: 'viewer_decision',
+    title: 'Наступний бонус вирішує глядач',
+    hook: 'Після реакції клієнта залиш вибір наступної винагороди коментарям.',
+    centralClaim: 'Глядач обирає наступну винагороду після реакції клієнта на бонус.',
+  },
+];
+
 const strong = {
-  remixes: Array.from({ length: 3 }, (_, index) => ({
-    title: `Сюрприз для клієнта ${index + 1}`,
-    hook: `Клієнт обирає товар, але фінал ${index + 1} змінює звичайну покупку на маленьку подію.`,
+  remixes: semanticPlans.map((plan) => ({
+    ...plan,
+    sourceConflict: 'Звичайна покупка переходить у бонус і реакцію клієнта.',
+    preservedMechanic: 'Випадковий вибір бонусу, відкриття і щира реакція клієнта.',
+    brandTranslation: 'Локальний продавець показує реальний товар, бонус і відповідь клієнта.',
+    productionProof: 'Телефон, полиця, товар, бонус і один клієнт у кадрі.',
+    adaptationLogic: 'Звичайна покупка переходить у випадковий вибір бонусу та чесну реакцію клієнта.',
     visualFlow: [
       { timeframe: '0:00-0:03', actionDescription: 'Покажи покупця перед вибором біля полиці.', onScreenText: 'Звичайна покупка?', audioVoiceover: 'Зараз буде дещо неочікуване.' },
       { timeframe: '0:03-0:09', actionDescription: 'Продавець додає персональний бонус і показує реакцію.', onScreenText: 'Бонус обирає випадок', audioVoiceover: 'Кожне замовлення сьогодні отримує свій сюрприз.' },
@@ -47,6 +72,13 @@ whitespaceRequiredField.remixes[0].title = '   ';
 const whitespaceAssessment = assessRemixQuality(whitespaceRequiredField, { globalInsight: source });
 assert.equal(whitespaceAssessment.ok, false);
 assert.match(whitespaceAssessment.reasons.join(' '), /missing title, hook, or CTA/i);
+
+const paraphrasedClaims = structuredClone(strong);
+paraphrasedClaims.remixes[1].centralClaim = 'Випадковий бонус перетворює звичайну покупку на сюрприз для клієнта.';
+paraphrasedClaims.remixes[2].centralClaim = 'Для клієнта звичайна покупка перетворюється на сюрприз через випадковий бонус.';
+const paraphrasedAssessment = assessRemixQuality(paraphrasedClaims, { globalInsight: source });
+assert.equal(paraphrasedAssessment.ok, false);
+assert.match(paraphrasedAssessment.reasons.join(' '), /central claim|paraphrased/i);
 
 let attempts = 0;
 const meteredAttempts = [];

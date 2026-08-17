@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "evidenceBoundary": "Synthetic grounded source summaries for deterministic contract testing. They do not prove live provider quality.",
+  "brandBrain": {
+    "brandName": "Flow Lab UA",
+    "businessType": "AI workflow consultancy for Ukrainian solo service businesses",
+    "product": "аудит AI-воркфлоу",
+    "audience": "власники малих сервісних бізнесів, які самі ведуть маркетинг",
+    "location": "Україна",
+    "toneOfVoice": "спокійний, практичний, без хайпу",
+    "contentFocus": "показувати реальні робочі процеси та обмеження автоматизації",
+    "cta": "запросити аудит процесу без вигаданих обіцянок",
+    "proof": "демонстрація реального процесу на екрані",
+    "stopTopics": [
+      "generic lists of AI marketing mistakes",
+      "fabricated revenue or time-saving numbers"
+    ]
+  },
+  "brandAnchorGroups": [
+    ["ai", "ші", "штучн"],
+    ["воркфлоу", "процес", "автоматизац"],
+    ["аудит"]
+  ],
+  "overpoweringTopicGroups": [
+    ["помилк", "не працю", "лама", "маркетинг"]
+  ],
+  "cases": [
+    {
+      "id": "ai_technology",
+      "category": "AI/technology",
+      "globalInsight": {
+        "title": "The calendar agent books the right meeting at the wrong local time",
+        "hook": "Watch one timezone field break an otherwise correct AI agent",
+        "script": "A split screen shows the agent accepting a 9 AM request, placing it at 9 AM UTC instead of Kyiv time, then rerunning after the timezone field is added.",
+        "marketingMechanics": "apparently correct automation -> hidden timezone conflict -> one-field correction -> visible successful rerun",
+        "sourceGrounding": {
+          "status": "synthetic_fixture",
+          "evidence": ["calendar before state", "timezone field correction", "calendar after state"]
+        },
+        "videoIntelligence": {
+          "video": {
+            "status": "available",
+            "videoSummary": "A split-screen debugging demo exposes and fixes a timezone mismatch.",
+            "contentMechanic": "hidden timezone conflict revealed through before/correction/after screen proof"
+          }
+        }
+      },
+      "conflictAnchorGroups": [
+        ["часов", "timezone", "utc", "київськ"],
+        ["не той час", "wrong time", "зсув часу"]
+      ],
+      "mechanicAnchorGroups": [
+        ["до після", "before after", "до виправлення", "після виправлення"],
+        ["розділен", "split screen", "два екра", "перезапуск", "rerun"]
+      ]
+    },
+    {
+      "id": "business_process",
+      "category": "business/process",
+      "globalInsight": {
+        "title": "One paper ticket blocks the bakery's entire morning queue",
+        "hook": "The oven is free, but every order is still late",
+        "script": "A top-down shot follows paper order tickets piling behind one custom cake. The baker moves that ticket to a separate lane and the normal queue starts moving again.",
+        "marketingMechanics": "visible queue bottleneck -> isolate exceptional job -> throughput resumes",
+        "sourceGrounding": {
+          "status": "synthetic_fixture",
+          "evidence": ["ticket pile", "blocked queue", "separate custom-order lane"]
+        },
+        "videoIntelligence": {
+          "video": {
+            "status": "available",
+            "videoSummary": "Paper tickets make a process bottleneck visible and a lane change resolves it.",
+            "contentMechanic": "move one exceptional job out of the shared queue to restore flow"
+          }
+        }
+      },
+      "conflictAnchorGroups": [
+        ["черг", "queue", "затор", "bottleneck"],
+        ["замовлен", "ticket", "талон", "квиток"]
+      ],
+      "mechanicAnchorGroups": [
+        ["окрем", "separate lane", "інша ліні", "винести з черги"],
+        ["потік", "рух черги", "throughput", "черга руш"]
+      ]
+    },
+    {
+      "id": "education",
+      "category": "education",
+      "globalInsight": {
+        "title": "A student teaches the fraction back and exposes the misconception",
+        "hook": "She got the answer right but cannot rebuild it with blocks",
+        "script": "The teacher asks a student to explain three quarters using four colored blocks. The first arrangement reveals a denominator misconception, then the student corrects it aloud.",
+        "marketingMechanics": "correct answer challenged by teach-back -> physical model reveals misconception -> learner self-corrects",
+        "sourceGrounding": {
+          "status": "synthetic_fixture",
+          "evidence": ["four colored blocks", "incorrect model", "student's corrected explanation"]
+        },
+        "videoIntelligence": {
+          "video": {
+            "status": "available",
+            "videoSummary": "A teach-back with colored blocks turns an invisible misconception into visible evidence.",
+            "contentMechanic": "ask learner to rebuild the answer physically, reveal the misconception, then self-correct"
+          }
+        }
+      },
+      "conflictAnchorGroups": [
+        ["правильна відповід", "correct answer", "відповідь правиль"],
+        ["не розум", "хибн", "misconception", "помилкове уявлення"]
+      ],
+      "mechanicAnchorGroups": [
+        ["поясни назад", "teach back", "навчи мене", "пояснити своїми словами"],
+        ["блок", "кубик", "кольоров", "фізичн модел"]
+      ]
+    },
+    {
+      "id": "emotional_story",
+      "category": "emotional story",
+      "globalInsight": {
+        "title": "The first customer voice note after the ceramics studio nearly closed",
+        "hook": "She kept one unheard message from the week she packed the studio",
+        "script": "The creator opens with sealed moving boxes, plays a short customer voice note, then cuts to reopening one shelf and firing the first new cup. The final shot is the customer's pickup reaction.",
+        "marketingMechanics": "near-closure vulnerability -> personal voice-note catalyst -> one small rebuilding action -> earned emotional payoff",
+        "sourceGrounding": {
+          "status": "synthetic_fixture",
+          "evidence": ["sealed boxes", "customer voice note", "one reopened shelf", "pickup reaction"]
+        },
+        "videoIntelligence": {
+          "video": {
+            "status": "available",
+            "videoSummary": "A saved customer message turns a near-closure story into one concrete act of reopening.",
+            "contentMechanic": "vulnerable low point, intimate audio catalyst, small rebuild, earned payoff"
+          }
+        }
+      },
+      "conflictAnchorGroups": [
+        ["закрит", "near closure", "запакован", "коробк"],
+        ["голосов", "voice note", "повідомлен клієнт"]
+      ],
+      "mechanicAnchorGroups": [
+        ["одна полиц", "one shelf", "малий крок", "reopen"],
+        ["реакц", "pickup", "забирає", "емоційн фінал"]
+      ]
+    },
+    {
+      "id": "visual_minimal_speech",
+      "category": "visual/minimal speech",
+      "globalInsight": {
+        "title": "A silent match cut turns a cable tangle into a labeled workstation",
+        "hook": "No talking: one snap changes chaos into a working desk",
+        "script": "In a locked overhead shot, a hand drops a tangled cable bundle. On the finger snap, match cuts progressively replace it with three labeled cables connected to the correct devices. Only a countdown is on screen.",
+        "marketingMechanics": "silent visual chaos -> repeated match-cut transformations -> labeled functional payoff",
+        "sourceGrounding": {
+          "status": "synthetic_fixture",
+          "evidence": ["locked overhead frame", "tangled cables", "three match cuts", "labeled connected devices"]
+        },
+        "videoIntelligence": {
+          "video": {
+            "status": "available",
+            "videoSummary": "A silent fixed-camera transformation resolves visible cable chaos in three match cuts.",
+            "contentMechanic": "repeat the same match cut three times while labels make the final system legible"
+          }
+        }
+      },
+      "conflictAnchorGroups": [
+        ["кабел", "cable", "дрот"],
+        ["хаос", "плутан", "tangle"]
+      ],
+      "mechanicAnchorGroups": [
+        ["без слів", "мовч", "silent", "без озвуч"],
+        ["match cut", "метч кат", "склейк", "клацан", "фіксован"]
+      ]
+    }
+  ]
+}

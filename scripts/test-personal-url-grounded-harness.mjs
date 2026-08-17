@@ -419,10 +419,13 @@ try {
   const noSpeechSignal = mapSavedUrlToProductSignal(savedUrl('saved_no_speech', 'instagram'), noSpeechAdaptation);
   assert.equal(noSpeechAdaptation.sourceContext.transcript.status, 'not_applicable');
   assert.equal(noSpeechAdaptation.sourceContext.grounding.status, 'full');
-  assert.equal(deriveStudioTranscript(noSpeechSignal).status, 'not_applicable');
+  const noSpeechEvidence = deriveStudioTranscript(noSpeechSignal);
+  assert.equal(noSpeechEvidence.status, 'available', 'OCR remains available as visual evidence when speech is not applicable');
+  assert.equal(noSpeechEvidence.spokenText, '');
+  assert.deepEqual(noSpeechEvidence.ocrEntries.map((entry) => entry.texts), [['PROCESS'], ['RESULT']]);
   assert.equal(deriveStudioAnalysis(noSpeechSignal).status, 'available');
 
-  // Video available, transcript unavailable: preserve the honest unavailable state and do not invent text.
+  // Video available, transcript unavailable: keep OCR evidence available without inventing speech.
   const transcriptUnavailable = await request(baseUrl, analyzePath('saved_transcript_unavailable'), { method: 'POST', headers: auth });
   assert.equal(transcriptUnavailable.response.status, 201);
   const transcriptDb = JSON.parse(await readFile(dbPath, 'utf8'));
@@ -430,8 +433,10 @@ try {
   const transcriptSignal = mapSavedUrlToProductSignal(savedUrl('saved_transcript_unavailable'), transcriptAdaptation);
   assert.equal(transcriptAdaptation.sourceContext.transcript.status, 'unavailable');
   assert.equal(transcriptAdaptation.sourceContext.transcript.text, '');
-  assert.equal(deriveStudioTranscript(transcriptSignal).status, 'unavailable');
-  assert.equal(deriveStudioTranscript(transcriptSignal).spokenText, '');
+  const transcriptUnavailableEvidence = deriveStudioTranscript(transcriptSignal);
+  assert.equal(transcriptUnavailableEvidence.status, 'available');
+  assert.equal(transcriptUnavailableEvidence.spokenText, '');
+  assert.deepEqual(transcriptUnavailableEvidence.ocrEntries.map((entry) => entry.texts), [['PROCESS'], ['RESULT']]);
   assert.equal(deriveStudioAnalysis(transcriptSignal).status, 'available');
 
   // Classified provider failure is retryable and never becomes completed.

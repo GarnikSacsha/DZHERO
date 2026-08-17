@@ -1,6 +1,6 @@
 # DZHERO brainstorm handoff
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-17**
 
 ## 1. Purpose and operating model
 
@@ -215,6 +215,8 @@ Praise, stated intent, or browsing without adaptation is not validation.
 - use `concurrency=1` and `retries=0` for experiments;
 - keep `maxVideoAnalysesPerRun=1`;
 - require explicit permission, a preflight, and a defined budget for paid work;
+- use credentialless controlled preflight for UI/API readiness: it skips local
+  `.env` loading and blocks every provider-capable request before network access;
 - enforce hard per-run and monthly limits and fail closed at the limit;
 - do not start mass background scraping before MVP validation.
 
@@ -255,10 +257,31 @@ contract, provider-backed evidence, and regression command.
 
 The pipeline-connectivity milestone and one real manual-YouTube grounding run
 are complete. On 2026-08-12 the owner accepted grounded Overview, verified
-evidence, spoken Transcript, and Deep Analysis on Railway staging. Deterministic
-tests separately prove the retained three variants and structured Script Editor
-contract. The next discussion must choose what repeat user behavior to validate
-rather than automatically accumulating more paid signals.
+evidence, spoken Transcript, and Deep Analysis on Railway staging.
+
+On 2026-08-15, an offline integration based on
+`0e4252c70f112a61213eed4deaa681a31ed4f9ca` added language-scoped Saved URL
+analysis/reuse, separate original and localized OCR, Source Evidence UI, and
+three bounded semantic adaptation angles. Deterministic tests prove
+Instagram/TikTok poster identity propagation, `uk/en` separation, old-result
+read compatibility, 5/5 synthetic semantic packages, collapse rejection, and
+Saved URL → Studio → selected production script → content-plan draft. No live
+provider call, deployment, or production data change is part of that evidence.
+
+A later user-driven local acceptance accidentally opened legacy root `/` and
+triggered an Instagram legacy import outside the Saved URL cap: one Gemini
+thumbnail operation and two rejected Gemini remix operations. Apify and video
+analysis were zero, no Saved URL/Reel persisted, and actual Gemini cost is
+unknown. Services are stopped and the ignored runtime store is preserved with
+four total AI operations including one preceding Brand Brain derivation. Future
+manual acceptance must use the opt-in strict provider scope and opt-in Product
+Discover root routing; normal product defaults remain unchanged.
+
+The next discussion must choose what repeat user behavior to validate rather
+than automatically accumulating more paid signals. Diverse live-provider
+semantic/language quality is still unproven, and the deterministic fallback's
+mixed-language edge case should not be mistaken for a passed localization
+benchmark.
 
 Live possibilities include:
 

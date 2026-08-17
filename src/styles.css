@@ -28445,12 +28445,28 @@ nav button.active::before {
   display: grid;
 }
 
+.studio-evidence-note,
+.studio-analysis-intro p {
+  margin: 14px 0 0;
+  color: var(--product-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.studio-evidence-note {
+  padding: 14px 16px;
+  border: 1px solid var(--product-border);
+  border-radius: 13px;
+  background: var(--product-bg);
+}
+
 .studio-transcript-group {
   padding-top: 22px;
 }
 
 .studio-transcript-group > h3,
-.studio-transcript-text > h3 {
+.studio-transcript-text > h3,
+.studio-ocr-group > h3 {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -28477,6 +28493,71 @@ nav button.active::before {
 
 .studio-transcript-text > p {
   margin-top: 12px;
+}
+
+.studio-ocr-group {
+  padding-top: 26px;
+}
+
+.studio-transcript .studio-ocr-description {
+  margin-top: 9px;
+  font-size: 11px;
+}
+
+.studio-ocr-group > div {
+  display: grid;
+  margin-top: 9px;
+}
+
+.studio-transcript .studio-ocr-group article {
+  grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);
+  gap: 18px;
+  padding: 19px 0;
+}
+
+.studio-ocr-context {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.studio-ocr-context strong {
+  color: var(--product-text);
+  font-size: 11px;
+}
+
+.studio-ocr-strings {
+  display: grid;
+  gap: 8px;
+}
+
+.studio-ocr-text-block {
+  display: grid;
+  gap: 7px;
+}
+
+.studio-ocr-text-block > small {
+  color: var(--product-muted);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.studio-ocr-text-block.localized {
+  padding-top: 5px;
+}
+
+.studio-ocr-strings p {
+  padding: 10px 12px;
+  border-left: 3px solid color-mix(in srgb, var(--product-accent) 55%, var(--product-border));
+  border-radius: 0 9px 9px 0;
+  background: var(--product-bg);
+  color: var(--product-text);
+}
+
+.studio-ocr-text-block.localized p {
+  border-left-color: color-mix(in srgb, #8864d8 60%, var(--product-border));
 }
 
 .studio-transcript article {
@@ -28907,6 +28988,11 @@ nav button.active::before {
   .studio-script > header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .studio-transcript .studio-ocr-group article {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
   }
 }
 

@@ -8,6 +8,7 @@ const {
   createGeminiVideoAnalysisTool,
   normalizeGeminiVideoResult,
   parseGeminiInteractionText,
+  readMp4DurationSeconds,
   uploadGeminiVideoBytes,
   uploadGeminiVideoFromUrl,
 } = require('../backend/services/agentStudioVideoTool.cjs');
@@ -41,6 +42,19 @@ function response(payload, { ok = true, status = 200, headers = {}, bytes = null
       return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
     },
   };
+}
+
+function createMp4WithDuration(durationSeconds, timescale = 1000) {
+  const mvhd = Buffer.alloc(28);
+  mvhd.writeUInt32BE(mvhd.length, 0);
+  mvhd.write('mvhd', 4, 4, 'ascii');
+  mvhd.writeUInt32BE(timescale, 20);
+  mvhd.writeUInt32BE(Math.round(durationSeconds * timescale), 24);
+  const moov = Buffer.alloc(8 + mvhd.length);
+  moov.writeUInt32BE(moov.length, 0);
+  moov.write('moov', 4, 4, 'ascii');
+  mvhd.copy(moov, 8);
+  return moov;
 }
 
 function offlineSafeFetch(fetchImpl) {
@@ -106,6 +120,50 @@ function installMockHttpResponses(responses) {
 }
 
 (async () => {
+  const sixtySecondMp4 = createMp4WithDuration(60);
+  assert.equal(readMp4DurationSeconds(sixtySecondMp4), 60);
+  let cappedUploadProviderCalls = 0;
+  await assert.rejects(
+    uploadGeminiVideoFromUrl({
+      sourceUrl: 'https://cdn.example.com/capped.mp4',
+      apiKey: 'test-key',
+      maxDurationSeconds: 45,
+      requireDuration: true,
+      safeFetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: { 'content-type': 'video/mp4' },
+        bytes: sixtySecondMp4,
+      }),
+      fetchImpl: async () => {
+        cappedUploadProviderCalls += 1;
+        throw new Error('Gemini upload must not start');
+      },
+    }),
+    (error) => error?.code === 'video_duration_exceeds_limit',
+  );
+  assert.equal(cappedUploadProviderCalls, 0);
+  await assert.rejects(
+    uploadGeminiVideoFromUrl({
+      sourceUrl: 'https://cdn.example.com/unknown-duration.mp4',
+      apiKey: 'test-key',
+      maxDurationSeconds: 45,
+      requireDuration: true,
+      safeFetchImpl: async () => ({
+        ok: true,
+        status: 200,
+        headers: { 'content-type': 'video/mp4' },
+        bytes: Buffer.from('not-an-mp4'),
+      }),
+      fetchImpl: async () => {
+        cappedUploadProviderCalls += 1;
+        throw new Error('Gemini upload must not start');
+      },
+    }),
+    (error) => error?.code === 'video_duration_unavailable',
+  );
+  assert.equal(cappedUploadProviderCalls, 0);
+
   await assert.rejects(
     uploadGeminiVideoFromUrl({
       sourceUrl: 'http://127.0.0.1/private-video',

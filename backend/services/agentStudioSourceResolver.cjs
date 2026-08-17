@@ -27,6 +27,9 @@ async function resolveAgentStudioVideoSource({
   workspaceId = '',
   market = 'global',
   maxTotalChargeUsd = null,
+  totalMaxChargeUsd = null,
+  maxPaidActorStarts = null,
+  allowInstagramFallback = true,
   fetchSignals = fetchApifySignals,
   runActor = runApifyActor,
   mapInstagramItem = mapInstagramApifyItem,
@@ -52,6 +55,54 @@ async function resolveAgentStudioVideoSource({
     throw error;
   }
   const attempts = [];
+  const defaultActorStartLimit = platform === 'instagram' ? 2 : 1;
+  const configuredActorStartLimit = maxPaidActorStarts === null || maxPaidActorStarts === undefined
+    ? defaultActorStartLimit
+    : Number(maxPaidActorStarts);
+  if (
+    !Number.isInteger(configuredActorStartLimit)
+    || configuredActorStartLimit < 0
+    || configuredActorStartLimit > defaultActorStartLimit
+  ) {
+    const error = new Error('saved_url_social_actor_start_limit_invalid');
+    error.code = 'saved_url_social_actor_start_limit_invalid';
+    error.status = 503;
+    throw error;
+  }
+  const aggregateCapConfigured = totalMaxChargeUsd !== null && totalMaxChargeUsd !== undefined;
+  const configuredAggregateCap = Number(totalMaxChargeUsd);
+  if (
+    aggregateCapConfigured
+    && (
+      !Number.isFinite(configuredAggregateCap)
+      || configuredAggregateCap <= 0
+      || configuredAggregateCap > platformMaxTotalChargeUsd
+    )
+  ) {
+    const error = new Error('saved_url_social_total_cost_cap_invalid');
+    error.code = 'saved_url_social_total_cost_cap_invalid';
+    error.status = 503;
+    throw error;
+  }
+  let paidActorStarts = 0;
+  let remainingAggregateExposureUsd = aggregateCapConfigured ? configuredAggregateCap : null;
+  const prepareActorAttempt = async ({ actor }) => {
+    if (paidActorStarts >= configuredActorStartLimit) return null;
+    const remainingStarts = configuredActorStartLimit - paidActorStarts;
+    const actorMaxTotalChargeUsd = aggregateCapConfigured
+      ? remainingAggregateExposureUsd / remainingStarts
+      : boundedMaxTotalChargeUsd;
+    if (typeof beforeProviderAttempt === 'function') {
+      await beforeProviderAttempt({
+        provider: 'apify',
+        model: actor,
+        operation: 'social_source_resolution',
+      });
+    }
+    paidActorStarts += 1;
+    if (aggregateCapConfigured) remainingAggregateExposureUsd -= actorMaxTotalChargeUsd;
+    return actorMaxTotalChargeUsd;
+  };
   const reportUsage = async ({ actor, status, usageTotalUsd }) => {
     if (typeof onUsage !== 'function') return;
     try {
@@ -70,14 +121,9 @@ async function resolveAgentStudioVideoSource({
     }
   };
 
-  try {
-    if (typeof beforeProviderAttempt === 'function') {
-      await beforeProviderAttempt({
-        provider: 'apify',
-        model: platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper',
-        operation: 'social_source_resolution',
-      });
-    }
+  const primaryActor = platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper';
+  const primaryActorChargeCap = await prepareActorAttempt({ actor: primaryActor });
+  if (primaryActorChargeCap !== null) try {
     const signals = await fetchSignals({
       token,
       platform,
@@ -85,13 +131,13 @@ async function resolveAgentStudioVideoSource({
       inputValue: sourceUrl,
       limit: 1,
       maxItems: 1,
-      maxTotalChargeUsd: boundedMaxTotalChargeUsd,
+      maxTotalChargeUsd: primaryActorChargeCap,
       downloadVideo: true,
       workspaceId,
       market,
     });
     await reportUsage({
-      actor: platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper',
+      actor: primaryActor,
       status: 'completed',
       usageTotalUsd: signals?.actualCostUsd,
     });
@@ -107,22 +153,25 @@ async function resolveAgentStudioVideoSource({
   } catch (error) {
     if (error?.providerAttemptBlocked) throw error;
     await reportUsage({
-      actor: platform === 'instagram' ? 'apify/instagram-reel-scraper' : 'clockworks/tiktok-scraper',
+      actor: primaryActor,
       status: 'failed',
       usageTotalUsd: error?.actualCostUsd ?? error?.run?.usageTotalUsd,
     });
     attempts.push({ actor: 'platform-default', outcome: 'failed', error: error?.message || 'unknown' });
-  }
+  } else attempts.push({ actor: 'platform-default', outcome: 'blocked_by_cap' });
 
-  if (platform === 'instagram' && typeof runActor === 'function' && typeof mapInstagramItem === 'function') {
+  if (
+    platform === 'instagram'
+    && allowInstagramFallback
+    && typeof runActor === 'function'
+    && typeof mapInstagramItem === 'function'
+  ) {
+    const fallbackActorChargeCap = await prepareActorAttempt({ actor: INSTAGRAM_FALLBACK_ACTOR });
+    if (fallbackActorChargeCap === null) {
+      attempts.push({ actor: INSTAGRAM_FALLBACK_ACTOR, outcome: 'blocked_by_cap' });
+      return { unresolved: true, sourceUrl, platform, attempts };
+    }
     try {
-      if (typeof beforeProviderAttempt === 'function') {
-        await beforeProviderAttempt({
-          provider: 'apify',
-          model: INSTAGRAM_FALLBACK_ACTOR,
-          operation: 'social_source_resolution',
-        });
-      }
       const result = await runActor({
         token,
         actorId: INSTAGRAM_FALLBACK_ACTOR,
@@ -132,7 +181,7 @@ async function resolveAgentStudioVideoSource({
           resultsLimit: 1,
         },
         maxItems: 1,
-        maxTotalChargeUsd: boundedMaxTotalChargeUsd,
+        maxTotalChargeUsd: fallbackActorChargeCap,
       });
       await reportUsage({
         actor: INSTAGRAM_FALLBACK_ACTOR,

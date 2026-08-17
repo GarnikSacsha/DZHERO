@@ -1,6 +1,66 @@
 # Recent changes
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-17**
+
+## Run-local paid acceptance guard
+
+- Added default-compatible personal-URL controls for per-platform aggregate
+  Apify charge, exact actor starts, disabling Instagram fallback, verified
+  downloaded-video duration, and bounded Gemini request/input/output size.
+- Added focused offline tests for fail-closed duration and token counting,
+  fallback/actor caps, pricing expiry and unknown models, and video/remix
+  generation-config forwarding.
+- The approved one-Instagram plus one-TikTok configuration has a conservative
+  `$0.718600` maximum under the `$0.75` owner ceiling. The estimate reserves
+  `$0.55` for Apify and `$0.168600` for Gemini video/remix work.
+- The user-driven fallback accidentally used legacy root `/`. The Instagram
+  action made three Gemini operations (one thumbnail, two remix), both remix
+  outputs were rejected, and no Saved URL or Reel persisted. Apify and video
+  analysis remained zero. Actual Gemini cost is unknown, not `$0`; the ignored
+  runtime evidence store records four total AI operations including one earlier
+  Brand Brain derivation. Both services were stopped.
+- Added `PERSONAL_URL_STRICT_LIVE_RUN` provider-scope isolation so only the
+  redesign Saved URL guard can reach paid providers during a controlled run.
+  Added `VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY` so root enters Product
+  Discover for that run; the `/auth/me` failure branch preserves the same
+  Product Discover URL instead of stripping its query. Both are explicit
+  opt-ins and preserve ordinary behavior by default.
+- Added an isolated route-level backend harness with fake providers, a fresh
+  temporary database, disabled `.env` loading, and an outbound-network trap.
+  It dynamically proves the complete forbidden-route matrix stays at zero
+  provider calls under parallel load; the only allowed Saved URL flight uses
+  one primary Instagram actor, one video analysis, one remix, no fallback, and
+  the configured duration/token/request limits. Parallel duplicate/different
+  Saved URL requests remain inside single-flight/workspace budget bounds.
+- Added `PERSONAL_URL_CREDENTIALLESS_PREFLIGHT` for default-off, zero-spend
+  local readiness. It is read before local `.env` loading, requires strict mode
+  and the verified cap, blocks all provider-capable requests (including
+  `personal_saved_url`) before network access, and disables deferred CRM,
+  Discovery, and provider cleanup. A dynamic sentinel-credential test proves
+  `.env` is skipped and startup plus parallel requests make zero provider or
+  outbound calls. Strict paid-run startup still requires real credentials.
+
+## Offline poster, language, OCR, and semantic adaptation integration
+
+- Integrated scoped P/L/A artifacts from base
+  `0e4252c70f112a61213eed4deaa681a31ed4f9ca` without merge, cherry-pick,
+  commit, deployment, provider calls, or `backend/data/db.json` changes.
+- Saved URL analysis and reuse are now language-scoped (`uk` / `en`, default
+  `uk`); old language-less records remain Ukrainian-readable and stale UI
+  results from another language are filtered out.
+- Resolved Instagram/TikTok title, handle, and poster survive grounding into
+  the Saved URL Studio signal. Original speech/OCR fields remain evidence;
+  optional localized OCR is separate and Studio renders scene, time, original,
+  and distinct translation.
+- New generation adds exactly three semantic angles plus source/brand/
+  production reasoning fields. The tracked offline benchmark passes 5/5
+  packages and rejects the tracked collapsed fixture 5/5.
+- Deterministic lifecycle coverage now links Saved URL, all three angles, a
+  selected three-scene production script, and a content-plan draft. Existing
+  stored results remain readable because the new fields are additive.
+- Evidence is offline only. It does not establish diverse live-provider quality
+  or output-language purity; the last accepted live evidence remains the single
+  2026-08-12 YouTube run.
 
 ## Same-origin auth and grounded manual-video Studio
 

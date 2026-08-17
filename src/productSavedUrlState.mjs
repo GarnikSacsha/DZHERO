@@ -12,8 +12,16 @@ export function getSavedUrlIdentity({ workspaceId = '' } = {}) {
   return String(workspaceId || '');
 }
 
-export function getPersonalUrlAdaptationIdentity({ workspaceId = '', savedUrlId = '', brandRevision = '' } = {}) {
-  return `${workspaceId}:${savedUrlId}:${brandRevision}`;
+export function getPersonalUrlAdaptationIdentity({ workspaceId = '', savedUrlId = '', brandRevision = '', language = 'uk' } = {}) {
+  const analysisLanguage = String(language || '').toLowerCase() === 'en' ? 'en' : 'uk';
+  return `${workspaceId}:${savedUrlId}:${brandRevision}:${analysisLanguage}`;
+}
+
+export function getPersonalUrlAdaptationForLanguage(adaptation, language = 'uk') {
+  if (!adaptation || typeof adaptation !== 'object') return null;
+  const requestedLanguage = String(language || '').toLowerCase() === 'en' ? 'en' : 'uk';
+  const adaptationLanguage = String(adaptation.language || '').toLowerCase() === 'en' ? 'en' : 'uk';
+  return adaptationLanguage === requestedLanguage ? adaptation : null;
 }
 
 export function isCurrentSavedUrlResponse({ requestRevision, currentRevision, requestWorkspaceId, currentWorkspaceId, cancelled = false } = {}) {

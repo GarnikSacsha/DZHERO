@@ -153,7 +153,7 @@ try {
   const insight = remixEvents[0].globalInsight;
   assert.equal(sourceContext.metadata.title, 'Grounded mocked source title');
   assert.equal(sourceContext.transcript.status, 'available');
-  assert.equal(sourceContext.videoIntelligence.video.videoSummary, 'The creator demonstrates a process before revealing the result.');
+  assert.equal(sourceContext.videoIntelligence.video.videoSummary, 'Автор показує процес перед тим, як розкриває результат.');
   assert.equal(sourceContext.grounding.status, 'full');
   assert.equal(sourceContext.grounding.mode, 'video');
   assert.equal(sourceContext.grounding.videoInput.uri, 'https://vm.tiktok.com/ZMsource');
@@ -161,7 +161,7 @@ try {
   assert.ok(insight.title, 'remix insight must carry grounded title');
   assert.ok(insight.description, 'remix insight must carry grounded description');
   assert.ok(insight.transcriptText, 'remix insight must carry grounded transcript');
-  assert.equal(insight.videoIntelligence.video.contentMechanic, 'proof before explanation');
+  assert.equal(insight.videoIntelligence.video.contentMechanic, 'доказ перед поясненням');
   assert.equal(insight.sourceGrounding.status, 'full');
   assert.equal(insight.sourceEvidence.grounding.mode, 'video');
 
@@ -232,6 +232,41 @@ try {
   });
   assert.equal(failedRetry.response.status, 500, 'source failure remains retryable');
   events = readEvents(await readFile(callsPath, 'utf8'));
+
+  const english = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source/analyze-adapt', {
+    method: 'POST',
+    headers: { authorization: 'Bearer session_source' },
+    body: JSON.stringify({ language: 'en' }),
+  });
+  assert.equal(english.response.status, 201, 'English source analysis must not reuse the Ukrainian adaptation');
+  assert.equal(english.body.adaptation.language, 'en');
+  const languageDb = JSON.parse(await readFile(dbPath, 'utf8'));
+  const localizedRecords = languageDb.workspaceUrlAdaptations.filter((record) => record.savedUrlId === 'saved_source');
+  assert.equal(localizedRecords.length, 2, 'Saved URL adaptations persist separately by requested language');
+  assert.equal(localizedRecords.find((record) => record.language === 'uk').sourceContext.videoIntelligence.video.videoSummary, 'Автор показує процес перед тим, як розкриває результат.');
+  assert.equal(localizedRecords.find((record) => record.language === 'en').sourceContext.videoIntelligence.video.videoSummary, 'The creator demonstrates a process before revealing the result.');
+  assert.deepEqual(
+    localizedRecords.find((record) => record.language === 'en').result.remixes.map((remix) => remix.semanticAngle),
+    ['visible_source_conflict', 'mechanism_walkthrough', 'viewer_decision'],
+  );
+  const englishReload = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source/adaptation?language=en', {
+    headers: { authorization: 'Bearer session_source' },
+  });
+  assert.equal(englishReload.body.status, 'ready');
+  assert.equal(englishReload.body.adaptation.language, 'en');
+  const englishRepeat = await request(baseUrl, '/api/workspaces/ws_source/saved-urls/saved_source/analyze-adapt', {
+    method: 'POST',
+    headers: { authorization: 'Bearer session_source' },
+    body: JSON.stringify({ language: 'en' }),
+  });
+  assert.equal(englishRepeat.response.status, 200);
+  assert.equal(englishRepeat.body.alreadyGenerated, true, 'same-language Saved URL request reuses its persisted adaptation');
+  events = readEvents(await readFile(callsPath, 'utf8'));
+  assert.equal(events.filter((event) => event.type === 'source_resolver' && event.savedUrlId === 'saved_source').length, 2);
+  assert.equal(events.filter((event) => event.type === 'remix_provider').length, 2);
+  assert.equal(events.find((event) => event.type === 'source_resolver' && event.savedUrlId === 'saved_source' && event.language === 'en').sourceContext.videoIntelligence.analysisLanguage, 'en');
+  assert.deepEqual(events.filter((event) => event.type === 'remix_provider').map((event) => event.language), ['uk', 'en']);
+
   console.log(`source resolver mock calls: ${events.filter((event) => event.type === 'source_resolver').length}`);
   console.log(`remix mock calls: ${events.filter((event) => event.type === 'remix_provider').length}`);
   console.log('real provider/network calls: 0');

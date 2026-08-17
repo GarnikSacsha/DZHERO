@@ -65,6 +65,7 @@ import {
   buildPersonalUrlAdaptationFailureState,
   getSavedUrlPlatformLabel,
   getSavedUrlIdentity,
+  getPersonalUrlAdaptationForLanguage,
   getPersonalUrlAdaptationIdentity,
   isCurrentSavedUrlResponse,
   isCurrentPersonalUrlAdaptationResponse,
@@ -1089,13 +1090,14 @@ export default function ProductHomePreview({
       workspaceId,
       savedUrlId: savedUrls.map((savedUrl) => savedUrl.id).join(','),
       brandRevision: activeBrandRevision,
+      language,
     });
-    setSavedUrlAdaptationStates((current) => Object.fromEntries(
-      savedUrls.map((savedUrl) => [savedUrl.id, { ...(current[savedUrl.id] || {}), status: 'loading', errorCode: '' }]),
+    setSavedUrlAdaptationStates(Object.fromEntries(
+      savedUrls.map((savedUrl) => [savedUrl.id, { status: 'loading', adaptation: null, errorCode: '' }]),
     ));
     Promise.allSettled(savedUrls.map(async (savedUrl) => ({
       savedUrl,
-      payload: await productClient.loadSavedUrlAdaptation(savedUrl.id),
+      payload: await productClient.loadSavedUrlAdaptation(savedUrl.id, language),
     }))).then((results) => {
       if (!isCurrentPersonalUrlAdaptationResponse({
         requestRevision,
@@ -1105,6 +1107,7 @@ export default function ProductHomePreview({
           workspaceId,
           savedUrlId: savedUrls.map((savedUrl) => savedUrl.id).join(','),
           brandRevision: activeBrandRevision,
+          language,
         }),
       })) return;
       const nextAdaptations = new Map();
@@ -1133,7 +1136,7 @@ export default function ProductHomePreview({
     return () => {
       savedUrlAdaptationRevisionRef.current += 1;
     };
-  }, [activeBrandRevision, authenticated, brandPersistenceStatus, productClient, savedUrls, workspaceId]);
+  }, [activeBrandRevision, authenticated, brandPersistenceStatus, language, productClient, savedUrls, workspaceId]);
   useEffect(() => {
     if (!authenticated || !workspaceId || !studioSignal?.id || activeTab !== 'studio') {
       if (!studioSignal?.id) setAdaptationState({ status: 'absent', adaptation: null, errorCode: '' });
@@ -1151,16 +1154,16 @@ export default function ProductHomePreview({
     const requestRevision = ++adaptationRequestRevisionRef.current;
     const isPersonalUrl = studioSignal.sourceType === 'personal_url' && studioSignal.savedUrlId;
     const requestIdentity = isPersonalUrl
-      ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+      ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision, language })
       : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
     setAdaptationState({ status: 'loading', adaptation: null, errorCode: '' });
     const loadAdaptation = isPersonalUrl
-      ? productClient.loadSavedUrlAdaptation(studioSignal.savedUrlId)
+      ? productClient.loadSavedUrlAdaptation(studioSignal.savedUrlId, language)
       : productClient.loadAdaptation(studioSignal.id);
     loadAdaptation
       .then((payload) => {
         const currentIdentity = isPersonalUrl
-          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision, language })
           : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
         if (cancelled || (isPersonalUrl
           ? !isCurrentPersonalUrlAdaptationResponse({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity })
@@ -1188,7 +1191,7 @@ export default function ProductHomePreview({
       })
       .catch((error) => {
         const currentIdentity = isPersonalUrl
-          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision })
+          ? getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId: studioSignal.savedUrlId, brandRevision: activeBrandRevision, language })
           : getProductAdaptationRequestIdentity({ workspaceId, signalId: studioSignal.id, brandRevision: activeBrandRevision });
         if (cancelled || (isPersonalUrl
           ? !isCurrentPersonalUrlAdaptationResponse({ requestRevision, currentRevision: adaptationRequestRevisionRef.current, requestIdentity, currentIdentity })
@@ -1202,7 +1205,7 @@ export default function ProductHomePreview({
     return () => {
       cancelled = true;
     };
-  }, [activeBrandRevision, activeTab, authenticated, brandPersistenceStatus, productClient, savedUrls, studioSignal?.id, studioSignal?.savedUrlId, studioSignal?.sourceType, workspaceId]);
+  }, [activeBrandRevision, activeTab, authenticated, brandPersistenceStatus, language, productClient, savedUrls, studioSignal?.id, studioSignal?.savedUrlId, studioSignal?.sourceType, workspaceId]);
   useEffect(() => {
     writeProductBrands(window.localStorage, brands);
     const resolved = writeActiveBrandId(window.localStorage, brands, activeBrandId);
@@ -1378,6 +1381,7 @@ export default function ProductHomePreview({
       workspaceId,
       savedUrlId,
       brandRevision: activeBrandRevision,
+      language,
     });
     setSavedUrlAdaptationStates((current) => ({
       ...current,
@@ -1393,14 +1397,14 @@ export default function ProductHomePreview({
         requestRevision,
         currentRevision: savedUrlAdaptationRevisionRef.current,
         requestIdentity,
-        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision, language }),
       })) return;
-      const payload = await productClient.analyzeAdaptSavedUrl(savedUrlId);
+      const payload = await productClient.analyzeAdaptSavedUrl(savedUrlId, language);
       if (!isCurrentPersonalUrlAdaptationResponse({
         requestRevision,
         currentRevision: savedUrlAdaptationRevisionRef.current,
         requestIdentity,
-        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision, language }),
       })) return;
       const adaptation = payload.adaptation || null;
       setSavedUrlAdaptations((current) => {
@@ -1426,12 +1430,15 @@ export default function ProductHomePreview({
         requestRevision,
         currentRevision: savedUrlAdaptationRevisionRef.current,
         requestIdentity,
-        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision }),
+        currentIdentity: getPersonalUrlAdaptationIdentity({ workspaceId, savedUrlId, brandRevision: activeBrandRevision, language }),
       })) return;
       const errorCode = error?.code || error?.message || 'saved_url_adaptation_generate_failed';
-      const retainedAdaptation = savedUrlAdaptations.get(savedUrlId)
-        || savedUrlAdaptationStates[savedUrlId]?.adaptation
-        || (studioSignal?.savedUrlId === savedUrlId ? studioSignal.personalUrlAdaptation : null)
+      const retainedAdaptation = getPersonalUrlAdaptationForLanguage(savedUrlAdaptations.get(savedUrlId), language)
+        || getPersonalUrlAdaptationForLanguage(savedUrlAdaptationStates[savedUrlId]?.adaptation, language)
+        || getPersonalUrlAdaptationForLanguage(
+          studioSignal?.savedUrlId === savedUrlId ? studioSignal.personalUrlAdaptation : null,
+          language,
+        )
         || null;
       const failureState = buildPersonalUrlAdaptationFailureState(
         errorCode,
@@ -1450,7 +1457,8 @@ export default function ProductHomePreview({
 
   const openSavedUrlStudio = (savedUrl) => {
     const savedState = savedUrlAdaptationStates[savedUrl?.id] || null;
-    const adaptation = savedUrlAdaptations.get(savedUrl?.id) || savedState?.adaptation;
+    const adaptation = getPersonalUrlAdaptationForLanguage(savedUrlAdaptations.get(savedUrl?.id), language)
+      || getPersonalUrlAdaptationForLanguage(savedState?.adaptation, language);
     if (!savedUrl) return;
     setStudioSignal(mapSavedUrlToProductSignal(savedUrl, adaptation));
     setAdaptationState(savedState?.errorCode

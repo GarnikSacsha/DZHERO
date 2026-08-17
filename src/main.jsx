@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import Shepherd from 'shepherd.js';
 import 'shepherd.js/dist/css/shepherd.css';
 import {
+  resolveAuthFailureProductEntry,
+  resolveDefaultProductEntry,
+} from './productEntryRouting.mjs';
+import {
   BarChart3,
   Bot,
   BriefcaseBusiness,
@@ -135,7 +139,8 @@ const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?/i.t
 const API_URL = isLocalApiUrl && !isLocalPage ? '/api' : rawApiUrl;
 const API_BASE = API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`;
 const PRODUCT_PREVIEW_DEFAULT_ENTRY = import.meta.env.VITE_ENABLE_PRODUCT_PREVIEW === 'true';
-const PRODUCT_PREVIEW_ENTRY = isLocalPage || PRODUCT_PREVIEW_DEFAULT_ENTRY;
+const CONTROLLED_LIVE_RUN_PRODUCT_ENTRY = import.meta.env.VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY === 'true';
+const PRODUCT_PREVIEW_ENTRY = isLocalPage || PRODUCT_PREVIEW_DEFAULT_ENTRY || CONTROLLED_LIVE_RUN_PRODUCT_ENTRY;
 const IS_BUILD_WEEK_HOST = isBrowser && window.location.hostname === 'openaibuildweek.up.railway.app';
 const AGENT_STUDIO_PUBLIC_ENTRY = IS_BUILD_WEEK_HOST || import.meta.env.VITE_ENABLE_AGENT_STUDIO === 'true';
 const LEGACY_AUTH_TOKEN_KEY = 'insta-producer-auth-token';
@@ -785,16 +790,24 @@ function getMobilePreviewUrl() {
 }
 
 function selectDefaultProductEntry() {
-  if (!isBrowser || !PRODUCT_PREVIEW_DEFAULT_ENTRY) return false;
+  if (!isBrowser) return false;
   const url = new URL(window.location.href);
-  if (url.pathname !== '/' || url.searchParams.has('preview')) return false;
+  const destination = resolveDefaultProductEntry({
+    pathname: url.pathname,
+    search: url.search,
+    defaultPreviewEnabled: PRODUCT_PREVIEW_DEFAULT_ENTRY,
+    controlledLiveRunEnabled: CONTROLLED_LIVE_RUN_PRODUCT_ENTRY,
+  });
+  if (!destination) return false;
   window.history.replaceState(
     window.history.state,
     '',
-    '/?preview=product&tab=discover',
+    destination,
   );
   return true;
 }
+
+if (CONTROLLED_LIVE_RUN_PRODUCT_ENTRY) selectDefaultProductEntry();
 
 function MobilePreviewFrame({ src }) {
   useI18n();
@@ -1184,12 +1197,18 @@ function App() {
         window.localStorage.removeItem(LEGACY_AUTH_TOKEN_KEY);
         setCurrentUser(null);
         setAuthStatus('guest');
-        const authReturn = new URL(window.location.href).searchParams.get('auth') === 'google';
-        if (productPreview && !authReturn) {
-          const publicUrl = new URL(window.location.href);
-          publicUrl.searchParams.delete('preview');
-          publicUrl.searchParams.delete('tab');
-          window.history.replaceState(window.history.state, '', `${publicUrl.pathname}${publicUrl.search}${publicUrl.hash}`);
+        const failureUrl = new URL(window.location.href);
+        const authReturn = failureUrl.searchParams.get('auth') === 'google';
+        const authFailureDestination = resolveAuthFailureProductEntry({
+          pathname: failureUrl.pathname,
+          search: failureUrl.search,
+          hash: failureUrl.hash,
+          productPreview,
+          authReturn,
+          controlledLiveRunEnabled: CONTROLLED_LIVE_RUN_PRODUCT_ENTRY,
+        });
+        if (authFailureDestination) {
+          window.history.replaceState(window.history.state, '', authFailureDestination);
         }
       });
     return () => {

@@ -8,6 +8,10 @@ function cleanApiBase(value) {
   return String(value || '/api').replace(/\/$/, '');
 }
 
+function normalizeSavedUrlLanguage(value) {
+  return String(value || '').trim().toLowerCase() === 'en' ? 'en' : 'uk';
+}
+
 export function getProductRefreshMessageStatus(status, code) {
   if (status === 'blocked' && code === 'automatic_daily_run_limit_reached') {
     return 'dailyLimit';
@@ -144,8 +148,9 @@ export function createProductDiscoveryClient({
       return payload;
     },
 
-    async loadSavedUrlAdaptation(savedUrlId) {
-      const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}/adaptation`);
+    async loadSavedUrlAdaptation(savedUrlId, language = 'uk') {
+      const analysisLanguage = normalizeSavedUrlLanguage(language);
+      const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}/adaptation?language=${analysisLanguage}`);
       const payload = await readPayload(response);
       if (!response.ok) {
         const error = new Error(payload.error || 'saved_url_adaptation_load_failed');
@@ -157,10 +162,12 @@ export function createProductDiscoveryClient({
       return payload;
     },
 
-    async analyzeAdaptSavedUrl(savedUrlId) {
+    async analyzeAdaptSavedUrl(savedUrlId, language = 'uk') {
+      const analysisLanguage = normalizeSavedUrlLanguage(language);
       const response = await request(`saved-urls/${encodeURIComponent(String(savedUrlId || ''))}/analyze-adapt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ language: analysisLanguage }),
       });
       const payload = await readPayload(response);
       if (!response.ok) {

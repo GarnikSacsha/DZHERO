@@ -42,6 +42,16 @@ const {
   getPublicVideoPlatformCapability,
 } = require('./services/publicVideoGrounding.cjs');
 const { resolveAgentStudioVideoSource } = require('./services/agentStudioSourceResolver.cjs');
+const {
+  getPersonalUrlPlatformBudget,
+  readPersonalUrlRunBudget,
+} = require('./services/personalUrlRunBudget.cjs');
+const {
+  PERSONAL_SAVED_URL_PROVIDER_SCOPE,
+  assertControlledLiveRunProviderAccess,
+  isControlledCredentiallessPreflightEnabled,
+  isControlledLiveRunEnabled,
+} = require('./services/controlledLiveRunGuard.cjs');
 const { createAgentStudioUsageCollector } = require('./services/agentStudioUsage.cjs');
 const agentStudioCoffeeFixture = require('../scripts/fixtures/agent-studio-coffee-shop.cjs');
 const {
@@ -88,7 +98,7 @@ const {
   shouldRetryPopularWithoutCategory,
 } = require('./services/youtubePopularFallback.cjs');
 const {
-  fetchApifySignals,
+  fetchApifySignals: fetchApifySignalsProvider,
   getApifySignalKey,
 } = require('./services/apifySignalProvider');
 const {
@@ -180,8 +190,16 @@ const {
   startPersonalUrlRunStage,
 } = require('./services/personalUrlRunTelemetry.cjs');
 
+function isCredentiallessPreflightRequestedBeforeEnvLoad(env = process.env) {
+  return String(env.PERSONAL_URL_CREDENTIALLESS_PREFLIGHT || '').trim().toLowerCase() === 'true';
+}
+
 function loadLocalEnv() {
-  const envPath = path.join(__dirname, '..', '.env');
+  if (isCredentiallessPreflightRequestedBeforeEnvLoad()) return;
+  if (process.env.NODE_ENV === 'test' && process.env.DISABLE_LOCAL_ENV_LOADING === 'true') return;
+  const envPath = process.env.NODE_ENV === 'test' && process.env.LOCAL_ENV_TEST_PATH
+    ? path.resolve(process.env.LOCAL_ENV_TEST_PATH)
+    : path.join(__dirname, '..', '.env');
   if (!fsSync.existsSync(envPath)) return;
   const rows = fsSync.readFileSync(envPath, 'utf8').split(/\r?\n/);
   rows.forEach((row) => {
@@ -289,6 +307,56 @@ const BETA_OWNER_TEST_ACCESS_CONFIG = readBetaOwnerTestAccessConfig(process.env)
 const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelanguage.googleapis.com/v1beta';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_VISION_MODEL = process.env.GEMINI_VISION_MODEL || process.env.GEMINI_TEXT_MODEL || process.env.GEMINI_REMIX_MODEL || 'gemini-3.5-flash';
+const PERSONAL_URL_GEMINI_VIDEO_MODEL = process.env.GEMINI_VIDEO_MODEL || 'gemini-3.6-flash';
+const PERSONAL_URL_GEMINI_REMIX_MODEL = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || 'gemini-3.5-flash';
+const PERSONAL_URL_RUN_BUDGET = readPersonalUrlRunBudget(process.env, {
+  videoModel: PERSONAL_URL_GEMINI_VIDEO_MODEL,
+  remixModel: PERSONAL_URL_GEMINI_REMIX_MODEL,
+});
+const PERSONAL_URL_STRICT_LIVE_RUN = isControlledLiveRunEnabled(process.env);
+const PERSONAL_URL_CREDENTIALLESS_PREFLIGHT = isControlledCredentiallessPreflightEnabled(process.env);
+if (PERSONAL_URL_CREDENTIALLESS_PREFLIGHT && !PERSONAL_URL_STRICT_LIVE_RUN) {
+  throw Object.assign(new Error('controlled_preflight_strict_mode_required'), {
+    code: 'controlled_preflight_strict_mode_required',
+  });
+}
+if (PERSONAL_URL_CREDENTIALLESS_PREFLIGHT && !PERSONAL_URL_RUN_BUDGET.enabled) {
+  throw Object.assign(new Error('controlled_preflight_budget_required'), {
+    code: 'controlled_preflight_budget_required',
+  });
+}
+if (PERSONAL_URL_CREDENTIALLESS_PREFLIGHT && [
+  APIFY_TOKEN,
+  process.env.APIFY_API_TOKEN,
+  GEMINI_API_KEY,
+  process.env.OPENAI_API_KEY,
+].some((value) => String(value || '').trim())) {
+  throw Object.assign(new Error('controlled_preflight_credentials_forbidden'), {
+    code: 'controlled_preflight_credentials_forbidden',
+  });
+}
+if (PERSONAL_URL_RUN_BUDGET.enabled && !GEMINI_API_KEY && !PERSONAL_URL_CREDENTIALLESS_PREFLIGHT) {
+  throw Object.assign(new Error('personal_url_run_budget_gemini_required'), {
+    code: 'personal_url_run_budget_gemini_required',
+  });
+}
+if (PERSONAL_URL_STRICT_LIVE_RUN && !PERSONAL_URL_RUN_BUDGET.enabled) {
+  throw Object.assign(new Error('controlled_live_run_budget_required'), {
+    code: 'controlled_live_run_budget_required',
+  });
+}
+
+function assertServerProviderScope(scope = '') {
+  return assertControlledLiveRunProviderAccess({
+    env: process.env,
+    scope,
+  });
+}
+
+function fetchApifySignals(options = {}) {
+  assertServerProviderScope(options.controlledLiveRunScope || 'unrelated_apify');
+  return fetchApifySignalsProvider(options);
+}
 const ENABLE_AGENT_STUDIO = process.env.ENABLE_AGENT_STUDIO === 'true';
 const OPENAI_AGENT_MODEL = process.env.OPENAI_AGENT_MODEL || 'gpt-5.6';
 const AGENT_STUDIO_TEST_PROVIDER = process.env.NODE_ENV === 'test'
@@ -306,6 +374,7 @@ const crmSyncClient = createCrmSyncClient({
 const crmSyncScheduler = createLatestSyncScheduler((payload) => crmSyncClient.sync(payload));
 
 function scheduleCrmSync(user, context = {}) {
+  if (PERSONAL_URL_CREDENTIALLESS_PREFLIGHT) return 'controlled_preflight_disabled';
   if (!crmSyncClient.configured) return 'not_configured';
   if (!isCrmSyncEligibleUser(user)) return 'not_eligible';
   let payload;
@@ -1241,6 +1310,7 @@ const SIGNAL_QUALITY_GATE_CONFIG = loadSignalQualityGateConfig();
 const SIGNAL_QUALITY_RUNTIME_GUARDS = resolveSignalQualityRuntimeGuards();
 
 function runAutomaticSignalQualityGate({ signal, workspace, runtimeGuards } = {}) {
+  assertServerProviderScope('automatic_signal_quality');
   return evaluateSignalQuality({
     signal,
     workspace,
@@ -1718,7 +1788,7 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
 }
 
 async function runAutomaticDiscoveryWorkerTick() {
-  if (!AUTOMATIC_DISCOVERY_ENABLED || automaticDiscoveryTickInFlight) return;
+  if (PERSONAL_URL_STRICT_LIVE_RUN || !AUTOMATIC_DISCOVERY_ENABLED || automaticDiscoveryTickInFlight) return;
   automaticDiscoveryTickInFlight = true;
   try {
     const db = await readDb();
@@ -1751,7 +1821,7 @@ function logAutomaticDiscoveryWorkerError(error) {
 }
 
 function startAutomaticDiscoveryWorker() {
-  if (!AUTOMATIC_DISCOVERY_ENABLED) return;
+  if (PERSONAL_URL_STRICT_LIVE_RUN || !AUTOMATIC_DISCOVERY_ENABLED) return;
   const timer = setInterval(() => {
     void runAutomaticDiscoveryWorkerTick().catch(logAutomaticDiscoveryWorkerError);
   }, AUTOMATIC_DISCOVERY_TICK_MS);
@@ -2192,11 +2262,12 @@ function reserveAiProviderAttempt(db, workspaceId, actorUser, now = new Date()) 
   return { billing, budget };
 }
 
-function createPaidAiAttemptGuard({ db, workspaceId, actorUser }) {
+function createPaidAiAttemptGuard({ db, workspaceId, actorUser, controlledLiveRunScope = '' }) {
   let queue = Promise.resolve();
   return () => {
     queue = queue.then(async () => {
       try {
+        assertServerProviderScope(controlledLiveRunScope || 'unrelated_paid_ai');
         reserveAiProviderAttempt(db, workspaceId, actorUser, new Date());
         await writeDb(db);
       } catch (error) {
@@ -2301,6 +2372,10 @@ function getWorkspaceAdaptationBrandKey(productBrand = {}) {
   });
 }
 
+function normalizePersonalUrlLanguage(value = '') {
+  return String(value || '').trim().toLowerCase() === 'en' ? 'en' : 'uk';
+}
+
 function buildSharedSignalGlobalInsight(reel = {}) {
   const metadata = reel.importedMetadata || {};
   const qualityGate = metadata.qualityGate || {};
@@ -2377,13 +2452,15 @@ function findWorkspaceSavedUrl(db, workspaceId, savedUrlId) {
   )) || null;
 }
 
-function findWorkspaceUrlAdaptation(db, workspaceId, savedUrlId, productBrand) {
+function findWorkspaceUrlAdaptation(db, workspaceId, savedUrlId, productBrand, language = 'uk') {
   const brandKey = getWorkspaceAdaptationBrandKey(productBrand);
+  const requestedLanguage = normalizePersonalUrlLanguage(language);
   return (db.workspaceUrlAdaptations || [])
     .filter((record) => (
       record.workspaceId === workspaceId
       && record.savedUrlId === savedUrlId
       && record.brandKey === brandKey
+      && normalizePersonalUrlLanguage(record.language) === requestedLanguage
       && record.status === 'completed'
     ))
     .sort((left, right) => (
@@ -2409,6 +2486,7 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
       : { status: 'unavailable', text: '', segments: [] };
   const video = intelligence?.video && typeof intelligence.video === 'object' ? intelligence.video : {};
   const visual = intelligence?.visual && typeof intelligence.visual === 'object' ? intelligence.visual : null;
+  const language = normalizePersonalUrlLanguage(input.language || intelligence?.analysisLanguage);
   const diagnostic = input.diagnostic && typeof input.diagnostic === 'object'
     ? input.diagnostic
     : intelligence?.diagnostic && typeof intelligence.diagnostic === 'object'
@@ -2496,6 +2574,7 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
     originalUrl: savedUrl.originalUrl,
     canonicalUrl: savedUrl.canonicalUrl,
     platform: savedUrl.platform,
+    language,
     title,
     description,
     handle,
@@ -2521,13 +2600,30 @@ function personalUrlSourceHasGrounding(sourceContext = {}) {
 async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
   if (process.env.NODE_ENV === 'test') {
     if (typeof remixTestProvider?.resolveSource === 'function') {
-      const resolved = await remixTestProvider.resolveSource(cloneJsonValue(savedUrl), options);
-      return buildPersonalUrlSourceContext(savedUrl, resolved);
+      const platformBudget = getPersonalUrlPlatformBudget(PERSONAL_URL_RUN_BUDGET, savedUrl.platform);
+      const resolved = await remixTestProvider.resolveSource(cloneJsonValue(savedUrl), {
+        ...options,
+        controlledRunBudget: {
+          enabled: PERSONAL_URL_RUN_BUDGET.enabled,
+          totalBudgetUsd: PERSONAL_URL_RUN_BUDGET.totalBudgetUsd,
+          platform: savedUrl.platform,
+          maxActorStarts: platformBudget?.maxActorStarts ?? null,
+          totalMaxChargeUsd: platformBudget?.totalMaxChargeUsd ?? null,
+          allowInstagramFallback: platformBudget?.allowInstagramFallback ?? null,
+          maxVideoDurationSeconds: PERSONAL_URL_RUN_BUDGET.maxVideoDurationSeconds,
+          geminiVideoMaxInputTokens: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxInputTokens,
+          geminiVideoMaxOutputTokens: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxOutputTokens,
+          geminiVideoMaxRequestBytes: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxRequestBytes,
+        },
+      });
+      return buildPersonalUrlSourceContext(savedUrl, { ...resolved, language: options.language });
     }
-    return buildPersonalUrlSourceContext(savedUrl);
+    return buildPersonalUrlSourceContext(savedUrl, { language: options.language });
   }
+  const platformBudget = getPersonalUrlPlatformBudget(PERSONAL_URL_RUN_BUDGET, savedUrl.platform);
   const metadata = await fetchPublicSourceMetadata(savedUrl.canonicalUrl, {
     beforeProviderAttempt: options.beforeProviderAttempt,
+    language: normalizePersonalUrlLanguage(options.language),
     publicVideoGrounding: true,
     mediaApiToken: APIFY_TOKEN,
     resolveSocialSource: ({ sourceUrl, beforeProviderAttempt }) => resolveAgentStudioVideoSource({
@@ -2536,14 +2632,23 @@ async function resolvePersonalUrlSourceContext(savedUrl, options = {}) {
       workspaceId: savedUrl.workspaceId,
       market: options.market || 'global',
       maxTotalChargeUsd: getSavedUrlSocialApifyMaxTotalChargeUsd(savedUrl.platform),
+      totalMaxChargeUsd: platformBudget?.totalMaxChargeUsd,
+      maxPaidActorStarts: platformBudget?.maxActorStarts,
+      allowInstagramFallback: platformBudget?.allowInstagramFallback,
       onUsage: options.onSocialSourceUsage,
       beforeProviderAttempt,
     }),
     uploadSocialVideo: uploadGeminiVideoFromUrl,
     deleteUploadedVideo: deleteGeminiFile,
+    maxVideoDurationSeconds: PERSONAL_URL_RUN_BUDGET.maxVideoDurationSeconds,
+    requireVideoDuration: PERSONAL_URL_RUN_BUDGET.enabled,
+    maxInputTokens: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxInputTokens,
+    maxOutputTokens: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxOutputTokens,
+    maxRequestBytes: PERSONAL_URL_RUN_BUDGET.geminiVideoMaxRequestBytes,
   });
   return buildPersonalUrlSourceContext(savedUrl, {
     metadata,
+    language: options.language,
     globalInsight: buildGlobalInsightFromReelMetadata(metadata),
   });
 }
@@ -2842,11 +2947,12 @@ function assertCurrentWorkspaceAccess(db, workspaceId, actorUser) {
   return { actorUser: currentActor, workspace };
 }
 
-function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
+function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser, controlledLiveRunScope = '' }) {
   let providerAttemptQueue = Promise.resolve();
   return () => {
     providerAttemptQueue = providerAttemptQueue.then(() => serializeBackgroundMutation(async () => {
       try {
+        assertServerProviderScope(controlledLiveRunScope || 'unrelated_paid_ai');
         const db = await readDb();
         const current = assertCurrentWorkspaceAccess(db, workspaceId, actorUser);
         reserveAiProviderAttempt(db, workspaceId, current.actorUser, new Date());
@@ -2860,10 +2966,14 @@ function createSerializedPaidAiAttemptGuard({ workspaceId, actorUser }) {
   };
 }
 
-function createPersonalUrlProviderAttemptGuard({ workspaceId, actorUser, tracker }) {
-  const paidAttemptGuard = createSerializedPaidAiAttemptGuard({ workspaceId, actorUser });
+function createPersonalUrlProviderAttemptGuard({ workspaceId, actorUser, tracker, apifyLimit = 2 }) {
+  const paidAttemptGuard = createSerializedPaidAiAttemptGuard({
+    workspaceId,
+    actorUser,
+    controlledLiveRunScope: PERSONAL_SAVED_URL_PROVIDER_SCOPE,
+  });
   const attempts = { apify: 0, analysis: 0, remix: 0 };
-  const limits = { apify: 2, analysis: 1, remix: 1 };
+  const limits = { apify: Math.max(0, Math.trunc(Number(apifyLimit) || 0)), analysis: 1, remix: 1 };
   return async (event = {}) => {
     const category = event.operation === 'remix'
       ? 'remix'
@@ -3689,6 +3799,7 @@ function parseGeminiJson(text = '') {
 
 async function analyzeSourceImageWithGemini(metadata, options = {}) {
   if (!GEMINI_API_KEY || !metadata?.image) return null;
+  assertServerProviderScope(options.controlledLiveRunScope || 'thumbnail_analysis');
   const inlineData = await fetchImageInlineData(metadata.image);
   if (!inlineData) return null;
   try {
@@ -3743,7 +3854,7 @@ async function analyzeSourceImageWithGemini(metadata, options = {}) {
       adaptationGuardrails: Array.isArray(parsed.adaptationGuardrails) ? parsed.adaptationGuardrails.slice(0, 5).map((item) => compactText(item, 180)) : [],
     };
   } catch (error) {
-    if (error?.status === 402) throw error;
+    if (error?.status === 402 || error?.providerAttemptBlocked) throw error;
     return { source: 'gemini_thumbnail_vision', error: error.message };
   }
 }
@@ -3751,6 +3862,7 @@ async function analyzeSourceImageWithGemini(metadata, options = {}) {
 async function generateGeminiJsonText(prompt, options = {}) {
   if (!GEMINI_API_KEY || !prompt) return '';
   const model = options.model || GEMINI_VISION_MODEL;
+  assertServerProviderScope(options.controlledLiveRunScope || options.operation || 'json_generation');
   if (typeof options.beforeProviderAttempt === 'function') {
     await options.beforeProviderAttempt({ provider: 'gemini', model, operation: options.operation || 'json_generation' });
   }
@@ -3795,6 +3907,7 @@ async function analyzeYouTubeVideoWithGemini(metadata, options = {}) {
     `Stats: ${JSON.stringify(metadata.stats || {})}`,
   ].join('\n');
   try {
+    assertServerProviderScope(options.controlledLiveRunScope || 'video_analysis');
     if (typeof options.beforeProviderAttempt === 'function') {
       await options.beforeProviderAttempt({ provider: 'gemini', model, operation: 'video_analysis' });
     }
@@ -3964,6 +4077,7 @@ async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
     platform,
     sourceUrl: metadata?.url || '',
     metadata,
+    language: normalizePersonalUrlLanguage(options.language),
     apiKey: GEMINI_API_KEY,
     model: process.env.GEMINI_VIDEO_MODEL || 'gemini-3.6-flash',
     beforeProviderAttempt: options.beforeProviderAttempt,
@@ -3971,6 +4085,11 @@ async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
     uploadSocialVideo: options.uploadSocialVideo,
     deleteUploadedVideo: options.deleteUploadedVideo,
     mediaApiToken: options.mediaApiToken,
+    maxVideoDurationSeconds: options.maxVideoDurationSeconds,
+    requireVideoDuration: options.requireVideoDuration,
+    maxInputTokens: options.maxInputTokens,
+    maxOutputTokens: options.maxOutputTokens,
+    maxRequestBytes: options.maxRequestBytes,
   });
   const videoAvailable = grounded.video?.status === 'available';
   const transcriptAvailable = grounded.transcript?.status === 'available';
@@ -3989,6 +4108,7 @@ async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
       : `source unavailable: ${grounded.diagnostic?.reasonCode || 'unknown'}`,
   };
   const intelligence = {
+    analysisLanguage: grounded.language || normalizePersonalUrlLanguage(options.language),
     sourceStatus: metadata.sourceStatus,
     sourceLabel: metadata.source?.label || '',
     confidence: {
@@ -4024,6 +4144,9 @@ async function enrichPersonalPublicVideoIntelligence(metadata, options = {}) {
   ].filter(Boolean).join(' ');
   return {
     ...metadata,
+    title: grounded.title || metadata.title || '',
+    handle: grounded.handle || metadata.handle || '',
+    image: grounded.image || metadata.image || '',
     transcriptText: grounded.transcript?.text || '',
     videoIntelligence: intelligence,
     publicVideoGroundingDiagnostic: grounded.diagnostic,
@@ -4697,7 +4820,7 @@ function pruneExpiredAgentStudioDemoVisitors(db, now = Date.now()) {
 }
 
 function scheduleGeminiFileCleanup(fileNames = []) {
-  if (!GEMINI_API_KEY || !fileNames.length) return;
+  if (PERSONAL_URL_STRICT_LIVE_RUN || !GEMINI_API_KEY || !fileNames.length) return;
   for (const fileName of new Set(fileNames)) {
     setImmediate(() => {
       void deleteGeminiFile({ fileName, apiKey: GEMINI_API_KEY });
@@ -5999,11 +6122,25 @@ app.get('/api/health', async (req, res) => {
       dataDeletionRequests: db.dataDeletionRequests.length,
     };
   }
+  if (PERSONAL_URL_STRICT_LIVE_RUN) {
+    health.controlledLiveRun = {
+      enabled: true,
+      mode: PERSONAL_URL_CREDENTIALLESS_PREFLIGHT ? 'credentialless_preflight' : 'paid',
+      providerAccess: PERSONAL_URL_CREDENTIALLESS_PREFLIGHT ? 'disabled' : 'personal_saved_url',
+      budget: {
+        enabled: PERSONAL_URL_RUN_BUDGET.enabled,
+        totalUsd: PERSONAL_URL_RUN_BUDGET.totalBudgetUsd,
+        worstCaseUsd: PERSONAL_URL_RUN_BUDGET.worstCase?.totalUsd ?? null,
+        pricingValidThrough: PERSONAL_URL_RUN_BUDGET.worstCase?.pricingValidThrough ?? null,
+      },
+    };
+  }
   res.json(health);
 });
 
 app.post('/api/brand-scan/preview', async (req, res, next) => {
   try {
+    assertServerProviderScope('public_brand_scan');
     const input = String(req.body.input || '').trim();
     if (!input) {
       res.status(400).json({ error: 'input_required', message: 'Paste a public source URL or describe the business.' });
@@ -7427,6 +7564,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/uploads', expensiveLimiter, 
   let file = null;
   let persisted = false;
   try {
+    assertServerProviderScope('agent_studio_upload');
     if (!requireAgentStudioEnabled(res)) return;
     file = await uploadAgentStudioVideo(req);
     const committed = await serializeBackgroundMutation(async () => {
@@ -7463,7 +7601,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/uploads', expensiveLimiter, 
       scheduleGeminiFileCleanup([file.name]);
     }
     if (error?.status) {
-      res.status(error.status).json({ error: error.message, message: error.message });
+      res.status(error.status).json(error.payload || { error: error.message, message: error.message });
       return;
     }
     next(error);
@@ -7472,6 +7610,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/uploads', expensiveLimiter, 
 
 app.post('/api/workspaces/:workspaceId/agent-studio/runs', expensiveLimiter, async (req, res, next) => {
   try {
+    assertServerProviderScope('agent_studio_run');
     if (!requireAgentStudioEnabled(res)) return;
     let input;
     try {
@@ -7565,6 +7704,7 @@ app.get('/api/workspaces/:workspaceId/agent-studio/runs/:runId', async (req, res
 
 app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/context', expensiveLimiter, async (req, res, next) => {
   try {
+    assertServerProviderScope('agent_studio_context_resume');
     if (!requireAgentStudioEnabled(res)) return;
     const userNotes = String(req.body?.userNotes || '').trim();
     if (userNotes.length < 10 || userNotes.length > 4000) {
@@ -7610,6 +7750,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/context', expens
 app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/source-file', expensiveLimiter, agentStudioVideoBody, async (req, res, next) => {
   let uploaded = null;
   try {
+    assertServerProviderScope('agent_studio_source_file');
     if (!requireAgentStudioEnabled(res)) return;
     let db = await readDb();
     let index = (db.agentStudioRuns || []).findIndex((run) => (
@@ -7651,7 +7792,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/source-file', ex
   } catch (error) {
     if (uploaded?.name) await deleteGeminiFile({ fileName: uploaded.name, apiKey: GEMINI_API_KEY });
     if (error?.status) {
-      res.status(error.status).json({ error: error.message, message: error.message });
+      res.status(error.status).json(error.payload || { error: error.message, message: error.message });
       return;
     }
     next(error);
@@ -7660,6 +7801,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/source-file', ex
 
 app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/retry-source', expensiveLimiter, async (req, res, next) => {
   try {
+    assertServerProviderScope('agent_studio_retry_source');
     if (!requireAgentStudioEnabled(res)) return;
     const db = await readDb();
     const index = (db.agentStudioRuns || []).findIndex((run) => (
@@ -7721,6 +7863,7 @@ app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/cancel', async (
 
 app.post('/api/workspaces/:workspaceId/agent-studio/runs/:runId/hybrid', expensiveLimiter, async (req, res, next) => {
   try {
+    assertServerProviderScope('agent_studio_hybrid');
     const candidateIds = [...new Set((Array.isArray(req.body?.candidateIds) ? req.body.candidateIds : [])
       .map((value) => String(value).trim())
       .filter(Boolean))];
@@ -8144,14 +8287,16 @@ app.get('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/adaptation', async 
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
     const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
     if (!savedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
+    const language = normalizePersonalUrlLanguage(req.query.language);
     const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
     const adaptation = productBrand && isProductBrandComplete(productBrand)
-      ? findWorkspaceUrlAdaptation(db, req.params.workspaceId, savedUrl.id, productBrand)
+      ? findWorkspaceUrlAdaptation(db, req.params.workspaceId, savedUrl.id, productBrand, language)
       : null;
     res.json({
       workspaceId: req.params.workspaceId,
       savedUrl,
       sourceType: 'personal_url',
+      language,
       status: adaptation ? 'ready' : 'absent',
       adaptation,
       brandBrain: {
@@ -8171,6 +8316,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
   let runTracker = null;
   let runSingleFlightState = 'leader';
   try {
+    assertServerProviderScope(PERSONAL_SAVED_URL_PROVIDER_SCOPE);
     const db = await readDb();
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
     const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
@@ -8186,7 +8332,8 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
 
     const generationBrand = cloneJsonValue(productBrand);
     const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
-    const flightKey = `${req.params.workspaceId}:${savedUrl.id}:${generationBrandKey}`;
+    const generationLanguage = normalizePersonalUrlLanguage(req.body?.language);
+    const flightKey = `${req.params.workspaceId}:${savedUrl.id}:${generationBrandKey}:${generationLanguage}`;
     const capability = getPublicVideoPlatformCapability(savedUrl.platform);
     runTracker = createPersonalUrlRunTracker({
       runId: `personal_url_run_${crypto.randomUUID().replaceAll('-', '')}`,
@@ -8198,7 +8345,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
       const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
       const latestSavedUrl = findWorkspaceSavedUrl(latestDb, req.params.workspaceId, savedUrl.id);
       if (!latestSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
-      const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, generationBrand);
+      const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, generationBrand, generationLanguage);
       if (existing && personalUrlSourceHasGrounding(existing.sourceContext)) {
         const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
         return {
@@ -8222,6 +8369,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           workspaceId: req.params.workspaceId,
           actorUser: latestCurrent.actorUser,
           tracker: runTracker,
+          apifyLimit: getPersonalUrlPlatformBudget(PERSONAL_URL_RUN_BUDGET, latestSavedUrl.platform)?.maxActorStarts,
         });
         startPersonalUrlRunStage(runTracker, 'source_resolution');
         let resolvedSourceContext;
@@ -8229,6 +8377,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
         try {
           resolvedSourceContext = await resolvePersonalUrlSourceContext(latestSavedUrl, {
             beforeProviderAttempt,
+            language: generationLanguage,
             onSocialSourceUsage: (entry = {}) => {
               const actualCostUsd = Number(entry.usageTotalUsd);
               if (!Number.isFinite(actualCostUsd) || actualCostUsd < 0) return;
@@ -8260,6 +8409,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           workspaceId: req.params.workspaceId,
           savedUrlId: latestSavedUrl.id,
           sourceType: 'personal_url',
+          language: generationLanguage,
           brand: Object.freeze(cloneJsonValue(generationBrand)),
           brandKey: generationBrandKey,
           source: Object.freeze(buildPersonalUrlInsight(latestSavedUrl, sourceContext)),
@@ -8272,7 +8422,13 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           generated = await remixGenerator(
             generationContext.source,
             buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
-            { beforeProviderAttempt, maxAttempts: 1 },
+            {
+              beforeProviderAttempt,
+              maxAttempts: 1,
+              language: generationLanguage,
+              maxOutputTokens: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxOutputTokens,
+              maxRequestBytes: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxRequestBytes,
+            },
           );
         } finally {
           finishPersonalUrlRunStage(runTracker, 'remix');
@@ -8294,7 +8450,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           if (!currentSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
           const currentBrand = normalizeProductBrand(currentAccess.workspace.productBrandBrain);
           const currentExisting = currentBrand
-            ? findWorkspaceUrlAdaptation(currentDb, req.params.workspaceId, savedUrl.id, generationBrand)
+            ? findWorkspaceUrlAdaptation(currentDb, req.params.workspaceId, savedUrl.id, generationBrand, generationLanguage)
             : null;
           if (currentExisting && personalUrlSourceHasGrounding(currentExisting.sourceContext)) {
             return {
@@ -8311,6 +8467,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             workspaceId: req.params.workspaceId,
             savedUrlId: currentSavedUrl.id,
             sourceType: 'personal_url',
+            language: generationLanguage,
             originalUrl: currentSavedUrl.originalUrl,
             canonicalUrl: currentSavedUrl.canonicalUrl,
             platform: currentSavedUrl.platform,
@@ -8581,6 +8738,7 @@ app.patch('/api/workspaces/:workspaceId/signals/discovery', async (req, res, nex
 
 app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, next) => {
   try {
+    assertServerProviderScope('manual_discovery');
     const accessDb = await readDb();
     const accessWorkspace = requireWorkspace(accessDb, req.params.workspaceId, res);
     if (!accessWorkspace) return;
@@ -8652,6 +8810,7 @@ app.post('/api/workspaces/:workspaceId/signals/discovery/run', async (req, res, 
 
 app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, next) => {
   try {
+    assertServerProviderScope('youtube_popular_import');
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
@@ -8793,6 +8952,7 @@ app.post('/api/workspaces/:workspaceId/reels/youtube/popular', async (req, res, 
 
 app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, next) => {
   try {
+    assertServerProviderScope('legacy_apify_import');
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
@@ -8910,6 +9070,7 @@ app.post('/api/workspaces/:workspaceId/signals/apify/import', async (req, res, n
 app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next) => {
   let dailyReservation = null;
   try {
+    assertServerProviderScope('legacy_signals_import');
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;
@@ -9052,6 +9213,7 @@ app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze', async (req, res) 
 });
 
 app.post('/api/workspaces/:workspaceId/reels/:reelId/analyze-ai', async (req, res) => {
+  assertServerProviderScope('legacy_reel_analyze_ai');
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
@@ -9262,6 +9424,7 @@ app.put('/api/workspaces/:workspaceId/agent/context/draft', async (req, res) => 
 
 app.post('/api/workspaces/:workspaceId/agent/context/finalize', async (req, res, next) => {
   try {
+    assertServerProviderScope('brand_brain_finalize');
     const requestedAnswers = normalizeBrandAnswers(req.body?.answers);
     const missingFields = getMissingBrandAnswers(requestedAnswers);
     if (missingFields.length) {
@@ -9424,6 +9587,7 @@ app.put('/api/workspaces/:workspaceId/agent/context', async (req, res) => {
 });
 
 app.post('/api/workspaces/:workspaceId/agent/chat', async (req, res) => {
+  assertServerProviderScope('agent_chat');
   const db = await readDb();
   const workspace = requireWorkspace(db, req.params.workspaceId, res);
   if (!workspace) return;
@@ -9719,6 +9883,7 @@ app.get('/api/workspaces/:workspaceId/adaptations/:signalId', async (req, res, n
 
 app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (req, res, next) => {
   try {
+    assertServerProviderScope('shared_signal_adaptation');
     const db = await readDb();
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
     const requestedSignalId = normalizeWorkspaceSavedSignalId(req.params.signalId);
@@ -9882,6 +10047,7 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
 app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) => {
   let dailyReservation = null;
   try {
+    assertServerProviderScope('legacy_remix_generate');
     const db = await readDb();
     const workspace = requireWorkspace(db, req.params.workspaceId, res);
     if (!workspace) return;

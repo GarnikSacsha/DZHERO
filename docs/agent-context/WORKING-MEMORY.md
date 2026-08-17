@@ -1,6 +1,6 @@
 # Working Memory
 
-Last updated: **2026-08-12**
+Last updated: **2026-08-17**
 
 ## Current direction
 
@@ -73,6 +73,55 @@ Live acceptance on 2026-08-12 confirmed a real YouTube signal populated
 Overview, verified evidence, spoken Transcript, and Deep Analysis. Deterministic
 tests confirm all three adaptations and the structured Script Editor contract;
 do not broaden the live claim beyond that recorded evidence.
+
+## 2026-08-15 offline integration decisions
+
+- The integration source base is
+  `0e4252c70f112a61213eed4deaa681a31ed4f9ca`; the integrated state is not a
+  commit or deployment.
+- Saved URL analysis language is explicit `uk` / `en`, defaults to `uk`, and is
+  part of server reuse, persistence, single-flight, and frontend response
+  identity. Missing legacy language continues to mean `uk`.
+- Original `spokenText`, transcript segments, `spokenContent`, `onScreenText`,
+  and on-screen observation `text` remain unchanged evidence. Translation is
+  optional and stored only in `localizedText` or `localizedOnScreenText`.
+- Studio Source Evidence owns original speech/OCR presentation. Localized Deep
+  Analysis must not duplicate direct transcript, spoken-scene, or OCR content.
+- New remix fields are additive. New generation must cover
+  `visible_source_conflict`, `mechanism_walkthrough`, and `viewer_decision`
+  exactly once, but old stored results without those fields must still open in
+  Studio and Content Plan.
+- Deterministic integration proves Saved URL → Studio → three angles → selected
+  production script → content-plan draft. The semantic benchmark proves 5/5
+  synthetic packages and rejects the collapsed generic-AI fixture; it does not
+  prove live provider quality.
+- Real remix requests now receive the workspace language and a prompt boundary
+  against copying foreign-language speech/OCR into the adaptation. This remains
+  offline contract evidence until a separately budgeted live audit exists.
+- A separately approved `$0.75` Instagram-plus-TikTok run now has a tested
+  run-local hard-cap configuration. Its conservative maximum is `$0.718600`,
+  including both platform actor caps, a double-counted video-input reserve,
+  and explicit Gemini output/request bounds. The controls are additive and do
+  not change defaults when their environment is absent.
+- The user-driven fallback accidentally opened legacy root `/`. Its Instagram
+  import made one Gemini thumbnail call and two Gemini remix calls; both remix
+  outputs were rejected. Apify and video-analysis calls were zero, no Saved URL
+  or Reel persisted, and actual Gemini cost is unknown because legacy telemetry
+  did not record tokens/cost. The preserved ignored local store reports four
+  total AI operations including one earlier Brand Brain derivation. Services
+  are stopped.
+- Future controlled acceptance must set both
+  `PERSONAL_URL_STRICT_LIVE_RUN=true` and
+  `VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY=true`. The backend flag permits
+  only the budgeted redesign Saved URL scope; the frontend flag makes root `/`
+  enter Product Discover. Neither changes normal defaults when absent.
+- For a credentialless local readiness session, additionally set
+  `PERSONAL_URL_CREDENTIALLESS_PREFLIGHT=true`. This default-off flag is
+  recognized before `.env` loading, requires strict mode plus the complete cap
+  configuration, blocks even `personal_saved_url` with structured
+  `provider_not_configured`, and suppresses deferred CRM, Discovery, and
+  provider cleanup work. Removing it returns to strict paid-run behavior,
+  including the requirement for real provider credentials.
 
 ## Product architecture
 

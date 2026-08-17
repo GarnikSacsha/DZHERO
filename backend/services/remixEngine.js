@@ -19,7 +19,7 @@ const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
 } = require('./brandBrainContext.cjs');
-const { assessRemixQuality } = require('./remixQuality.cjs');
+const { SEMANTIC_ANGLES, assessRemixQuality } = require('./remixQuality.cjs');
 
 // The Structured JSON Schema requested
 const REMIX_OUTPUT_SCHEMA = {
@@ -37,6 +37,13 @@ const REMIX_OUTPUT_SCHEMA = {
     {
       title: "Name/Angle of this UA-remix variant (e.g., 'Сміливий виклик', 'Чесний розбір', 'Швидкий лайфхак')",
       hook: "Ukrainian hook for the first 2 seconds of the video, designed to grab immediate attention",
+      semanticAngle: "One of: visible_source_conflict, mechanism_walkthrough, viewer_decision",
+      centralClaim: "One distinct one-sentence claim expressed by this title and hook",
+      sourceConflict: "Concrete conflict/tension observed in the source that remains visible in this variant",
+      preservedMechanic: "Concrete source action, reveal, proof, or visual structure recreated in this variant",
+      brandTranslation: "How actual Brand Brain facts translate the source without replacing its conflict",
+      productionProof: "Real prop, action, screen, process, or customer moment the brand can shoot to prove this scenario",
+      adaptationLogic: "Short user-visible explanation of source conflict -> preserved mechanic -> brand translation",
       visualFlow: [
         {
           timeframe: "0:00-0:03",
@@ -91,8 +98,13 @@ Here are your instructions:
    - Do not copy or translate the original video title as the remix title, hook, or structure. In Brand Mode rebuild the mechanism around the brand's niche, offer, location, proof, and CTA. In Consultant Mode rebuild it around the source action, tension, reveal, and viewer interaction.
    - NEVER use these generic AI words or phrases: "унікальний", "революційний", "зануртесь", "сфера", "інноваційний", "не пропустіть", "ключ до успіху", "готовий змінити життя?", "відкрийте для себе".
    - Never invent private metrics, client results, testimonials, or revenue numbers. If proof is missing, use safe proof placeholders such as "покажи відгук", "покажи процес", "покажи результат".
+   - Use this bounded semantic-angle contract exactly once each across the three remixes: "visible_source_conflict", "mechanism_walkthrough", and "viewer_decision". Do not invent angle names and do not use one angle three times with different wording.
+   - Every remix must include: semanticAngle, centralClaim, sourceConflict, preservedMechanic, brandTranslation, productionProof, and adaptationLogic.
+   - sourceConflict and preservedMechanic must be specific to the grounded source. The title, hook, and at least two visualFlow beats must visibly enact both; a hidden note or generic AI-marketing replacement is not enough.
+   - centralClaim must differ materially across all three variants. A synonym, reworded hook, or another list of the same "AI mistakes" is not a different angle.
+   - Brand Brain changes the setting, proof, offer, and CTA, but may never replace the source conflict with a generic niche topic. Use only concrete facts the brand can actually show.
    - Format each remix with:
-     - A unique creative angle/title.
+     - A unique semantic angle/title.
      - A killer Hook (Хук) for the first 2 seconds.
      - A step-by-step Visual Flow (Visual Row / Сценарій) mapping timestamp ranges, action descriptions, on-screen text overlays, and spoken audio voiceover.
      - A clear local Call to Action (CTA) tailored to Instagram Direct messages, comments, or bio links.
@@ -118,8 +130,15 @@ FEW-SHOT QUALITY TARGETS:
      },
      "remixes": [
        {
-         "title": "string (creative angle title in UA)",
-         "hook": "string (UA hook)",
+          "title": "string (creative angle title in UA)",
+          "hook": "string (UA hook)",
+          "semanticAngle": "visible_source_conflict | mechanism_walkthrough | viewer_decision",
+          "centralClaim": "string",
+          "sourceConflict": "string",
+          "preservedMechanic": "string",
+          "brandTranslation": "string",
+          "productionProof": "string",
+          "adaptationLogic": "string",
          "visualFlow": [
            {
              "timeframe": "string (e.g. 0:00-0:02)",
@@ -160,7 +179,18 @@ function getGeminiApiBase() {
   return process.env.GEMINI_API_BASE || DEFAULT_GEMINI_API_BASE;
 }
 
+function normalizeRemixLanguage(value = '') {
+  return String(value || '').trim().toLowerCase() === 'en' ? 'en' : 'uk';
+}
+
+function getRemixLanguageInstruction(language = 'uk') {
+  return normalizeRemixLanguage(language) === 'en'
+    ? 'Write every descriptive and user-visible output field in natural English. Preserve the source conflict and mechanic semantically, but do not copy non-English speech or OCR into the adaptation.'
+    : 'Write every descriptive and user-visible output field in natural Ukrainian. Preserve the source conflict and mechanic semantically, but do not copy non-Ukrainian speech or OCR into the adaptation.';
+}
+
 async function generateRemix(globalInsight, businessBrief, options = {}) {
+  const analysisLanguage = normalizeRemixLanguage(options.language);
   const normalizedBrandBrain = normalizeBrandBrain(businessBrief);
   const enrichedBusinessBrief = {
     ...(businessBrief || {}),
@@ -202,8 +232,19 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       return await generateValidatedProviderResult({
         provider: 'gemini',
         model: process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL,
-        generate: (qualityFeedback = '') => generateWithGemini(geminiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
+        generate: (qualityFeedback = '') => generateWithGemini(
+          geminiApiKey,
+          globalInsight,
+          enrichedBusinessBrief,
+          qualityFeedback,
+          analysisLanguage,
+          {
+            maxOutputTokens: options.maxOutputTokens,
+            maxRequestBytes: options.maxRequestBytes,
+          },
+        ),
         globalInsight,
+        businessBrief: enrichedBusinessBrief,
         beforeProviderAttempt: options.beforeProviderAttempt,
         maxAttempts: options.maxAttempts,
       });
@@ -217,8 +258,9 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       return await generateValidatedProviderResult({
         provider: 'openai',
         model: 'gpt-4o-mini',
-        generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback),
+        generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback, analysisLanguage),
         globalInsight,
+        businessBrief: enrichedBusinessBrief,
         beforeProviderAttempt: options.beforeProviderAttempt,
         maxAttempts: options.maxAttempts,
       });
@@ -281,6 +323,7 @@ async function generateValidatedProviderResult({
   model,
   generate,
   globalInsight,
+  businessBrief,
   beforeProviderAttempt,
   maxAttempts = 2,
 }) {
@@ -302,7 +345,7 @@ async function generateValidatedProviderResult({
       console.warn(`[RemixEngine] ${provider}/${model} failed on attempt ${attempt}: ${error.message}`);
       continue;
     }
-    const assessment = assessRemixQuality(result, { globalInsight });
+    const assessment = assessRemixQuality(result, { globalInsight, businessBrief });
     if (assessment.ok) {
       result._generation = {
         provider,
@@ -326,7 +369,14 @@ async function generateValidatedProviderResult({
 /**
  * Gemini SDK or REST API integration
  */
-async function generateWithGemini(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
+async function generateWithGemini(
+  apiKey,
+  globalInsight,
+  businessBrief,
+  qualityFeedback = '',
+  language = 'uk',
+  options = {},
+) {
   const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
   const url = `${getGeminiApiBase()}/models/${model}:generateContent?key=${apiKey}`;
 
@@ -357,23 +407,38 @@ Please deconstruct and generate 3 custom adaptations. Respond strictly with a JS
 ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedback}\nRewrite all three variants from scratch. Do not repeat the rejected wording.` : ''}
 `;
 
+  const requestBody = {
+    contents: [{
+      role: "user",
+      parts: [{ text: prompt }]
+    }],
+    systemInstruction: {
+      parts: [{ text: `${REMIX_SYSTEM_PROMPT}\n\n${getRemixLanguageInstruction(language)}` }]
+    },
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.75,
+      topP: 0.9,
+      ...(Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens > 0
+        ? { maxOutputTokens: options.maxOutputTokens }
+        : {}),
+    }
+  };
+  const serializedRequestBody = JSON.stringify(requestBody);
+  const configuredMaxRequestBytes = Number(options.maxRequestBytes);
+  if (
+    Number.isFinite(configuredMaxRequestBytes)
+    && configuredMaxRequestBytes > 0
+    && Buffer.byteLength(serializedRequestBody, 'utf8') > configuredMaxRequestBytes
+  ) {
+    const error = new Error('remix_request_size_limit_exceeded');
+    error.code = 'remix_request_size_limit_exceeded';
+    throw error;
+  }
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        role: "user",
-        parts: [{ text: prompt }]
-      }],
-      systemInstruction: {
-        parts: [{ text: REMIX_SYSTEM_PROMPT }]
-      },
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.75,
-        topP: 0.9
-      }
-    })
+    body: serializedRequestBody,
   });
 
   if (!response.ok) {
@@ -388,7 +453,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
 /**
  * OpenAI REST API integration
  */
-async function generateWithOpenAI(apiKey, globalInsight, businessBrief, qualityFeedback = '') {
+async function generateWithOpenAI(apiKey, globalInsight, businessBrief, qualityFeedback = '', language = 'uk') {
   const url = "https://api.openai.com/v1/chat/completions";
 
   const prompt = `
@@ -427,7 +492,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
       response_format: { type: "json_object" },
       temperature: 0.7,
       messages: [
-        { role: "system", content: REMIX_SYSTEM_PROMPT },
+        { role: "system", content: `${REMIX_SYSTEM_PROMPT}\n\n${getRemixLanguageInstruction(language)}` },
         { role: "user", content: prompt }
       ]
     })
@@ -473,168 +538,156 @@ function getMechanicSummary(globalInsight = {}) {
   return summary || 'visual surprise -> proof -> simple repeatable routine -> CTA';
 }
 
-function generateBrandAdaptedFallback(globalInsight, businessBrief) {
-  const niche = cleanBriefValue(businessBrief?.niche, 'локальний сервісний бренд');
-  const product = cleanBriefValue(businessBrief?.product, 'стартова пропозиція');
-  const location = cleanBriefValue(businessBrief?.location, 'Україна');
-  const toneOfVoice = cleanBriefValue(businessBrief?.toneOfVoice, 'спокійний, практичний, експертний');
-  const mechanic = getMechanicSummary(globalInsight);
-  const directKeyword = product.split(/\s+/).slice(0, 2).join(' ') || 'start';
-
-  const makeStep = (timeframe, actionDescription, onScreenText, audioVoiceover) => ({
-    timeframe,
-    actionDescription,
-    onScreenText,
-    audioVoiceover
-  });
-
-  const makeRemix = (title, hook, angle, pain, proof, ctaVerb) => ({
-    title,
-    hook,
-    visualFlow: [
-      makeStep(
-        '0:00-0:03',
-        `Крупний план: власник ${niche} показує перший видимий контраст для болю "${pain}", потім переводить камеру на реальний процес ${product} у ${location}.`,
-        `${pain}: подивись сюди`,
-        `Спершу не обіцянка, а деталь у кадрі. Вона пояснює, чому ${product} може інакше спрацювати для людей у ${location}.`
-      ),
-      makeStep(
-        '0:03-0:09',
-        `Кадр переходить від проблеми до процесу: руки, екран, простір, інструмент або результат, який показує, як ${niche} розв'язує ситуацію.`,
-        `Процес, не слогани`,
-        `Ми не беремо назву оригіналу. Беремо контраст, доказ і routine, а далі показуємо, як це реально працює у ${niche}.`
-      ),
-      makeStep(
-        '0:09-0:15',
-        `Покажи конкретний наступний крок: запис, чекліст, приклад результату, нотатку консультації або до/після, прив'язане до ${product}.`,
-        `${product} у ${location}`,
-        `${ctaVerb}, якщо хочеш такий самий шлях без здогадок. Я надішлю наступний крок для ${product} і поясню, що підготувати.`
-      )
-    ],
-    cta: `${ctaVerb} "${directKeyword}" у Direct або залиш коментар, і ми надішлемо наступний крок для ${product} у ${location}.`,
-    strategicNote: `${angle}. Адаптовано з механіки джерела: ${mechanic.slice(0, 180)}`
-  });
-
-  return {
-    deconstruction: {
-      coreMechanics: `Корисний патерн джерела: visual contrast -> proof -> routine -> CTA. Ми залишаємо механіку, але перебудовуємо її під ${niche}, ${product}, ${location}; назву оригіналу не копіюємо.`,
-      psychologicalTriggers: [
-        `Візуальний контраст, який зупиняє глядача ${niche}`,
-        `Конкретний доказ або процес до будь-якої обіцянки про ${product}`,
-        `Простий локальний CTA для людей у ${location}`
-      ],
-      removedCulturalContext: [
-        'Прибрано особу оригінального автора, формулювання назви та нерелевантну сцену',
-        'Іноземні референси й неперевірені результати замінено власним доказом бренду',
-        `Подачу адаптовано під тон: ${toneOfVoice}`
-      ]
-    },
-    viabilityFilter: {
-      isAdaptable: true,
-      uaMentalityCheck: `Працює для ${niche} у ${location}, бо спершу показує практичний доказ, а вже потім просить довіру і веде глядача до ${product}.`,
-      productionFeasibility: 'Можна зняти на телефон у реальному просторі: один крупний план, один кадр процесу, один результат або крок запису. Студійна команда не потрібна.'
-    },
-    remixes: [
-      makeRemix(
-        `${product}: спершу доказ`,
-        `Не вір обіцянці. Подивись доказ ${niche} у ${location}.`,
-        'Адаптація через доказ',
-        'прихований бар’єр',
-        'видимий процес',
-        'Напиши'
-      ),
-      makeRemix(
-        `${niche}: тест рутини`,
-        `Ось маленька routine, яка стоїть за ${product}.`,
-        'Розкриття рутини',
-        'щоденна помилка',
-        'повторювана routine',
-        'Коментуй'
-      ),
-      makeRemix(
-        `${location}: перед записом`,
-        `Перед тим як обрати ${product}, перевір одну річ.`,
-        'Чекліст покупця',
-        'ризик неправильного вибору',
-        'простий чекліст',
-        'Надішли'
-      )
-    ]
-  };
+function compactSourceText(value, fallback) {
+  const text = cleanBriefValue(value, fallback);
+  return text.length > 360 ? `${text.slice(0, 357)}...` : text;
 }
 
-/**
- * Generates highly realistic, custom tailored scripts when API keys are not set.
- * This guarantees the frontend works seamlessly with gorgeous high-quality content.
- */
-function generateConsultantFallback(globalInsight = {}) {
-  const mechanic = getMechanicSummary(globalInsight);
-  const mechanicText = [
+function buildSourceAdaptationContext(globalInsight = {}) {
+  const video = globalInsight.videoIntelligence?.video || {};
+  const sourceConflict = compactSourceText(
+    globalInsight.script || video.videoSummary || globalInsight.marketingMechanics || globalInsight.hook,
+    'видима напруга та конкретний момент, коли очікування не збігається з результатом',
+  );
+  const mechanismSources = [
+    video.contentMechanic,
     globalInsight.marketingMechanics,
-    globalInsight.script,
-    globalInsight.videoIntelligence?.video?.contentMechanic,
-  ].filter(Boolean).join(' ').toLowerCase();
-  const isRewardMechanic = /reward|prize|surprise|random|purchase|checkout|винагород|сюрприз|покуп/.test(mechanicText);
-  const concept = isRewardMechanic
-    ? {
-      subject: 'покупка із сюрпризом',
-      object: 'товар, жетон або картку з випадковою винагородою',
-      reveal: 'момент випадкового вибору та справжню реакцію клієнта',
-      action: 'запропонуй глядачеві обрати наступну винагороду',
-    }
-    : {
-      subject: 'звична дія з неочікуваним фіналом',
-      object: 'один зрозумілий предмет або етап процесу з джерельної механіки',
-      reveal: 'контраст між очікуванням і реальним результатом',
-      action: 'попроси глядача запропонувати наступний тест',
-    };
+    video.videoSummary,
+  ].map((value) => cleanBriefValue(value, '')).filter(Boolean);
+  const preservedMechanic = compactSourceText(
+    [...new Set(mechanismSources)].join(' | ') || globalInsight.script,
+    'показати дію, видимий поворот і доказ у кадрі',
+  );
+  return { sourceConflict, preservedMechanic };
+}
 
-  const variants = [
+function buildSourceFaithfulRemixes(globalInsight = {}, brand = {}) {
+  const source = buildSourceAdaptationContext(globalInsight);
+  const hasBrand = Boolean(brand.hasBrand);
+  const niche = cleanBriefValue(brand.niche, 'автор або локальний бізнес');
+  const product = cleanBriefValue(brand.product, 'наступний корисний крок');
+  const audience = cleanBriefValue(brand.audience, 'глядач');
+  const location = cleanBriefValue(brand.location, 'Україна');
+  const directKeyword = product.split(/\s+/).slice(0, 2).join(' ') || 'ідея';
+  const brandTranslation = hasBrand
+    ? `Для ${niche}: ${product} для ${audience} у ${location}; бренд змінює контекст і CTA, але не конфлікт джерела.`
+    : 'Консультантський режим: не вигадувати продукт або результат, а пояснити дію джерела через безпечний інтерактив.';
+  const consultantRewardCue = /reward|prize|surprise|random|purchase|checkout|винагород|сюрприз|покуп/u.test(`${source.sourceConflict} ${source.preservedMechanic}`)
+    ? 'покупка, винагорода і жива реакція клієнта'
+    : 'конкретна дія, напруга і видимий фінал із джерела';
+  const plans = [
     {
-      title: 'Сюрприз після звичайної дії',
-      hook: `Звичайна ${concept.subject} закінчується не так, як очікує клієнт.`,
-      opener: 'Почни зі звичайного моменту без пояснень, щоб глядач упізнав ситуацію.',
-      middle: `Одразу після основної дії покажи ${concept.object}; не розкривай результат до останньої секунди.`,
-      ending: `Зніми ${concept.reveal} одним безперервним крупним планом.`,
+      semanticAngle: SEMANTIC_ANGLES[0],
+      title: hasBrand ? `${product}: конфлікт у кадрі` : 'Конфлікт без пояснення',
+      hook: `Спершу покажи цей конфлікт: ${source.sourceConflict}`,
+      centralClaim: `Конфлікт джерела ${source.sourceConflict} треба показати до пропозиції ${product}.`,
+      opener: 'Почни з моменту, коли очікування ламається, без пояснення в першу секунду.',
+      ctaVerb: hasBrand ? 'Напиши' : 'Опиши',
     },
     {
-      title: 'Клієнт обирає фінал',
-      hook: 'Тут результат вирішує не продавець, а один випадковий вибір клієнта.',
-      opener: `Поклади в кадр ${concept.object} і запропонуй клієнту зробити вибір навмання.`,
-      middle: 'Чергуй крупний план руки, коротку паузу перед відкриттям і обличчя людини без постановочної реакції.',
-      ending: `Покажи ${concept.reveal}, а потім залиш у кадрі обидва елементи: покупку та бонус.`,
+      semanticAngle: SEMANTIC_ANGLES[1],
+      title: hasBrand ? `${product}: механіка в дії` : 'Повтори механіку',
+      hook: `Не розказуй про рішення — відтвори механіку: ${source.preservedMechanic}`,
+      centralClaim: `Механіка джерела ${source.preservedMechanic} має стати видимою дією для ${product}.`,
+      opener: 'Покажи руки, екран або предмет саме в моменті, коли механіка змінює ситуацію.',
+      ctaVerb: hasBrand ? 'Коментуй' : 'Запропонуй',
     },
     {
-      title: 'Чи пощастить наступному?',
-      hook: 'Перший клієнт уже отримав свій сюрприз. Що дістанеться наступному?',
-      opener: 'Відкрий ролик готовою реакцією, а потім швидко повернись на кілька секунд назад до моменту вибору.',
-      middle: `Покажи правила через дію: основний предмет, випадковий вибір і ${concept.object} без довгого пояснення.`,
-      ending: 'Заверши порожнім місцем для наступного бонусу, щоб продовження стало природною частиною серії.',
+      semanticAngle: SEMANTIC_ANGLES[2],
+      title: hasBrand ? `${product}: рішення глядача` : 'Глядач обирає крок',
+      hook: hasBrand
+        ? `Глядач обирає наступний крок, який варто перевірити для ${product}.`
+        : 'Глядач обирає наступний крок, який варто перевірити в цій ситуації.',
+      centralClaim: hasBrand
+        ? `Глядач обирає наступний крок для перевірки ${product}.`
+        : 'Глядач обирає наступний крок для перевірки ситуації.',
+      opener: 'Відкрий короткою паузою перед вибором і залиш у кадрі предмет або екран із джерельної ситуації.',
+      ctaVerb: hasBrand ? 'Надішли' : 'Обери',
     },
   ];
 
+  return plans.map((plan) => ({
+    title: plan.title,
+    hook: plan.hook,
+    semanticAngle: plan.semanticAngle,
+    centralClaim: plan.centralClaim,
+    sourceConflict: source.sourceConflict,
+    preservedMechanic: source.preservedMechanic,
+    brandTranslation,
+    productionProof: `Телефон, один виконавець і конкретний доказ у кадрі: ${hasBrand ? product : consultantRewardCue}.`,
+    adaptationLogic: `Конфлікт: ${source.sourceConflict}. Механіка: ${source.preservedMechanic}. Переклад: ${brandTranslation}`,
+    strategicNote: `Source-faithful ${plan.semanticAngle}: ${source.preservedMechanic}`,
+    visualFlow: [
+      {
+        timeframe: '0:00-0:03',
+        actionDescription: `${plan.opener} Конфлікт джерела в кадрі: ${source.sourceConflict}.`,
+        onScreenText: plan.title,
+        audioVoiceover: plan.hook,
+      },
+      {
+        timeframe: '0:03-0:09',
+        actionDescription: `Відтвори механіку джерела без заміни теми: ${source.preservedMechanic}. Потім покажи реальний процес ${hasBrand ? product : consultantRewardCue}.`,
+        onScreenText: hasBrand ? `${product}: дія, не обіцянка` : 'Дія, не вигаданий офер',
+        audioVoiceover: `Не підмінюй ситуацію загальною порадою. У кадрі має залишитися: ${source.preservedMechanic}.`,
+      },
+      {
+        timeframe: '0:09-0:15',
+        actionDescription: `Покажи наступний крок для ${hasBrand ? product : consultantRewardCue}, але поверни глядача до конфлікту: ${source.sourceConflict}.`,
+        onScreenText: hasBrand ? `${product} у ${location}` : 'Що перевірити наступним?',
+        audioVoiceover: hasBrand
+          ? `Це ${product} для ${audience}: не обіцянка, а спосіб перевірити конкретну ситуацію.`
+          : 'Запропонуй наступну перевірку без вигаданого бренду або результату.',
+      },
+    ],
+    cta: hasBrand
+      ? `${plan.ctaVerb} "${directKeyword}" у Direct або коментарі, щоб обговорити ${product}.`
+      : `${plan.ctaVerb} наступний варіант у коментарях, який варто перевірити в цій ситуації.`,
+  }));
+}
+
+function generateBrandAdaptedFallback(globalInsight, businessBrief) {
+  const normalized = normalizeBrandBrain(businessBrief);
+  const niche = cleanBriefValue(normalized.businessType, 'локальний сервісний бренд');
+  const product = cleanBriefValue(normalized.product || normalized.offer, 'стартова пропозиція');
+  const location = cleanBriefValue(normalized.location, 'Україна');
+  const toneOfVoice = cleanBriefValue(normalized.toneOfVoice, 'спокійний, практичний, експертний');
+  const source = buildSourceAdaptationContext(globalInsight);
+
   return {
     deconstruction: {
-      coreMechanics: `Механіка джерела: ${mechanic.slice(0, 220)}. Для адаптації збережено очікування, випадковий поворот і живу реакцію, але прибрано назву та текст оригіналу.`,
-      psychologicalTriggers: ['цікавість до прихованого результату', 'справжня реакція замість постановки', 'можливість глядача вплинути на продовження'],
-      removedCulturalContext: ['назва, хештеги та персонажі джерела', 'непідтверджені факти про бренд', 'складний продакшн'],
+      coreMechanics: `Конфлікт джерела: ${source.sourceConflict}. Збережена механіка: ${source.preservedMechanic}. Бренд перекладає їх у свій контекст, не замінюючи загальним AI-маркетингом.`,
+      psychologicalTriggers: ['видима конкретна напруга', 'дія або поворот, який можна перевірити', 'простий наступний крок без вигаданих результатів'],
+      removedCulturalContext: ['назву та дослівний текст оригіналу', 'непідтверджені метрики й сторонні бренди', `подачу, що не відповідає тону ${toneOfVoice}`],
     },
     viabilityFilter: {
       isAdaptable: true,
-      uaMentalityCheck: 'Сценарій працює без знання бренду, бо тримається на зрозумілій людській дії, чесній реакції та простому інтерактиві.',
-      productionFeasibility: 'Потрібні телефон, один клієнт або учасник, предмет у кадрі та три короткі плани без студійного світла.',
+      uaMentalityCheck: `Працює для ${niche} у ${location}, бо спершу показує конкретну ситуацію, а ${product} додає лише реальний наступний крок.`,
+      productionFeasibility: 'Можна зняти на телефон у реальному просторі: один виконавець, один конкретний процес і три короткі кадри без студії.',
     },
-    remixes: variants.map((variant) => ({
-      title: variant.title,
-      hook: variant.hook,
-      visualFlow: [
-        { timeframe: '0:00-0:03', actionDescription: variant.opener, onScreenText: variant.hook, audioVoiceover: 'Не пояснюй усе одразу. Дай глядачеві секунду здогадатися, що станеться.' },
-        { timeframe: '0:03-0:09', actionDescription: variant.middle, onScreenText: 'Обирай. Відкриваємо зараз.', audioVoiceover: 'Один вибір, одна спроба і жодних перегравань заради камери.' },
-        { timeframe: '0:09-0:15', actionDescription: variant.ending, onScreenText: 'Що додати наступного разу?', audioVoiceover: `${concept.action}. Найцікавішу відповідь використаємо у продовженні.` },
-      ],
-      cta: `${concept.action}. Залиш конкретний варіант у коментарях, щоб він міг потрапити в наступний ролик.`,
-      strategicNote: `Consultant mode: сценарій спирається на механіку джерела без вигаданих даних Brand Brain.`,
-    })),
+    remixes: buildSourceFaithfulRemixes(globalInsight, {
+      hasBrand: true,
+      niche,
+      product,
+      audience: normalized.audience,
+      location,
+    }),
+  };
+}
+
+function generateConsultantFallback(globalInsight = {}) {
+  const source = buildSourceAdaptationContext(globalInsight);
+  return {
+    deconstruction: {
+      coreMechanics: `Конфлікт джерела: ${source.sourceConflict}. Збережена механіка: ${source.preservedMechanic}.`,
+      psychologicalTriggers: ['цікавість до конкретного повороту', 'видимий доказ замість загальної поради', 'безпечний інтерактив без вигаданого оферу'],
+      removedCulturalContext: ['назва, хештеги та персонажі джерела', 'непідтверджені дані про бренд', 'складний продакшн'],
+    },
+    viabilityFilter: {
+      isAdaptable: true,
+      uaMentalityCheck: 'Сценарій тримається на видимій людській дії та чесній реакції, тому не вимагає вигаданого Brand Brain.',
+      productionFeasibility: 'Потрібні телефон, один учасник, предмет або екран із ситуації джерела та три короткі плани без студійного світла.',
+    },
+    remixes: buildSourceFaithfulRemixes(globalInsight),
   };
 }
 

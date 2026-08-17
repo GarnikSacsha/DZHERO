@@ -99,6 +99,44 @@ const {
     model: INSTAGRAM_FALLBACK_ACTOR,
   }]);
 
+  const aggregateCaps = [];
+  await resolveAgentStudioVideoSource({
+    token: 'test-apify-token',
+    sourceUrl: 'https://www.instagram.com/reel/aggregate-cap/',
+    maxTotalChargeUsd: 0.05,
+    totalMaxChargeUsd: 0.05,
+    maxPaidActorStarts: 2,
+    fetchSignals: async (options) => {
+      aggregateCaps.push(options.maxTotalChargeUsd);
+      return [];
+    },
+    runActor: async (options) => {
+      aggregateCaps.push(options.maxTotalChargeUsd);
+      return { items: [] };
+    },
+  });
+  assert.deepEqual(aggregateCaps, [0.025, 0.025], 'aggregate exposure is divided across bounded actor starts');
+
+  let disabledFallbackCalls = 0;
+  const fallbackDisabled = await resolveAgentStudioVideoSource({
+    token: 'test-apify-token',
+    sourceUrl: 'https://www.instagram.com/reel/no-fallback/',
+    maxTotalChargeUsd: 0.05,
+    totalMaxChargeUsd: 0.05,
+    maxPaidActorStarts: 1,
+    allowInstagramFallback: false,
+    fetchSignals: async (options) => {
+      assert.equal(options.maxTotalChargeUsd, 0.05);
+      return [];
+    },
+    runActor: async () => {
+      disabledFallbackCalls += 1;
+      return { items: [] };
+    },
+  });
+  assert.equal(fallbackDisabled.unresolved, true);
+  assert.equal(disabledFallbackCalls, 0, 'disabled Instagram fallback must never start its actor');
+
   const unresolved = await resolveAgentStudioVideoSource({
     token: 'test-apify-token',
     sourceUrl: 'https://www.instagram.com/reel/blocked/',
