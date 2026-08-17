@@ -9,7 +9,7 @@ const GEMINI_API_BASE = process.env.GEMINI_API_BASE || 'https://generativelangua
 const DEFAULT_PUBLIC_VIDEO_MODEL = 'gemini-3.6-flash';
 const SOURCE_RESOLUTION_ATTEMPT_LIMIT = 4;
 const SOURCE_RESOLUTION_ACTOR_MAX_LENGTH = 120;
-const SOURCE_RESOLUTION_OUTCOMES = new Set(['empty', 'failed', 'blocked_by_cap']);
+const SOURCE_RESOLUTION_OUTCOMES = new Set(['empty', 'failed', 'blocked_by_cap', 'resolved']);
 
 const PUBLIC_VIDEO_RESPONSE_FORMAT = Object.freeze({
   type: 'text',
@@ -243,9 +243,7 @@ function buildDiagnostic({
   sourceResolutionAttempts = [],
 } = {}) {
   const normalizedStage = compactText(stage, 80) || 'source_acquisition';
-  const sanitizedSourceResolutionAttempts = normalizedStage === 'source_resolution'
-    ? sanitizeSourceResolutionAttempts(sourceResolutionAttempts)
-    : [];
+  const sanitizedSourceResolutionAttempts = sanitizeSourceResolutionAttempts(sourceResolutionAttempts);
   const provider = model || httpStatus || interactionStatus
     ? {
       name: 'gemini',
@@ -566,6 +564,7 @@ async function analyzePublicVideoUrlWithGemini({
   let uploadedFile = null;
   let analysisUri = sourceUrl;
   let resolvedSourceMetadata = {};
+  let sourceResolutionAttempts = [];
   const cleanupUploadedVideo = async () => {
     if (!uploadedFile?.name || typeof deleteUploadedVideo !== 'function') return;
     const fileName = uploadedFile.name;
@@ -603,6 +602,7 @@ async function analyzePublicVideoUrlWithGemini({
     const importedMetadata = resolved?.importedMetadata && typeof resolved.importedMetadata === 'object'
       ? resolved.importedMetadata
       : {};
+    sourceResolutionAttempts = sanitizeSourceResolutionAttempts(resolved?.attempts);
     resolvedSourceMetadata = {
       title: compactText(resolved?.title || importedMetadata.title, 500),
       handle: compactText(resolved?.handle || importedMetadata.handle, 200),
@@ -621,7 +621,7 @@ async function analyzePublicVideoUrlWithGemini({
         reasonCode: 'social_video_unavailable',
         retryable: true,
         fallback: capability.fallback,
-        sourceResolutionAttempts: resolved?.attempts,
+        sourceResolutionAttempts,
       }));
     }
     if (typeof uploadSocialVideo !== 'function') {
@@ -665,6 +665,7 @@ async function analyzePublicVideoUrlWithGemini({
         retryable: !durationGuardFailure,
         fallback: capability.fallback,
         model,
+        sourceResolutionAttempts,
       }));
     }
     analysisUri = uploadedFile.uri;
@@ -714,21 +715,27 @@ async function analyzePublicVideoUrlWithGemini({
         retryable: false,
         fallback: capability.fallback,
         model,
+        sourceResolutionAttempts,
       }));
     }
     const configuredMaxInputTokens = Number(maxInputTokens);
-    if (Number.isFinite(configuredMaxInputTokens) && configuredMaxInputTokens > 0) {
-      if (!isSocialPlatform) {
-        await cleanupUploadedVideo();
-        return emptyEvidence(buildDiagnostic({
-          platform,
-          stage: 'provider_request',
-          reasonCode: 'gemini_input_token_count_unsupported',
-          retryable: false,
-          fallback: capability.fallback,
-          model,
-        }));
-      }
+    const shouldCountInputTokens = Number.isFinite(configuredMaxInputTokens) && configuredMaxInputTokens > 0;
+    if (shouldCountInputTokens && !isSocialPlatform) {
+      await cleanupUploadedVideo();
+      return emptyEvidence(buildDiagnostic({
+        platform,
+        stage: 'provider_request',
+        reasonCode: 'gemini_input_token_count_unsupported',
+        retryable: false,
+        fallback: capability.fallback,
+        model,
+        sourceResolutionAttempts,
+      }));
+    }
+    if (typeof beforeProviderAttempt === 'function') {
+      await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
+    }
+    if (shouldCountInputTokens) {
       const countResponse = await fetchImpl(
         `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:countTokens`,
         {
@@ -751,6 +758,9 @@ async function analyzePublicVideoUrlWithGemini({
           retryable: false,
           fallback: capability.fallback,
           model,
+          httpStatus: countResponse.status,
+          interactionStatus: countPayload?.error?.status,
+          sourceResolutionAttempts,
         }));
       }
       if (countedInputTokens > configuredMaxInputTokens) {
@@ -762,11 +772,9 @@ async function analyzePublicVideoUrlWithGemini({
           retryable: false,
           fallback: capability.fallback,
           model,
+          sourceResolutionAttempts,
         }));
       }
-    }
-    if (typeof beforeProviderAttempt === 'function') {
-      await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
     }
     response = await fetchImpl(requestUrl, {
       method: 'POST',
@@ -787,6 +795,7 @@ async function analyzePublicVideoUrlWithGemini({
       retryable: true,
       fallback: capability.fallback,
       model,
+      sourceResolutionAttempts,
     }));
   }
 
@@ -806,6 +815,7 @@ async function analyzePublicVideoUrlWithGemini({
       model,
       httpStatus: response.status,
       interactionStatus,
+      sourceResolutionAttempts,
     }));
     await cleanupUploadedVideo();
     return unavailable;
@@ -822,6 +832,7 @@ async function analyzePublicVideoUrlWithGemini({
       model,
       httpStatus: response.status,
       interactionStatus,
+      sourceResolutionAttempts,
     }));
     await cleanupUploadedVideo();
     return unavailable;
@@ -836,6 +847,7 @@ async function analyzePublicVideoUrlWithGemini({
       model,
       httpStatus: response.status,
       interactionStatus,
+      sourceResolutionAttempts,
     }));
     await cleanupUploadedVideo();
     return unavailable;

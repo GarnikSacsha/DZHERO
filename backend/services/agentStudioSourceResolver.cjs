@@ -8,6 +8,24 @@ const crypto = require('node:crypto');
 const INSTAGRAM_FALLBACK_ACTOR = 'apify/instagram-scraper';
 const INSTAGRAM_MAX_SOCIAL_SOURCE_CHARGE_USD = 0.05;
 const TIKTOK_MAX_SOCIAL_SOURCE_CHARGE_USD = 0.50;
+const SOURCE_RESOLUTION_ATTEMPT_LIMIT = 4;
+const SOURCE_RESOLUTION_ACTOR_MAX_LENGTH = 120;
+const SOURCE_RESOLUTION_OUTCOMES = new Set(['empty', 'failed', 'blocked_by_cap', 'resolved']);
+
+function buildSafeResolutionAttempts(attempts = [], finalAttempt = null) {
+  return [...(Array.isArray(attempts) ? attempts : []), finalAttempt]
+    .flatMap((attempt) => {
+      if (!attempt || typeof attempt !== 'object') return [];
+      const rawActor = String(attempt.actor || '').replace(/\s+/g, ' ').trim();
+      const actor = rawActor.length > SOURCE_RESOLUTION_ACTOR_MAX_LENGTH
+        ? `${rawActor.slice(0, SOURCE_RESOLUTION_ACTOR_MAX_LENGTH - 1).trim()}…`
+        : rawActor;
+      const outcome = String(attempt.outcome || '').trim().toLowerCase();
+      if (!actor || !SOURCE_RESOLUTION_OUTCOMES.has(outcome)) return [];
+      return [{ actor, outcome }];
+    })
+    .slice(0, SOURCE_RESOLUTION_ATTEMPT_LIMIT);
+}
 
 function detectAgentStudioSocialPlatform(value = '') {
   try {
@@ -147,6 +165,7 @@ async function resolveAgentStudioVideoSource({
         ...resolved,
         sourceUrl: resolved.sourceUrl || sourceUrl,
         resolvedBy: 'apify-platform-actor',
+        attempts: buildSafeResolutionAttempts(attempts, { actor: primaryActor, outcome: 'resolved' }),
       };
     }
     attempts.push({ actor: primaryActor, outcome: 'empty' });
@@ -200,6 +219,10 @@ async function resolveAgentStudioVideoSource({
           ...resolved,
           sourceUrl: resolved.sourceUrl || sourceUrl,
           resolvedBy: 'apify-instagram-fallback',
+          attempts: buildSafeResolutionAttempts(attempts, {
+            actor: INSTAGRAM_FALLBACK_ACTOR,
+            outcome: 'resolved',
+          }),
         };
       }
       attempts.push({ actor: INSTAGRAM_FALLBACK_ACTOR, outcome: 'empty' });

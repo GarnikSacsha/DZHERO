@@ -471,6 +471,177 @@ async function runGroundingContract() {
     'resolved social title, handle, and poster must survive grounding into the Saved URL Studio signal',
   );
 
+  const gateOneContractFailures = [];
+  const captureGateOneContract = async (label, assertion) => {
+    try {
+      await assertion();
+    } catch (error) {
+      gateOneContractFailures.push(`${label}: ${error?.message || error}`);
+    }
+  };
+
+  await captureGateOneContract('provider guard precedes token counting and generation', async () => {
+    const guardSentinel = Object.assign(new Error('gate-one-provider-guard-sentinel'), {
+      providerAttemptBlocked: true,
+    });
+    let countTokensCalls = 0;
+    let generationCalls = 0;
+    let cleanupCalls = 0;
+    let thrownError = null;
+    try {
+      await analyzePublicVideoUrlWithGemini({
+        platform: 'instagram',
+        sourceUrl: 'https://instagram.com/reel/guard-before-token-count',
+        apiKey: 'test-key',
+        model: 'gemini-test',
+        maxInputTokens: 25_000,
+        resolveSocialSource: async () => ({
+          sourceUrl: 'https://instagram.com/reel/guard-before-token-count',
+          videoUrl: 'https://cdn.example.test/guard-before-token-count.mp4',
+        }),
+        uploadSocialVideo: async () => ({
+          name: 'files/guard-before-token-count',
+          uri: 'https://gemini.test/files/guard-before-token-count',
+          mimeType: 'video/mp4',
+        }),
+        beforeProviderAttempt: async () => { throw guardSentinel; },
+        fetchImpl: async (url) => {
+          if (String(url).endsWith(':countTokens')) {
+            countTokensCalls += 1;
+            return response({ totalTokens: 12_000 });
+          }
+          generationCalls += 1;
+          return response({});
+        },
+        deleteUploadedVideo: async () => { cleanupCalls += 1; },
+      });
+    } catch (error) {
+      thrownError = error;
+    }
+    assert.equal(thrownError, guardSentinel, 'the existing provider guard sentinel must propagate unchanged');
+    assert.equal(countTokensCalls, 0, 'countTokens must not execute before the provider-attempt guard');
+    assert.equal(generationCalls, 0, 'generation must not execute before the provider-attempt guard');
+    assert.equal(cleanupCalls, 1, 'a blocked guarded analysis still cleans up its uploaded file exactly once');
+  });
+
+  const acquisitionHistory = [{
+    actor: 'apify/instagram-reel-scraper',
+    outcome: 'empty',
+  }, {
+    actor: 'apify/instagram-scraper',
+    outcome: 'resolved',
+  }];
+  let countFailureGenerationCalls = 0;
+  let countFailureCleanupCalls = 0;
+  const countFailure = await analyzePublicVideoUrlWithGemini({
+    platform: 'instagram',
+    sourceUrl: 'https://instagram.com/reel/token-count-http-400',
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    maxInputTokens: 25_000,
+    resolveSocialSource: async () => ({
+      sourceUrl: 'https://instagram.com/reel/token-count-http-400',
+      videoUrl: 'https://cdn.example.test/token-count-http-400.mp4',
+      attempts: acquisitionHistory,
+    }),
+    uploadSocialVideo: async () => ({
+      name: 'files/token-count-http-400',
+      uri: 'https://gemini.test/files/token-count-http-400',
+      mimeType: 'video/mp4',
+    }),
+    beforeProviderAttempt: async () => {},
+    fetchImpl: async (url) => {
+      if (String(url).endsWith(':countTokens')) {
+        return response({
+          error: {
+            status: 'INVALID_ARGUMENT',
+            message: 'raw provider detail must not cross the diagnostic boundary',
+          },
+        }, { ok: false, status: 400 });
+      }
+      countFailureGenerationCalls += 1;
+      return response({});
+    },
+    deleteUploadedVideo: async () => { countFailureCleanupCalls += 1; },
+  });
+  await captureGateOneContract('countTokens 400 keeps safe HTTP status', async () => {
+    assert.equal(countFailure.status, 'unavailable');
+    assert.equal(countFailure.diagnostic.stage, 'provider_request');
+    assert.equal(countFailure.diagnostic.reasonCode, 'gemini_input_token_count_failed');
+    assert.equal(countFailure.diagnostic.retryable, false);
+    assert.equal(countFailure.diagnostic.provider.httpStatus, 400);
+  });
+  await captureGateOneContract('countTokens 400 keeps safe provider classification', async () => {
+    assert.equal(countFailure.diagnostic.provider.interactionStatus, 'INVALID_ARGUMENT');
+  });
+  await captureGateOneContract('countTokens 400 removes raw provider details', async () => {
+    assert.equal(
+      Object.hasOwn(countFailure.diagnostic.provider, 'message'),
+      false,
+      'raw provider messages must never cross the diagnostic boundary',
+    );
+  });
+  await captureGateOneContract('later token-count failure keeps acquisition history', async () => {
+    assert.deepEqual(
+      countFailure.diagnostic.sourceResolutionAttempts,
+      acquisitionHistory,
+      'later token-count failures must retain the sanitized successful acquisition history',
+    );
+  });
+  await captureGateOneContract('countTokens 400 stops generation and cleans up once', async () => {
+    assert.equal(countFailureGenerationCalls, 0, 'generation must not execute after countTokens HTTP 400');
+    assert.equal(countFailureCleanupCalls, 1, 'countTokens failure cleans up the uploaded file exactly once');
+  });
+
+  await captureGateOneContract('one guarded envelope covers token counting and generation', async () => {
+    const sequence = [];
+    let guardCalls = 0;
+    const guardedAnalysis = await analyzePublicVideoUrlWithGemini({
+      platform: 'instagram',
+      sourceUrl: 'https://instagram.com/reel/guarded-token-count-success',
+      apiKey: 'test-key',
+      model: 'gemini-test',
+      maxInputTokens: 25_000,
+      resolveSocialSource: async () => ({
+        sourceUrl: 'https://instagram.com/reel/guarded-token-count-success',
+        videoUrl: 'https://cdn.example.test/guarded-token-count-success.mp4',
+      }),
+      uploadSocialVideo: async () => ({
+        name: 'files/guarded-token-count-success',
+        uri: 'https://gemini.test/files/guarded-token-count-success',
+        mimeType: 'video/mp4',
+      }),
+      beforeProviderAttempt: async () => {
+        guardCalls += 1;
+        sequence.push('guard');
+      },
+      fetchImpl: async (url) => {
+        if (String(url).endsWith(':countTokens')) {
+          sequence.push('countTokens');
+          return response({ totalTokens: 24_999 });
+        }
+        sequence.push('generation');
+        return response({
+          candidates: [{ content: { parts: [{ text: JSON.stringify(providerEvidence) }] }, finishReason: 'STOP' }],
+        });
+      },
+      deleteUploadedVideo: async () => { sequence.push('cleanup'); },
+    });
+    assert.equal(guardedAnalysis.status, 'available');
+    assert.equal(guardCalls, 1, 'one analysis envelope must consume exactly one provider-attempt guard');
+    assert.deepEqual(
+      sequence,
+      ['guard', 'countTokens', 'generation', 'cleanup'],
+      'the guard must cover token counting and generation in one ordered analysis envelope',
+    );
+  });
+
+  assert.deepEqual(
+    gateOneContractFailures,
+    [],
+    `Gate 1 provider-boundary contracts failed:\n${gateOneContractFailures.join('\n')}`,
+  );
+
   let failedUploadCalled = false;
   let failedInteractionCalled = false;
   let failedCleanupCalled = false;

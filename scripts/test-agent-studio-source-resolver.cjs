@@ -108,6 +108,19 @@ const {
     provider: 'apify',
     model: INSTAGRAM_FALLBACK_ACTOR,
   }]);
+  assert.deepEqual(fallbackResolved.attempts, [{
+    actor: 'apify/instagram-reel-scraper',
+    outcome: 'empty',
+  }, {
+    actor: INSTAGRAM_FALLBACK_ACTOR,
+    outcome: 'resolved',
+  }], 'successful fallback resolution must retain bounded safe primary/fallback outcomes');
+  assert.ok(fallbackResolved.attempts.length <= 4);
+  fallbackResolved.attempts.forEach((attempt) => {
+    assert.ok(attempt.actor.length <= 120);
+    assert.ok(['empty', 'failed', 'blocked_by_cap', 'resolved'].includes(attempt.outcome));
+    assert.equal(Object.hasOwn(attempt, 'error'), false, 'resolved acquisition history must not expose raw provider errors');
+  });
 
   const aggregateCaps = [];
   await resolveAgentStudioVideoSource({
