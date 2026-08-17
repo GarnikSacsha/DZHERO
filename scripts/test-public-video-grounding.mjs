@@ -636,6 +636,73 @@ async function runGroundingContract() {
     );
   });
 
+  let strictCountTokensCalls = 0;
+  let strictCountTokensGenerationCalls = 0;
+  let strictCountTokensGuardCalls = 0;
+  let strictCountTokensCleanupCalls = 0;
+  let observedCountTokensBody = null;
+  const strictCountTokensContract = await analyzePublicVideoUrlWithGemini({
+    platform: 'instagram',
+    sourceUrl: 'https://instagram.com/reel/strict-count-tokens-contract',
+    apiKey: 'test-key',
+    model: 'gemini-3.6-flash',
+    maxInputTokens: 25_000,
+    resolveSocialSource: async () => ({
+      sourceUrl: 'https://instagram.com/reel/strict-count-tokens-contract',
+      videoUrl: 'https://cdn.example.test/strict-count-tokens-contract.mp4',
+    }),
+    uploadSocialVideo: async () => ({
+      name: 'files/strict-count-tokens-contract',
+      uri: 'https://gemini.test/files/strict-count-tokens-contract',
+      mimeType: 'video/mp4',
+    }),
+    beforeProviderAttempt: async () => { strictCountTokensGuardCalls += 1; },
+    fetchImpl: async (url, options = {}) => {
+      if (String(url).endsWith(':countTokens')) {
+        strictCountTokensCalls += 1;
+        observedCountTokensBody = JSON.parse(options.body);
+        const usesTopLevelContents = Array.isArray(observedCountTokensBody?.contents);
+        const nestedRequest = observedCountTokensBody?.generateContentRequest;
+        const usesCompleteGenerateRequest = nestedRequest?.model === 'models/gemini-3.6-flash'
+          && Array.isArray(nestedRequest?.contents);
+        if (!usesTopLevelContents && !usesCompleteGenerateRequest) {
+          return response({
+            error: {
+              status: 'INVALID_ARGUMENT',
+              message: 'synthetic strict countTokens contract rejection',
+            },
+          }, { ok: false, status: 400 });
+        }
+        return response({ totalTokens: 24_999 });
+      }
+      strictCountTokensGenerationCalls += 1;
+      return response({
+        candidates: [{ content: { parts: [{ text: JSON.stringify(providerEvidence) }] }, finishReason: 'STOP' }],
+      });
+    },
+    deleteUploadedVideo: async () => { strictCountTokensCleanupCalls += 1; },
+  });
+  await captureGateOneContract('countTokens uses an official complete request shape', async () => {
+    const usesTopLevelContents = Array.isArray(observedCountTokensBody?.contents);
+    const nestedRequest = observedCountTokensBody?.generateContentRequest;
+    const usesCompleteGenerateRequest = nestedRequest?.model === 'models/gemini-3.6-flash'
+      && Array.isArray(nestedRequest?.contents);
+    assert.equal(
+      usesTopLevelContents || usesCompleteGenerateRequest,
+      true,
+      'countTokens must use top-level contents or include models/gemini-3.6-flash in generateContentRequest',
+    );
+  });
+  await captureGateOneContract('strict countTokens contract reaches one generation', async () => {
+    assert.equal(strictCountTokensContract.status, 'available');
+    assert.equal(strictCountTokensCalls, 1);
+    assert.equal(strictCountTokensGenerationCalls, 1);
+  });
+  await captureGateOneContract('strict countTokens contract stays inside one guarded envelope', async () => {
+    assert.equal(strictCountTokensGuardCalls, 1);
+    assert.equal(strictCountTokensCleanupCalls, 1);
+  });
+
   const firstDurationlessCandidate = 'https://cdn.example.test/dadgr-durationless.bin';
   const secondPlayableCandidate = 'https://cdn.example.test/dadgr-playable.mp4';
   const multiCandidateTransferCalls = [];

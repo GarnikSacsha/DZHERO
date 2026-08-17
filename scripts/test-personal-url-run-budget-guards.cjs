@@ -12,6 +12,26 @@ const models = {
   now: new Date('2026-08-15T12:00:00Z'),
 };
 
+// Official Gemini API Standard pricing, checked 2026-08-18:
+// https://ai.google.dev/gemini-api/docs/pricing
+const officialStandardPricingUsdPerMillion = {
+  'gemini-3.6-flash': { input: 1.50, output: 7.50 },
+  'gemini-3.5-flash': { input: 1.50, output: 9.00 },
+};
+
+function calculateOfficialStandardWorstCase(config) {
+  const videoPricing = officialStandardPricingUsdPerMillion[config.videoModel];
+  const remixPricing = officialStandardPricingUsdPerMillion[config.remixModel];
+  const platformCount = 2;
+  return config.platforms.instagram.totalMaxChargeUsd
+    + config.platforms.tiktok.totalMaxChargeUsd
+    + platformCount * config.geminiVideoMaxInputTokens * videoPricing.input / 1_000_000
+    + platformCount * config.geminiVideoMaxInputTokens * videoPricing.input / 1_000_000
+    + platformCount * config.geminiVideoMaxOutputTokens * videoPricing.output / 1_000_000
+    + platformCount * config.geminiRemixMaxRequestBytes * remixPricing.input / 1_000_000
+    + platformCount * config.geminiRemixMaxOutputTokens * remixPricing.output / 1_000_000;
+}
+
 const defaults = readPersonalUrlRunBudget({}, models);
 assert.equal(defaults.enabled, false);
 assert.equal(defaults.platforms.instagram.maxActorStarts, 2);
@@ -20,7 +40,7 @@ assert.equal(defaults.platforms.tiktok.maxActorStarts, 1);
 assert.equal(defaults.maxVideoDurationSeconds, null);
 
 const cappedEnv = {
-  PERSONAL_URL_RUN_BUDGET_USD: '0.75',
+  PERSONAL_URL_RUN_BUDGET_USD: '0.90',
   PERSONAL_URL_INSTAGRAM_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_TIKTOK_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_INSTAGRAM_APIFY_TOTAL_MAX_CHARGE_USD: '0.05',
@@ -40,9 +60,29 @@ assert.equal(capped.platforms.instagram.allowInstagramFallback, false);
 assert.equal(capped.worstCase.maximumVideoInputTokensPerSource, 25_000);
 assert.equal(capped.worstCase.maximumRemixInputTokensPerSource, 12_000);
 assert.equal(capped.worstCase.videoTokenCountInputUsd, capped.worstCase.videoInputUsd);
-assert.ok(Math.abs(capped.worstCase.totalUsd - 0.7186) < 1e-12);
+assert.ok(Math.abs(capped.worstCase.totalUsd - 0.80512) < 1e-12);
 assert.ok(capped.worstCase.totalUsd < capped.totalBudgetUsd);
 assert.deepEqual(calculatePersonalUrlRunWorstCase(capped), capped.worstCase);
+
+const currentPaidRunEnv = {
+  ...cappedEnv,
+  PERSONAL_URL_INSTAGRAM_APIFY_MAX_ACTOR_STARTS: '2',
+  PERSONAL_URL_INSTAGRAM_FALLBACK_ENABLED: 'true',
+};
+const currentPaidRun = readPersonalUrlRunBudget(currentPaidRunEnv, models);
+const officialStandardWorstCaseUsd = calculateOfficialStandardWorstCase(currentPaidRun);
+assert.ok(Math.abs(officialStandardWorstCaseUsd - 0.80512) < 1e-12);
+assert.ok(Math.abs(currentPaidRun.worstCase.totalUsd - officialStandardWorstCaseUsd) < 1e-12);
+assert.equal(currentPaidRun.totalBudgetUsd, 0.90);
+assert.throws(
+  () => readPersonalUrlRunBudget({
+    ...currentPaidRunEnv,
+    PERSONAL_URL_RUN_BUDGET_USD: '0.80',
+  }, models),
+  (error) => error?.code === 'personal_url_run_budget_exceeded'
+    && Math.abs(error.details.maximumExposureUsd - officialStandardWorstCaseUsd) < 1e-12,
+  'a strict ceiling below $0.80512 must fail closed under the official Gemini Standard REST prices',
+);
 
 assert.throws(
   () => readPersonalUrlRunBudget({ PERSONAL_URL_RUN_BUDGET_USD: '0.75' }, models),

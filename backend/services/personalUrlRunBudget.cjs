@@ -6,7 +6,7 @@ const DEFAULT_PLATFORM_LIMITS = Object.freeze({
 });
 
 const GEMINI_STANDARD_PRICING_USD_PER_MILLION = Object.freeze({
-  'gemini-3.6-flash': Object.freeze({ input: 0.75, output: 3.75 }),
+  'gemini-3.6-flash': Object.freeze({ input: 1.50, output: 7.50 }),
   'gemini-3.5-flash': Object.freeze({ input: 1.50, output: 9.00 }),
 });
 

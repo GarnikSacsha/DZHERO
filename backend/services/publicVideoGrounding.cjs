@@ -743,6 +743,7 @@ async function analyzePublicVideoUrlWithGemini({
       await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
     }
     if (shouldCountInputTokens) {
+      const normalizedModel = String(model || '').trim().replace(/^models\//i, '');
       const countResponse = await fetchImpl(
         `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:countTokens`,
         {
@@ -751,7 +752,12 @@ async function analyzePublicVideoUrlWithGemini({
             'Content-Type': 'application/json',
             'x-goog-api-key': apiKey,
           },
-          body: JSON.stringify({ generateContentRequest: requestBody }),
+          body: JSON.stringify({
+            generateContentRequest: {
+              model: `models/${normalizedModel}`,
+              ...requestBody,
+            },
+          }),
         },
       );
       const countPayload = await countResponse.json().catch(() => ({}));

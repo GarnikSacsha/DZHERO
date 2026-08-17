@@ -13,7 +13,7 @@ const NETWORK_GUARD = path.join(ROOT, 'scripts', 'fixtures', 'controlled-live-ru
 
 const strictBudgetEnv = {
   PERSONAL_URL_STRICT_LIVE_RUN: 'true',
-  PERSONAL_URL_RUN_BUDGET_USD: '0.75',
+  PERSONAL_URL_RUN_BUDGET_USD: '0.90',
   PERSONAL_URL_INSTAGRAM_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_TIKTOK_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_INSTAGRAM_APIFY_TOTAL_MAX_CHARGE_USD: '0.05',
@@ -446,7 +446,7 @@ try {
   const sourceConfig = allowedEvents.find((event) => event.kind === 'source_config');
   assert.deepEqual(sourceConfig.budget, {
     enabled: true,
-    totalBudgetUsd: 0.75,
+    totalBudgetUsd: 0.90,
     platform: 'instagram',
     maxActorStarts: 1,
     totalMaxChargeUsd: 0.05,
