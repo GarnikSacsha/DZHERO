@@ -10,6 +10,23 @@ const DEFAULT_PUBLIC_VIDEO_MODEL = 'gemini-3.6-flash';
 const SOURCE_RESOLUTION_ATTEMPT_LIMIT = 4;
 const SOURCE_RESOLUTION_ACTOR_MAX_LENGTH = 120;
 const SOURCE_RESOLUTION_OUTCOMES = new Set(['empty', 'failed', 'blocked_by_cap', 'resolved']);
+const PROVIDER_FINISH_REASONS = new Set([
+  'STOP',
+  'MAX_TOKENS',
+  'SAFETY',
+  'RECITATION',
+  'LANGUAGE',
+  'OTHER',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'MALFORMED_FUNCTION_CALL',
+  'IMAGE_SAFETY',
+  'UNEXPECTED_TOOL_CALL',
+  'NO_IMAGE',
+]);
+const PROVIDER_CANDIDATE_COUNT_LIMIT = 8;
+const PROVIDER_RESPONSE_TEXT_LENGTH_LIMIT = 120_000;
 
 const PUBLIC_VIDEO_RESPONSE_FORMAT = Object.freeze({
   type: 'text',
@@ -231,6 +248,22 @@ function sanitizeSourceResolutionAttempts(value = []) {
   }).slice(0, SOURCE_RESOLUTION_ATTEMPT_LIMIT);
 }
 
+function buildSafeProviderResponseSummary(payload = {}, responseText = '') {
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+  const rawFinishReason = compactText(
+    candidates[0]?.finishReason || payload?.promptFeedback?.blockReason,
+    60,
+  ).toUpperCase();
+  return {
+    finishReason: PROVIDER_FINISH_REASONS.has(rawFinishReason) ? rawFinishReason : '',
+    candidateCount: Math.min(candidates.length, PROVIDER_CANDIDATE_COUNT_LIMIT),
+    responseTextLength: Math.min(
+      String(responseText || '').length,
+      PROVIDER_RESPONSE_TEXT_LENGTH_LIMIT,
+    ),
+  };
+}
+
 function buildDiagnostic({
   platform,
   stage,
@@ -240,16 +273,39 @@ function buildDiagnostic({
   model = '',
   httpStatus = null,
   interactionStatus = '',
+  finishReason = '',
+  candidateCount = null,
+  responseTextLength = null,
   sourceResolutionAttempts = [],
 } = {}) {
   const normalizedStage = compactText(stage, 80) || 'source_acquisition';
   const sanitizedSourceResolutionAttempts = sanitizeSourceResolutionAttempts(sourceResolutionAttempts);
-  const provider = model || httpStatus || interactionStatus
+  const normalizedFinishReason = compactText(finishReason, 60).toUpperCase();
+  const safeFinishReason = PROVIDER_FINISH_REASONS.has(normalizedFinishReason)
+    ? normalizedFinishReason
+    : '';
+  const hasCandidateCount = candidateCount !== null
+    && candidateCount !== undefined
+    && Number.isFinite(Number(candidateCount));
+  const safeCandidateCount = hasCandidateCount
+    ? Math.min(Math.max(0, Math.trunc(Number(candidateCount))), PROVIDER_CANDIDATE_COUNT_LIMIT)
+    : null;
+  const hasResponseTextLength = responseTextLength !== null
+    && responseTextLength !== undefined
+    && Number.isFinite(Number(responseTextLength));
+  const safeResponseTextLength = hasResponseTextLength
+    ? Math.min(Math.max(0, Math.trunc(Number(responseTextLength))), PROVIDER_RESPONSE_TEXT_LENGTH_LIMIT)
+    : null;
+  const provider = model || httpStatus || interactionStatus || safeFinishReason
+    || safeCandidateCount !== null || safeResponseTextLength !== null
     ? {
       name: 'gemini',
       ...(model ? { model } : {}),
       ...(Number.isFinite(Number(httpStatus)) && Number(httpStatus) > 0 ? { httpStatus: Number(httpStatus) } : {}),
       ...(interactionStatus ? { interactionStatus: compactText(interactionStatus, 60) } : {}),
+      ...(safeFinishReason ? { finishReason: safeFinishReason } : {}),
+      ...(safeCandidateCount !== null ? { candidateCount: safeCandidateCount } : {}),
+      ...(safeResponseTextLength !== null ? { responseTextLength: safeResponseTextLength } : {}),
     }
     : null;
   return {
@@ -834,7 +890,31 @@ async function analyzePublicVideoUrlWithGemini({
     return unavailable;
   }
 
-  const parsed = normalizeProviderEvidence(parseJson(parseGeminiInteractionText(payload)));
+  const responseText = parseGeminiInteractionText(payload);
+  const providerResponseSummary = buildSafeProviderResponseSummary(payload, responseText);
+  const providerResponseReason = providerResponseSummary.finishReason === 'MAX_TOKENS'
+    ? 'gemini_output_token_limit_exceeded'
+    : providerResponseSummary.finishReason === 'SAFETY'
+      ? 'provider_safety_blocked'
+      : '';
+  if (providerResponseReason) {
+    const unavailable = emptyEvidence(buildDiagnostic({
+      platform,
+      stage: 'provider_response',
+      reasonCode: providerResponseReason,
+      retryable: false,
+      fallback: capability.fallback,
+      model,
+      httpStatus: response.status,
+      interactionStatus,
+      ...providerResponseSummary,
+      sourceResolutionAttempts,
+    }));
+    await cleanupUploadedVideo();
+    return unavailable;
+  }
+
+  const parsed = normalizeProviderEvidence(parseJson(responseText));
   if (!parsed) {
     const unavailable = emptyEvidence(buildDiagnostic({
       platform,
@@ -845,6 +925,7 @@ async function analyzePublicVideoUrlWithGemini({
       model,
       httpStatus: response.status,
       interactionStatus,
+      ...providerResponseSummary,
       sourceResolutionAttempts,
     }));
     await cleanupUploadedVideo();

@@ -703,6 +703,173 @@ async function runGroundingContract() {
     assert.equal(strictCountTokensCleanupCalls, 1);
   });
 
+  const runNormalizationFixture = async ({ fixtureId, generationPayload }) => {
+    const counters = {
+      guard: 0,
+      countTokens: 0,
+      generation: 0,
+      cleanup: 0,
+    };
+    const result = await analyzePublicVideoUrlWithGemini({
+      platform: 'instagram',
+      sourceUrl: `https://instagram.com/reel/${fixtureId}`,
+      apiKey: 'test-key',
+      model: 'gemini-3.6-flash',
+      maxInputTokens: 25_000,
+      maxOutputTokens: 1_536,
+      resolveSocialSource: async () => ({
+        sourceUrl: `https://instagram.com/reel/${fixtureId}`,
+        videoUrl: `https://cdn.example.test/${fixtureId}.mp4`,
+      }),
+      uploadSocialVideo: async () => ({
+        name: `files/${fixtureId}`,
+        uri: `https://gemini.test/files/${fixtureId}`,
+        mimeType: 'video/mp4',
+      }),
+      beforeProviderAttempt: async () => { counters.guard += 1; },
+      fetchImpl: async (url) => {
+        if (String(url).endsWith(':countTokens')) {
+          counters.countTokens += 1;
+          return response({ totalTokens: 20_000 });
+        }
+        counters.generation += 1;
+        return response(generationPayload);
+      },
+      deleteUploadedVideo: async () => { counters.cleanup += 1; },
+    });
+    return { result, counters };
+  };
+
+  const truncatedJson = `${JSON.stringify(providerEvidence).slice(0, 420)}\"`;
+  const truncatedNormalization = await runNormalizationFixture({
+    fixtureId: 'normalization-max-tokens',
+    generationPayload: {
+      candidates: [{
+        content: { parts: [{ text: truncatedJson }] },
+        finishReason: 'MAX_TOKENS',
+      }],
+    },
+  });
+  await captureGateOneContract('MAX_TOKENS response stays inside one no-retry envelope', async () => {
+    assert.deepEqual(truncatedNormalization.counters, {
+      guard: 1,
+      countTokens: 1,
+      generation: 1,
+      cleanup: 1,
+    });
+  });
+  await captureGateOneContract('MAX_TOKENS response keeps a specific safe classification', async () => {
+    const { diagnostic } = truncatedNormalization.result;
+    assert.equal(truncatedNormalization.result.status, 'unavailable');
+    assert.equal(diagnostic.stage, 'provider_response');
+    assert.equal(diagnostic.reasonCode, 'gemini_output_token_limit_exceeded');
+    assert.equal(diagnostic.retryable, false);
+  });
+  await captureGateOneContract('MAX_TOKENS response keeps bounded provider summary fields', async () => {
+    const { diagnostic } = truncatedNormalization.result;
+    assert.equal(diagnostic.provider.finishReason, 'MAX_TOKENS');
+    assert.equal(diagnostic.provider.candidateCount, 1);
+    assert.equal(diagnostic.provider.responseTextLength, truncatedJson.length);
+    assert.ok(diagnostic.provider.finishReason.length <= 60);
+    assert.ok(diagnostic.provider.candidateCount <= 8);
+    assert.ok(diagnostic.provider.responseTextLength <= 120_000);
+  });
+  await captureGateOneContract('MAX_TOKENS response never exposes raw provider content', async () => {
+    const { diagnostic } = truncatedNormalization.result;
+    for (const rawKey of ['message', 'payload', 'content', 'text', 'safetyRatings']) {
+      assert.equal(hasPropertyRecursively(diagnostic, rawKey), false, `${rawKey} must not cross the diagnostic boundary`);
+    }
+  });
+
+  const safetyNormalization = await runNormalizationFixture({
+    fixtureId: 'normalization-safety-empty',
+    generationPayload: {
+      candidates: [{
+        content: { parts: [] },
+        finishReason: 'SAFETY',
+        safetyRatings: [{ category: 'HARM_CATEGORY_DANGEROUS_CONTENT', probability: 'LOW' }],
+      }],
+    },
+  });
+  await captureGateOneContract('empty safety response stays inside one no-retry envelope', async () => {
+    assert.deepEqual(safetyNormalization.counters, {
+      guard: 1,
+      countTokens: 1,
+      generation: 1,
+      cleanup: 1,
+    });
+  });
+  await captureGateOneContract('empty safety response keeps a specific safe classification', async () => {
+    const { diagnostic } = safetyNormalization.result;
+    assert.equal(safetyNormalization.result.status, 'unavailable');
+    assert.equal(diagnostic.stage, 'provider_response');
+    assert.equal(diagnostic.reasonCode, 'provider_safety_blocked');
+    assert.equal(diagnostic.retryable, false);
+  });
+  await captureGateOneContract('empty safety response keeps bounded provider summary fields', async () => {
+    const { diagnostic } = safetyNormalization.result;
+    assert.equal(diagnostic.provider.finishReason, 'SAFETY');
+    assert.equal(diagnostic.provider.candidateCount, 1);
+    assert.equal(diagnostic.provider.responseTextLength, 0);
+    assert.ok(diagnostic.provider.finishReason.length <= 60);
+    assert.ok(diagnostic.provider.candidateCount <= 8);
+  });
+  await captureGateOneContract('empty safety response never exposes raw provider content', async () => {
+    const { diagnostic } = safetyNormalization.result;
+    for (const rawKey of ['message', 'payload', 'content', 'text', 'safetyRatings']) {
+      assert.equal(hasPropertyRecursively(diagnostic, rawKey), false, `${rawKey} must not cross the diagnostic boundary`);
+    }
+  });
+
+  const fortyFiveSecondEvidence = {
+    ...providerEvidence,
+    spokenText: 'A complete forty-five-second original transcript with nine grounded segments.',
+    spokenSegments: Array.from({ length: 9 }, (_, index) => ({
+      timeframe: `0:${String(index * 5).padStart(2, '0')}-0:${String((index + 1) * 5).padStart(2, '0')}`,
+      text: `Original source speech segment ${index + 1}.`,
+    })),
+    observations: Array.from({ length: 9 }, (_, index) => ({
+      sourceType: index % 3 === 2 ? 'on_screen_text' : 'video_observation',
+      text: `Grounded observation ${index + 1}`,
+      timestamp: `0:${String(index * 5).padStart(2, '0')}`,
+      confidence: 0.9,
+    })),
+    scenes: Array.from({ length: 9 }, (_, index) => ({
+      timeframe: `0:${String(index * 5).padStart(2, '0')}-0:${String((index + 1) * 5).padStart(2, '0')}`,
+      visualAction: `Show grounded visual action ${index + 1}.`,
+      spokenContent: `Original source speech segment ${index + 1}.`,
+      onScreenText: `ORIGINAL OCR ${index + 1}`,
+      soundMusicCues: 'Original room sound.',
+    })),
+  };
+  const fortyFiveSecondJson = JSON.stringify(fortyFiveSecondEvidence);
+  const partSize = Math.ceil(fortyFiveSecondJson.length / 4);
+  const multipartNormalization = await runNormalizationFixture({
+    fixtureId: 'normalization-forty-five-seconds',
+    generationPayload: {
+      candidates: [{
+        content: {
+          parts: Array.from({ length: 4 }, (_, index) => ({
+            text: fortyFiveSecondJson.slice(index * partSize, (index + 1) * partSize),
+          })),
+        },
+        finishReason: 'STOP',
+      }],
+    },
+  });
+  await captureGateOneContract('valid 45-second multipart JSON normalizes without retry', async () => {
+    assert.equal(multipartNormalization.result.status, 'available');
+    assert.equal(multipartNormalization.result.diagnostic, null);
+    assert.equal(multipartNormalization.result.transcript.segments.length, 9);
+    assert.equal(multipartNormalization.result.video.scenes.length, 9);
+    assert.deepEqual(multipartNormalization.counters, {
+      guard: 1,
+      countTokens: 1,
+      generation: 1,
+      cleanup: 1,
+    });
+  });
+
   const firstDurationlessCandidate = 'https://cdn.example.test/dadgr-durationless.bin';
   const secondPlayableCandidate = 'https://cdn.example.test/dadgr-playable.mp4';
   const multiCandidateTransferCalls = [];

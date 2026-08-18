@@ -84,6 +84,27 @@ assert.throws(
   'a strict ceiling below $0.80512 must fail closed under the official Gemini Standard REST prices',
 );
 
+const prospective4096Env = {
+  ...currentPaidRunEnv,
+  PERSONAL_URL_GEMINI_VIDEO_MAX_OUTPUT_TOKENS: '4096',
+};
+const prospective4096 = readPersonalUrlRunBudget(prospective4096Env, models);
+const prospective4096StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospective4096);
+assert.equal(prospective4096.platforms.instagram.maxActorStarts, 2);
+assert.equal(prospective4096.platforms.instagram.allowInstagramFallback, true);
+assert.equal(prospective4096.platforms.instagram.totalMaxChargeUsd, 0.05);
+assert.equal(prospective4096.platforms.tiktok.maxActorStarts, 1);
+assert.equal(prospective4096.platforms.tiktok.totalMaxChargeUsd, 0.50);
+assert.equal(prospective4096.maxVideoDurationSeconds, 60);
+assert.equal(prospective4096.geminiVideoMaxInputTokens, 25_000);
+assert.equal(prospective4096.geminiVideoMaxOutputTokens, 4_096);
+assert.equal(prospective4096.geminiVideoMaxRequestBytes, 12_000);
+assert.equal(prospective4096.geminiRemixMaxOutputTokens, 2_560);
+assert.equal(prospective4096.geminiRemixMaxRequestBytes, 12_000);
+assert.ok(Math.abs(prospective4096StandardWorstCaseUsd - 0.84352) < 1e-12);
+assert.ok(Math.abs(prospective4096.worstCase.totalUsd - prospective4096StandardWorstCaseUsd) < 1e-12);
+assert.ok(prospective4096.worstCase.totalUsd < prospective4096.totalBudgetUsd);
+
 assert.throws(
   () => readPersonalUrlRunBudget({ PERSONAL_URL_RUN_BUDGET_USD: '0.75' }, models),
   (error) => error?.code === 'personal_url_run_budget_config_incomplete'
