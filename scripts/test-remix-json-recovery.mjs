@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 const previousGeminiKey = process.env.GEMINI_API_KEY;
 const previousOpenAiKey = process.env.OPENAI_API_KEY;
+const previousFetch = globalThis.fetch;
 process.env.GEMINI_API_KEY = 'test-key';
 delete process.env.OPENAI_API_KEY;
 
@@ -66,6 +67,7 @@ const responses = [
   `\`\`\`json\n${validText}\n\`\`\``,
 ];
 let fetchCalls = 0;
+let responseFinishReason = 'STOP';
 
 globalThis.fetch = async () => {
   const text = responses[fetchCalls++];
@@ -80,6 +82,7 @@ globalThis.fetch = async () => {
             { text: text.slice(midpoint) },
           ],
         },
+        finishReason: responseFinishReason,
       }],
     }),
   };
@@ -128,6 +131,108 @@ await assert.rejects(
 );
 assert.equal(fetchCalls, 1, 'Personal-flow maxAttempts=1 disables provider repair retries');
 
+const safeDiagnosticCases = [];
+const rawProviderMarker = 'LIVE_PROVIDER_CONTENT_MUST_NOT_ESCAPE';
+
+function captureSafeDiagnosticAssertion(assertion) {
+  try {
+    assertion();
+  } catch (error) {
+    safeDiagnosticCases.push(error);
+  }
+}
+
+async function captureSingleAttemptFailure({ label, text, finishReason }) {
+  fetchCalls = 0;
+  responseFinishReason = finishReason;
+  responses.splice(0, responses.length, text);
+  let observedError = null;
+  try {
+    await remixEngine.generateRemix(source, {
+      niche: 'кафе',
+      product: 'десерти',
+      location: 'Чернівці',
+    }, { maxAttempts: 1 });
+  } catch (error) {
+    observedError = error;
+  }
+  assert.ok(observedError, `${label} must be rejected instead of becoming a valid remix`);
+  assert.equal(fetchCalls, 1, `${label} must use exactly one fake remix fetch`);
+  return observedError;
+}
+
+const truncatedText = `{"deconstruction":{"coreMechanics":"${rawProviderMarker}"},"remixes":[`;
+const truncatedError = await captureSingleAttemptFailure({
+  label: 'MAX_TOKENS truncated JSON',
+  text: truncatedText,
+  finishReason: 'MAX_TOKENS',
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(truncatedError.code, 'ai_provider_failed');
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(
+    truncatedError.cause?.code,
+    'remix_output_token_limit_exceeded',
+    'MAX_TOKENS must retain a distinct bounded cause classification',
+  );
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.deepEqual(truncatedError.cause?.diagnostic, {
+    finishReason: 'MAX_TOKENS',
+    candidateCount: 1,
+    responseTextLength: truncatedText.length,
+  });
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(JSON.stringify(truncatedError).includes(rawProviderMarker), false, 'raw provider text must not escape in the public error');
+});
+
+const malformedCompleteText = `{"deconstruction":{"coreMechanics":"${rawProviderMarker}"} "remixes":[]}`;
+const malformedCompleteError = await captureSingleAttemptFailure({
+  label: 'STOP malformed complete JSON',
+  text: malformedCompleteText,
+  finishReason: 'STOP',
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(malformedCompleteError.code, 'ai_provider_failed');
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(malformedCompleteError.cause?.code, 'provider_invalid_json');
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.deepEqual(
+    malformedCompleteError.cause?.diagnostic,
+    {
+      finishReason: 'STOP',
+      candidateCount: 1,
+      responseTextLength: malformedCompleteText.length,
+    },
+    'Malformed complete JSON must retain bounded parser diagnostics',
+  );
+});
+captureSafeDiagnosticAssertion(() => {
+  assert.equal(JSON.stringify(malformedCompleteError).includes(rawProviderMarker), false, 'raw malformed provider text must not escape in the public error');
+});
+
+fetchCalls = 0;
+responseFinishReason = 'STOP';
+responses.splice(0, responses.length, validText);
+const multipartControl = await remixEngine.generateRemix(source, {
+  niche: 'кафе',
+  product: 'десерти',
+  location: 'Чернівці',
+}, { maxAttempts: 1 });
+assert.equal(fetchCalls, 1, 'Valid multipart JSON control uses exactly one fake remix fetch');
+assert.equal(multipartControl.remixes.length, 3, 'Valid multipart JSON remains accepted');
+assert.equal(multipartControl._generation.attempts, 1);
+
+assert.equal(
+  safeDiagnosticCases.length,
+  0,
+  safeDiagnosticCases.map((error) => error.message).join('\n'),
+);
+
 delete process.env.GEMINI_API_KEY;
 await assert.rejects(
   remixEngine.generateRemix(source, {
@@ -146,5 +251,6 @@ if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
 else process.env.GEMINI_API_KEY = previousGeminiKey;
 if (previousOpenAiKey === undefined) delete process.env.OPENAI_API_KEY;
 else process.env.OPENAI_API_KEY = previousOpenAiKey;
+globalThis.fetch = previousFetch;
 
 console.log('remix JSON recovery tests passed');

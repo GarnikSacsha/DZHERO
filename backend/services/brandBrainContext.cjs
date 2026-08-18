@@ -44,7 +44,7 @@ function normalizeBrandBrain(input = {}) {
   const normalized = {
     brandName: pickFirst(brief.brandName, brief.name),
     businessType: pickFirst(brief.businessType, brief.niche, brief.category),
-    product: pickFirst(brief.product, brief.offer, brief.productOffer),
+    product: pickFirst(brief.product, brief.offer, brief.productOffer, brief.profileDescription),
     audience: pickFirst(brief.audience, brief.targetAudience),
     location: pickFirst(brief.location, brief.market, brief.region),
     toneOfVoice: pickFirst(brief.toneOfVoice, brief.tone, brief.voice),

@@ -15,6 +15,23 @@ const fetch = typeof globalThis.fetch === 'function' ? globalThis.fetch : async 
 
 const DEFAULT_GEMINI_REMIX_MODEL = 'gemini-3.5-flash';
 const DEFAULT_GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_FINISH_REASONS = new Set([
+  'STOP',
+  'MAX_TOKENS',
+  'SAFETY',
+  'RECITATION',
+  'LANGUAGE',
+  'OTHER',
+  'BLOCKLIST',
+  'PROHIBITED_CONTENT',
+  'SPII',
+  'MALFORMED_FUNCTION_CALL',
+  'IMAGE_SAFETY',
+  'UNEXPECTED_TOOL_CALL',
+  'NO_IMAGE',
+]);
+const GEMINI_CANDIDATE_COUNT_LIMIT = 8;
+const GEMINI_RESPONSE_TEXT_LENGTH_LIMIT = 120_000;
 const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
@@ -298,19 +315,45 @@ function parseProviderJson(text) {
   }
 }
 
+function buildSafeGeminiResponseDiagnostic(payload = {}, responseText = '') {
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+  const rawFinishReason = String(
+    candidates[0]?.finishReason || payload?.promptFeedback?.blockReason || '',
+  ).trim().toUpperCase().slice(0, 60);
+  return {
+    finishReason: GEMINI_FINISH_REASONS.has(rawFinishReason) ? rawFinishReason : '',
+    candidateCount: Math.min(candidates.length, GEMINI_CANDIDATE_COUNT_LIMIT),
+    responseTextLength: Math.min(
+      Buffer.byteLength(String(responseText || ''), 'utf8'),
+      GEMINI_RESPONSE_TEXT_LENGTH_LIMIT,
+    ),
+  };
+}
+
 function parseGeminiResponse(payload) {
   const text = (payload?.candidates?.[0]?.content?.parts || [])
     .map((part) => typeof part?.text === 'string' ? part.text : '')
     .join('')
     .trim();
+  const diagnostic = buildSafeGeminiResponseDiagnostic(payload, text);
 
   if (!text) {
     const error = new Error('Empty response from Gemini API');
     error.code = 'provider_empty_response';
+    error.diagnostic = diagnostic;
     throw error;
   }
 
-  const result = parseProviderJson(text);
+  let result;
+  try {
+    result = parseProviderJson(text);
+  } catch (error) {
+    error.code = diagnostic.finishReason === 'MAX_TOKENS'
+      ? 'remix_output_token_limit_exceeded'
+      : 'provider_invalid_json';
+    error.diagnostic = diagnostic;
+    throw error;
+  }
   Object.defineProperty(result, '_providerUsage', {
     value: payload?.usageMetadata || null,
     enumerable: false,

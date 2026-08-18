@@ -39,6 +39,51 @@ const brief = {
   location: 'Kyiv',
   toneOfVoice: 'friendly and direct',
 };
+const syntheticEvidenceSentence = 'Synthetic evidence shows the product step, the visible proof, and the buyer response. ';
+const groundedSource = {
+  ...source,
+  sourceGrounding: {
+    status: 'full',
+    mode: 'video',
+    evidence: { metadata: true, video: true, transcript: true, visualObservations: true },
+    transcript: {
+      status: 'available',
+      trusted: true,
+      source: 'synthetic_offline_fixture',
+      segments: Array.from({ length: 12 }, (_, index) => ({
+        id: `segment-${index + 1}`,
+        startSeconds: index * 4,
+        endSeconds: index * 4 + 4,
+        text: `${index + 1}. ${syntheticEvidenceSentence.repeat(4)}`,
+      })),
+    },
+  },
+  videoIntelligence: {
+    readiness: { status: 'ready', level: 'high', gaps: [] },
+    video: {
+      status: 'available',
+      durationSeconds: 48,
+      videoSummary: 'A synthetic product demonstration moves from choice to proof and then to a visible buyer reaction.',
+      hook: 'The ordinary purchase turns into a visible surprise.',
+      contentMechanic: 'choice -> proof -> reveal -> reaction',
+      scenes: Array.from({ length: 8 }, (_, index) => ({
+        timeframe: `0:${String(index * 6).padStart(2, '0')}-0:${String(index * 6 + 6).padStart(2, '0')}`,
+        visualAction: `${syntheticEvidenceSentence.repeat(2)}Scene ${index + 1}.`,
+        spokenContent: `${syntheticEvidenceSentence.repeat(2)}Spoken segment ${index + 1}.`,
+        onScreenText: `SYNTHETIC PROOF ${index + 1}`,
+        localizedOnScreenText: `СИНТЕТИЧНИЙ ДОКАЗ ${index + 1}`,
+      })),
+    },
+    visual: {
+      status: 'available',
+      observations: Array.from({ length: 8 }, (_, index) => ({
+        timeframe: `0:${String(index * 6).padStart(2, '0')}`,
+        text: `${syntheticEvidenceSentence.repeat(2)}Observation ${index + 1}.`,
+        localizedText: `${syntheticEvidenceSentence}Локалізоване спостереження ${index + 1}.`,
+      })),
+    },
+  },
+};
 validProviderPayload = remixEngine.generateHighFidelityFallback(source, brief);
 try {
   await remixEngine.generateRemix(source, brief, {
@@ -60,6 +105,41 @@ try {
     }),
   );
   assert.equal(remixFetchCalls, 1, 'oversized remix request must fail before provider fetch');
+
+  const fetchCallsBeforeGroundedFixture = remixFetchCalls;
+  await assert.rejects(
+    remixEngine.generateRemix(groundedSource, brief, {
+      maxAttempts: 1,
+      maxOutputTokens: 2560,
+      maxRequestBytes: 12_000,
+      language: 'en',
+    }),
+    (error) => error?.code === 'ai_provider_failed'
+      && error?.cause?.code === 'remix_request_size_limit_exceeded',
+    'the production-shaped grounded request must reproduce the local 12,000-byte rejection',
+  );
+  assert.equal(
+    remixFetchCalls,
+    fetchCallsBeforeGroundedFixture,
+    'the 12,000-byte guard must reject the grounded request before fake fetch',
+  );
+
+  validProviderPayload = remixEngine.generateHighFidelityFallback(groundedSource, brief);
+  await remixEngine.generateRemix(groundedSource, brief, {
+    maxAttempts: 1,
+    maxOutputTokens: 2560,
+    maxRequestBytes: 30_000,
+    language: 'en',
+  });
+  assert.equal(
+    remixFetchCalls,
+    fetchCallsBeforeGroundedFixture + 1,
+    'the same grounded request must reach the fake provider exactly once at 30,000 bytes',
+  );
+  const groundedRequestBytes = Buffer.byteLength(JSON.stringify(remixRequestBody), 'utf8');
+  assert.ok(groundedRequestBytes > 12_000, `grounded request is only ${groundedRequestBytes} bytes`);
+  assert.ok(groundedRequestBytes <= 30_000, `grounded request is ${groundedRequestBytes} bytes`);
+  console.log(`Production-shaped grounded remix request: ${groundedRequestBytes} bytes; fake provider calls at 12k/30k: 0/1.`);
 } finally {
   globalThis.fetch = originalFetch;
   if (previousGeminiKey === undefined) delete process.env.GEMINI_API_KEY;
@@ -123,7 +203,7 @@ const tokenBoundedVideo = await analyzePublicVideoUrlWithGemini({
 });
 assert.equal(countTokenCalls, 1);
 assert.equal(boundedVideoGenerationCalls, 0);
-assert.equal(boundedVideoAttemptReservations, 0);
+assert.equal(boundedVideoAttemptReservations, 1, 'one guarded analysis envelope must cover token counting');
 assert.equal(tokenBoundedVideo.diagnostic.reasonCode, 'gemini_input_token_limit_exceeded');
 assert.equal(tokenBoundedVideo.diagnostic.retryable, false);
 

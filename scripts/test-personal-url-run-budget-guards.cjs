@@ -105,6 +105,37 @@ assert.ok(Math.abs(prospective4096StandardWorstCaseUsd - 0.84352) < 1e-12);
 assert.ok(Math.abs(prospective4096.worstCase.totalUsd - prospective4096StandardWorstCaseUsd) < 1e-12);
 assert.ok(prospective4096.worstCase.totalUsd < prospective4096.totalBudgetUsd);
 
+const prospective30000Env = {
+  ...prospective4096Env,
+  PERSONAL_URL_GEMINI_REMIX_MAX_REQUEST_BYTES: '30000',
+};
+const prospective30000 = readPersonalUrlRunBudget(prospective30000Env, models);
+const prospective30000StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospective30000);
+assert.equal(prospective30000.platforms.instagram.maxActorStarts, 2);
+assert.equal(prospective30000.platforms.instagram.allowInstagramFallback, true);
+assert.equal(prospective30000.platforms.instagram.totalMaxChargeUsd, 0.05);
+assert.equal(prospective30000.platforms.tiktok.maxActorStarts, 1);
+assert.equal(prospective30000.platforms.tiktok.totalMaxChargeUsd, 0.50);
+assert.equal(prospective30000.maxVideoDurationSeconds, 60);
+assert.equal(prospective30000.geminiVideoMaxInputTokens, 25_000);
+assert.equal(prospective30000.geminiVideoMaxOutputTokens, 4_096);
+assert.equal(prospective30000.geminiVideoMaxRequestBytes, 12_000);
+assert.equal(prospective30000.geminiRemixMaxOutputTokens, 2_560);
+assert.equal(prospective30000.geminiRemixMaxRequestBytes, 30_000);
+assert.ok(Math.abs(prospective30000StandardWorstCaseUsd - 0.89752) < 1e-12);
+assert.ok(Math.abs(prospective30000.worstCase.totalUsd - prospective30000StandardWorstCaseUsd) < 1e-12);
+assert.ok(prospective30000.worstCase.totalUsd < prospective30000.totalBudgetUsd);
+
+assert.throws(
+  () => readPersonalUrlRunBudget({
+    ...prospective4096Env,
+    PERSONAL_URL_GEMINI_REMIX_MAX_REQUEST_BYTES: '31000',
+  }, models),
+  (error) => error?.code === 'personal_url_run_budget_exceeded'
+    && Math.abs(error.details.maximumExposureUsd - 0.90052) < 1e-12,
+  '31,000 remix request bytes must fail closed above the $0.90 hard ceiling',
+);
+
 assert.throws(
   () => readPersonalUrlRunBudget({ PERSONAL_URL_RUN_BUDGET_USD: '0.75' }, models),
   (error) => error?.code === 'personal_url_run_budget_config_incomplete'
