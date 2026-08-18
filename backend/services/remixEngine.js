@@ -462,6 +462,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
       responseMimeType: "application/json",
       temperature: 0.75,
       topP: 0.9,
+      thinkingConfig: { thinkingLevel: 'low' },
       ...(Number.isInteger(options.maxOutputTokens) && options.maxOutputTokens > 0
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),

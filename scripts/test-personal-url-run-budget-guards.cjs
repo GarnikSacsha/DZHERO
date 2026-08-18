@@ -126,6 +126,55 @@ assert.ok(Math.abs(prospective30000StandardWorstCaseUsd - 0.89752) < 1e-12);
 assert.ok(Math.abs(prospective30000.worstCase.totalUsd - prospective30000StandardWorstCaseUsd) < 1e-12);
 assert.ok(prospective30000.worstCase.totalUsd < prospective30000.totalBudgetUsd);
 
+const prospectiveOneDollar8192Env = {
+  ...prospective30000Env,
+  PERSONAL_URL_RUN_BUDGET_USD: '1.00',
+  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8192',
+};
+const prospectiveOneDollar8192 = readPersonalUrlRunBudget(prospectiveOneDollar8192Env, models);
+const prospectiveOneDollar8192StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospectiveOneDollar8192);
+assert.equal(prospectiveOneDollar8192.totalBudgetUsd, 1.00);
+assert.equal(prospectiveOneDollar8192.platforms.instagram.maxActorStarts, 2);
+assert.equal(prospectiveOneDollar8192.platforms.instagram.allowInstagramFallback, true);
+assert.equal(prospectiveOneDollar8192.platforms.instagram.totalMaxChargeUsd, 0.05);
+assert.equal(prospectiveOneDollar8192.platforms.tiktok.maxActorStarts, 1);
+assert.equal(prospectiveOneDollar8192.platforms.tiktok.totalMaxChargeUsd, 0.50);
+assert.equal(prospectiveOneDollar8192.maxVideoDurationSeconds, 60);
+assert.equal(prospectiveOneDollar8192.geminiVideoMaxInputTokens, 25_000);
+assert.equal(prospectiveOneDollar8192.geminiVideoMaxOutputTokens, 4_096);
+assert.equal(prospectiveOneDollar8192.geminiVideoMaxRequestBytes, 12_000);
+assert.equal(prospectiveOneDollar8192.geminiRemixMaxRequestBytes, 30_000);
+assert.equal(prospectiveOneDollar8192.geminiRemixMaxOutputTokens, 8_192);
+assert.ok(Math.abs(prospectiveOneDollar8192StandardWorstCaseUsd - 0.998896) < 1e-12);
+assert.ok(Math.abs(prospectiveOneDollar8192.worstCase.totalUsd - 0.998896) < 1e-12);
+assert.ok(prospectiveOneDollar8192.worstCase.totalUsd < prospectiveOneDollar8192.totalBudgetUsd);
+
+assert.throws(
+  () => readPersonalUrlRunBudget({
+    ...prospectiveOneDollar8192Env,
+    PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '12288',
+  }, models),
+  (error) => error?.code === 'personal_url_run_budget_exceeded'
+    && Math.abs(error.details.maximumExposureUsd - 1.072624) < 1e-12,
+  '12,288 remix output tokens must fail closed above the $1.00 hard ceiling',
+);
+
+const prospectiveOneDollarUpperEdge = readPersonalUrlRunBudget({
+  ...prospectiveOneDollar8192Env,
+  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8253',
+}, models);
+assert.ok(Math.abs(prospectiveOneDollarUpperEdge.worstCase.totalUsd - 0.999994) < 1e-12);
+assert.ok(prospectiveOneDollarUpperEdge.worstCase.totalUsd < prospectiveOneDollarUpperEdge.totalBudgetUsd);
+assert.throws(
+  () => readPersonalUrlRunBudget({
+    ...prospectiveOneDollar8192Env,
+    PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8254',
+  }, models),
+  (error) => error?.code === 'personal_url_run_budget_exceeded'
+    && Math.abs(error.details.maximumExposureUsd - 1.000012) < 1e-12,
+  '8,254 remix output tokens must fail closed above the $1.00 hard ceiling',
+);
+
 assert.throws(
   () => readPersonalUrlRunBudget({
     ...prospective4096Env,

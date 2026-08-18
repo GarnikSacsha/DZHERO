@@ -68,8 +68,10 @@ const responses = [
 ];
 let fetchCalls = 0;
 let responseFinishReason = 'STOP';
+const requestBodies = [];
 
-globalThis.fetch = async () => {
+globalThis.fetch = async (_url, options = {}) => {
+  requestBodies.push(JSON.parse(options.body));
   const text = responses[fetchCalls++];
   const midpoint = Math.floor(text.length / 2);
   return {
@@ -161,7 +163,13 @@ async function captureSingleAttemptFailure({ label, text, finishReason }) {
   return observedError;
 }
 
-const truncatedText = `{"deconstruction":{"coreMechanics":"${rawProviderMarker}"},"remixes":[`;
+const truncatedPrefix = `{"deconstruction":{"coreMechanics":"${rawProviderMarker}`;
+const truncatedText = `${truncatedPrefix}${'x'.repeat(384 - Buffer.byteLength(truncatedPrefix, 'utf8'))}`;
+assert.equal(
+  Buffer.byteLength(truncatedText, 'utf8'),
+  384,
+  'MAX_TOKENS fixture must retain the live 384-byte response shape',
+);
 const truncatedError = await captureSingleAttemptFailure({
   label: 'MAX_TOKENS truncated JSON',
   text: truncatedText,
@@ -181,7 +189,7 @@ captureSafeDiagnosticAssertion(() => {
   assert.deepEqual(truncatedError.cause?.diagnostic, {
     finishReason: 'MAX_TOKENS',
     candidateCount: 1,
-    responseTextLength: truncatedText.length,
+    responseTextLength: Buffer.byteLength(truncatedText, 'utf8'),
   });
 });
 captureSafeDiagnosticAssertion(() => {
@@ -216,16 +224,25 @@ captureSafeDiagnosticAssertion(() => {
 });
 
 fetchCalls = 0;
+requestBodies.length = 0;
 responseFinishReason = 'STOP';
 responses.splice(0, responses.length, validText);
 const multipartControl = await remixEngine.generateRemix(source, {
   niche: 'кафе',
   product: 'десерти',
   location: 'Чернівці',
-}, { maxAttempts: 1 });
+}, { maxAttempts: 1, maxOutputTokens: 8192 });
 assert.equal(fetchCalls, 1, 'Valid multipart JSON control uses exactly one fake remix fetch');
 assert.equal(multipartControl.remixes.length, 3, 'Valid multipart JSON remains accepted');
 assert.equal(multipartControl._generation.attempts, 1);
+assert.equal(requestBodies.length, 1, 'Request-body contract must inspect the single remix request');
+assert.equal(requestBodies[0].generationConfig.maxOutputTokens, 8192);
+assert.equal(requestBodies[0].generationConfig.responseMimeType, 'application/json');
+assert.deepEqual(
+  requestBodies[0].generationConfig.thinkingConfig,
+  { thinkingLevel: 'low' },
+  'Gemini 3.5 Flash remix requests must use low thinking inside generationConfig',
+);
 
 assert.equal(
   safeDiagnosticCases.length,
