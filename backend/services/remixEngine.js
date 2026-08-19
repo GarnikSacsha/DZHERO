@@ -348,6 +348,26 @@ function buildRemixQualityFeedback(assessment = {}) {
   });
 }
 
+const HARD_REMIX_QUALITY_RULES = new Set([
+  'variant_count',
+  'required_visible_fields',
+  'scene_count',
+  'semantic_angle_supported',
+  'semantic_angle_unique',
+  'semantic_angle_coverage',
+  'central_claim_present',
+  'source_contract_present',
+  'adaptation_contract_present',
+]);
+
+function sanitizeQualityWarnings(assessment = {}) {
+  return (assessment.violations || []).map((violation) => ({
+    variantIndex: violation.variantIndex,
+    ruleId: violation.ruleId,
+    fields: Array.isArray(violation.fields) ? violation.fields : [],
+  }));
+}
+
 function createClassifiedProviderError(category, message, diagnostic = {}, cause) {
   const error = new Error(message || category);
   error.code = category;
@@ -680,6 +700,8 @@ async function generateValidatedProviderResult({
         model,
         attempts: attempt,
         fallback: false,
+        qualityStatus: 'accepted',
+        qualityWarnings: [],
         diagnostics,
         ...(result._providerUsage ? { usage: result._providerUsage } : {}),
       };
@@ -698,6 +720,24 @@ async function generateValidatedProviderResult({
     const retryDecision = attempt >= attemptLimit
       ? { retry: false, reason: 'attempt_limit' }
       : getRemixRetryDecision({ category: 'remix_quality_rejected', attempt });
+    const hardQualityFailure = (assessment.violations || [])
+      .some((violation) => HARD_REMIX_QUALITY_RULES.has(violation.ruleId));
+    if (attempt >= attemptLimit && !hardQualityFailure && Array.isArray(result?.remixes) && result.remixes.length > 0) {
+      diagnostics[diagnostics.length - 1].errorCategory = null;
+      diagnostics[diagnostics.length - 1].retryDecision = 'accepted_with_warnings';
+      result._generation = {
+        provider,
+        model,
+        attempts: attempt,
+        fallback: false,
+        qualityStatus: 'accepted_with_warnings',
+        qualityWarnings: sanitizeQualityWarnings(assessment),
+        diagnostics,
+        ...(result._providerUsage ? { usage: result._providerUsage } : {}),
+      };
+      console.warn(`[RemixEngine] ${provider}/${model} accepted_with_warnings attempt=${attempt}`);
+      return result;
+    }
     diagnostics[diagnostics.length - 1].retryDecision = retryDecision.retry ? retryDecision.reason : 'no_retry';
     console.warn(
       `[RemixEngine] ${provider}/${model} rejected attempt=${attempt}`

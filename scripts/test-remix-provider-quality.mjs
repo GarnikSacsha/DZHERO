@@ -175,4 +175,62 @@ const ungroundedAssessment = assessRemixQuality(ungroundedBrandCopy, {
 });
 assert.equal(ungroundedAssessment.ok, false, 'generic text without a canonical Brand Brain fact must remain rejected');
 assert.match(ungroundedAssessment.reasons.join(' '), /Brand Brain facts/i);
+
+const semanticWarningResult = structuredClone(strong);
+semanticWarningResult.remixes.forEach((remix, index) => {
+  remix.centralClaim = `Semantic claim without visible anchors ${index + 1}`;
+  remix.sourceConflict = `Hidden source conflict ${index + 1}`;
+  remix.preservedMechanic = `Hidden source mechanic ${index + 1}`;
+  remix.brandTranslation = `Generic translation ${index + 1}`;
+});
+let semanticWarningAttempts = 0;
+const acceptedWithWarnings = await remixEngine.generateValidatedProviderResult({
+  provider: 'test-provider',
+  model: 'test-model',
+  globalInsight: source,
+  businessBrief: semanticBrandBrief,
+  generate: async () => {
+    semanticWarningAttempts += 1;
+    return structuredClone(semanticWarningResult);
+  },
+});
+assert.equal(semanticWarningAttempts, 2);
+assert.equal(acceptedWithWarnings._generation.qualityStatus, 'accepted_with_warnings');
+assert.equal(acceptedWithWarnings._generation.qualityWarnings.length > 0, true);
+assert.deepEqual(
+  Object.keys(acceptedWithWarnings._generation.qualityWarnings[0]).sort(),
+  ['fields', 'ruleId', 'variantIndex'],
+);
+
+let invalidSchemaAttempts = 0;
+await assert.rejects(
+  remixEngine.generateValidatedProviderResult({
+    provider: 'test-provider',
+    model: 'test-model',
+    globalInsight: source,
+    generate: async () => {
+      invalidSchemaAttempts += 1;
+      return structuredClone(copied);
+    },
+  }),
+  (error) => error.code === 'remix_quality_rejected',
+);
+assert.equal(invalidSchemaAttempts, 2);
+
+let contentBlockedAttempts = 0;
+await assert.rejects(
+  remixEngine.generateValidatedProviderResult({
+    provider: 'test-provider',
+    model: 'test-model',
+    globalInsight: source,
+    generate: async () => {
+      contentBlockedAttempts += 1;
+      const error = new Error('blocked');
+      error.category = 'provider_content_blocked';
+      throw error;
+    },
+  }),
+  (error) => error.category === 'provider_content_blocked',
+);
+assert.equal(contentBlockedAttempts, 1);
 console.log('remix provider quality tests passed');
