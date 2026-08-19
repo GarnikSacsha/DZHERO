@@ -273,9 +273,25 @@ function record(event) {
 }
 async function routeRetryObservabilityProvider(globalInsight, businessBrief, options = {}) {
   record({ type: 'remix_route_options', maxAttempts: options.maxAttempts ?? null });
-  return baseProvider(globalInsight, businessBrief, options);
+  await options.beforeProviderAttempt({ provider: 'mock-personal-url-remix', model: 'mock-v1', operation: 'remix', attempt: 1 });
+  record({ type: 'remix_quality_rejected', attempt: 1 });
+  await options.beforeProviderAttempt({ provider: 'mock-personal-url-remix', model: 'mock-v1', operation: 'remix', attempt: 2 });
+  try {
+    await options.beforeProviderAttempt({ provider: 'mock-personal-url-remix', model: 'mock-v1', operation: 'remix', attempt: 3 });
+  } catch (error) {
+    record({ type: 'remix_attempt_blocked', attempt: 3, error: error.message, limit: error.payload?.limit });
+  }
+  return baseProvider(globalInsight, businessBrief, { ...options, beforeProviderAttempt: null });
 }
-routeRetryObservabilityProvider.resolveSource = baseProvider.resolveSource;
+routeRetryObservabilityProvider.resolveSource = async (savedUrl, options = {}) => {
+  const source = await baseProvider.resolveSource(savedUrl, options);
+  try {
+    await options.beforeProviderAttempt({ provider: 'mock-video-analysis', model: 'mock-v1', operation: 'video_analysis', attempt: 2 });
+  } catch (error) {
+    record({ type: 'video_analysis_attempt_blocked', attempt: 2, error: error.message, limit: error.payload?.limit });
+  }
+  return source;
+};
 module.exports = routeRetryObservabilityProvider;
 `, 'utf8');
 
@@ -342,6 +358,9 @@ try {
     2,
     'Saved URL route must allow the initial generation plus exactly one corrective quality retry',
   );
+  assert.equal(events.filter((event) => event.type === 'remix_quality_rejected' && event.attempt === 1).length, 1);
+  assert.equal(events.filter((event) => event.type === 'remix_attempt_blocked' && event.attempt === 3 && event.limit === 2).length, 1);
+  assert.equal(events.filter((event) => event.type === 'video_analysis_attempt_blocked' && event.attempt === 2 && event.limit === 1).length, 1);
   const brandMappingFailures = [];
   for (const assertion of [
     () => assert.equal(

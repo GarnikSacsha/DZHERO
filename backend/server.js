@@ -3052,7 +3052,7 @@ function createPersonalUrlProviderAttemptGuard({ workspaceId, actorUser, tracker
     controlledLiveRunScope: PERSONAL_SAVED_URL_PROVIDER_SCOPE,
   });
   const attempts = { apify: 0, analysis: 0, remix: 0 };
-  const limits = { apify: Math.max(0, Math.trunc(Number(apifyLimit) || 0)), analysis: 1, remix: 1 };
+  const limits = { apify: Math.max(0, Math.trunc(Number(apifyLimit) || 0)), analysis: 1, remix: 2 };
   return async (event = {}) => {
     const category = event.operation === 'remix'
       ? 'remix'
