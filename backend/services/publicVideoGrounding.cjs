@@ -447,8 +447,18 @@ function buildPrompt({ metadata = {}, language = 'uk' } = {}) {
   ].join('\n');
 }
 
-function buildAvailableEvidence({ platform, sourceUrl, model, payload, evidence, sourceMetadata = {}, language = 'uk' }) {
+function buildAvailableEvidence({
+  platform,
+  sourceUrl,
+  model,
+  payload,
+  evidence,
+  sourceMetadata = {},
+  language = 'uk',
+  inputTokenCountTelemetry = null,
+}) {
   const analysisLanguage = normalizePublicVideoAnalysisLanguage(language);
+  const providerUsage = cloneJson(payload?.usage || payload?.usageMetadata || null);
   const transcriptAvailable = Boolean(evidence.spokenText || evidence.spokenSegments.length);
   const visualObservations = evidence.observations.filter((item) => item.sourceType !== 'audio_observation');
   const visualSummary = compactText(
@@ -525,7 +535,9 @@ function buildAvailableEvidence({ platform, sourceUrl, model, payload, evidence,
       items: analysisItems,
     },
     diagnostic: null,
-    usage: cloneJson(payload?.usage || payload?.usageMetadata || null),
+    usage: inputTokenCountTelemetry
+      ? { ...(providerUsage || {}), ...cloneJson(inputTokenCountTelemetry) }
+      : providerUsage,
   };
 }
 
@@ -736,6 +748,7 @@ async function analyzePublicVideoUrlWithGemini({
 
   let response;
   let payload = {};
+  let inputTokenCountTelemetry = null;
   try {
     const requestUrl = isSocialPlatform
       ? `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:generateContent`
@@ -783,22 +796,19 @@ async function analyzePublicVideoUrlWithGemini({
     }
     const configuredMaxInputTokens = Number(maxInputTokens);
     const shouldCountInputTokens = Number.isFinite(configuredMaxInputTokens) && configuredMaxInputTokens > 0;
-    if (shouldCountInputTokens && !isSocialPlatform) {
-      await cleanupUploadedVideo();
-      return emptyEvidence(buildDiagnostic({
-        platform,
-        stage: 'provider_request',
-        reasonCode: 'gemini_input_token_count_unsupported',
-        retryable: false,
-        fallback: capability.fallback,
-        model,
-        sourceResolutionAttempts,
-      }));
-    }
+    const supportsInputTokenCounting = isSocialPlatform;
+    const shouldPerformInputTokenCount = shouldCountInputTokens && supportsInputTokenCounting;
+    inputTokenCountTelemetry = shouldCountInputTokens && !supportsInputTokenCounting
+      ? {
+        inputTokenCountStatus: 'skipped_unsupported',
+        inputTokenCount: null,
+        maxInputTokens: configuredMaxInputTokens,
+      }
+      : null;
     if (typeof beforeProviderAttempt === 'function') {
       await beforeProviderAttempt({ provider: 'gemini', model, operation: 'public_video_analysis' });
     }
-    if (shouldCountInputTokens) {
+    if (shouldPerformInputTokenCount) {
       const normalizedModel = String(model || '').trim().replace(/^models\//i, '');
       const countResponse = await fetchImpl(
         `${GEMINI_API_BASE}/models/${encodeURIComponent(model)}:countTokens`,
@@ -954,6 +964,7 @@ async function analyzePublicVideoUrlWithGemini({
     evidence: parsed,
     sourceMetadata: resolvedSourceMetadata,
     language: analysisLanguage,
+    inputTokenCountTelemetry,
   });
   await cleanupUploadedVideo();
   return available;

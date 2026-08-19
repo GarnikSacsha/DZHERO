@@ -247,6 +247,73 @@ async function runGroundingContract() {
   assert.equal(youtube.analysis.status, 'available');
   assert.equal(youtube.diagnostic, null);
 
+  const budgetedYoutubeCalls = [];
+  let budgetedYoutubeGuardCalls = 0;
+  const budgetedYoutube = await analyzePublicVideoUrlWithGemini({
+    platform: 'youtube',
+    sourceUrl: 'https://youtube.com/watch?v=budgeted-direct-url',
+    metadata: { title: 'Budgeted direct YouTube URL' },
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    maxVideoDurationSeconds: 60,
+    requireVideoDuration: true,
+    maxInputTokens: 25_000,
+    maxOutputTokens: 1_536,
+    maxRequestBytes: 100_000,
+    beforeProviderAttempt: async () => { budgetedYoutubeGuardCalls += 1; },
+    fetchImpl: async (url, options) => {
+      budgetedYoutubeCalls.push({ url: String(url), options });
+      assert.doesNotMatch(String(url), /:countTokens$/, 'YouTube Interactions input cannot use generateContent countTokens');
+      return response({
+        status: 'completed',
+        steps: [{ type: 'model_output', content: [{ type: 'text', text: JSON.stringify(providerEvidence) }] }],
+        usage: { total_input_tokens: 900, total_output_tokens: 240, total_tokens: 1140 },
+      });
+    },
+  });
+  assert.equal(budgetedYoutube.status, 'available', 'unsupported input token counting must not block YouTube analysis');
+  assert.equal(budgetedYoutubeGuardCalls, 1, 'the provider usage guard still wraps the YouTube analysis');
+  assert.equal(budgetedYoutubeCalls.length, 1, 'YouTube skips countTokens and performs one generate request');
+  assert.match(budgetedYoutubeCalls[0].url, /\/v1beta\/interactions$/);
+  const budgetedYoutubeRequest = JSON.parse(budgetedYoutubeCalls[0].options.body);
+  assert.equal(budgetedYoutubeRequest.generation_config.max_output_tokens, 1_536);
+  assert.deepEqual(
+    {
+      inputTokenCountStatus: budgetedYoutube.usage.inputTokenCountStatus,
+      inputTokenCount: budgetedYoutube.usage.inputTokenCount,
+      maxInputTokens: budgetedYoutube.usage.maxInputTokens,
+    },
+    {
+      inputTokenCountStatus: 'skipped_unsupported',
+      inputTokenCount: null,
+      maxInputTokens: 25_000,
+    },
+    'YouTube reports its configured but unavailable input-token measurement without failing',
+  );
+  assert.equal(budgetedYoutube.transcript.text, providerEvidence.spokenText);
+  assert.equal(budgetedYoutube.video.scenes.length, providerEvidence.scenes.length);
+  assert.equal(budgetedYoutube.video.observations.length, providerEvidence.observations.length);
+  assert.equal(budgetedYoutube.analysis.status, 'available');
+
+  let oversizedYoutubeProviderCalls = 0;
+  const oversizedYoutube = await analyzePublicVideoUrlWithGemini({
+    platform: 'youtube',
+    sourceUrl: 'https://youtube.com/watch?v=request-too-large',
+    metadata: { title: 'Request size guard remains active' },
+    apiKey: 'test-key',
+    model: 'gemini-test',
+    maxInputTokens: 25_000,
+    maxOutputTokens: 1_536,
+    maxRequestBytes: 1,
+    fetchImpl: async () => {
+      oversizedYoutubeProviderCalls += 1;
+      return response({});
+    },
+  });
+  assert.equal(oversizedYoutube.status, 'unavailable');
+  assert.equal(oversizedYoutube.diagnostic.reasonCode, 'gemini_request_size_limit_exceeded');
+  assert.equal(oversizedYoutubeProviderCalls, 0, 'request byte guard stops YouTube before the provider');
+
   for (const language of ['uk', 'en']) {
     const languageCalls = [];
     const expected = providerEvidenceForLanguage(language);
@@ -470,6 +537,46 @@ async function runGroundingContract() {
     })),
     'resolved social title, handle, and poster must survive grounding into the Saved URL Studio signal',
   );
+
+  for (const platform of ['instagram', 'tiktok']) {
+    let countTokensCalls = 0;
+    let generationCalls = 0;
+    let cleanupCalls = 0;
+    const sourceUrl = platform === 'instagram'
+      ? 'https://instagram.com/reel/input-token-limit'
+      : 'https://tiktok.com/@creator/video/input-token-limit';
+    const tokenLimitedSocial = await analyzePublicVideoUrlWithGemini({
+      platform,
+      sourceUrl,
+      apiKey: 'test-key',
+      model: 'gemini-test',
+      maxInputTokens: 25_000,
+      resolveSocialSource: async () => ({
+        sourceUrl,
+        videoUrl: `https://cdn.example.test/${platform}-input-token-limit.mp4`,
+      }),
+      uploadSocialVideo: async () => ({
+        name: `files/${platform}-input-token-limit`,
+        uri: `https://gemini.test/files/${platform}-input-token-limit`,
+        mimeType: 'video/mp4',
+      }),
+      beforeProviderAttempt: async () => {},
+      fetchImpl: async (url) => {
+        if (String(url).endsWith(':countTokens')) {
+          countTokensCalls += 1;
+          return response({ totalTokens: 25_001 });
+        }
+        generationCalls += 1;
+        return response({});
+      },
+      deleteUploadedVideo: async () => { cleanupCalls += 1; },
+    });
+    assert.equal(tokenLimitedSocial.status, 'unavailable');
+    assert.equal(tokenLimitedSocial.diagnostic.reasonCode, 'gemini_input_token_limit_exceeded');
+    assert.equal(countTokensCalls, 1, `${platform}: uploaded media keeps supported input token counting`);
+    assert.equal(generationCalls, 0, `${platform}: input limit stops the main provider request`);
+    assert.equal(cleanupCalls, 1, `${platform}: token-limit failure cleans up uploaded media`);
+  }
 
   const gateOneContractFailures = [];
   const captureGateOneContract = async (label, assertion) => {
