@@ -9,6 +9,26 @@ const NON_SIGNAL_TOKENS = new Set([
   'original', 'visible', 'actual', 'process', 'brand', 'для', 'про', 'після', 'перед',
   'який', 'яка', 'яке', 'цей', 'ця', 'це', 'також', 'лише', 'через', 'показ',
 ]);
+const GENERIC_BRAND_TOKENS = new Set([
+  'brand', 'business', 'company', 'customer', 'customers', 'client', 'clients', 'content',
+  'local', 'market', 'offer', 'product', 'service', 'small', 'team', 'teams', 'audience',
+]);
+const SEMANTIC_TOKEN_GROUPS = Object.freeze([
+  ['routine', 'ordinary', 'standard', 'predictable'],
+  ['order', 'checkout', 'purchase', 'transaction'],
+  ['surprise', 'reward', 'bonus', 'gift', 'reveal', 'unwrap', 'unwrapping'],
+  ['show', 'showing', 'demonstrate', 'reveal', 'open', 'opens', 'unwrapping'],
+  ['explain', 'explains', 'understand', 'understandable', 'clear', 'walkthrough'],
+  ['viewer', 'viewers', 'audience'],
+  ['participation', 'participate', 'comments', 'comment', 'decision', 'choose', 'chooses'],
+  ['choice', 'selection', 'decision', 'choose', 'chooses'],
+  ['memorable', 'remember', 'remembering'],
+  ['workflow', 'process', 'procedure'],
+  ['audit', 'assessment', 'review', 'inspection'],
+]);
+const SEMANTIC_TOKEN_INDEX = new Map(
+  SEMANTIC_TOKEN_GROUPS.flatMap((group, index) => group.map((token) => [token, index])),
+);
 
 function normalizeText(value) {
   return String(value || '')
@@ -29,6 +49,9 @@ function collectRemixText(remix = {}) {
     remix.title,
     remix.hook,
     remix.cta,
+    remix.brandTranslation,
+    remix.productionProof,
+    remix.adaptationLogic,
     ...(remix.visualFlow || []).flatMap((step) => [
       step?.actionDescription,
       step?.onScreenText,
@@ -41,6 +64,7 @@ function collectSourceVisibleText(remix = {}) {
   return [
     remix.title,
     remix.hook,
+    remix.adaptationLogic,
     ...(remix.visualFlow || []).flatMap((step) => [
       step?.actionDescription,
       step?.onScreenText,
@@ -66,10 +90,12 @@ function signalTokens(value) {
 function overlapCount(left, right) {
   const leftTokens = signalTokens(left);
   const rightTokens = signalTokens(right);
-  return [...leftTokens].filter((leftToken) => [...rightTokens].some((rightToken) => (
-    leftToken === rightToken
-    || (leftToken.length >= 5 && rightToken.length >= 5 && leftToken.slice(0, 5) === rightToken.slice(0, 5))
-  ))).length;
+  return [...leftTokens].filter((leftToken) => [...rightTokens].some((rightToken) => {
+    if (leftToken === rightToken) return true;
+    if (leftToken.length >= 5 && rightToken.length >= 5 && leftToken.slice(0, 5) === rightToken.slice(0, 5)) return true;
+    const leftGroup = SEMANTIC_TOKEN_INDEX.get(leftToken);
+    return leftGroup !== undefined && leftGroup === SEMANTIC_TOKEN_INDEX.get(rightToken);
+  })).length;
 }
 
 function hasVisibleAnchor(visibleText, sourceField) {
@@ -87,19 +113,45 @@ function jaccardSimilarity(left, right) {
   return shared / union.size;
 }
 
-function brandTerms(businessBrief = {}) {
+function buildBrandGroundingFacts(businessBrief = {}) {
   const brief = businessBrief?.brief || businessBrief?.brandBrain || businessBrief || {};
-  return [
-    brief.businessType,
-    brief.niche,
-    brief.product,
-    brief.offer,
-    brief.productOffer,
-    brief.audience,
-    brief.location,
-    brief.market,
-    brief.contentFocus,
-  ].filter(Boolean).join(' ');
+  const candidates = [
+    ['brandName', brief.brandName || brief.name],
+    ['niche', brief.niche || brief.businessType],
+    ['product', brief.product || brief.productOffer],
+    ['offer', brief.offer],
+    ['audience', brief.audience],
+    ['market', brief.market || brief.location],
+    ['toneOfVoice', brief.toneOfVoice || brief.tone],
+    ['contentFocus', brief.contentFocus],
+    ['cta', brief.cta],
+    ['proof', brief.proof],
+    ...['goals', 'contentPillars', 'contentRubrics', 'keywords', 'constraints', 'stopTopics', 'differentiators']
+      .flatMap((field) => (Array.isArray(brief[field]) ? brief[field].map((value) => [field, value]) : [])),
+  ];
+  const seen = new Set();
+  return candidates.reduce((facts, [field, value]) => {
+    const normalized = normalizeText(value);
+    if (!normalized || seen.has(normalized)) return facts;
+    const tokens = [...signalTokens(normalized)];
+    if (tokens.length < 2 && !tokens.some((token) => token.length >= 5 && !GENERIC_BRAND_TOKENS.has(token))) return facts;
+    seen.add(normalized);
+    facts.push({ field, value: compactText(value) });
+    return facts;
+  }, []);
+}
+
+function matchedBrandFactFields(text, facts = []) {
+  return facts.filter((fact) => {
+    const factTokens = [...signalTokens(fact.value)];
+    const overlap = overlapCount(text, fact.value);
+    if (overlap >= Math.min(2, factTokens.length)) return true;
+    return factTokens.some((token) => (
+      token.length >= 6
+      && !GENERIC_BRAND_TOKENS.has(token)
+      && overlapCount(text, token) >= 1
+    ));
+  }).map((fact) => fact.field);
 }
 
 function assessRemixQuality(result, { globalInsight = {}, businessBrief = {} } = {}) {
@@ -109,10 +161,15 @@ function assessRemixQuality(result, { globalInsight = {}, businessBrief = {} } =
   const normalizedClaims = [];
   const normalizedHooks = [];
   const seenAngles = new Set();
-  const brandContext = brandTerms(businessBrief);
-  const requiresBrandBalance = signalTokens(brandContext).size > 0;
+  const violations = [];
+  const brandFacts = buildBrandGroundingFacts(businessBrief);
+  const requiresBrandBalance = brandFacts.length > 0;
+  const addViolation = (ruleId, message, variantIndex = null, fields = []) => {
+    reasons.push(message);
+    violations.push({ ruleId, variantIndex, fields });
+  };
 
-  if (remixes.length !== 3) reasons.push('Expected exactly 3 remix variants.');
+  if (remixes.length !== 3) addViolation('variant_count', 'Expected exactly 3 remix variants.', null, ['remixes']);
 
   remixes.forEach((remix, index) => {
     const number = index + 1;
@@ -129,54 +186,56 @@ function assessRemixQuality(result, { globalInsight = {}, businessBrief = {} } =
     const adaptationLogic = compactText(remix?.adaptationLogic);
 
     if (!compactText(remix?.title) || !compactText(remix?.hook) || !compactText(remix?.cta)) {
-      reasons.push(`Variant ${number} is missing title, hook, or CTA.`);
+      addViolation('required_visible_fields', `Variant ${number} is missing title, hook, or CTA.`, number, ['title', 'hook', 'cta']);
     }
-    if (flow.length < 3) reasons.push(`Variant ${number} needs at least 3 scene beats.`);
+    if (flow.length < 3) addViolation('scene_count', `Variant ${number} needs at least 3 scene beats.`, number, ['visualFlow']);
     if (flow.some((step) => compactText(step?.actionDescription).length < 24)) {
-      reasons.push(`Variant ${number} has generic visual directions.`);
+      addViolation('visual_specificity', `Variant ${number} has generic visual directions.`, number, ['visualFlow.actionDescription']);
     }
-    if (/#[\p{L}\p{N}_]+/u.test(output)) reasons.push(`Variant ${number} copies source hashtags.`);
+    if (/#[\p{L}\p{N}_]+/u.test(output)) addViolation('source_hashtag_copy', `Variant ${number} copies source hashtags.`, number, ['title', 'hook', 'cta', 'visualFlow']);
     if (sourcePhrases.some((phrase) => normalizedOutput.includes(phrase))) {
-      reasons.push(`Variant ${number} copies source wording.`);
+      addViolation('source_wording_copy', `Variant ${number} copies source wording.`, number, ['title', 'hook', 'visualFlow']);
     }
 
     if (!SEMANTIC_ANGLES.includes(semanticAngle)) {
-      reasons.push(`Variant ${number} has an unsupported semantic angle.`);
+      addViolation('semantic_angle_supported', `Variant ${number} has an unsupported semantic angle.`, number, ['semanticAngle']);
     } else if (seenAngles.has(semanticAngle)) {
-      reasons.push(`Variant ${number} repeats semantic angle "${semanticAngle}".`);
+      addViolation('semantic_angle_unique', `Variant ${number} repeats semantic angle "${semanticAngle}".`, number, ['semanticAngle']);
     } else {
       seenAngles.add(semanticAngle);
     }
 
     if (!centralClaim) {
-      reasons.push(`Variant ${number} is missing a central claim.`);
+      addViolation('central_claim_present', `Variant ${number} is missing a central claim.`, number, ['centralClaim']);
     } else {
       normalizedClaims.push(centralClaim);
       if (!hasVisibleAnchor(`${remix?.title || ''} ${remix?.hook || ''}`, centralClaim)) {
-        reasons.push(`Variant ${number} title/hook does not express its central claim.`);
+        addViolation('central_claim_visible', `Variant ${number} title/hook does not express its central claim.`, number, ['title', 'hook', 'centralClaim']);
       }
     }
 
     if (!sourceConflict || !preservedMechanic) {
-      reasons.push(`Variant ${number} is missing source conflict or preserved mechanic.`);
+      addViolation('source_contract_present', `Variant ${number} is missing source conflict or preserved mechanic.`, number, ['sourceConflict', 'preservedMechanic']);
     } else {
       if (!hasVisibleAnchor(sourceVisibleOutput, sourceConflict)) {
-        reasons.push(`Variant ${number} does not visibly preserve its source conflict.`);
+        addViolation('source_conflict_visible', `Variant ${number} does not visibly preserve its source conflict.`, number, ['title', 'hook', 'adaptationLogic', 'visualFlow', 'sourceConflict']);
       }
       if (!hasVisibleAnchor(sourceVisibleOutput, preservedMechanic)) {
-        reasons.push(`Variant ${number} does not visibly preserve its source mechanic.`);
+        addViolation('source_mechanic_visible', `Variant ${number} does not visibly preserve its source mechanic.`, number, ['title', 'hook', 'adaptationLogic', 'visualFlow', 'preservedMechanic']);
       }
     }
 
     if (!brandTranslation || !productionProof || !adaptationLogic) {
-      reasons.push(`Variant ${number} is missing adaptation contract fields.`);
+      addViolation('adaptation_contract_present', `Variant ${number} is missing adaptation contract fields.`, number, ['brandTranslation', 'productionProof', 'adaptationLogic']);
     }
     if (requiresBrandBalance) {
-      if (!hasVisibleAnchor(output, brandContext)) {
-        reasons.push(`Variant ${number} does not visibly apply Brand Brain facts.`);
+      const outputFactFields = matchedBrandFactFields(output, brandFacts);
+      const translationFactFields = matchedBrandFactFields(brandTranslation, brandFacts);
+      if (!outputFactFields.length) {
+        addViolation('brand_fact_visible', `Variant ${number} does not visibly apply Brand Brain facts.`, number, ['title', 'hook', 'brandTranslation', 'productionProof', 'adaptationLogic', 'visualFlow']);
       }
-      if (!hasVisibleAnchor(brandTranslation, brandContext)) {
-        reasons.push(`Variant ${number} brand translation is not grounded in Brand Brain facts.`);
+      if (!translationFactFields.length || !translationFactFields.some((field) => outputFactFields.includes(field))) {
+        addViolation('brand_translation_grounded', `Variant ${number} brand translation is not grounded in Brand Brain facts.`, number, ['brandTranslation']);
       }
     }
 
@@ -185,29 +244,35 @@ function assessRemixQuality(result, { globalInsight = {}, businessBrief = {} } =
   });
 
   if (seenAngles.size !== SEMANTIC_ANGLES.length) {
-    reasons.push('Remix variants must cover each required semantic angle exactly once.');
+    addViolation('semantic_angle_coverage', 'Remix variants must cover each required semantic angle exactly once.', null, ['semanticAngle']);
   }
   if (new Set(normalizedHooks).size !== normalizedHooks.length) {
-    reasons.push('Remix variants need distinct hooks.');
+    addViolation('hook_distinct', 'Remix variants need distinct hooks.', null, ['hook']);
   }
   if (new Set(normalizedClaims.map(normalizeText)).size !== normalizedClaims.length) {
-    reasons.push('Remix variants repeat a normalized central claim.');
+    addViolation('central_claim_distinct', 'Remix variants repeat a normalized central claim.', null, ['centralClaim']);
   }
   for (let left = 0; left < normalizedClaims.length; left += 1) {
     for (let right = left + 1; right < normalizedClaims.length; right += 1) {
       if (jaccardSimilarity(normalizedClaims[left], normalizedClaims[right]) > 0.72) {
-        reasons.push('Remix variants use paraphrased versions of the same central claim.');
+        addViolation('central_claim_diversity', 'Remix variants use paraphrased versions of the same central claim.', null, ['centralClaim']);
         left = normalizedClaims.length;
         break;
       }
     }
   }
 
-  return { ok: reasons.length === 0, reasons };
+  return {
+    ok: reasons.length === 0,
+    reasons,
+    violations,
+    brandFactFieldNames: [...new Set(brandFacts.map((fact) => fact.field))],
+  };
 }
 
 module.exports = {
   SEMANTIC_ANGLES,
+  buildBrandGroundingFacts,
   assessRemixQuality,
   normalizeText,
 };

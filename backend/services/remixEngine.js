@@ -335,6 +335,19 @@ function getRemixRetryDecision({ category = '', attempt = 1 } = {}) {
   return { retry: false, reason: 'not_retryable' };
 }
 
+function buildRemixQualityFeedback(assessment = {}) {
+  const violations = Array.isArray(assessment.violations) ? assessment.violations : [];
+  return JSON.stringify({
+    type: 'remix_quality_correction',
+    instruction: 'Fix only the listed violations. Preserve every field and rule that already passed.',
+    violations: violations.map((violation) => ({
+      variantIndex: violation.variantIndex,
+      ruleId: violation.ruleId,
+      fields: Array.isArray(violation.fields) ? violation.fields : [],
+    })),
+  });
+}
+
 function createClassifiedProviderError(category, message, diagnostic = {}, cause) {
   const error = new Error(message || category);
   error.code = category;
@@ -389,11 +402,31 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
     location = "Київ",
     toneOfVoice = "дружній, але професійний"
   } = enrichedBusinessBrief || {};
+  const populatedBrandFieldNames = [
+    ['niche', niche],
+    ['product', product],
+    ['audience', enrichedBusinessBrief.audience],
+    ['location', location],
+    ['toneOfVoice', toneOfVoice],
+    ['contentFocus', enrichedBusinessBrief.contentFocus],
+    ['cta', enrichedBusinessBrief.cta],
+    ['proof', enrichedBusinessBrief.proof],
+    ['goals', enrichedBusinessBrief.goals],
+    ['constraints', enrichedBusinessBrief.stopTopics],
+  ].filter(([, value]) => (Array.isArray(value) ? value.length > 0 : Boolean(value))).map(([field]) => field);
 
   console.log('[RemixEngine] Generating remixes', JSON.stringify({
+    route: options.route || 'unknown',
+    workspaceId: options.workspaceId || '',
+    brandSource: options.brandSource || 'unknown',
+    sourceCompleteness: options.sourceCompleteness || 'unknown',
+    generationCompleteness: options.generationCompleteness || 'unknown',
+    generationMissingFields: Array.isArray(options.generationMissingFields) ? options.generationMissingFields : [],
     brandMode: enrichedBusinessBrief.brandBrainMode,
     brandReady: enrichedBusinessBrief.brandBrainReady,
-    populatedBrandFieldCount: [niche, product, location, toneOfVoice].filter(Boolean).length,
+    populatedBrandFieldCount: populatedBrandFieldNames.length,
+    populatedBrandFieldNames,
+    generationBrandKey: options.generationBrandKey || '',
   }));
 
   // Check if API keys are present in process.env
@@ -654,13 +687,24 @@ async function generateValidatedProviderResult({
       console.log(`[RemixEngine] ${provider}/${model} accepted on attempt ${attempt}`);
       return result;
     }
-    qualityFeedback = assessment.reasons.join(' ');
+    const validationRuleIds = [...new Set((assessment.violations || []).map((violation) => violation.ruleId))];
+    const variantIndexes = [...new Set((assessment.violations || [])
+      .map((violation) => violation.variantIndex)
+      .filter((variantIndex) => Number.isInteger(variantIndex)))];
+    qualityFeedback = buildRemixQualityFeedback(assessment);
     diagnostics[diagnostics.length - 1].errorCategory = 'remix_quality_rejected';
+    diagnostics[diagnostics.length - 1].validationRuleIds = validationRuleIds;
+    diagnostics[diagnostics.length - 1].variantIndexes = variantIndexes;
     const retryDecision = attempt >= attemptLimit
       ? { retry: false, reason: 'attempt_limit' }
       : getRemixRetryDecision({ category: 'remix_quality_rejected', attempt });
     diagnostics[diagnostics.length - 1].retryDecision = retryDecision.retry ? retryDecision.reason : 'no_retry';
-    console.warn(`[RemixEngine] ${provider}/${model} rejected on attempt ${attempt}: ${qualityFeedback}`);
+    console.warn(
+      `[RemixEngine] ${provider}/${model} rejected attempt=${attempt}`
+      + ` rules=${validationRuleIds.join(',') || 'unknown'}`
+      + ` variants=${variantIndexes.join(',') || 'none'}`
+      + ` retry=${retryDecision.retry}`,
+    );
     if (!retryDecision.retry) break;
   }
   if (lastError) {
@@ -1338,6 +1382,7 @@ module.exports = {
   generateHighFidelityFallback,
   classifyGeminiProviderResult,
   getRemixRetryDecision,
+  buildRemixQualityFeedback,
   REMIX_OUTPUT_SCHEMA,
   REMIX_RESPONSE_SCHEMA,
   REMIX_SYSTEM_PROMPT

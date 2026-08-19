@@ -84,10 +84,12 @@ const {
   persistProductBrand,
   resolveWorkspaceDiscoveryBrand,
   resolveWorkspaceGenerationBrand,
+  getPopulatedGenerationBrandFieldNames,
 } = require('./services/productBrandBrain.cjs');
 const {
   getRemixGenerationConfig,
   normalizeRemixSourceContext,
+  createBrandProjectionIncompleteError,
   generateProductLiveRemix,
 } = require('./services/productLiveRemix.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
@@ -2404,12 +2406,16 @@ function adaptationMatchesGenerationBrand(record = {}, brand = {}) {
 }
 
 function logGenerationBrandResolution({ route, workspaceId, resolution }) {
+  const populatedBrandFieldNames = getPopulatedGenerationBrandFieldNames(resolution.generationBrand);
   console.info(
     `[RemixBrandResolution] route=${String(route || 'unknown')}`
     + ` workspaceId=${String(workspaceId || '')}`
     + ` brandSource=${String(resolution.brandSource || 'unknown')}`
-    + ` completeness=${String(resolution.completeness || 'unknown')}`
-    + ` missingFields=${(resolution.missingFields || []).join(',') || 'none'}`
+    + ` sourceCompleteness=${String(resolution.sourceCompleteness || 'unknown')}`
+    + ` generationCompleteness=${String(resolution.generationCompleteness || 'unknown')}`
+    + ` generationMissingFields=${(resolution.generationMissingFields || []).join(',') || 'none'}`
+    + ` populatedBrandFieldCount=${populatedBrandFieldNames.length}`
+    + ` populatedBrandFieldNames=${populatedBrandFieldNames.join(',') || 'none'}`
     + ` generationBrandKey=${String(resolution.generationBrandKey || '')}`,
   );
 }
@@ -8401,11 +8407,12 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
     const productBrand = brandResolution.brandSource === 'product_brand_brain'
       ? normalizeProductBrand(brandResolution.brandSnapshot)
       : null;
-    if (!productBrand || !brandResolution.complete) {
+    if (!productBrand) {
       throw createProductContentPlanError('product_brand_brain_incomplete', 409, {
         missingFields: brandResolution.missingFields,
       });
     }
+    if (!brandResolution.complete) throw createBrandProjectionIncompleteError(brandResolution);
 
     const generationBrand = cloneJsonValue(brandResolution.brandSnapshot);
     const generationBrandKey = brandResolution.generationBrandKey;
@@ -8509,7 +8516,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             workspaceId: req.params.workspaceId,
             targetLanguage: generationContext.targetLanguage,
             beforeProviderAttempt,
-            maxAttempts: 1,
+            maxAttempts: 2,
             generator: remixGenerator,
             config: {
               ...getRemixGenerationConfig(),
@@ -10038,7 +10045,7 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
     const productBrand = brandResolution.brandSource === 'product_brand_brain'
       ? normalizeProductBrand(brandResolution.brandSnapshot)
       : null;
-    if (!productBrand || !brandResolution.complete) {
+    if (!productBrand) {
       const error = new Error('product_brand_brain_incomplete');
       error.status = 409;
       error.payload = {
@@ -10047,6 +10054,7 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
       };
       throw error;
     }
+    if (!brandResolution.complete) throw createBrandProjectionIncompleteError(brandResolution);
 
     const targetLanguage = String(req.body?.targetLanguage || getRemixGenerationConfig().targetLanguage).trim() || 'uk';
     const generationBrand = cloneJsonValue(brandResolution.brandSnapshot);

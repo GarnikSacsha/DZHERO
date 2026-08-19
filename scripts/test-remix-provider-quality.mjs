@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import qualityModule from '../backend/services/remixQuality.cjs';
 import remixEngine from '../backend/services/remixEngine.js';
 
-const { assessRemixQuality } = qualityModule;
+const { assessRemixQuality, buildBrandGroundingFacts } = qualityModule;
 
 const source = {
   title: 'thank you edwin!! #kpop #SmallBusiness #kpopfyp #ateez #fyp',
@@ -102,10 +102,77 @@ assert.deepEqual(meteredAttempts, [
   { provider: 'test-provider', model: 'test-model', operation: 'remix', attempt: 2 },
 ]);
 assert.match(retryFeedback, /source|copy|hashtag|variant/i);
+const structuredRetryFeedback = JSON.parse(retryFeedback);
+assert.equal(structuredRetryFeedback.type, 'remix_quality_correction');
+assert.equal(structuredRetryFeedback.instruction.includes('Preserve every field and rule that already passed.'), true);
+assert.equal(structuredRetryFeedback.violations.some((violation) => violation.ruleId === 'source_hashtag_copy'), true);
 assert.equal(retriedResult._generation.provider, 'test-provider');
 assert.equal(retriedResult._generation.model, 'test-model');
 assert.equal(retriedResult._generation.attempts, 2);
 assert.equal(retriedResult._generation.fallback, false);
 assert.equal(retriedResult._generation.diagnostics[0].errorCategory, 'remix_quality_rejected');
+assert.equal(retriedResult._generation.diagnostics[0].validationRuleIds.includes('source_hashtag_copy'), true);
+assert.deepEqual(retriedResult._generation.diagnostics[0].variantIndexes, [1]);
 assert.equal(retriedResult._generation.diagnostics[1].retryDecision, 'accepted');
+
+const semanticallyGrounded = structuredClone(strong);
+const semanticBrandBrief = {
+  product: 'workflow audit',
+  audience: 'small product teams',
+};
+assert.deepEqual(
+  buildBrandGroundingFacts(semanticBrandBrief).map((fact) => fact.field),
+  ['product', 'audience'],
+  'quality grounding must retain multiple canonical Brand Brain facts',
+);
+const semanticContracts = [
+  {
+    title: 'A routine order becomes a reveal',
+    hook: 'Turn an ordinary checkout into a moment worth remembering.',
+    centralClaim: 'An unexpected reward transforms a standard purchase into a memorable customer moment.',
+    sourceConflict: 'A predictable transaction creates no emotional response until the surprise appears.',
+    preservedMechanic: 'The customer makes a blind choice, opens the reward on camera, and shows an honest reaction.',
+  },
+  {
+    title: 'Let the sealed choice explain the idea',
+    hook: 'Follow the selection, unwrapping, and genuine response in one continuous sequence.',
+    centralClaim: 'Showing the full reveal process makes the reward mechanism understandable and credible.',
+    sourceConflict: 'A promised benefit feels abstract until the viewer sees a real person discover it.',
+    preservedMechanic: 'Move from an unknown option to an on-camera reveal and an unscripted reaction.',
+  },
+  {
+    title: 'The audience chooses what happens next',
+    hook: 'End the real reaction by handing the next decision to the comments.',
+    centralClaim: 'Viewer participation extends the surprise format beyond a single customer interaction.',
+    sourceConflict: 'The experience ends after one reveal unless the audience receives a meaningful decision.',
+    preservedMechanic: 'Show a real reveal first, then let viewers select the following reward.',
+  },
+];
+semanticallyGrounded.remixes.forEach((remix, index) => {
+  const contract = semanticContracts[index];
+  Object.assign(remix, contract, {
+    brandTranslation: 'A workflow assessment removes manual bottlenecks for lean delivery crews.',
+    adaptationLogic: `${contract.centralClaim} ${contract.sourceConflict} ${contract.preservedMechanic}`,
+  });
+  remix.visualFlow = remix.visualFlow.map((step, beat) => ({
+    ...step,
+    actionDescription: `${step.actionDescription} A workflow assessment exposes a manual bottleneck in beat ${beat + 1}.`,
+  }));
+});
+const semanticGroundingAssessment = assessRemixQuality(semanticallyGrounded, {
+  globalInsight: source,
+  businessBrief: semanticBrandBrief,
+});
+assert.equal(
+  semanticGroundingAssessment.ok,
+  true,
+  `semantic anchors across title, hook, adaptation logic, scenes, and a concrete Brand Brain paraphrase should pass: ${semanticGroundingAssessment.reasons.join(' | ')}`,
+);
+const ungroundedBrandCopy = structuredClone(strong);
+const ungroundedAssessment = assessRemixQuality(ungroundedBrandCopy, {
+  globalInsight: source,
+  businessBrief: semanticBrandBrief,
+});
+assert.equal(ungroundedAssessment.ok, false, 'generic text without a canonical Brand Brain fact must remain rejected');
+assert.match(ungroundedAssessment.reasons.join(' '), /Brand Brain facts/i);
 console.log('remix provider quality tests passed');

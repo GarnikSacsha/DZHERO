@@ -179,10 +179,12 @@ assert.equal(calls.some(({ url }) => url.includes('/adaptations/')), false, 'per
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER_ENTRY = path.join(ROOT, 'backend', 'server.js');
-const PROVIDER_FIXTURE = path.join(ROOT, 'scripts', 'fixtures', 'personal-url-source-observability-provider.cjs');
+const BASE_PROVIDER_FIXTURE = path.join(ROOT, 'scripts', 'fixtures', 'personal-url-source-observability-provider.cjs');
 const NETWORK_GUARD = path.join(ROOT, 'scripts', 'fixtures', 'controlled-live-run-network-guard.cjs');
 const brandProfileDescription = 'Synthetic workflow coaching for small product teams.';
 const brandAudience = 'small product teams';
+const brandNiche = 'workflow operations';
+const brandMarket = 'Ukraine';
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -236,6 +238,8 @@ function seededBrandMappingDb() {
         brain: {
           profileDescription: brandProfileDescription,
           audience: brandAudience,
+          niche: brandNiche,
+          market: brandMarket,
         },
       },
       contentPlanPosts: [],
@@ -259,10 +263,25 @@ function seededBrandMappingDb() {
 const tempDir = await mkdtemp(path.join(os.tmpdir(), 'saved-url-brand-mapping-'));
 const dbPath = path.join(tempDir, 'db.json');
 const providerCallsPath = path.join(tempDir, 'provider-calls.jsonl');
+const providerFixturePath = path.join(tempDir, 'route-retry-observability-provider.cjs');
 const port = await getFreePort();
 const baseUrl = `http://127.0.0.1:${port}`;
 await writeFile(dbPath, `${JSON.stringify(seededBrandMappingDb(), null, 2)}\n`, 'utf8');
 await writeFile(providerCallsPath, '', 'utf8');
+await writeFile(providerFixturePath, `'use strict';
+const fs = require('node:fs');
+const baseProvider = require(${JSON.stringify(BASE_PROVIDER_FIXTURE)});
+function record(event) {
+  const target = String(process.env.REMIX_TEST_PROVIDER_CALLS_PATH || '').trim();
+  if (target) fs.appendFileSync(target, JSON.stringify(event) + '\\n', 'utf8');
+}
+async function routeRetryObservabilityProvider(globalInsight, businessBrief, options = {}) {
+  record({ type: 'remix_route_options', maxAttempts: options.maxAttempts ?? null });
+  return baseProvider(globalInsight, businessBrief, options);
+}
+routeRetryObservabilityProvider.resolveSource = baseProvider.resolveSource;
+module.exports = routeRetryObservabilityProvider;
+`, 'utf8');
 
 const child = spawn(process.execPath, ['--require', NETWORK_GUARD, SERVER_ENTRY], {
   cwd: ROOT,
@@ -288,7 +307,7 @@ const child = spawn(process.execPath, ['--require', NETWORK_GUARD, SERVER_ENTRY]
     BETA_OWNER_TEST_SCOPE: 'staging',
     BETA_OWNER_TEST_USER_ID: 'user_brand_mapping',
     BETA_OWNER_TEST_WORKSPACE_ID: 'ws_brand_mapping',
-    REMIX_TEST_PROVIDER: PROVIDER_FIXTURE,
+    REMIX_TEST_PROVIDER: providerFixturePath,
     REMIX_TEST_PROVIDER_CALLS_PATH: providerCallsPath,
     CONTROLLED_LIVE_RUN_PROVIDER_CALLS_PATH: providerCallsPath,
   },
@@ -320,6 +339,13 @@ try {
   assert.equal(events.filter((event) => event.type === 'source_resolver').length, 1, 'source resolver runs exactly once');
   const remixCalls = events.filter((event) => event.type === 'remix_provider');
   assert.equal(remixCalls.length, 1, 'remix provider runs exactly once');
+  const routeOptions = events.filter((event) => event.type === 'remix_route_options');
+  assert.equal(routeOptions.length, 1, 'Saved URL route forwards one bounded remix attempt policy');
+  assert.equal(
+    routeOptions[0].maxAttempts,
+    2,
+    'Saved URL route must allow the initial generation plus exactly one corrective quality retry',
+  );
   const brandMappingFailures = [];
   for (const assertion of [
     () => assert.equal(

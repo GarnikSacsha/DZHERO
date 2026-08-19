@@ -13,6 +13,12 @@ const REQUIRED_PRODUCT_BRAIN_FIELDS = Object.freeze([
   'profileDescription',
   'audience',
 ]);
+const REQUIRED_GENERATION_BRAND_FIELDS = Object.freeze([
+  'product',
+  'audience',
+  'niche',
+  'market',
+]);
 
 function compactText(value, maxLength = 800) {
   return typeof value === 'string'
@@ -104,6 +110,39 @@ function projectProductBrandToBrief(value = {}) {
   };
 }
 
+function projectProductBrandToGenerationBrand(value = {}) {
+  return projectProductBrandToBrief(value);
+}
+
+function getGenerationBrandMissingFields(value = {}) {
+  const brand = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return [
+    !(brand.product || brand.offer || brand.profileDescription) && 'product',
+    !brand.audience && 'audience',
+    !(brand.niche || brand.businessType) && 'niche',
+    !(brand.market || brand.location) && 'market',
+  ].filter(Boolean);
+}
+
+function getPopulatedGenerationBrandFieldNames(value = {}) {
+  const brand = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  return [
+    ['brandName', brand.brandName],
+    ['product', brand.product || brand.offer || brand.profileDescription],
+    ['audience', brand.audience],
+    ['niche', brand.niche || brand.businessType],
+    ['market', brand.market || brand.location],
+    ['toneOfVoice', brand.toneOfVoice],
+    ['contentFocus', brand.contentFocus],
+    ['cta', brand.cta],
+    ['proof', brand.proof],
+    ['goals', brand.goals],
+    ['constraints', brand.constraints || brand.stopTopics],
+  ].filter(([, fieldValue]) => (
+    Array.isArray(fieldValue) ? fieldValue.length > 0 : Boolean(compactText(fieldValue))
+  )).map(([fieldName]) => fieldName);
+}
+
 const GENERATION_OVERRIDE_TEXT_FIELDS = Object.freeze([
   'brandName',
   'businessType',
@@ -190,16 +229,23 @@ function resolveWorkspaceGenerationBrand(workspace = {}, overrides = {}) {
   const productBrand = normalizeProductBrand(workspace.productBrandBrain);
   if (productBrand) {
     const missingFields = getMissingProductBrainFields(productBrand);
-    const baseBrand = projectProductBrandToBrief(productBrand);
+    const baseBrand = projectProductBrandToGenerationBrand(productBrand);
     const generationBrand = applyGenerationBrandOverrides(baseBrand, overrides);
+    const generationMissingFields = getGenerationBrandMissingFields(generationBrand);
+    const sourceCompleteness = missingFields.length ? 'incomplete' : 'complete';
+    const generationCompleteness = generationMissingFields.length ? 'incomplete' : 'complete';
     return {
       generationBrand,
       generationBrandKey: hashGenerationBrand(generationBrand),
+      generationBrandSnapshot: cloneJsonValue(generationBrand),
       brandSnapshot: cloneJsonValue(productBrand),
       brandSource: 'product_brand_brain',
       missingFields,
-      completeness: missingFields.length ? 'incomplete' : 'complete',
-      complete: missingFields.length === 0,
+      sourceCompleteness,
+      generationCompleteness,
+      generationMissingFields,
+      completeness: generationCompleteness,
+      complete: sourceCompleteness === 'complete' && generationCompleteness === 'complete',
     };
   }
 
@@ -207,21 +253,22 @@ function resolveWorkspaceGenerationBrand(workspace = {}, overrides = {}) {
     ? projectBrandBrainCompatibility(workspace.brief)
     : {};
   const generationBrand = applyGenerationBrandOverrides(storedBrief, overrides);
-  const missingFields = [
-    !(generationBrand.niche || generationBrand.businessType) && 'niche',
-    !(generationBrand.product || generationBrand.offer) && 'product',
-    !generationBrand.audience && 'audience',
-    !(generationBrand.location || generationBrand.market) && 'location',
-    !generationBrand.toneOfVoice && 'toneOfVoice',
-  ].filter(Boolean);
+  const missingFields = getGenerationBrandMissingFields(generationBrand);
+  const sourceComplete = isBrandContextComplete(workspace.brief || {});
+  const sourceCompleteness = sourceComplete ? 'complete' : 'incomplete';
+  const generationCompleteness = missingFields.length ? 'incomplete' : 'complete';
   return {
     generationBrand,
     generationBrandKey: hashGenerationBrand(generationBrand),
+    generationBrandSnapshot: cloneJsonValue(generationBrand),
     brandSnapshot: cloneJsonValue(storedBrief),
     brandSource: 'legacy_brief',
     missingFields,
-    completeness: isBrandContextComplete(workspace.brief || {}) ? 'complete' : 'incomplete',
-    complete: isBrandContextComplete(workspace.brief || {}),
+    sourceCompleteness,
+    generationCompleteness,
+    generationMissingFields: [...missingFields],
+    completeness: sourceCompleteness,
+    complete: sourceComplete && generationCompleteness === 'complete',
   };
 }
 
@@ -283,12 +330,16 @@ function resolveWorkspaceDiscoveryBrand(workspace = {}, options = {}) {
 module.exports = {
   PRODUCT_BRAND_BRAIN_VERSION,
   REQUIRED_PRODUCT_BRAIN_FIELDS,
+  REQUIRED_GENERATION_BRAND_FIELDS,
   normalizeProductBrandId,
   normalizeProductBrand,
   getMissingProductBrainFields,
   isProductBrandComplete,
   persistProductBrand,
   projectProductBrandToBrief,
+  projectProductBrandToGenerationBrand,
+  getGenerationBrandMissingFields,
+  getPopulatedGenerationBrandFieldNames,
   resolveWorkspaceDiscoveryBrand,
   GENERATION_OVERRIDE_TEXT_FIELDS,
   GENERATION_OVERRIDE_LIST_FIELDS,

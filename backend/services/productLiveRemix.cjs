@@ -3,6 +3,10 @@
 const { createHash } = require('node:crypto');
 const { generateRemix } = require('./remixEngine.js');
 const {
+  getGenerationBrandMissingFields,
+  getPopulatedGenerationBrandFieldNames,
+} = require('./productBrandBrain.cjs');
+const {
   DEFAULT_REMIX_MAX_INPUT_TOKENS,
   DEFAULT_REMIX_MAX_REQUEST_BYTES,
   DEFAULT_REMIX_MAX_OUTPUT_TOKENS,
@@ -129,6 +133,34 @@ function createInputBudgetError(diagnostic) {
     message: 'The source evidence is too large for a safe adaptation request.',
     diagnostic,
   };
+  return error;
+}
+
+function createBrandProjectionIncompleteError(brandResolution = {}) {
+  const generationBrand = brandResolution.generationBrand || {};
+  const generationMissingFields = Array.isArray(brandResolution.generationMissingFields)
+    ? [...brandResolution.generationMissingFields]
+    : getGenerationBrandMissingFields(generationBrand);
+  const populatedBrandFieldNames = getPopulatedGenerationBrandFieldNames(generationBrand);
+  const diagnostic = {
+    brandSource: brandResolution.brandSource || 'unknown',
+    sourceCompleteness: brandResolution.sourceCompleteness || brandResolution.completeness || 'unknown',
+    generationCompleteness: 'incomplete',
+    generationMissingFields,
+    populatedBrandFieldCount: populatedBrandFieldNames.length,
+    populatedBrandFieldNames,
+    generationBrandKey: brandResolution.generationBrandKey || '',
+  };
+  const error = new Error('brand_projection_incomplete');
+  error.code = 'brand_projection_incomplete';
+  error.status = 409;
+  error.payload = {
+    error: 'brand_projection_incomplete',
+    message: 'Product Brand Brain is missing generation-required fields.',
+    generationMissingFields,
+    diagnostic,
+  };
+  error.diagnostic = diagnostic;
   return error;
 }
 
@@ -324,6 +356,10 @@ async function generateProductLiveRemix({
   config = getRemixGenerationConfig(),
 } = {}) {
   const language = compactText(targetLanguage) || config.targetLanguage;
+  if (brandResolution?.brandSource === 'product_brand_brain') {
+    const generationMissingFields = getGenerationBrandMissingFields(brandResolution.generationBrand);
+    if (generationMissingFields.length) throw createBrandProjectionIncompleteError(brandResolution);
+  }
   const built = buildRemixGenerationPayload(sourceContext, brandResolution.generationBrand, {
     targetLanguage: language,
     productionConstraints,
@@ -355,6 +391,11 @@ async function generateProductLiveRemix({
       maxOutputTokens: config.maxOutputTokens,
       retryMaxOutputTokens: config.retryMaxOutputTokens,
       responseSchemaVariantCount: config.variantCount,
+      brandSource: brandResolution.brandSource,
+      sourceCompleteness: brandResolution.sourceCompleteness,
+      generationCompleteness: brandResolution.generationCompleteness,
+      generationMissingFields: brandResolution.generationMissingFields || [],
+      generationBrandKey: brandResolution.generationBrandKey,
     },
   );
   const result = cloneJsonValue(generated);
@@ -363,6 +404,9 @@ async function generateProductLiveRemix({
     route,
     cacheKey,
     brandSource: brandResolution.brandSource,
+    sourceCompleteness: brandResolution.sourceCompleteness,
+    generationCompleteness: brandResolution.generationCompleteness,
+    generationMissingFields: brandResolution.generationMissingFields || [],
     generationBrandKey: brandResolution.generationBrandKey,
     targetLanguage: language,
     payloadDiagnostics: built.payloadDiagnostics,
@@ -386,5 +430,6 @@ module.exports = {
   normalizeRemixSourceContext,
   buildRemixGenerationPayload,
   buildRemixGenerationCacheKey,
+  createBrandProjectionIncompleteError,
   generateProductLiveRemix,
 };

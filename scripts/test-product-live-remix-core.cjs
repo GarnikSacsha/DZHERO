@@ -8,6 +8,7 @@ const {
 const {
   buildRemixGenerationPayload,
   buildRemixGenerationCacheKey,
+  generateProductLiveRemix,
   normalizeRemixSourceContext,
 } = require('../backend/services/productLiveRemix.cjs');
 const {
@@ -52,6 +53,34 @@ assert.equal(productResolution.brandSnapshot.brain.audience, productBrand.brain.
 assert.equal(productResolution.brandSnapshot.brain.product, productBrand.brain.product);
 assert.equal(productResolution.completeness, 'complete');
 assert.deepEqual(productResolution.missingFields, []);
+
+const sourceCompleteButGenerationThin = resolveWorkspaceGenerationBrand({
+  id: 'ws_thin_product_brand',
+  productBrandBrain: {
+    version: 1,
+    id: 'brand_thin_projection',
+    name: 'Thin Product Brand',
+    brain: {
+      profileDescription: 'Synthetic workflow coaching for small product teams',
+      audience: 'small product teams',
+      niche: '',
+      market: '',
+    },
+  },
+});
+assert.deepEqual({
+  sourceCompleteness: sourceCompleteButGenerationThin.sourceCompleteness,
+  generationCompleteness: sourceCompleteButGenerationThin.generationCompleteness,
+  generationMissingFields: sourceCompleteButGenerationThin.generationMissingFields,
+  readyForBrandMode: sourceCompleteButGenerationThin.complete,
+}, {
+  sourceCompleteness: 'complete',
+  generationCompleteness: 'incomplete',
+  generationMissingFields: ['niche', 'market'],
+  readyForBrandMode: false,
+}, 'source completeness must not hide a generation-incomplete Product Brand projection');
+assert.deepEqual(productResolution.generationBrandSnapshot, productResolution.generationBrand);
+assert.equal(productResolution.brandSnapshot.brain.profileDescription, productBrand.brain.profileDescription);
 
 const overridden = resolveWorkspaceGenerationBrand({ productBrandBrain: productBrand }, {
   niche: '',
@@ -179,4 +208,26 @@ assert.deepEqual(persistedAdaptation.sourceContext, youtubeSource);
 assert.deepEqual(persistedAdaptation.brandSnapshot, productResolution.brandSnapshot);
 assert.deepEqual(persistedAdaptation.result.remixes[0], productionScript);
 
-console.log('product live remix core contract tests passed');
+(async () => {
+  let incompleteProjectionProviderCalled = false;
+  await assert.rejects(
+    generateProductLiveRemix({
+      sourceContext: youtubeSource,
+      brandResolution: sourceCompleteButGenerationThin,
+      generator: async () => {
+        incompleteProjectionProviderCalled = true;
+        return { remixes: [] };
+      },
+    }),
+    (error) => (
+      error.code === 'brand_projection_incomplete'
+      && error.status === 409
+      && error.payload?.generationMissingFields?.join(',') === 'niche,market'
+    ),
+  );
+  assert.equal(incompleteProjectionProviderCalled, false, 'incomplete Product Brand projection must stop before provider invocation');
+  console.log('product live remix core contract tests passed');
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

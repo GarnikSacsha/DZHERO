@@ -459,7 +459,7 @@ try {
   assert.equal(allowedEvents.filter((event) => event.kind === 'apify_actor')[0].actor, 'apify/instagram-reel-scraper');
   assert.equal(allowedEvents.some((event) => String(event.actor || '').includes('instagram-scraper')), false);
   assert.deepEqual(allowedEvents.find((event) => event.kind === 'remix').config, {
-    maxAttempts: 1,
+    maxAttempts: 2,
     maxOutputTokens: 2560,
     maxRequestBytes: 12000,
     language: 'uk',
