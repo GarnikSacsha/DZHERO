@@ -183,8 +183,6 @@ const BASE_PROVIDER_FIXTURE = path.join(ROOT, 'scripts', 'fixtures', 'personal-u
 const NETWORK_GUARD = path.join(ROOT, 'scripts', 'fixtures', 'controlled-live-run-network-guard.cjs');
 const brandProfileDescription = 'Synthetic workflow coaching for small product teams.';
 const brandAudience = 'small product teams';
-const brandNiche = 'workflow operations';
-const brandMarket = 'Ukraine';
 
 function getFreePort() {
   return new Promise((resolve, reject) => {
@@ -238,8 +236,6 @@ function seededBrandMappingDb() {
         brain: {
           profileDescription: brandProfileDescription,
           audience: brandAudience,
-          niche: brandNiche,
-          market: brandMarket,
         },
       },
       contentPlanPosts: [],

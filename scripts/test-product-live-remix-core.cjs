@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const youtubeFixture = require('./fixtures/product-live-youtube-source.cjs');
 const {
   resolveWorkspaceGenerationBrand,
+  getPopulatedGenerationBrandFieldNames,
 } = require('../backend/services/productBrandBrain.cjs');
 const {
   buildRemixGenerationPayload,
@@ -54,7 +55,7 @@ assert.equal(productResolution.brandSnapshot.brain.product, productBrand.brain.p
 assert.equal(productResolution.completeness, 'complete');
 assert.deepEqual(productResolution.missingFields, []);
 
-const sourceCompleteButGenerationThin = resolveWorkspaceGenerationBrand({
+const sourceCompleteWithOptionalNicheMarket = resolveWorkspaceGenerationBrand({
   id: 'ws_thin_product_brand',
   productBrandBrain: {
     version: 1,
@@ -69,16 +70,21 @@ const sourceCompleteButGenerationThin = resolveWorkspaceGenerationBrand({
   },
 });
 assert.deepEqual({
-  sourceCompleteness: sourceCompleteButGenerationThin.sourceCompleteness,
-  generationCompleteness: sourceCompleteButGenerationThin.generationCompleteness,
-  generationMissingFields: sourceCompleteButGenerationThin.generationMissingFields,
-  readyForBrandMode: sourceCompleteButGenerationThin.complete,
+  sourceCompleteness: sourceCompleteWithOptionalNicheMarket.sourceCompleteness,
+  generationCompleteness: sourceCompleteWithOptionalNicheMarket.generationCompleteness,
+  generationMissingFields: sourceCompleteWithOptionalNicheMarket.generationMissingFields,
+  readyForBrandMode: sourceCompleteWithOptionalNicheMarket.complete,
 }, {
   sourceCompleteness: 'complete',
-  generationCompleteness: 'incomplete',
-  generationMissingFields: ['niche', 'market'],
-  readyForBrandMode: false,
-}, 'source completeness must not hide a generation-incomplete Product Brand projection');
+  generationCompleteness: 'complete',
+  generationMissingFields: [],
+  readyForBrandMode: true,
+}, 'niche and market remain optional for a source-complete Product Brand');
+assert.equal(
+  getPopulatedGenerationBrandFieldNames(sourceCompleteWithOptionalNicheMarket.generationBrand).includes('audience'),
+  true,
+  'populated brand telemetry must count audience',
+);
 assert.deepEqual(productResolution.generationBrandSnapshot, productResolution.generationBrand);
 assert.equal(productResolution.brandSnapshot.brain.profileDescription, productBrand.brain.profileDescription);
 
@@ -209,23 +215,16 @@ assert.deepEqual(persistedAdaptation.brandSnapshot, productResolution.brandSnaps
 assert.deepEqual(persistedAdaptation.result.remixes[0], productionScript);
 
 (async () => {
-  let incompleteProjectionProviderCalled = false;
-  await assert.rejects(
-    generateProductLiveRemix({
-      sourceContext: youtubeSource,
-      brandResolution: sourceCompleteButGenerationThin,
-      generator: async () => {
-        incompleteProjectionProviderCalled = true;
-        return { remixes: [] };
-      },
-    }),
-    (error) => (
-      error.code === 'brand_projection_incomplete'
-      && error.status === 409
-      && error.payload?.generationMissingFields?.join(',') === 'niche,market'
-    ),
-  );
-  assert.equal(incompleteProjectionProviderCalled, false, 'incomplete Product Brand projection must stop before provider invocation');
+  let optionalProjectionProviderCalled = false;
+  await generateProductLiveRemix({
+    sourceContext: youtubeSource,
+    brandResolution: sourceCompleteWithOptionalNicheMarket,
+    generator: async () => {
+      optionalProjectionProviderCalled = true;
+      return { remixes: [] };
+    },
+  });
+  assert.equal(optionalProjectionProviderCalled, true, 'missing optional niche and market must not block generation');
   console.log('product live remix core contract tests passed');
 })().catch((error) => {
   console.error(error);

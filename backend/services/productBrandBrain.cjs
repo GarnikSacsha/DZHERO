@@ -16,8 +16,6 @@ const REQUIRED_PRODUCT_BRAIN_FIELDS = Object.freeze([
 const REQUIRED_GENERATION_BRAND_FIELDS = Object.freeze([
   'product',
   'audience',
-  'niche',
-  'market',
 ]);
 
 function compactText(value, maxLength = 800) {
@@ -119,8 +117,6 @@ function getGenerationBrandMissingFields(value = {}) {
   return [
     !(brand.product || brand.offer || brand.profileDescription) && 'product',
     !brand.audience && 'audience',
-    !(brand.niche || brand.businessType) && 'niche',
-    !(brand.market || brand.location) && 'market',
   ].filter(Boolean);
 }
 
