@@ -1,5 +1,7 @@
 'use strict';
 
+const { createHash } = require('node:crypto');
+
 const {
   isBrandContextComplete,
   normalizeBrandAnswers,
@@ -24,7 +26,18 @@ function normalizeProductBrandId(value) {
 
 function normalizeProductBrand(value = {}) {
   const source = value && typeof value === 'object' ? value : {};
-  const brain = normalizeBrandAnswers(source.brain || source.answers || {});
+  const rawBrain = source.brain || source.answers || {};
+  const brain = normalizeBrandAnswers(rawBrain);
+  for (const field of ['product', 'offer', 'toneOfVoice', 'contentFocus', 'cta', 'proof']) {
+    const normalized = compactText(rawBrain[field], 800);
+    if (normalized) brain[field] = normalized;
+  }
+  for (const field of ['goals', 'stopTopics', 'contentPillars', 'contentRubrics', 'keywords']) {
+    const normalized = Array.isArray(rawBrain[field])
+      ? rawBrain[field].map((item) => compactText(item, 240)).filter(Boolean)
+      : [];
+    if (normalized.length) brain[field] = normalized;
+  }
   const id = normalizeProductBrandId(source.id || source.activeBrandId);
   const name = compactText(source.name || source.brandName, 80);
   if (!id || !name) return null;
@@ -68,16 +81,147 @@ function projectProductBrandToBrief(value = {}) {
   return {
     schemaVersion: 2,
     answers,
-    product: answers.profileDescription,
+    product: answers.product || answers.offer || answers.profileDescription,
+    offer: answers.offer || answers.product || answers.profileDescription,
     audience: answers.audience,
     businessType: answers.niche,
     niche: answers.niche,
     location: answers.market,
     market: answers.market,
+    toneOfVoice: answers.toneOfVoice || '',
+    goals: answers.goals || [],
+    stopTopics: answers.stopTopics || [],
+    contentPillars: answers.contentPillars || [],
+    contentRubrics: answers.contentRubrics || [],
+    keywords: answers.keywords || [],
+    contentFocus: answers.contentFocus || '',
+    cta: answers.cta || '',
+    proof: answers.proof || '',
     sourceLinks: answers.instagramUrl ? [answers.instagramUrl] : [],
     brandName: brand.name,
     productBrandId: brand.id,
     updatedAt: brand.updatedAt,
+  };
+}
+
+const GENERATION_OVERRIDE_TEXT_FIELDS = Object.freeze([
+  'brandName',
+  'businessType',
+  'niche',
+  'product',
+  'offer',
+  'audience',
+  'location',
+  'market',
+  'toneOfVoice',
+  'contentFocus',
+  'cta',
+  'proof',
+]);
+const GENERATION_OVERRIDE_LIST_FIELDS = Object.freeze([
+  'goals',
+  'stopTopics',
+  'contentPillars',
+  'contentRubrics',
+  'keywords',
+  'sourceLinks',
+]);
+
+function cloneJsonValue(value) {
+  return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+}
+
+function stableSortJson(value) {
+  if (Array.isArray(value)) return value.map(stableSortJson);
+  if (!value || typeof value !== 'object') return value;
+  return Object.keys(value).sort().reduce((result, key) => {
+    result[key] = stableSortJson(value[key]);
+    return result;
+  }, {});
+}
+
+function hashGenerationBrand(value = {}) {
+  const canonical = cloneJsonValue(value) || {};
+  delete canonical.updatedAt;
+  delete canonical.createdAt;
+  return createHash('sha256')
+    .update(JSON.stringify(stableSortJson(canonical)))
+    .digest('hex');
+}
+
+function applyGenerationBrandOverrides(base = {}, overrides = {}) {
+  const source = overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+    ? overrides
+    : {};
+  const result = cloneJsonValue(base) || {};
+  for (const field of GENERATION_OVERRIDE_TEXT_FIELDS) {
+    const normalized = compactText(source[field], 800);
+    if (normalized) result[field] = normalized;
+  }
+  for (const field of GENERATION_OVERRIDE_LIST_FIELDS) {
+    const normalized = Array.isArray(source[field])
+      ? source[field].map((item) => compactText(item, 240)).filter(Boolean)
+      : [];
+    if (normalized.length) result[field] = normalized;
+  }
+  const overrideNiche = compactText(source.niche || source.businessType, 800);
+  const overrideMarket = compactText(source.location || source.market, 800);
+  const overrideProduct = compactText(source.product || source.offer, 800);
+  if (overrideNiche) {
+    result.niche = overrideNiche;
+    result.businessType = overrideNiche;
+  }
+  if (overrideMarket) {
+    result.location = overrideMarket;
+    result.market = overrideMarket;
+  }
+  if (overrideProduct) {
+    result.product = overrideProduct;
+    result.offer = overrideProduct;
+  }
+  if (result.niche && !result.businessType) result.businessType = result.niche;
+  if (result.businessType && !result.niche) result.niche = result.businessType;
+  if (result.location && !result.market) result.market = result.location;
+  if (result.market && !result.location) result.location = result.market;
+  return result;
+}
+
+function resolveWorkspaceGenerationBrand(workspace = {}, overrides = {}) {
+  const productBrand = normalizeProductBrand(workspace.productBrandBrain);
+  if (productBrand) {
+    const missingFields = getMissingProductBrainFields(productBrand);
+    const baseBrand = projectProductBrandToBrief(productBrand);
+    const generationBrand = applyGenerationBrandOverrides(baseBrand, overrides);
+    return {
+      generationBrand,
+      generationBrandKey: hashGenerationBrand(generationBrand),
+      brandSnapshot: cloneJsonValue(productBrand),
+      brandSource: 'product_brand_brain',
+      missingFields,
+      completeness: missingFields.length ? 'incomplete' : 'complete',
+      complete: missingFields.length === 0,
+    };
+  }
+
+  const storedBrief = workspace.brief && typeof workspace.brief === 'object' && !Array.isArray(workspace.brief)
+    ? projectBrandBrainCompatibility(workspace.brief)
+    : {};
+  const generationBrand = applyGenerationBrandOverrides(storedBrief, overrides);
+  const missingFields = [
+    !(generationBrand.niche || generationBrand.businessType) && 'niche',
+    !(generationBrand.product || generationBrand.offer) && 'product',
+    !generationBrand.audience && 'audience',
+    !(generationBrand.location || generationBrand.market) && 'location',
+    !generationBrand.toneOfVoice && 'toneOfVoice',
+  ].filter(Boolean);
+  return {
+    generationBrand,
+    generationBrandKey: hashGenerationBrand(generationBrand),
+    brandSnapshot: cloneJsonValue(storedBrief),
+    brandSource: 'legacy_brief',
+    missingFields,
+    completeness: isBrandContextComplete(workspace.brief || {}) ? 'complete' : 'incomplete',
+    complete: isBrandContextComplete(workspace.brief || {}),
   };
 }
 
@@ -146,4 +290,9 @@ module.exports = {
   persistProductBrand,
   projectProductBrandToBrief,
   resolveWorkspaceDiscoveryBrand,
+  GENERATION_OVERRIDE_TEXT_FIELDS,
+  GENERATION_OVERRIDE_LIST_FIELDS,
+  applyGenerationBrandOverrides,
+  hashGenerationBrand,
+  resolveWorkspaceGenerationBrand,
 };

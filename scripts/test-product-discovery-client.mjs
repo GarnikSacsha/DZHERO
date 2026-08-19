@@ -70,7 +70,7 @@ const fetcher = async (url, options = {}) => {
   if (url.endsWith('/saved-signals')) {
     return jsonResponse(200, { savedSignals: [{ cardId: 'accepted-signal' }] });
   }
-  if (url.endsWith('/adaptations/accepted-signal')) {
+  if (url.endsWith('/adaptations/accepted-signal') || url.endsWith('/adaptations/accepted-signal?targetLanguage=en')) {
     return jsonResponse(200, { status: 'absent', adaptation: null });
   }
   if (url.endsWith('/adaptations/accepted-signal/generate')) {
@@ -110,6 +110,13 @@ assert.equal((await client.saveSignal('accepted-signal')).saved, true);
 assert.equal((await client.unsaveSignal('accepted-signal')).saved, false);
 assert.equal((await client.loadAdaptation('accepted-signal')).status, 'absent');
 assert.equal((await client.generateAdaptation('accepted-signal')).adaptation.id, 'adaptation-1');
+assert.equal((await client.loadAdaptation('accepted-signal', { targetLanguage: 'en' })).status, 'absent');
+assert.equal((await client.generateAdaptation('accepted-signal', { targetLanguage: 'en' })).adaptation.id, 'adaptation-1');
+assert.ok(calls.some(({ url }) => url.endsWith('/adaptations/accepted-signal?targetLanguage=en')));
+assert.deepEqual(
+  JSON.parse(calls.filter(({ url }) => url.endsWith('/adaptations/accepted-signal/generate')).at(-1).options.body),
+  { targetLanguage: 'en' },
+);
 assert.deepEqual((await client.loadContentPlan()).posts, [{ id: 'plan-1', title: 'Persisted post' }]);
 const createdPlan = await client.createContentPlanPost({
   origin: 'studio_adaptation', sourceAdaptationId: 'adaptation-1', sourceVariantIndex: 1, date: '2026-08-12',

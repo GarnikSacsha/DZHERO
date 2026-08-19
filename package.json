@@ -23,6 +23,7 @@
     "test:personal-url-grounded-harness": "node scripts/test-personal-url-grounded-harness.mjs",
     "test:public-video-grounding": "node scripts/test-public-video-grounding.mjs",
     "test:workspace-saved-url-adaptation": "node scripts/test-workspace-saved-url-adaptation.mjs",
+    "test:product-live-remix": "node scripts/test-product-live-remix-core.cjs && node scripts/test-remix-provider-errors.mjs && node scripts/test-remix-json-recovery.mjs && node scripts/test-remix-provider-quality.mjs && node scripts/test-workspace-adaptation.mjs && node scripts/test-workspace-saved-url-adaptation.mjs && node scripts/test-workspace-saved-url-source-context.mjs && node scripts/test-personal-url-grounded-harness.mjs && node scripts/test-product-discovery-client.mjs && node scripts/test-product-saved-url-adaptation-lifecycle.mjs && node scripts/test-product-adaptation-lifecycle.mjs && node scripts/test-workspace-content-plan.mjs",
     "test:mvp-discovery-integration": "node scripts/test-product-discovery-client.mjs && node scripts/test-mvp-discovery-integration.mjs && node scripts/test-product-brand-brain-api.mjs",
     "test:product-entry-routing": "node scripts/test-product-entry-routing.mjs",
     "test:signal-intelligence": "node scripts/test-signal-intelligence.mjs",

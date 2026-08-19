@@ -198,8 +198,9 @@ export function createProductDiscoveryClient({
       return payload;
     },
 
-    async loadAdaptation(signalId) {
-      const response = await request(`adaptations/${encodeURIComponent(String(signalId || ''))}`);
+    async loadAdaptation(signalId, { targetLanguage = '' } = {}) {
+      const languageQuery = targetLanguage ? `?targetLanguage=${encodeURIComponent(String(targetLanguage))}` : '';
+      const response = await request(`adaptations/${encodeURIComponent(String(signalId || ''))}${languageQuery}`);
       const payload = await readPayload(response);
       if (!response.ok) {
         const error = new Error(payload.error || 'workspace_adaptation_load_failed');
@@ -211,10 +212,11 @@ export function createProductDiscoveryClient({
       return payload;
     },
 
-    async generateAdaptation(signalId) {
+    async generateAdaptation(signalId, { targetLanguage = '' } = {}) {
       const response = await request(`adaptations/${encodeURIComponent(String(signalId || ''))}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        ...(targetLanguage ? { body: JSON.stringify({ targetLanguage }) } : {}),
       });
       const payload = await readPayload(response);
       if (!response.ok) {

@@ -36,9 +36,13 @@ const {
   normalizeBrandBrain,
   buildBrandBrainPromptBlock,
 } = require('./brandBrainContext.cjs');
+const {
+  DEFAULT_REMIX_MAX_OUTPUT_TOKENS,
+  DEFAULT_REMIX_RETRY_MAX_OUTPUT_TOKENS,
+} = require('./remixConfig.cjs');
 const { SEMANTIC_ANGLES, assessRemixQuality } = require('./remixQuality.cjs');
 
-// The Structured JSON Schema requested
+// Human-readable example retained for prompt documentation and fallbacks.
 const REMIX_OUTPUT_SCHEMA = {
   deconstruction: {
     coreMechanics: "Psychological hook and core value loop used in the global video",
@@ -86,6 +90,88 @@ const REMIX_OUTPUT_SCHEMA = {
   ]
 };
 
+const REMIX_RESPONSE_SCHEMA = Object.freeze({
+  type: 'OBJECT',
+  required: ['deconstruction', 'viabilityFilter', 'remixes'],
+  properties: {
+    deconstruction: {
+      type: 'OBJECT',
+      required: ['coreMechanics', 'psychologicalTriggers', 'removedCulturalContext'],
+      properties: {
+        coreMechanics: { type: 'STRING' },
+        psychologicalTriggers: { type: 'ARRAY', items: { type: 'STRING' } },
+        removedCulturalContext: { type: 'ARRAY', items: { type: 'STRING' } },
+      },
+    },
+    viabilityFilter: {
+      type: 'OBJECT',
+      required: ['isAdaptable', 'uaMentalityCheck', 'productionFeasibility'],
+      properties: {
+        isAdaptable: { type: 'BOOLEAN' },
+        uaMentalityCheck: { type: 'STRING' },
+        productionFeasibility: { type: 'STRING' },
+      },
+    },
+    remixes: {
+      type: 'ARRAY',
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: 'OBJECT',
+        required: [
+          'title',
+          'hook',
+          'semanticAngle',
+          'centralClaim',
+          'sourceConflict',
+          'preservedMechanic',
+          'brandTranslation',
+          'productionProof',
+          'adaptationLogic',
+          'visualFlow',
+          'cta',
+        ],
+        properties: {
+          title: { type: 'STRING' },
+          hook: { type: 'STRING' },
+          semanticAngle: {
+            type: 'STRING',
+            enum: ['visible_source_conflict', 'mechanism_walkthrough', 'viewer_decision'],
+          },
+          centralClaim: { type: 'STRING' },
+          sourceConflict: { type: 'STRING' },
+          preservedMechanic: { type: 'STRING' },
+          brandTranslation: { type: 'STRING' },
+          productionProof: { type: 'STRING' },
+          adaptationLogic: { type: 'STRING' },
+          visualFlow: {
+            type: 'ARRAY',
+            minItems: 1,
+            items: {
+              type: 'OBJECT',
+              required: ['timeframe', 'actionDescription', 'onScreenText', 'audioVoiceover'],
+              properties: {
+                timeframe: { type: 'STRING' },
+                actionDescription: { type: 'STRING' },
+                onScreenText: { type: 'STRING' },
+                audioVoiceover: { type: 'STRING' },
+              },
+            },
+          },
+          cta: { type: 'STRING' },
+        },
+      },
+    },
+  },
+});
+
+const GEMINI_CONTENT_BLOCK_REASONS = new Set([
+  'PROHIBITED_CONTENT',
+  'SAFETY',
+  'BLOCKLIST',
+  'SPII',
+  'RECITATION',
+]);
 // System Prompt for the LLM
 const REMIX_SYSTEM_PROMPT = `
 You are the core AI of the Dzhero SMM platform ("Ремикс-студия"), a practical marketing producer for SMM experts and local business owners in Ukraine.
@@ -184,12 +270,78 @@ function createRemixProviderError(code, status, message, cause) {
 }
 
 function createRemixGenerationFailure(cause) {
-  return createRemixProviderError(
+  const error = createRemixProviderError(
     'ai_provider_failed',
     502,
     'AI adaptation failed. Please try again in a minute.',
     cause,
   );
+  error.category = cause?.category || cause?.code || 'provider_transport';
+  error.diagnostic = cause?.diagnostic || null;
+  error.payload.category = error.category;
+  if (error.diagnostic) error.payload.diagnostic = error.diagnostic;
+  if (error.category === 'provider_content_blocked') {
+    error.payload.message = 'The provider blocked this adaptation request. Change the source or requested framing and try again.';
+  }
+  return error;
+}
+
+function normalizeFinishReason(value) {
+  return String(value || '').trim().toUpperCase();
+}
+
+function classifyGeminiProviderResult({
+  finishReason = '',
+  blockReason = '',
+  status = 0,
+  error = null,
+  responseTextLength,
+} = {}) {
+  const normalizedFinishReason = normalizeFinishReason(finishReason);
+  const normalizedBlockReason = normalizeFinishReason(blockReason);
+  if (normalizedFinishReason === 'MAX_TOKENS') return { category: 'output_token_limit', retryable: true };
+  if (GEMINI_CONTENT_BLOCK_REASONS.has(normalizedFinishReason) || GEMINI_CONTENT_BLOCK_REASONS.has(normalizedBlockReason)) {
+    return { category: 'provider_content_blocked', retryable: false };
+  }
+  if (Number(status) === 429) return { category: 'provider_rate_limited', retryable: true };
+  if ([408, 504].includes(Number(status)) || error?.name === 'TimeoutError' || error?.name === 'AbortError') {
+    return { category: 'provider_timeout', retryable: true };
+  }
+  if (error?.code === 'invalid_provider_json') return { category: 'invalid_provider_json', retryable: true };
+  if (error?.code === 'provider_empty_response' || Number(responseTextLength) === 0) {
+    return { category: 'provider_empty_response', retryable: true };
+  }
+  if (error || Number(status) >= 500) return { category: 'provider_transport', retryable: true };
+  return { category: 'provider_ok', retryable: false };
+}
+
+function getRemixRetryDecision({ category = '', attempt = 1 } = {}) {
+  if (Number(attempt) >= 2) return { retry: false, reason: 'attempt_limit' };
+  if (category === 'provider_content_blocked') return { retry: false, reason: 'content_blocked' };
+  if ([
+    'output_token_limit',
+    'invalid_provider_json',
+    'provider_empty_response',
+    'provider_rate_limited',
+    'provider_timeout',
+    'provider_transport',
+    'remix_quality_rejected',
+  ].includes(category)) {
+    return {
+      retry: true,
+      reason: category === 'output_token_limit' ? 'increase_output_budget' : 'bounded_retry',
+    };
+  }
+  return { retry: false, reason: 'not_retryable' };
+}
+
+function createClassifiedProviderError(category, message, diagnostic = {}, cause) {
+  const error = new Error(message || category);
+  error.code = category;
+  error.category = category;
+  error.diagnostic = diagnostic;
+  error.cause = cause;
+  return error;
 }
 
 function getGeminiApiBase() {
@@ -238,7 +390,11 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
     toneOfVoice = "дружній, але професійний"
   } = enrichedBusinessBrief || {};
 
-  console.log(`[RemixEngine] Generating remixes for: Niche="${niche}", Product="${product}", Location="${location}", Tone="${toneOfVoice}"`);
+  console.log('[RemixEngine] Generating remixes', JSON.stringify({
+    brandMode: enrichedBusinessBrief.brandBrainMode,
+    brandReady: enrichedBusinessBrief.brandBrainReady,
+    populatedBrandFieldCount: [niche, product, location, toneOfVoice].filter(Boolean).length,
+  }));
 
   // Check if API keys are present in process.env
   const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -249,14 +405,14 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       return await generateValidatedProviderResult({
         provider: 'gemini',
         model: process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL,
-        generate: (qualityFeedback = '') => generateWithGemini(
+        generate: (qualityFeedback = '', attemptContext = {}) => generateWithGemini(
           geminiApiKey,
           globalInsight,
           enrichedBusinessBrief,
-          qualityFeedback,
-          analysisLanguage,
           {
-            maxOutputTokens: options.maxOutputTokens,
+            ...attemptContext,
+            qualityFeedback,
+            language: analysisLanguage,
             maxRequestBytes: options.maxRequestBytes,
           },
         ),
@@ -264,6 +420,11 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
         businessBrief: enrichedBusinessBrief,
         beforeProviderAttempt: options.beforeProviderAttempt,
         maxAttempts: options.maxAttempts,
+        route: options.route,
+        workspaceId: options.workspaceId,
+        inputSizeBytes: options.inputSizeBytes,
+        maxOutputTokens: options.maxOutputTokens,
+        retryMaxOutputTokens: options.retryMaxOutputTokens,
       });
     } catch (err) {
       console.error(`[RemixEngine] Gemini generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -275,11 +436,21 @@ async function generateRemix(globalInsight, businessBrief, options = {}) {
       return await generateValidatedProviderResult({
         provider: 'openai',
         model: 'gpt-4o-mini',
-        generate: (qualityFeedback = '') => generateWithOpenAI(openaiApiKey, globalInsight, enrichedBusinessBrief, qualityFeedback, analysisLanguage),
+        generate: (qualityFeedback = '', attemptContext = {}) => generateWithOpenAI(
+          openaiApiKey,
+          globalInsight,
+          enrichedBusinessBrief,
+          { ...attemptContext, qualityFeedback, language: analysisLanguage },
+        ),
         globalInsight,
         businessBrief: enrichedBusinessBrief,
         beforeProviderAttempt: options.beforeProviderAttempt,
         maxAttempts: options.maxAttempts,
+        route: options.route,
+        workspaceId: options.workspaceId,
+        inputSizeBytes: options.inputSizeBytes,
+        maxOutputTokens: options.maxOutputTokens,
+        retryMaxOutputTokens: options.retryMaxOutputTokens,
       });
     } catch (err) {
       console.error(`[RemixEngine] OpenAI generation failed (${err.code || 'provider_error'}): ${err.message}`);
@@ -309,7 +480,7 @@ function parseProviderJson(text) {
     return JSON.parse(candidate);
   } catch (cause) {
     const error = new Error(`Invalid provider JSON: ${cause.message}`);
-    error.code = 'provider_invalid_json';
+    error.code = 'invalid_provider_json';
     error.cause = cause;
     throw error;
   }
@@ -331,34 +502,42 @@ function buildSafeGeminiResponseDiagnostic(payload = {}, responseText = '') {
 }
 
 function parseGeminiResponse(payload) {
-  const text = (payload?.candidates?.[0]?.content?.parts || [])
+  const candidates = Array.isArray(payload?.candidates) ? payload.candidates : [];
+  const candidate = candidates[0] || {};
+  const finishReason = normalizeFinishReason(candidate.finishReason);
+  const blockReason = normalizeFinishReason(payload?.promptFeedback?.blockReason);
+  const text = (candidate?.content?.parts || [])
     .map((part) => typeof part?.text === 'string' ? part.text : '')
     .join('')
     .trim();
   const diagnostic = buildSafeGeminiResponseDiagnostic(payload, text);
-
-  if (!text) {
-    const error = new Error('Empty response from Gemini API');
-    error.code = 'provider_empty_response';
-    error.diagnostic = diagnostic;
-    throw error;
-  }
-
-  let result;
-  try {
-    result = parseProviderJson(text);
-  } catch (error) {
-    error.code = diagnostic.finishReason === 'MAX_TOKENS'
-      ? 'remix_output_token_limit_exceeded'
-      : 'provider_invalid_json';
-    error.diagnostic = diagnostic;
-    throw error;
-  }
-  Object.defineProperty(result, '_providerUsage', {
-    value: payload?.usageMetadata || null,
-    enumerable: false,
+  diagnostic.blockReason = blockReason || null;
+  const classification = classifyGeminiProviderResult({
+    finishReason,
+    blockReason,
+    responseTextLength: text.length,
   });
-  return result;
+  if (classification.category !== 'provider_ok') {
+    throw createClassifiedProviderError(
+      classification.category,
+      classification.category === 'provider_content_blocked'
+        ? 'Gemini blocked the response.'
+        : classification.category === 'output_token_limit'
+          ? 'Gemini reached the output token limit.'
+          : 'Empty response from Gemini API',
+      diagnostic,
+    );
+  }
+  try {
+    const result = parseProviderJson(text);
+    Object.defineProperty(result, '_providerUsage', {
+      value: payload?.usageMetadata || null,
+      enumerable: false,
+    });
+    return { result, diagnostic };
+  } catch (cause) {
+    throw createClassifiedProviderError('invalid_provider_json', cause.message, diagnostic, cause);
+  }
 }
 
 async function generateValidatedProviderResult({
@@ -369,23 +548,96 @@ async function generateValidatedProviderResult({
   businessBrief,
   beforeProviderAttempt,
   maxAttempts = 2,
+  route = 'unknown',
+  workspaceId = '',
+  inputSizeBytes = 0,
+  maxOutputTokens = DEFAULT_REMIX_MAX_OUTPUT_TOKENS,
+  retryMaxOutputTokens = DEFAULT_REMIX_RETRY_MAX_OUTPUT_TOKENS,
 }) {
   const attemptLimit = Math.min(2, Math.max(1, Number(maxAttempts) || 2));
   let qualityFeedback = '';
   let lastError = null;
+  const diagnostics = [];
   for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
     let result;
+    const attemptOutputLimit = attempt > 1 && lastError?.category === 'output_token_limit'
+      ? Math.max(
+        Number(maxOutputTokens) || DEFAULT_REMIX_MAX_OUTPUT_TOKENS,
+        Number(retryMaxOutputTokens) || DEFAULT_REMIX_RETRY_MAX_OUTPUT_TOKENS,
+      )
+      : Number(maxOutputTokens) || DEFAULT_REMIX_MAX_OUTPUT_TOKENS;
     try {
       if (typeof beforeProviderAttempt === 'function') {
-        await beforeProviderAttempt({ provider, model, operation: 'remix', attempt });
+        await beforeProviderAttempt({
+          provider,
+          model,
+          operation: 'remix',
+          attempt,
+        });
       }
-      result = await generate(qualityFeedback);
+      const generated = await generate(qualityFeedback, {
+        attempt,
+        maxOutputTokens: attemptOutputLimit,
+      });
+      result = generated?.result || generated;
+      const providerDiagnostic = generated?.diagnostic || {};
+      diagnostics.push({
+        provider,
+        model,
+        route,
+        workspaceId,
+        attempt,
+        finishReason: providerDiagnostic.finishReason || null,
+        candidateCount: Number(providerDiagnostic.candidateCount) || 0,
+        responseTextLength: Number(providerDiagnostic.responseTextLength) || 0,
+        inputSizeBytes: Number(inputSizeBytes) || 0,
+        outputLimit: attemptOutputLimit,
+        errorCategory: null,
+        retryDecision: 'accepted_for_validation',
+      });
       lastError = null;
     } catch (error) {
       if (error?.providerAttemptBlocked) throw error;
+      const providerDiagnostic = error?.diagnostic || {};
+      const classification = provider === 'gemini'
+        ? classifyGeminiProviderResult({
+          finishReason: providerDiagnostic.finishReason,
+          blockReason: providerDiagnostic.blockReason,
+          status: error?.status,
+          error,
+          responseTextLength: providerDiagnostic.responseTextLength,
+        })
+        : { category: error?.category || error?.code || 'provider_transport' };
+      error.category = error.category || classification.category;
       lastError = error;
-      qualityFeedback = 'Previous response was not valid complete JSON. Return one complete JSON object only.';
-      console.warn(`[RemixEngine] ${provider}/${model} failed on attempt ${attempt}: ${error.message}`);
+      const retryDecision = attempt >= attemptLimit
+        ? { retry: false, reason: 'attempt_limit' }
+        : getRemixRetryDecision({ category: error.category, attempt });
+      diagnostics.push({
+        provider,
+        model,
+        route,
+        workspaceId,
+        attempt,
+        finishReason: providerDiagnostic.finishReason || null,
+        candidateCount: Number(providerDiagnostic.candidateCount) || 0,
+        responseTextLength: Number(providerDiagnostic.responseTextLength) || 0,
+        inputSizeBytes: Number(inputSizeBytes) || 0,
+        outputLimit: attemptOutputLimit,
+        errorCategory: error.category,
+        retryDecision: retryDecision.retry ? retryDecision.reason : 'no_retry',
+      });
+      error.diagnostic = { attempts: diagnostics };
+      if (error.category === 'invalid_provider_json') {
+        qualityFeedback = 'Previous response was not valid complete JSON. Return one complete JSON object only.';
+      } else if (error.category === 'provider_empty_response') {
+        qualityFeedback = 'Previous response was empty. Return one complete JSON object only.';
+      }
+      console.warn(`[RemixEngine] ${provider}/${model} category=${error.category} attempt=${attempt} retry=${retryDecision.retry}`);
+      if (!retryDecision.retry) throw error;
+      if (['provider_rate_limited', 'provider_timeout', 'provider_transport'].includes(error.category)) {
+        await new Promise((resolve) => setTimeout(resolve, Math.min(250, 75 * attempt)));
+      }
       continue;
     }
     const assessment = assessRemixQuality(result, { globalInsight, businessBrief });
@@ -395,35 +647,51 @@ async function generateValidatedProviderResult({
         model,
         attempts: attempt,
         fallback: false,
+        diagnostics,
         ...(result._providerUsage ? { usage: result._providerUsage } : {}),
       };
+      diagnostics[diagnostics.length - 1].retryDecision = 'accepted';
       console.log(`[RemixEngine] ${provider}/${model} accepted on attempt ${attempt}`);
       return result;
     }
     qualityFeedback = assessment.reasons.join(' ');
+    diagnostics[diagnostics.length - 1].errorCategory = 'remix_quality_rejected';
+    const retryDecision = attempt >= attemptLimit
+      ? { retry: false, reason: 'attempt_limit' }
+      : getRemixRetryDecision({ category: 'remix_quality_rejected', attempt });
+    diagnostics[diagnostics.length - 1].retryDecision = retryDecision.retry ? retryDecision.reason : 'no_retry';
     console.warn(`[RemixEngine] ${provider}/${model} rejected on attempt ${attempt}: ${qualityFeedback}`);
+    if (!retryDecision.retry) break;
   }
-  if (lastError) throw lastError;
+  if (lastError) {
+    lastError.diagnostic = { attempts: diagnostics };
+    throw lastError;
+  }
   const error = new Error(`Provider output failed quality validation: ${qualityFeedback}`);
   error.code = 'remix_quality_rejected';
+  error.category = 'remix_quality_rejected';
+  error.diagnostic = { attempts: diagnostics };
   throw error;
 }
 
 /**
  * Gemini SDK or REST API integration
  */
-async function generateWithGemini(
-  apiKey,
-  globalInsight,
-  businessBrief,
-  qualityFeedback = '',
-  language = 'uk',
-  options = {},
-) {
+async function generateWithGemini(apiKey, globalInsight, businessBrief, attemptContext = {}) {
   const model = process.env.GEMINI_REMIX_MODEL || process.env.GEMINI_TEXT_MODEL || DEFAULT_GEMINI_REMIX_MODEL;
   const url = `${getGeminiApiBase()}/models/${model}:generateContent?key=${apiKey}`;
+  const qualityFeedback = attemptContext.qualityFeedback || '';
+  const language = normalizeRemixLanguage(attemptContext.language);
+  const options = attemptContext;
+  const canonicalPayload = globalInsight?.generationPayload;
+  const prompt = canonicalPayload ? `
+=== CANONICAL REMIX GENERATION PAYLOAD ===
+${JSON.stringify(canonicalPayload, null, 2)}
 
-  const prompt = `
+Use every supplied source fact once, preserve its grounding and limitations, and generate exactly ${canonicalPayload.variantCount || 3} adaptations in ${canonicalPayload.targetLanguage || 'uk'}.
+Respond strictly with a JSON object that satisfies the response schema.
+${qualityFeedback ? `\nCORRECTION REQUIRED AFTER VALIDATION:\n${qualityFeedback}\n` : ''}
+` : `
 === BUSINESS BRIEF ===
 Niche: ${businessBrief.niche}
 Product/Offer: ${businessBrief.product}
@@ -460,6 +728,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
     },
     generationConfig: {
       responseMimeType: "application/json",
+      responseSchema: REMIX_RESPONSE_SCHEMA,
       temperature: 0.75,
       topP: 0.9,
       thinkingConfig: { thinkingLevel: 'low' },
@@ -487,7 +756,18 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gemini API HTTP ${response.status}: ${errorText}`);
+    const classification = classifyGeminiProviderResult({
+      status: response.status,
+      error: new Error(errorText),
+      responseTextLength: errorText.length,
+    });
+    const error = createClassifiedProviderError(
+      classification.category,
+      `Gemini API HTTP ${response.status}`,
+      { finishReason: null, candidateCount: 0, responseTextLength: errorText.length, status: response.status },
+    );
+    error.status = response.status;
+    throw error;
   }
 
   const jsonResult = await response.json();
@@ -497,10 +777,17 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
 /**
  * OpenAI REST API integration
  */
-async function generateWithOpenAI(apiKey, globalInsight, businessBrief, qualityFeedback = '', language = 'uk') {
+async function generateWithOpenAI(apiKey, globalInsight, businessBrief, attemptContext = {}) {
   const url = "https://api.openai.com/v1/chat/completions";
-
-  const prompt = `
+  const qualityFeedback = attemptContext.qualityFeedback || '';
+  const language = normalizeRemixLanguage(attemptContext.language);
+  const canonicalPayload = globalInsight?.generationPayload;
+  const prompt = canonicalPayload ? `
+=== CANONICAL REMIX GENERATION PAYLOAD ===
+${JSON.stringify(canonicalPayload, null, 2)}
+Respond with exactly ${canonicalPayload.variantCount || 3} adaptations as one valid JSON object.
+${qualityFeedback ? `\nCORRECTION REQUIRED AFTER VALIDATION:\n${qualityFeedback}\n` : ''}
+` : `
 === BUSINESS BRIEF ===
 Niche: ${businessBrief.niche}
 Product/Offer: ${businessBrief.product}
@@ -535,6 +822,7 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
       model: "gpt-4o-mini",
       response_format: { type: "json_object" },
       temperature: 0.7,
+      max_tokens: Number(attemptContext.maxOutputTokens) || DEFAULT_REMIX_MAX_OUTPUT_TOKENS,
       messages: [
         { role: "system", content: `${REMIX_SYSTEM_PROMPT}\n\n${getRemixLanguageInstruction(language)}` },
         { role: "user", content: prompt }
@@ -553,12 +841,19 @@ ${qualityFeedback ? `\nCORRECTION REQUIRED AFTER QUALITY REVIEW:\n${qualityFeedb
     throw new Error("Empty response from OpenAI API");
   }
 
-  const result = JSON.parse(textResponse.trim());
+  const result = parseProviderJson(textResponse);
   Object.defineProperty(result, '_providerUsage', {
     value: jsonResult.usage || null,
     enumerable: false,
   });
-  return result;
+  return {
+    result,
+    diagnostic: {
+      finishReason: jsonResult.choices?.[0]?.finish_reason || null,
+      candidateCount: Array.isArray(jsonResult.choices) ? jsonResult.choices.length : 0,
+      responseTextLength: textResponse.length,
+    },
+  };
 }
 
 function cleanBriefValue(value, fallback) {
@@ -1041,5 +1336,9 @@ module.exports = {
   generateRemix,
   generateValidatedProviderResult,
   generateHighFidelityFallback,
+  classifyGeminiProviderResult,
+  getRemixRetryDecision,
+  REMIX_OUTPUT_SCHEMA,
+  REMIX_RESPONSE_SCHEMA,
   REMIX_SYSTEM_PROMPT
 };

@@ -1,5 +1,10 @@
-export function getProductAdaptationRequestIdentity({ workspaceId = '', signalId = '', brandRevision = '' } = {}) {
-  return `${workspaceId}:${signalId}:${brandRevision}`;
+export function getProductAdaptationRequestIdentity({
+  workspaceId = '',
+  signalId = '',
+  brandRevision = '',
+  targetLanguage = '',
+} = {}) {
+  return [workspaceId, signalId, brandRevision, targetLanguage].filter((value, index) => index < 3 || value).join(':');
 }
 
 export function isCurrentProductAdaptationRequest({

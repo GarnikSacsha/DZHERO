@@ -102,7 +102,10 @@ assert.deepEqual(meteredAttempts, [
   { provider: 'test-provider', model: 'test-model', operation: 'remix', attempt: 2 },
 ]);
 assert.match(retryFeedback, /source|copy|hashtag|variant/i);
-assert.deepEqual(retriedResult._generation, {
-  provider: 'test-provider', model: 'test-model', attempts: 2, fallback: false,
-});
+assert.equal(retriedResult._generation.provider, 'test-provider');
+assert.equal(retriedResult._generation.model, 'test-model');
+assert.equal(retriedResult._generation.attempts, 2);
+assert.equal(retriedResult._generation.fallback, false);
+assert.equal(retriedResult._generation.diagnostics[0].errorCategory, 'remix_quality_rejected');
+assert.equal(retriedResult._generation.diagnostics[1].retryDecision, 'accepted');
 console.log('remix provider quality tests passed');

@@ -1492,7 +1492,7 @@ export default function ProductHomePreview({
           brandRevision: activeBrandRevision,
         }),
       })) return;
-      const payload = await productClient.generateAdaptation(studioSignal.id);
+      const payload = await productClient.generateAdaptation(studioSignal.id, { targetLanguage: language });
       if (!isCurrentProductAdaptationRequest({
         requestRevision,
         currentRevision: adaptationRequestRevisionRef.current,

@@ -83,7 +83,13 @@ const {
   isProductBrandComplete,
   persistProductBrand,
   resolveWorkspaceDiscoveryBrand,
+  resolveWorkspaceGenerationBrand,
 } = require('./services/productBrandBrain.cjs');
+const {
+  getRemixGenerationConfig,
+  normalizeRemixSourceContext,
+  generateProductLiveRemix,
+} = require('./services/productLiveRemix.cjs');
 const { analyzeReel, generateIdeasFromReel } = require('./services/scoringEngine');
 const { getAllowedBatchSize } = require('./services/usageLimits.cjs');
 const {
@@ -365,6 +371,7 @@ const AGENT_STUDIO_TEST_PROVIDER = process.env.NODE_ENV === 'test'
 const REMIX_TEST_PROVIDER = process.env.NODE_ENV === 'test'
   ? String(process.env.REMIX_TEST_PROVIDER || '').trim()
   : '';
+const USE_PRODUCT_LIVE_REMIX_PIPELINE = process.env.USE_PRODUCT_LIVE_REMIX_PIPELINE === 'true';
 
 const crmSyncClient = createCrmSyncClient({
   apiUrl: DZHERO_CRM_API_URL,
@@ -2376,6 +2383,37 @@ function normalizePersonalUrlLanguage(value = '') {
   return String(value || '').trim().toLowerCase() === 'en' ? 'en' : 'uk';
 }
 
+function getResolvedAdaptationBrandKeys(brand = {}) {
+  const keys = new Set();
+  if (brand?.generationBrandKey) keys.add(String(brand.generationBrandKey));
+  if (brand?.brandSnapshot) keys.add(getWorkspaceAdaptationBrandKey(brand.brandSnapshot));
+  if (brand?.id || brand?.brain) keys.add(getWorkspaceAdaptationBrandKey(brand));
+  return keys;
+}
+
+function adaptationMatchesGenerationBrand(record = {}, brand = {}) {
+  const keys = getResolvedAdaptationBrandKeys(brand);
+  if (keys.has(String(record.brandKey || ''))) return true;
+  const requestedSnapshot = normalizeProductBrand(brand?.brandSnapshot || brand);
+  const recordSnapshot = normalizeProductBrand(record.brandSnapshot);
+  return Boolean(
+    requestedSnapshot
+    && recordSnapshot
+    && getWorkspaceAdaptationBrandKey(requestedSnapshot) === getWorkspaceAdaptationBrandKey(recordSnapshot)
+  );
+}
+
+function logGenerationBrandResolution({ route, workspaceId, resolution }) {
+  console.info(
+    `[RemixBrandResolution] route=${String(route || 'unknown')}`
+    + ` workspaceId=${String(workspaceId || '')}`
+    + ` brandSource=${String(resolution.brandSource || 'unknown')}`
+    + ` completeness=${String(resolution.completeness || 'unknown')}`
+    + ` missingFields=${(resolution.missingFields || []).join(',') || 'none'}`
+    + ` generationBrandKey=${String(resolution.generationBrandKey || '')}`,
+  );
+}
+
 function buildSharedSignalGlobalInsight(reel = {}) {
   const metadata = reel.importedMetadata || {};
   const qualityGate = metadata.qualityGate || {};
@@ -2432,13 +2470,48 @@ function buildSharedSignalGlobalInsight(reel = {}) {
   };
 }
 
-function findWorkspaceAdaptation(db, workspaceId, signalId, productBrand) {
-  const brandKey = getWorkspaceAdaptationBrandKey(productBrand);
+function buildSharedSignalSourceContext(reel = {}) {
+  const metadata = cloneJsonValue(reel.importedMetadata || {});
+  const videoIntelligence = cloneJsonValue(metadata.videoIntelligence || {});
+  const transcriptText = reel.transcript || metadata.transcriptText || videoIntelligence.transcript?.text || '';
+  const transcript = videoIntelligence.transcript && typeof videoIntelligence.transcript === 'object'
+    ? { ...cloneJsonValue(videoIntelligence.transcript), text: videoIntelligence.transcript.text || transcriptText }
+    : { status: transcriptText ? 'available' : 'unavailable', text: transcriptText, segments: [] };
+  const qualityGate = cloneJsonValue(metadata.qualityGate || {});
+  return normalizeRemixSourceContext({
+    sourceType: 'shared_signal',
+    sourceId: reel.id,
+    signalId: reel.id,
+    canonicalUrl: reel.sourceUrl || metadata.url || '',
+    platform: reel.platform || metadata.platform || '',
+    title: reel.title || metadata.title || qualityGate.centralIdea || '',
+    description: reel.caption || metadata.description || qualityGate.summary || '',
+    handle: reel.handle || reel.sourceHandle || metadata.handle || '',
+    metadata,
+    transcript,
+    videoIntelligence,
+    visual: videoIntelligence.visual || metadata.visual || null,
+    analysis: cloneJsonValue(reel.analysis || metadata.analysis || null),
+    sourceEvidence: {
+      qualityGate,
+      observations: cloneJsonValue(qualityGate.observations || []),
+      evidenceChains: cloneJsonValue(qualityGate.evidenceChains || []),
+      analysis: cloneJsonValue(reel.analysis || metadata.analysis || null),
+    },
+    sourceStatus: reel.sourceStatus || metadata.sourceStatus || '',
+    readiness: cloneJsonValue(videoIntelligence.readiness || metadata.readiness || null),
+    grounding: cloneJsonValue(metadata.sourceGrounding || metadata.grounding || videoIntelligence.grounding || null),
+    diagnostic: cloneJsonValue(metadata.diagnostic || qualityGate.diagnostic || videoIntelligence.diagnostic || null),
+  });
+}
+
+function findWorkspaceAdaptation(db, workspaceId, signalId, brand, targetLanguage = 'uk') {
   return db.workspaceAdaptations
     .filter((record) => (
       record.workspaceId === workspaceId
       && record.signalId === signalId
-      && record.brandKey === brandKey
+      && adaptationMatchesGenerationBrand(record, brand)
+      && String(record.targetLanguage || 'uk') === String(targetLanguage || 'uk')
     ))
     .sort((left, right) => (
       (Date.parse(right.updatedAt || right.createdAt || '') || 0)
@@ -2452,15 +2525,14 @@ function findWorkspaceSavedUrl(db, workspaceId, savedUrlId) {
   )) || null;
 }
 
-function findWorkspaceUrlAdaptation(db, workspaceId, savedUrlId, productBrand, language = 'uk') {
-  const brandKey = getWorkspaceAdaptationBrandKey(productBrand);
+function findWorkspaceUrlAdaptation(db, workspaceId, savedUrlId, brand, language = 'uk') {
   const requestedLanguage = normalizePersonalUrlLanguage(language);
   return (db.workspaceUrlAdaptations || [])
     .filter((record) => (
       record.workspaceId === workspaceId
       && record.savedUrlId === savedUrlId
-      && record.brandKey === brandKey
-      && normalizePersonalUrlLanguage(record.language) === requestedLanguage
+      && adaptationMatchesGenerationBrand(record, brand)
+      && normalizePersonalUrlLanguage(record.language || record.targetLanguage) === requestedLanguage
       && record.status === 'completed'
     ))
     .sort((left, right) => (
@@ -2587,6 +2659,7 @@ function buildPersonalUrlSourceContext(savedUrl, resolved = null) {
     readiness: cloneJsonValue(input.readiness || intelligence?.readiness || null),
     diagnostic: cloneJsonValue(diagnostic),
     grounding,
+    sourceEvidence: cloneJsonValue(input.sourceEvidence || null),
     globalInsight: cloneJsonValue(globalInsight),
     missing,
   };
@@ -2765,7 +2838,7 @@ function resolveProductAdaptationSource(db, workspaceId, authUser, adaptationId,
     record.id === adaptationId && record.workspaceId === workspaceId
   ));
   if (adaptation) {
-    if (adaptation.brandKey !== getWorkspaceAdaptationBrandKey(productBrand)) {
+    if (!adaptationMatchesGenerationBrand(adaptation, productBrand)) {
       throw createProductContentPlanError('content_plan_brand_changed');
     }
     const remixes = adaptation.result?.remixes;
@@ -2794,7 +2867,7 @@ function resolveProductAdaptationSource(db, workspaceId, authUser, adaptationId,
       && record.sourceType === 'personal_url'
       && record.status === 'completed'
   ));
-  if (!personalAdaptation || personalAdaptation.brandKey !== getWorkspaceAdaptationBrandKey(productBrand)) {
+  if (!personalAdaptation || !adaptationMatchesGenerationBrand(personalAdaptation, productBrand)) {
     throw createProductContentPlanError('content_plan_brand_changed');
   }
   const savedUrl = findWorkspaceSavedUrl(db, workspaceId, personalAdaptation.savedUrlId);
@@ -8287,10 +8360,13 @@ app.get('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/adaptation', async 
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
     const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
     if (!savedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
-    const language = normalizePersonalUrlLanguage(req.query.language);
-    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
-    const adaptation = productBrand && isProductBrandComplete(productBrand)
-      ? findWorkspaceUrlAdaptation(db, req.params.workspaceId, savedUrl.id, productBrand, language)
+    const language = normalizePersonalUrlLanguage(req.query.language || req.query.targetLanguage);
+    const brandResolution = resolveWorkspaceGenerationBrand(current.workspace);
+    const productBrand = brandResolution.brandSource === 'product_brand_brain'
+      ? normalizeProductBrand(brandResolution.brandSnapshot)
+      : null;
+    const adaptation = productBrand && brandResolution.complete
+      ? findWorkspaceUrlAdaptation(db, req.params.workspaceId, savedUrl.id, brandResolution, language)
       : null;
     res.json({
       workspaceId: req.params.workspaceId,
@@ -8321,18 +8397,24 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
     const current = assertCurrentWorkspaceAccess(db, req.params.workspaceId, req.authUser);
     const savedUrl = findWorkspaceSavedUrl(db, req.params.workspaceId, req.params.savedUrlId);
     if (!savedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
-    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
-    if (!productBrand || !isProductBrandComplete(productBrand)) {
+    const brandResolution = resolveWorkspaceGenerationBrand(current.workspace);
+    const productBrand = brandResolution.brandSource === 'product_brand_brain'
+      ? normalizeProductBrand(brandResolution.brandSnapshot)
+      : null;
+    if (!productBrand || !brandResolution.complete) {
       throw createProductContentPlanError('product_brand_brain_incomplete', 409, {
-        missingFields: productBrand
-          ? getMissingProductBrainFields(productBrand)
-          : ['profileDescription', 'audience'],
+        missingFields: brandResolution.missingFields,
       });
     }
 
-    const generationBrand = cloneJsonValue(productBrand);
-    const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
-    const generationLanguage = normalizePersonalUrlLanguage(req.body?.language);
+    const generationBrand = cloneJsonValue(brandResolution.brandSnapshot);
+    const generationBrandKey = brandResolution.generationBrandKey;
+    const generationLanguage = normalizePersonalUrlLanguage(req.body?.language || req.body?.targetLanguage);
+    logGenerationBrandResolution({
+      route: 'saved_url_analyze_adapt',
+      workspaceId: req.params.workspaceId,
+      resolution: brandResolution,
+    });
     const flightKey = `${req.params.workspaceId}:${savedUrl.id}:${generationBrandKey}:${generationLanguage}`;
     const capability = getPublicVideoPlatformCapability(savedUrl.platform);
     runTracker = createPersonalUrlRunTracker({
@@ -8345,14 +8427,14 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
       const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
       const latestSavedUrl = findWorkspaceSavedUrl(latestDb, req.params.workspaceId, savedUrl.id);
       if (!latestSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
-      const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, generationBrand, generationLanguage);
+      const existing = findWorkspaceUrlAdaptation(latestDb, req.params.workspaceId, savedUrl.id, brandResolution, generationLanguage);
       if (existing && personalUrlSourceHasGrounding(existing.sourceContext)) {
-        const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
+        const currentBrand = resolveWorkspaceGenerationBrand(latestCurrent.workspace);
         return {
           adaptation: existing,
           alreadyGenerated: true,
           generationId: existing.generationId,
-          activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+          activeBrandChanged: currentBrand.generationBrandKey !== generationBrandKey,
           runState: { reuseState: 'cache_hit' },
         };
       }
@@ -8412,27 +8494,34 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           language: generationLanguage,
           brand: Object.freeze(cloneJsonValue(generationBrand)),
           brandKey: generationBrandKey,
-          source: Object.freeze(buildPersonalUrlInsight(latestSavedUrl, sourceContext)),
+          brandResolution: Object.freeze(cloneJsonValue(brandResolution)),
           sourceContext,
+          targetLanguage: generationLanguage,
         });
         const remixGenerator = remixTestProvider || generateRemix;
         startPersonalUrlRunStage(runTracker, 'remix');
-        let generated;
+        let generation;
         try {
-          generated = await remixGenerator(
-            generationContext.source,
-            buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
-            {
-              beforeProviderAttempt,
-              maxAttempts: 1,
-              language: generationLanguage,
+          generation = await generateProductLiveRemix({
+            sourceContext: generationContext.sourceContext,
+            brandResolution: generationContext.brandResolution,
+            route: 'saved_url_analyze_adapt',
+            workspaceId: req.params.workspaceId,
+            targetLanguage: generationContext.targetLanguage,
+            beforeProviderAttempt,
+            maxAttempts: 1,
+            generator: remixGenerator,
+            config: {
+              ...getRemixGenerationConfig(),
+              providerMaxRequestBytes: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxRequestBytes,
               maxOutputTokens: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxOutputTokens,
-              maxRequestBytes: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxRequestBytes,
+              retryMaxOutputTokens: PERSONAL_URL_RUN_BUDGET.geminiRemixMaxOutputTokens,
             },
-          );
+          });
         } finally {
           finishPersonalUrlRunStage(runTracker, 'remix');
         }
+        const generated = generation.result;
         recordPersonalUrlProviderUsage(
           runTracker,
           generated?._generation?.provider || 'remix',
@@ -8448,19 +8537,22 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
           const currentAccess = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
           const currentSavedUrl = findWorkspaceSavedUrl(currentDb, req.params.workspaceId, savedUrl.id);
           if (!currentSavedUrl) throw createProductContentPlanError('saved_url_not_found', 404);
-          const currentBrand = normalizeProductBrand(currentAccess.workspace.productBrandBrain);
-          const currentExisting = currentBrand
-            ? findWorkspaceUrlAdaptation(currentDb, req.params.workspaceId, savedUrl.id, generationBrand, generationLanguage)
-            : null;
+          const currentBrand = resolveWorkspaceGenerationBrand(currentAccess.workspace);
+          const currentExisting = findWorkspaceUrlAdaptation(
+            currentDb,
+            req.params.workspaceId,
+            savedUrl.id,
+            generationContext.brandResolution,
+            generationContext.targetLanguage,
+          );
           if (currentExisting && personalUrlSourceHasGrounding(currentExisting.sourceContext)) {
             return {
               adaptation: currentExisting,
               alreadyGenerated: true,
               generationId: currentExisting.generationId,
-              activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+              activeBrandChanged: currentBrand.generationBrandKey !== generationBrandKey,
             };
           }
-          const currentBrandKey = getWorkspaceAdaptationBrandKey(currentBrand || {});
           const timestamp = new Date().toISOString();
           const record = {
             id: createId('url_adaptation'),
@@ -8475,9 +8567,13 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             brandVersion: generationContext.brand.version,
             brandUpdatedAt: generationContext.brand.updatedAt || generationContext.brand.createdAt || null,
             brandKey: generationContext.brandKey,
+            generationBrandKey: generationContext.brandKey,
             brandSnapshot: cloneJsonValue(generationContext.brand),
             sourceContext: cloneJsonValue(generationContext.sourceContext),
             result: cloneJsonValue(generated),
+            generationCacheKey: generation.cacheKey,
+            targetLanguage: generationContext.targetLanguage,
+            payloadDiagnostics: cloneJsonValue(generation.payloadDiagnostics),
             status: 'completed',
             generationId,
             createdAt: timestamp,
@@ -8490,7 +8586,7 @@ app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt', as
             adaptation: record,
             alreadyGenerated: false,
             generationId,
-            activeBrandChanged: currentBrandKey !== generationContext.brandKey,
+            activeBrandChanged: currentBrand.generationBrandKey !== generationContext.brandKey,
           };
         });
         finishPersonalUrlRunStage(runTracker, 'persistence');
@@ -9102,12 +9198,33 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
     dailyReservation = reserved.reservation;
     const metadata = await fetchPublicSourceMetadata(url, { beforeProviderAttempt });
     const globalInsight = buildGlobalInsightFromReelMetadata(metadata);
-    const mergedBrief = mergeBusinessBriefWithBrandBrain(
-      workspace.brief || {},
-      req.body.businessBrief || {},
-    );
-
-    const remixResult = await generateRemix(globalInsight, mergedBrief, { beforeProviderAttempt });
+    const brandResolution = resolveWorkspaceGenerationBrand(workspace, req.body.businessBrief || {});
+    const targetLanguage = String(req.body.targetLanguage || getRemixGenerationConfig().targetLanguage).trim() || 'uk';
+    logGenerationBrandResolution({
+      route: 'legacy_reels_import_url',
+      workspaceId: req.params.workspaceId,
+      resolution: brandResolution,
+    });
+    const sourceContext = buildPersonalUrlSourceContext({
+      id: `legacy_import_${crypto.createHash('sha256').update(url).digest('hex').slice(0, 16)}`,
+      originalUrl: String(req.body.url || '').trim(),
+      canonicalUrl: metadata.url || url,
+      platform: detectPublicSource(url).tone,
+    }, {
+      metadata,
+      globalInsight,
+      diagnostic: metadata.videoIntelligence?.diagnostic || null,
+    });
+    const generation = await generateProductLiveRemix({
+      sourceContext,
+      brandResolution,
+      route: 'legacy_reels_import_url',
+      workspaceId: req.params.workspaceId,
+      targetLanguage,
+      beforeProviderAttempt,
+      generator: remixTestProvider || generateRemix,
+    });
+    const remixResult = generation.result;
     const sourceLabel = metadata.source?.label || 'URL import';
     const tagSeed = metadata.youtube?.channelTitle || metadata.handle || sourceLabel;
     const importedReel = {
@@ -9161,6 +9278,12 @@ app.post('/api/workspaces/:workspaceId/reels/import-url', async (req, res, next)
         reelId: returnedReel.id,
         sourceUrl: metadata.url || url,
         provider: remixResult?._generation?.provider || getAiProviderStatus().textAgent.provider,
+        brandKey: brandResolution.generationBrandKey,
+        brandSnapshot: cloneJsonValue(brandResolution.brandSnapshot),
+        sourceContext: cloneJsonValue(sourceContext),
+        generationCacheKey: generation.cacheKey,
+        targetLanguage,
+        payloadDiagnostics: cloneJsonValue(generation.payloadDiagnostics),
         result: remixResult,
         createdAt: new Date().toISOString(),
       });
@@ -9858,9 +9981,13 @@ app.get('/api/workspaces/:workspaceId/adaptations/:signalId', async (req, res, n
       throw error;
     }
 
-    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
-    const adaptation = productBrand && isProductBrandComplete(productBrand)
-      ? findWorkspaceAdaptation(db, req.params.workspaceId, resolved.canonical.id, productBrand)
+    const brandResolution = resolveWorkspaceGenerationBrand(current.workspace);
+    const productBrand = brandResolution.brandSource === 'product_brand_brain'
+      ? normalizeProductBrand(brandResolution.brandSnapshot)
+      : null;
+    const targetLanguage = String(req.query?.targetLanguage || getRemixGenerationConfig().targetLanguage).trim() || 'uk';
+    const adaptation = productBrand && brandResolution.complete
+      ? findWorkspaceAdaptation(db, req.params.workspaceId, resolved.canonical.id, brandResolution, targetLanguage)
       : null;
     res.json({
       workspaceId: req.params.workspaceId,
@@ -9907,22 +10034,29 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
       throw error;
     }
 
-    const productBrand = normalizeProductBrand(current.workspace.productBrandBrain);
-    if (!productBrand || !isProductBrandComplete(productBrand)) {
+    const brandResolution = resolveWorkspaceGenerationBrand(current.workspace);
+    const productBrand = brandResolution.brandSource === 'product_brand_brain'
+      ? normalizeProductBrand(brandResolution.brandSnapshot)
+      : null;
+    if (!productBrand || !brandResolution.complete) {
       const error = new Error('product_brand_brain_incomplete');
       error.status = 409;
       error.payload = {
         error: 'product_brand_brain_incomplete',
-        missingFields: productBrand
-          ? getMissingProductBrainFields(productBrand)
-          : ['profileDescription', 'audience'],
+        missingFields: brandResolution.missingFields,
       };
       throw error;
     }
 
-    const generationBrand = cloneJsonValue(productBrand);
-    const generationBrandKey = getWorkspaceAdaptationBrandKey(generationBrand);
-    const flightKey = `${req.params.workspaceId}:${resolved.canonical.id}:${generationBrandKey}`;
+    const targetLanguage = String(req.body?.targetLanguage || getRemixGenerationConfig().targetLanguage).trim() || 'uk';
+    const generationBrand = cloneJsonValue(brandResolution.brandSnapshot);
+    const generationBrandKey = brandResolution.generationBrandKey;
+    logGenerationBrandResolution({
+      route: 'shared_signal_adaptation_generate',
+      workspaceId: req.params.workspaceId,
+      resolution: brandResolution,
+    });
+    const flightKey = `${req.params.workspaceId}:${resolved.canonical.id}:${generationBrandKey}:${targetLanguage}`;
     const result = await runWorkspaceAdaptationSingleFlight(flightKey, async () => {
       const latestDb = await readDb();
       const latestCurrent = assertCurrentWorkspaceAccess(latestDb, req.params.workspaceId, req.authUser);
@@ -9942,15 +10076,16 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
         latestDb,
         req.params.workspaceId,
         latestResolved.canonical.id,
-        generationBrand,
+        brandResolution,
+        targetLanguage,
       );
       if (existing) {
-        const currentBrand = normalizeProductBrand(latestCurrent.workspace.productBrandBrain);
+        const currentBrand = resolveWorkspaceGenerationBrand(latestCurrent.workspace);
         return {
           adaptation: existing,
           alreadyGenerated: true,
           generationId: existing.generationId,
-          activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationBrandKey,
+          activeBrandChanged: currentBrand.generationBrandKey !== generationBrandKey,
         };
       }
 
@@ -9969,34 +10104,44 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
           sharedSignalId: latestResolved.projected.id,
           brand: Object.freeze(cloneJsonValue(generationBrand)),
           brandKey: generationBrandKey,
-          source: Object.freeze(buildSharedSignalGlobalInsight(latestResolved.canonical)),
+          brandResolution: Object.freeze(cloneJsonValue(brandResolution)),
+          sourceContext: Object.freeze(buildSharedSignalSourceContext(latestResolved.canonical)),
+          targetLanguage,
         });
         const remixGenerator = remixTestProvider || generateRemix;
-        const generated = await remixGenerator(
-          generationContext.source,
-          buildBusinessBriefFromBrandBrain(generationContext.brand.brain),
-          { beforeProviderAttempt: createSerializedPaidAiAttemptGuard({
+        const generation = await generateProductLiveRemix({
+          sourceContext: generationContext.sourceContext,
+          brandResolution: generationContext.brandResolution,
+          route: 'shared_signal_adaptation_generate',
+          workspaceId: req.params.workspaceId,
+          targetLanguage: generationContext.targetLanguage,
+          beforeProviderAttempt: createSerializedPaidAiAttemptGuard({
             workspaceId: req.params.workspaceId,
             actorUser: latestCurrent.actorUser,
-          }) },
-        );
+          }),
+          generator: remixGenerator,
+        });
+        const generated = generation.result;
         const generationId = `adaptation_generation_${crypto.randomUUID().replaceAll('-', '')}`;
         const persisted = await serializeBackgroundMutation(async () => {
           const currentDb = await readDb();
           const currentAccess = assertCurrentWorkspaceAccess(currentDb, req.params.workspaceId, req.authUser);
-          const currentBrand = normalizeProductBrand(currentAccess.workspace.productBrandBrain);
-          const currentExisting = currentBrand
-            ? findWorkspaceAdaptation(currentDb, req.params.workspaceId, generationContext.signalId, generationContext.brand)
-            : null;
+          const currentBrand = resolveWorkspaceGenerationBrand(currentAccess.workspace);
+          const currentExisting = findWorkspaceAdaptation(
+            currentDb,
+            req.params.workspaceId,
+            generationContext.signalId,
+            generationContext.brandResolution,
+            generationContext.targetLanguage,
+          );
           if (currentExisting) {
             return {
               adaptation: currentExisting,
               alreadyGenerated: true,
               generationId: currentExisting.generationId,
-              activeBrandChanged: getWorkspaceAdaptationBrandKey(currentBrand || {}) !== generationContext.brandKey,
+              activeBrandChanged: currentBrand.generationBrandKey !== generationContext.brandKey,
             };
           }
-          const currentBrandKey = getWorkspaceAdaptationBrandKey(currentBrand || {});
           const timestamp = new Date().toISOString();
           const record = {
             id: createId('adaptation'),
@@ -10007,8 +10152,13 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
             brandVersion: generationContext.brand.version,
             brandUpdatedAt: generationContext.brand.updatedAt || generationContext.brand.createdAt || null,
             brandKey: generationContext.brandKey,
+            generationBrandKey: generationContext.brandKey,
             brandSnapshot: cloneJsonValue(generationContext.brand),
+            sourceContext: cloneJsonValue(generationContext.sourceContext),
             result: cloneJsonValue(generated),
+            generationCacheKey: generation.cacheKey,
+            targetLanguage: generationContext.targetLanguage,
+            payloadDiagnostics: cloneJsonValue(generation.payloadDiagnostics),
             generationId,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -10019,7 +10169,7 @@ app.post('/api/workspaces/:workspaceId/adaptations/:signalId/generate', async (r
             adaptation: record,
             alreadyGenerated: false,
             generationId,
-            activeBrandChanged: currentBrandKey !== generationContext.brandKey,
+            activeBrandChanged: currentBrand.generationBrandKey !== generationContext.brandKey,
           };
         });
         if (persisted.alreadyGenerated) {
@@ -10063,18 +10213,42 @@ app.post('/api/workspaces/:workspaceId/remix/generate', async (req, res, next) =
       return;
     }
 
-    const finalBrief = mergeBusinessBriefWithBrandBrain(
-      workspace.brief || {},
-      businessBrief || {},
-    );
-
     const reserved = await reserveSerializedDailyAiAction({
       workspaceId: req.params.workspaceId,
       actorUser: req.authUser,
       action: 'remix',
     });
     dailyReservation = reserved.reservation;
-    const result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
+    let result;
+    if (USE_PRODUCT_LIVE_REMIX_PIPELINE) {
+      const brandResolution = resolveWorkspaceGenerationBrand(workspace, businessBrief || {});
+      const targetLanguage = String(req.body?.targetLanguage || getRemixGenerationConfig().targetLanguage).trim() || 'uk';
+      logGenerationBrandResolution({
+        route: 'legacy_remix_generate',
+        workspaceId: req.params.workspaceId,
+        resolution: brandResolution,
+      });
+      const sourceContext = normalizeRemixSourceContext(globalInsight, {
+        sourceType: 'legacy_remix',
+        sourceId: req.body?.reelId || req.body?.videoId || '',
+      });
+      const generation = await generateProductLiveRemix({
+        sourceContext,
+        brandResolution,
+        route: 'legacy_remix_generate',
+        workspaceId: req.params.workspaceId,
+        targetLanguage,
+        beforeProviderAttempt,
+        generator: remixTestProvider || generateRemix,
+      });
+      result = generation.result;
+    } else {
+      const finalBrief = mergeBusinessBriefWithBrandBrain(
+        workspace.brief || {},
+        businessBrief || {},
+      );
+      result = await generateRemix(globalInsight, finalBrief, { beforeProviderAttempt });
+    }
     const generationId = `remix_generation_${crypto.randomUUID().replaceAll('-', '')}`;
     const billing = await readSerializedBilling(req.params.workspaceId, req.authUser);
     res.json({ ...result, generationId, daily: billing.daily });

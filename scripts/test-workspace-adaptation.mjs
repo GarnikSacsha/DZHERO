@@ -190,6 +190,7 @@ const child = spawn(process.execPath, [SERVER_ENTRY], {
     REMIX_TEST_PROVIDER: PROVIDER_FIXTURE,
     REMIX_TEST_PROVIDER_CALLS_PATH: providerCallsPath,
     REMIX_TEST_PROVIDER_RELEASE_PATH: providerReleasePath,
+    USE_PRODUCT_LIVE_REMIX_PIPELINE: 'true',
   },
   stdio: ['ignore', 'pipe', 'pipe'],
 });
@@ -237,6 +238,14 @@ try {
   assert.equal(savedA.sharedSignalId, 'shared_signal_good');
   assert.equal(savedA.brandId, 'brand_a');
   assert.equal(savedA.brandSnapshot.brain.audience, 'small product teams');
+  assert.equal(savedA.sourceContext.transcript.text, 'Show the process, then reveal the next step.');
+  assert.equal(savedA.sourceContext.videoIntelligence.video.videoSummary, 'A visible process ends in a clear reveal.');
+  assert.equal(savedA.sourceContext.sourceEvidence.qualityGate.decision, 'accept');
+  assert.deepEqual(savedA.sourceContext.sourceEvidence.qualityGate.observations, globalBefore.importedMetadata.qualityGate.observations);
+  assert.deepEqual(savedA.sourceContext.sourceEvidence.qualityGate.evidenceChains, globalBefore.importedMetadata.qualityGate.evidenceChains);
+  assert.equal(savedA.payloadDiagnostics.truncatedFields.length, 0);
+  assert.equal(savedA.result.remixes.length, 3);
+  assert.ok(savedA.result.remixes[0].visualFlow.length > 0, 'production script remains persisted with adaptation');
   assert.deepEqual(afterGenerationDb.reels.find((reel) => reel.id === 'signal_good'), globalBefore);
 
   const reloadedA = await request(baseUrl, adaptationPath('ws_a', 'shared_signal_good'), { headers: headersA });
@@ -305,6 +314,31 @@ try {
   assert.equal(activeARead.response.status, 200);
   assert.equal(activeARead.body.status, 'ready');
   assert.equal(activeARead.body.adaptation.brandId, 'brand_a');
+
+  const legacyContract = await request(baseUrl, '/api/workspaces/ws_a/remix/generate', {
+    method: 'POST',
+    headers: headersA,
+    body: JSON.stringify({
+      globalInsight: {
+        title: 'Legacy frontend source',
+        hook: 'Show the proof first.',
+        script: 'Show a process and reveal the result.',
+        marketingMechanics: 'proof before explanation',
+      },
+      businessBrief: { niche: '', location: '', toneOfVoice: '' },
+      targetLanguage: 'uk',
+    }),
+  });
+  assert.equal(legacyContract.response.status, 200);
+  assert.equal(legacyContract.body.remixes.length, 3);
+  assert.ok(legacyContract.body.generationId);
+  assert.ok(legacyContract.body.daily);
+  assert.equal(legacyContract.body._generation.brandSource, 'product_brand_brain');
+  assert.equal(
+    legacyContract.body._generation.generationBrandKey,
+    activeARead.body.adaptation.generationBrandKey,
+    'legacy and Product routes must resolve the same Product Brand snapshot',
+  );
 
   const beforeFailure = JSON.parse(await readFile(dbPath, 'utf8'));
   const failureCounterBefore = beforeFailure.usageCounters.find((counter) => counter.workspaceId === 'ws_a' && counter.metric === 'trial_remix_daily')?.value || 0;

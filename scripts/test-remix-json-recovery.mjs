@@ -98,12 +98,13 @@ const recovered = await remixEngine.generateRemix(source, {
   location: 'Чернівці',
 });
 assert.equal(fetchCalls, 2, 'Malformed Gemini JSON must trigger one retry');
-assert.deepEqual(recovered._generation, {
-  provider: 'gemini',
-  model: 'gemini-3.5-flash',
-  attempts: 2,
-  fallback: false,
-});
+assert.equal(recovered._generation.provider, 'gemini');
+assert.equal(recovered._generation.model, 'gemini-3.5-flash');
+assert.equal(recovered._generation.attempts, 2);
+assert.equal(recovered._generation.fallback, false);
+assert.equal(recovered._generation.diagnostics[0].errorCategory, 'invalid_provider_json');
+assert.equal(recovered._generation.diagnostics[0].retryDecision, 'bounded_retry');
+assert.equal(recovered._generation.diagnostics[1].retryDecision, 'accepted');
 
 fetchCalls = 0;
 responses.splice(0, responses.length, '{"broken":', '{"stillBroken":');
@@ -181,16 +182,17 @@ captureSafeDiagnosticAssertion(() => {
 captureSafeDiagnosticAssertion(() => {
   assert.equal(
     truncatedError.cause?.code,
-    'remix_output_token_limit_exceeded',
+    'output_token_limit',
     'MAX_TOKENS must retain a distinct bounded cause classification',
   );
 });
 captureSafeDiagnosticAssertion(() => {
-  assert.deepEqual(truncatedError.cause?.diagnostic, {
-    finishReason: 'MAX_TOKENS',
-    candidateCount: 1,
-    responseTextLength: Buffer.byteLength(truncatedText, 'utf8'),
-  });
+  assert.equal(truncatedError.cause?.diagnostic?.attempts?.[0]?.finishReason, 'MAX_TOKENS');
+  assert.equal(truncatedError.cause?.diagnostic?.attempts?.[0]?.candidateCount, 1);
+  assert.equal(
+    truncatedError.cause?.diagnostic?.attempts?.[0]?.responseTextLength,
+    Buffer.byteLength(truncatedText, 'utf8'),
+  );
 });
 captureSafeDiagnosticAssertion(() => {
   assert.equal(JSON.stringify(truncatedError).includes(rawProviderMarker), false, 'raw provider text must not escape in the public error');
@@ -206,16 +208,14 @@ captureSafeDiagnosticAssertion(() => {
   assert.equal(malformedCompleteError.code, 'ai_provider_failed');
 });
 captureSafeDiagnosticAssertion(() => {
-  assert.equal(malformedCompleteError.cause?.code, 'provider_invalid_json');
+  assert.equal(malformedCompleteError.cause?.code, 'invalid_provider_json');
 });
 captureSafeDiagnosticAssertion(() => {
-  assert.deepEqual(
-    malformedCompleteError.cause?.diagnostic,
-    {
-      finishReason: 'STOP',
-      candidateCount: 1,
-      responseTextLength: malformedCompleteText.length,
-    },
+  assert.equal(malformedCompleteError.cause?.diagnostic?.attempts?.[0]?.finishReason, 'STOP');
+  assert.equal(malformedCompleteError.cause?.diagnostic?.attempts?.[0]?.candidateCount, 1);
+  assert.equal(
+    malformedCompleteError.cause?.diagnostic?.attempts?.[0]?.responseTextLength,
+    malformedCompleteText.length,
     'Malformed complete JSON must retain bounded parser diagnostics',
   );
 });
