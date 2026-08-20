@@ -11,11 +11,14 @@ This folder is the handoff pack for future Codex/agent sessions. Start here when
    Signal Bank, Brand Match, Refresh Bank, and staging regression work.
 5. `MVP-SCOPE.md` - required for any task involving product direction,
    discovery, Signal Bank, Brand Brain, or MVP.
-6. `BRAINSTORM-HANDOFF.md` - required for product brainstorming, MVP planning,
+6. `MVP-TEST-MATRIX.md` - canonical inventory of completed, deterministic,
+   planned live, and user-validation evidence. Required for any MVP test or
+   provider-run task.
+7. `BRAINSTORM-HANDOFF.md` - required for product brainstorming, MVP planning,
    Discovery, Brand Brain, Channel Filter, Signal Bank, or Railway staging. It
    contains the canonical product decisions, blockers, and handoff route.
-7. `FILE-MAP.md` - where the important code and legacy docs live.
-8. `RECENT-CHANGES.md` - latest commits and what they mean.
+8. `FILE-MAP.md` - where the important code and legacy docs live.
+9. `RECENT-CHANGES.md` - latest commits and what they mean.
 
 For a brainstorm chat, read the complete route above before discussion. That
 chat defines product decisions and prepares self-contained prompts; code,
@@ -37,14 +40,6 @@ C:\Users\Денис\Desktop\Всякое вайбкодинг\insta-producer-red
 
 Current branch: `codex/product-live-core`.
 
-Current Railway staging:
-
-```text
-Frontend: https://frontend-staging-c899.up.railway.app/
-Backend:  https://backend-staging-470a.up.railway.app
-Health:   https://backend-staging-470a.up.railway.app/api/health
-```
-
 ## Ground rules for this repo
 
 - All current product work targets the redesign at
@@ -54,15 +49,11 @@ Health:   https://backend-staging-470a.up.railway.app/api/health
 - Do not commit `backend/data/db.json` unless the user explicitly asks. It often contains local runtime/demo data.
 - For Build Week submission context, read `docs/hackathon/README.md`.
 - Prefer small focused fixes over large rewrites. The app is a large full-stack
-  MVP with large `src/main.jsx`, `src/styles.css`, and `backend/server.js` files.
-  Commit `0093e4f` is verified on both Railway staging services; later commits
-  still require their own deployment evidence.
+  MVP with a large `src/main.jsx`; deployment of the current branch is not
+  verified.
 - Keep UI copy clean in Ukrainian and English. The user is very sensitive to mixed-language screens.
 - After behavior changes, run the smallest relevant checks, then `npm.cmd run build` when feasible.
 - If a YouTube/Gemini flow looks instant, fake, duplicated, or generic, verify that the frontend is calling the backend AI route and not only rendering fallback data.
-- For personal saved URLs, read `backend/services/publicVideoGrounding.cjs` and
-  `scripts/test-public-video-grounding.mjs`. Never infer transcript, frames, or
-  scenes from metadata.
 
 ## Fast verification commands
 

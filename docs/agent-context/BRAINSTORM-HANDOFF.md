@@ -1,6 +1,6 @@
 # DZHERO brainstorm handoff
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-20**
 
 ## 1. Purpose and operating model
 
@@ -13,6 +13,9 @@ The brainstorm chat is for product discussion, decisions, report analysis, and
 self-contained prompts for separate working agents. It does not implement code,
 run tests, call providers, spend money, change Git or Railway, or create commits.
 Tests, design work, and implementation happen in separate working chats.
+The Denys Agent Harness is a shared operating contract, not a repository asset
+to copy into DZHERO. The brainstorm/orchestration chat prepares narrow agent
+contracts and accepts evidence; it does not silently perform their work.
 
 ## 2. Product vision
 
@@ -30,6 +33,20 @@ The important difference from Sandcastles is responsibility. Sandcastles leaves
 the watchlist, selection, and shortlist to the user. DZHERO should supply
 already-verified signals automatically. The user corrects relevance and taste,
 but does not manually moderate the entire incoming stream.
+
+### Current MVP inventory decision
+
+For a user-selected free-text Brand Brain, DZHERO must try to deliver 3–5
+truthful verified signals into the correct bank. Those are not raw Apify
+candidates and not manually inserted records. They require
+`decision=accept && admittedToBank=true`.
+
+The Brand Brain's product/topic guides source discovery. Audience is a soft
+Brand Match and adaptation context, not a hard requirement that the source
+video already name the same audience. When exact retrieval is sparse, widen
+topic and transferable-mechanic lanes before considering any admission change.
+Never fill the bank with unrelated or unverified videos merely to reach a
+count. A bounded run may truthfully return fewer signals with a searching state.
 
 ## 3. Canonical architecture
 
@@ -168,12 +185,19 @@ and D is not a quality gate.
 
 ## 8. Limited MVP scope
 
-The initial niche is AI, vibe coding, and AI agents. Initial operating bounds:
+Initial validation uses three deliberately different Brand Brain profiles:
+
+1. educational AI content for marketing teams;
+2. practical fitness/home-training content for beginners and busy people;
+3. a local café/restaurant for nearby residents and visitors, with a city in
+   the test description while location remains optional globally.
+
+Operating bounds:
 
 - 5–10 seed accounts;
 - 20–30 metadata candidates;
 - full analysis of only top-1 per run;
-- 10–20 Verified Signals.
+- 3–5 accepted/admitted signals visible in the correct profile bank;
 
 Primary user path:
 
@@ -187,21 +211,14 @@ Brand Brain
 → save
 ```
 
-Personal public-video path:
+Additional path:
 
 ```text
-personal public-video URL
-→ platform capability check
-→ grounded transcript and analysis
-→ three adaptations
-→ structured shootable script
+Public Reel / TikTok / Short URL
+→ transcript/analysis
+→ Signal Filter
+→ possible admission to the shared bank
 ```
-
-Public YouTube is supported through Gemini's official public URL input. TikTok
-and Instagram/Reels arbitrary public-page analysis currently fails closed; the
-fallback is a user-owned upload or owner-authorized captions. Personal Studio
-analysis does not automatically admit a URL to the shared bank, and metadata
-alone never becomes transcript, observations, or scenes.
 
 Validate with 5–7 target users. Success requires at least 3 users to actually
 adapt a signal, at least 2 to return, and at least 2 to actually pay `$15`.
@@ -215,8 +232,6 @@ Praise, stated intent, or browsing without adaptation is not validation.
 - use `concurrency=1` and `retries=0` for experiments;
 - keep `maxVideoAnalysesPerRun=1`;
 - require explicit permission, a preflight, and a defined budget for paid work;
-- use credentialless controlled preflight for UI/API readiness: it skips local
-  `.env` loading and blocks every provider-capable request before network access;
 - enforce hard per-run and monthly limits and fail closed at the limit;
 - do not start mass background scraping before MVP validation.
 
@@ -250,55 +265,31 @@ accepted the technical outcome but judged the signal weakly useful. This is the
 first concrete evidence for the next product question: personal usefulness
 after shared-bank admission.
 
+Since the prior Discovery proof, the owner confirmed Product Live adaptation on
+Railway staging for YouTube, Instagram/Reels, and TikTok through the bounded
+commit sequence ending at `b59958d`. The technical flow is working; TikTok
+poster/preview display remains open. This does not establish user usefulness,
+retention, payment, broad provider reliability, or automatic Discovery across
+the three profiles.
+
 See [`DISCOVERY-VERIFICATION.md`](DISCOVERY-VERIFICATION.md) for the permanent
 contract, provider-backed evidence, and regression command.
 
 ## 12. Current product frontier
 
-The pipeline-connectivity milestone and one real manual-YouTube grounding run
-are complete. On 2026-08-12 the owner accepted grounded Overview, verified
-evidence, spoken Transcript, and Deep Analysis on Railway staging.
+The pipeline-connectivity milestone is complete. The owner selected a bounded
+evidence route rather than further architecture work:
 
-On 2026-08-15, an offline integration based on
-`0e4252c70f112a61213eed4deaa681a31ed4f9ca` added language-scoped Saved URL
-analysis/reuse, separate original and localized OCR, Source Evidence UI, and
-three bounded semantic adaptation angles. Deterministic tests prove
-Instagram/TikTok poster identity propagation, `uk/en` separation, old-result
-read compatibility, 5/5 synthetic semantic packages, collapse rejection, and
-Saved URL → Studio → selected production script → content-plan draft. No live
-provider call, deployment, or production data change is part of that evidence.
+1. deterministic provider-free Discovery → admission → correct-bank tests for
+   the three Brand Brain profiles;
+2. a focused TikTok preview repair with regression evidence;
+3. only after those pass, separately approved and budgeted live Apify/Gemini
+   runs to populate truthful bank inventory;
+4. user-value testing of adaptation, return, and payment.
 
-A later user-driven local acceptance accidentally opened legacy root `/` and
-triggered an Instagram legacy import outside the Saved URL cap: one Gemini
-thumbnail operation and two rejected Gemini remix operations. Apify and video
-analysis were zero, no Saved URL/Reel persisted, and actual Gemini cost is
-unknown. Services are stopped and the ignored runtime store is preserved with
-four total AI operations including one preceding Brand Brain derivation. Future
-manual acceptance must use the opt-in strict provider scope and opt-in Product
-Discover root routing; normal product defaults remain unchanged.
-
-The next discussion must choose what repeat user behavior to validate rather
-than automatically accumulating more paid signals. Diverse live-provider
-semantic/language quality is still unproven, and the deterministic fallback's
-mixed-language edge case should not be mistaken for a passed localization
-benchmark.
-
-Live possibilities include:
-
-- wire the user-owned upload / owner-authorized captions fallback, without
-  adding an arbitrary platform downloader;
-- improve personal Brand Match/Collection ranking so weak matches do not
-  dominate the user's view;
-- test the existing Collection → Studio → adaptation loop with the admitted
-  signal and learn whether adaptation creates value even when the source looks
-  ordinary;
-- add lightweight usefulness feedback to learn from `useful / not useful`
-  judgments without changing shared-bank history;
-- continue toward the original limited-MVP validation set only after the next
-  experiment and success behavior are chosen.
-
-Do not treat these as an implementation plan or a decided priority. The owner
-must choose which product uncertainty matters most.
+The exact hypotheses, authority gates, and status are maintained in
+[`MVP-TEST-MATRIX.md`](MVP-TEST-MATRIX.md). Do not interpret this as permission
+for paid calls, deployment, Signal Filter changes, or a larger Discovery scope.
 
 ## 13. Git and deployment direction
 
@@ -309,8 +300,6 @@ must choose which product uncertainty matters most.
 - Rebase is not automatically preferable to merge; choose only after
   inspecting divergence and risk.
 - Staging currently deploys the redesign branch and uses PostgreSQL.
-- Commit `0093e4f` was successfully deployed to both staging services on
-  2026-08-12; direct and frontend-proxied health returned 200.
 - Do not use the production environment for this validation.
 
 ## 14. Railway staging state
@@ -319,11 +308,6 @@ The separate frontend and backend staging services are live and use PostgreSQL.
 Provider secrets remain backend-only, staging credentials and budgets remain
 separate, Automatic Discovery stays disabled, and manual Refresh is protected
 by daily, concurrent-run, per-provider, per-run, and monthly limits.
-
-Browser authentication uses the frontend's same-origin `/api` proxy. The owner
-manually verified logout, repeat login, and iPhone login. A reversible tester
-grant exists only for the staging acceptance workspace and is not production or
-public billing semantics.
 
 The public health endpoint does not expose deployed Git SHA. Use Railway
 deployment metadata when exact revision proof is required. Do not infer the SHA
@@ -348,16 +332,19 @@ from health alone.
 
 - only six real ranking labels exist;
 - Solvex is both a residual high-rank risk and a known false accept;
-- B-soft is unproven outside the initial niche;
+- B-soft is unproven outside the initial AI/vibe-coding reference niche and
+  must be measured, not retuned by assumption, for the three validation
+  profiles;
 - Channel Filter is not implemented or validated;
 - author-relative history is insufficient;
 - one admitted fitness signal was weakly useful despite topic fit;
 - a personal Brand Match/Collection policy is not yet validated;
-- adaptation usefulness across multiple real users/signals is not validated;
-- user-owned upload and owner-authorized captions are not yet wired into the
-  redesign personal-video fallback;
-- TikTok/Instagram arbitrary public-page audiovisual analysis remains
-  intentionally unsupported without an approved compliant path;
+- Product Live is technically confirmed, but adaptation usefulness and quality
+  for real users are not validated separately;
+- TikTok preview/poster display is missing on an otherwise working TikTok
+  Product Live path;
+- three-profile deterministic Discovery → admission → correct-bank validation
+  has not yet been executed;
 - willingness to pay is unproven.
 
 Do not resolve these by silently widening scope. Signal Filter changes,

@@ -1,6 +1,6 @@
 # Working Memory
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-20**
 
 ## Current direction
 
@@ -11,6 +11,14 @@ gallery. Current work happens only in the redesign at
 The redesign Discovery pipeline is now connected and verified end to end on
 Railway staging. One approved manual Refresh found, analysed, admitted, and
 displayed a real TikTok fitness signal, which then opened in Studio.
+
+Since that earlier proof, the owner also confirmed the Product Live adaptation
+path on Railway staging for YouTube, Instagram/Reels, and TikTok. The work is
+the commit sequence `85fba56` → `7e82b2a` → `c985fcc` → `ecc85ec` →
+`e026337` → `b59958d`: unified grounded remix, safe YouTube budget handling,
+Brand Brain preservation, two bounded remix attempts, and second-attempt
+semantic warnings. This proves technical flow only. TikTok preview/poster
+rendering remains open.
 
 The owner considers this the intended limited-MVP technical outcome. The
 result's usefulness was weak despite topic fit and engagement; this is new
@@ -39,89 +47,40 @@ frozen Signal Filter v3.1 baseline. Full evidence and regression rules are in
   Integration Patch. It stopped before provider execution and spent `$0`.
 - Use this chat for brainstorming and task definition.
 - Use separate working agents for implementation and tests.
+- Use deterministic provider-free tests before any new live Discovery run.
+- Test three onboarding Brand Brain profiles: educational AI for marketing
+  teams, practical fitness/home training, and a local café/restaurant.
+- The readiness target is 3–5 truthful accepted/admitted signals in each
+  profile's bank. Broaden topic retrieval before relaxing source-quality or
+  admission rules; audience is a soft Brand Match/adaptation signal, not a
+  hard source filter.
+- Do not vendor the Denys Agent Harness into this repository; use it as the
+  common operating contract for task definition and acceptance.
+
+## Offline graph evidence — 2026-08-20
+
+- The TikTok preview candidate is locally RED→GREEN: the persisted TikTok
+  poster now reaches Studio view state while Instagram, YouTube, and honest
+  no-preview fallback behavior stay covered. `test:studio-view`,
+  `test:personal-url-adaptation`, and the production build passed locally.
+  The patch is not committed, integrated, deployed, or staging-reverified.
+- The three-profile provider-free lifecycle passed with one shared state and
+  the real frozen v3.1 policy over raw fixtures: exactly three
+  `accept + admittedToBank` signals per AI, fitness, and café workspace;
+  `maxVideoAnalysesPerRun=1`, isolation, dedupe, suppression, replay, and
+  classified-error assertions remained intact. Network tripwires recorded zero
+  calls.
+- Discovery planning now uses content focus/product topic rather than audience.
+  A 758-character free-text description was planned as a 114-character,
+  13-word whole-word query under the 120-character/16-word cap. Generic
+  bootstrap is reserved for missing topic context.
+- `test:discovery-regression`, workspace Brand Match, relevant syntax checks,
+  and the production build passed locally. N4 independently accepted the final
+  revised obligations. None of this authorizes providers, a deploy, or a live
+  relevance claim.
 
 Paid Gemini or Apify work always requires explicit permission, a preflight, and
 an established budget.
-
-## 2026-08-12 authentication and Studio decisions
-
-- Keep deployed browser authentication same-origin through the staging
-  frontend `/api` proxy. `CLIENT_URL` is the frontend origin only; the Google
-  redirect URI is the full frontend callback.
-- The owner manually verified logout, repeat login, and iPhone login after the
-  staging configuration correction. Do not undo this separation.
-- Treat ordinary accessible public YouTube videos, including conversational
-  videos, as analyzable through Gemini's official public URL capability.
-- Parse current Interactions responses from `steps[]` and request structured
-  evidence. Never manufacture transcript, observations, scenes, or analysis
-  from title/description metadata.
-- Use one shared platform capability contract for YouTube, TikTok, and
-  Instagram/Reels. YouTube is supported today; TikTok/Instagram arbitrary
-  public pages fail closed until an approved compliant audiovisual path exists.
-- The fallback is a user-owned upload or owner-authorized captions. Do not add
-  a downloader or scraper without a separate legal/provider decision.
-- Preserve the existing three adaptation variants. Script Editor must receive
-  a genuinely adapted, shootable structured scenario, not an idea list.
-- Preserve old adaptations when a refresh fails and show the safe diagnostic
-  even while retained content remains available.
-- One public-video attempt means one video-analysis invocation, retries=0, and
-  at most one remix only after grounding succeeds.
-- A reversible staging-only tester grant was used for acceptance. It does not
-  change production or public billing semantics.
-
-Live acceptance on 2026-08-12 confirmed a real YouTube signal populated
-Overview, verified evidence, spoken Transcript, and Deep Analysis. Deterministic
-tests confirm all three adaptations and the structured Script Editor contract;
-do not broaden the live claim beyond that recorded evidence.
-
-## 2026-08-15 offline integration decisions
-
-- The integration source base is
-  `0e4252c70f112a61213eed4deaa681a31ed4f9ca`; the integrated state is not a
-  commit or deployment.
-- Saved URL analysis language is explicit `uk` / `en`, defaults to `uk`, and is
-  part of server reuse, persistence, single-flight, and frontend response
-  identity. Missing legacy language continues to mean `uk`.
-- Original `spokenText`, transcript segments, `spokenContent`, `onScreenText`,
-  and on-screen observation `text` remain unchanged evidence. Translation is
-  optional and stored only in `localizedText` or `localizedOnScreenText`.
-- Studio Source Evidence owns original speech/OCR presentation. Localized Deep
-  Analysis must not duplicate direct transcript, spoken-scene, or OCR content.
-- New remix fields are additive. New generation must cover
-  `visible_source_conflict`, `mechanism_walkthrough`, and `viewer_decision`
-  exactly once, but old stored results without those fields must still open in
-  Studio and Content Plan.
-- Deterministic integration proves Saved URL → Studio → three angles → selected
-  production script → content-plan draft. The semantic benchmark proves 5/5
-  synthetic packages and rejects the collapsed generic-AI fixture; it does not
-  prove live provider quality.
-- Real remix requests now receive the workspace language and a prompt boundary
-  against copying foreign-language speech/OCR into the adaptation. This remains
-  offline contract evidence until a separately budgeted live audit exists.
-- A separately approved `$0.75` Instagram-plus-TikTok run now has a tested
-  run-local hard-cap configuration. Its conservative maximum is `$0.718600`,
-  including both platform actor caps, a double-counted video-input reserve,
-  and explicit Gemini output/request bounds. The controls are additive and do
-  not change defaults when their environment is absent.
-- The user-driven fallback accidentally opened legacy root `/`. Its Instagram
-  import made one Gemini thumbnail call and two Gemini remix calls; both remix
-  outputs were rejected. Apify and video-analysis calls were zero, no Saved URL
-  or Reel persisted, and actual Gemini cost is unknown because legacy telemetry
-  did not record tokens/cost. The preserved ignored local store reports four
-  total AI operations including one earlier Brand Brain derivation. Services
-  are stopped.
-- Future controlled acceptance must set both
-  `PERSONAL_URL_STRICT_LIVE_RUN=true` and
-  `VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY=true`. The backend flag permits
-  only the budgeted redesign Saved URL scope; the frontend flag makes root `/`
-  enter Product Discover. Neither changes normal defaults when absent.
-- For a credentialless local readiness session, additionally set
-  `PERSONAL_URL_CREDENTIALLESS_PREFLIGHT=true`. This default-off flag is
-  recognized before `.env` loading, requires strict mode plus the complete cap
-  configuration, blocks even `personal_saved_url` with structured
-  `provider_not_configured`, and suppresses deferred CRM, Discovery, and
-  provider cleanup work. Removing it returns to strict paid-run behavior,
-  including the requirement for real provider credentials.
 
 ## Product architecture
 
@@ -173,10 +132,11 @@ an input to future filter work, not a reason to repeat the same two-video run.
 - the discovery path analyses at most one video per run;
 - one real admitted staging signal reached Collection and Studio.
 
-The next route begins with a product decision about usefulness and adaptation,
-then a small set of real signals and 5–7 target-user tests. Do not resume paid
-discovery merely to accumulate volume before deciding what user behavior the
-next experiment must measure.
+The owner has now chosen the next experiment: deterministic Discovery →
+admission → correct-bank validation for the three Brand Brain profiles, followed
+only then by separately authorized bounded live runs and user-value testing.
+Do not resume paid discovery merely to accumulate volume; every live run must
+state which matrix hypothesis it measures.
 
 Staging is separate from production. Start with a Railway-generated domain and
 backend-only secrets. A Volume is acceptable for early JSON persistence;

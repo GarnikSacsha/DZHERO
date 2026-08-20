@@ -1,91 +1,46 @@
 # Recent changes
 
-Last updated: **2026-08-17**
+Last updated: **2026-08-20**
 
-## Run-local paid acceptance guard
+## Product Live Remix rollout and staging confirmation
 
-- Added default-compatible personal-URL controls for per-platform aggregate
-  Apify charge, exact actor starts, disabling Instagram fallback, verified
-  downloaded-video duration, and bounded Gemini request/input/output size.
-- Added focused offline tests for fail-closed duration and token counting,
-  fallback/actor caps, pricing expiry and unknown models, and video/remix
-  generation-config forwarding.
-- The approved one-Instagram plus one-TikTok configuration has a conservative
-  `$0.718600` maximum under the `$0.75` owner ceiling. The estimate reserves
-  `$0.55` for Apify and `$0.168600` for Gemini video/remix work.
-- The user-driven fallback accidentally used legacy root `/`. The Instagram
-  action made three Gemini operations (one thumbnail, two remix), both remix
-  outputs were rejected, and no Saved URL or Reel persisted. Apify and video
-  analysis remained zero. Actual Gemini cost is unknown, not `$0`; the ignored
-  runtime evidence store records four total AI operations including one earlier
-  Brand Brain derivation. Both services were stopped.
-- Added `PERSONAL_URL_STRICT_LIVE_RUN` provider-scope isolation so only the
-  redesign Saved URL guard can reach paid providers during a controlled run.
-  Added `VITE_PERSONAL_URL_CONTROLLED_PRODUCT_ENTRY` so root enters Product
-  Discover for that run; the `/auth/me` failure branch preserves the same
-  Product Discover URL instead of stripping its query. Both are explicit
-  opt-ins and preserve ordinary behavior by default.
-- Added an isolated route-level backend harness with fake providers, a fresh
-  temporary database, disabled `.env` loading, and an outbound-network trap.
-  It dynamically proves the complete forbidden-route matrix stays at zero
-  provider calls under parallel load; the only allowed Saved URL flight uses
-  one primary Instagram actor, one video analysis, one remix, no fallback, and
-  the configured duration/token/request limits. Parallel duplicate/different
-  Saved URL requests remain inside single-flight/workspace budget bounds.
-- Added `PERSONAL_URL_CREDENTIALLESS_PREFLIGHT` for default-off, zero-spend
-  local readiness. It is read before local `.env` loading, requires strict mode
-  and the verified cap, blocks all provider-capable requests (including
-  `personal_saved_url`) before network access, and disables deferred CRM,
-  Discovery, and provider cleanup. A dynamic sentinel-credential test proves
-  `.env` is skipped and startup plus parallel requests make zero provider or
-  outbound calls. Strict paid-run startup still requires real credentials.
+- `85fba56` unified the Product Live remix pipeline.
+- `7e82b2a` allows YouTube direct-URL analysis to continue when Gemini cannot
+  count that multimodal input; duration, request-size, output, and provider
+  usage guards remain active.
+- `c985fcc` and `ecc85ec` preserve Product Brand Brain through generation and
+  require `product + audience` while keeping `niche`/`market` optional.
+- `e026337` aligns the personal-URL remix budget with one corrective retry:
+  attempt 1 plus at most one attempt 2.
+- `b59958d` degrades only schema-valid second-attempt semantic-anchor failures
+  to `accepted_with_warnings`; safety/content/budget, schema, empty-output,
+  provider, and transport failures remain hard failures.
+- The owner confirmed a working Railway-staging adaptation flow for YouTube,
+  Instagram/Reels, and TikTok. TikTok poster/preview display remains a known
+  defect; it is not evidence that the analysis/adaptation path failed.
+- No Railway variables, Signal Filter v3.1 rules, source-evidence contract,
+  `maxVideoAnalysesPerRun=1`, or `backend/data/db.json` were changed by this
+  documentation entry.
 
-## Offline poster, language, OCR, and semantic adaptation integration
+## Offline MVP graph evidence — unintegrated
 
-- Integrated scoped P/L/A artifacts from base
-  `0e4252c70f112a61213eed4deaa681a31ed4f9ca` without merge, cherry-pick,
-  commit, deployment, provider calls, or `backend/data/db.json` changes.
-- Saved URL analysis and reuse are now language-scoped (`uk` / `en`, default
-  `uk`); old language-less records remain Ukrainian-readable and stale UI
-  results from another language are filtered out.
-- Resolved Instagram/TikTok title, handle, and poster survive grounding into
-  the Saved URL Studio signal. Original speech/OCR fields remain evidence;
-  optional localized OCR is separate and Studio renders scene, time, original,
-  and distinct translation.
-- New generation adds exactly three semantic angles plus source/brand/
-  production reasoning fields. The tracked offline benchmark passes 5/5
-  packages and rejects the tracked collapsed fixture 5/5.
-- Deterministic lifecycle coverage now links Saved URL, all three angles, a
-  selected three-scene production script, and a content-plan draft. Existing
-  stored results remain readable because the new fields are additive.
-- Evidence is offline only. It does not establish diverse live-provider quality
-  or output-language purity; the last accepted live evidence remains the single
-  2026-08-12 YouTube run.
-
-## Same-origin auth and grounded manual-video Studio
-
-- `99be0a6` added the staging frontend `/api` proxy and same-origin Google OAuth
-  session flow. Staging keeps the frontend origin and Google callback URI as
-  separate configuration concepts.
-- After the staging origin correction, CORS preflight returned 204 and the
-  owner manually verified logout, repeat login, and iPhone login.
-- `95b95a7`, `83adfea`, and `ac12fa6` established grounded personal-URL
-  requirements, a deterministic backend/browser harness, actionable retry, and
-  structured Studio script rendering.
-- `0093e4f` added `backend/services/publicVideoGrounding.cjs`, current Gemini
-  Interactions `steps[]` parsing and response schema, normalized grounded
-  evidence, three-platform capability diagnostics, retained adaptations, and
-  Script Editor regression coverage.
-- Railway reported frontend and backend staging `Success` for `0093e4f`.
-  Frontend, direct backend health, and frontend-proxied health returned 200.
-- The owner then accepted one real YouTube flow with grounded Overview,
-  verified evidence, spoken Transcript, and Deep Analysis. Deterministic tests
-  separately prove the retained three variants and structured shootable script.
-- TikTok and Instagram/Reels arbitrary public-page analysis intentionally fails
-  closed with a user-owned upload / owner-authorized captions fallback. No
-  downloader or new provider dependency was added.
-- Signal Filter v3.1, `maxVideoAnalysesPerRun=1`, production, legacy UI,
-  `backend/data/db.json`, and package lock were unchanged.
+- A provider-free TikTok preview candidate completed RED→GREEN and passed
+  `test:studio-view`, `test:personal-url-adaptation`, and production build.
+  It is not committed, deployed, or staging-reverified; the staging preview
+  defect therefore remains open.
+- A provider-free three-profile lifecycle passed AI, fitness, and café in one
+  shared state using the real frozen Signal Filter v3.1 policy over raw
+  fixtures. Each workspace finished with exactly three accepted/admitted bank
+  signals; max-one analysis, dedupe, suppression, replay, isolation, classified
+  errors, and zero-network tripwires were checked.
+- Query planning now has local evidence that it prefers content focus/product,
+  excludes audience, compacts free text at a word boundary to at most 120
+  characters/16 words, and reserves generic bootstrap for missing topic context.
+- `npm.cmd run test:discovery-regression`, workspace Brand Match, relevant
+  syntax checks, and production build passed locally. N4 independently verified
+  the final revised offline obligations.
+- No commit, push, integration, deployment, Railway mutation, provider call,
+  or `backend/data/db.json` change occurred in this graph evidence.
 
 ## Redesign Discovery integration and staging proof
 
