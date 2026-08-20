@@ -6,6 +6,7 @@ const {
   parseGeminiInteractionText,
   uploadGeminiVideoFromUrl,
 } = require('./agentStudioVideoTool.cjs');
+const { safeFetchPublicBuffer } = require('./safePublicFetch.cjs');
 const { normalizeGeminiUsage } = require('./agentStudioUsage.cjs');
 
 const GEMINI_API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
@@ -905,6 +906,7 @@ async function analyzeSignalQualityVideo({
   mediaApiToken = process.env.APIFY_TOKEN || '',
   model = process.env.GEMINI_VIDEO_MODEL || process.env.GEMINI_VISION_MODEL || DEFAULT_SIGNAL_QUALITY_MODEL,
   fetchImpl = globalThis.fetch,
+  safeFetchImpl = safeFetchPublicBuffer,
   sleepImpl,
   includeAuditTrace = false,
   runtimeGuards = null,
@@ -972,6 +974,10 @@ async function analyzeSignalQualityVideo({
     else if (target.includes('/files/')) httpOperations.uploadPoll += 1;
     return fetchImpl(url, options);
   };
+  const trackedSafeFetch = async (url, options = {}) => {
+    if (String(url || '') === videoUrl) httpOperations.mediaGet += 1;
+    return safeFetchImpl(url, options);
+  };
 
   const requestHeaders = isProtectedApifyMediaUrl(videoUrl) && mediaApiToken
     ? { Authorization: `Bearer ${mediaApiToken}` }
@@ -981,6 +987,7 @@ async function analyzeSignalQualityVideo({
     apiKey,
     requestHeaders,
     fetchImpl: trackedFetch,
+    safeFetchImpl: trackedSafeFetch,
     sleepImpl,
     maxBytes: guards.maxMediaBytes,
   });

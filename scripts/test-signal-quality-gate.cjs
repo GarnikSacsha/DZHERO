@@ -10,6 +10,12 @@ const {
 } = require('../backend/services/signalQualityGate.cjs');
 
 const config = loadSignalQualityGateConfig();
+const originalFetch = globalThis.fetch;
+let networkTripwireCalls = 0;
+globalThis.fetch = async () => {
+  networkTripwireCalls += 1;
+  throw new Error('network_tripwire_triggered');
+};
 assert.equal(config.version, 3.1);
 assert.equal(config.policy, 'evidence_first_modes_with_uncertainty');
 assert.equal(config.maxVideoAnalysesPerRun, 1);
@@ -240,6 +246,15 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
     mediaApiToken: 'offline-apify-key',
     includeAuditTrace: true,
     runtimeGuards: resolveSignalQualityRuntimeGuards(),
+    safeFetchImpl: async (url) => {
+      assert.equal(String(url), 'https://media.invalid/video.mp4?signature=memory-only');
+      return {
+        ok: true,
+        status: 200,
+        bytes: Buffer.from('offline-video-bytes'),
+        headers: new Headers({ 'content-type': 'video/mp4', 'content-length': '19' }),
+      };
+    },
     fetchImpl: async (url, options = {}) => {
       const target = String(url);
       if (target.startsWith('https://media.invalid/')) {
@@ -314,11 +329,19 @@ assert.equal(isSignalQualityBorderline(usefulDecision, config), false);
     signal: { videoUrl: 'https://media.invalid/too-large.mp4', duration: 44 },
     apiKey: 'offline-key',
     config,
+    safeFetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      bytes: Buffer.alloc(104857601),
+      headers: new Headers({ 'content-type': 'video/mp4', 'content-length': String(104857601) }),
+    }),
     fetchImpl: async () => new Response('', {
       status: 200,
       headers: { 'content-type': 'video/mp4', 'content-length': String(104857601) },
     }),
   }), /too_large/);
+  assert.equal(networkTripwireCalls, 0);
+  globalThis.fetch = originalFetch;
   console.log('signal quality gate v3.1 contract tests passed');
 })().catch((error) => {
   console.error(error);

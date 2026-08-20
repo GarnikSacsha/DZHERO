@@ -17,6 +17,8 @@ const HOUR_MS = 60 * 60 * 1000;
 const ACCOUNT_INTERVAL_MS = 6 * HOUR_MS;
 const DISCOVERY_INTERVAL_MS = 12 * HOUR_MS;
 const MAX_INPUTS_PER_LANE = 10;
+const MAX_DISCOVERY_QUERY_CHARS = 120;
+const MAX_DISCOVERY_QUERY_WORDS = 16;
 const MAX_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_DAILY_BUDGET_USD = 0.8;
 const DEFAULT_VIRAL_SCORE_THRESHOLD = 70;
@@ -440,37 +442,45 @@ function collectAccountCandidates(state = {}, workspaceId) {
   };
 }
 
-function collectKeywordCandidates(workspace = {}, state = {}, workspaceId) {
-  const brief = workspace.brief || {};
-  const values = [
+function compactDiscoveryQuery(value) {
+  const words = normalizeText(value).toLowerCase().split(' ').filter(Boolean);
+  const selected = [];
+  for (const word of words) {
+    if (selected.length >= MAX_DISCOVERY_QUERY_WORDS) break;
+    const candidate = [...selected, word].join(' ');
+    if (candidate.length > MAX_DISCOVERY_QUERY_CHARS) break;
+    selected.push(word);
+  }
+  return selected.join(' ');
+}
+
+function collectWorkspaceTopicQueries(brief = {}) {
+  const candidates = [
+    brief.contentFocus,
+    brief.product,
+    brief.offer,
     brief.businessType,
     brief.niche,
-    brief.product,
-    brief.audience,
-    brief.location,
-    brief.contentFocus,
-    brief.toneOfVoice,
-    ...(Array.isArray(brief.goals) ? brief.goals : []),
-    ...(Array.isArray(workspace.marketFocus) ? workspace.marketFocus : []),
+    brief.profileDescription,
   ];
-
-  for (const source of Array.isArray(state.sources) ? state.sources : []) {
-    if (source?.workspaceId !== workspaceId) continue;
-    values.push(source.label, source.type);
-  }
-
-  for (const competitor of Array.isArray(state.competitors) ? state.competitors : []) {
-    if (competitor?.workspaceId !== workspaceId) continue;
-    values.push(competitor.niche, competitor.market, competitor.handle);
-  }
-
+  const concise = candidates.filter((value) => {
+    const normalized = normalizeText(value);
+    return normalized
+      && normalized.length <= MAX_DISCOVERY_QUERY_CHARS
+      && normalized.split(' ').length <= MAX_DISCOVERY_QUERY_WORDS;
+  });
+  const selected = concise.length ? concise : candidates;
   return uniqueValues(
-    [
-      ...values.map((value) => normalizeText(value).toLowerCase()),
-      ...BOOTSTRAP_KEYWORDS,
-    ],
-    MAX_INPUTS_PER_LANE
+    selected.map(compactDiscoveryQuery).filter(Boolean),
+    MAX_INPUTS_PER_LANE,
   );
+}
+
+function collectKeywordCandidates(workspace = {}, state = {}, workspaceId) {
+  const brief = workspace.brief || {};
+  const workspaceTopics = collectWorkspaceTopicQueries(brief);
+  // Generic bootstrap searches are only for a workspace with no topic context.
+  return workspaceTopics.length ? workspaceTopics : [...BOOTSTRAP_KEYWORDS];
 }
 
 function collectHashtagCandidates(workspace = {}, state = {}, workspaceId) {

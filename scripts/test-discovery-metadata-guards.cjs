@@ -18,7 +18,10 @@ const {
 const fixturePath = path.resolve(__dirname, 'fixtures', 'instagram-metadata-audit-chatcut-sanitized.json');
 const dbPath = path.resolve(__dirname, '..', 'backend', 'data', 'db.json');
 const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
-const dbHashBefore = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
+const runtimeDbPresent = fs.existsSync(dbPath);
+const dbHashBefore = runtimeDbPresent
+  ? crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex')
+  : null;
 const originalFetch = globalThis.fetch;
 let networkAttempts = 0;
 
@@ -246,17 +249,20 @@ results.push(runCandidate(
 ));
 
 globalThis.fetch = originalFetch;
-const dbHashAfter = crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex');
+const dbHashAfter = runtimeDbPresent
+  ? crypto.createHash('sha256').update(fs.readFileSync(dbPath)).digest('hex')
+  : null;
 const invariants = {
   providerCalls: 0,
   networkAttempts,
-  dbJsonUnchanged: dbHashAfter === dbHashBefore,
+  runtimeDbPresent,
+  dbJsonUnchanged: !runtimeDbPresent || dbHashAfter === dbHashBefore,
   fixtureCandidateCount: fixture.candidates.length,
 };
 
 console.log(JSON.stringify({ results, invariants }, null, 2));
 
-if (networkAttempts !== 0 || dbHashAfter !== dbHashBefore) {
+if (networkAttempts !== 0 || (runtimeDbPresent && dbHashAfter !== dbHashBefore)) {
   process.exitCode = 2;
 } else if (results.some((result) => result.status === 'REPRODUCED')) {
   process.exitCode = 1;
