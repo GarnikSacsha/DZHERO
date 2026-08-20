@@ -1,17 +1,19 @@
 'use strict';
 
 const DEFAULT_PLATFORM_LIMITS = Object.freeze({
-  instagram: Object.freeze({ maxActorStarts: 2, maxChargeUsd: 0.05 }),
+  instagram: Object.freeze({ maxActorStarts: 1, maxChargeUsd: 0.05 }),
   tiktok: Object.freeze({ maxActorStarts: 1, maxChargeUsd: 0.50 }),
 });
 
 const GEMINI_STANDARD_PRICING_USD_PER_MILLION = Object.freeze({
-  'gemini-3.6-flash': Object.freeze({ input: 1.50, output: 7.50 }),
+  'gemini-3.6-flash': Object.freeze({ input: 0.75, output: 3.75 }),
   'gemini-3.5-flash': Object.freeze({ input: 1.50, output: 9.00 }),
 });
 
 const GEMINI_PRICING_VALID_THROUGH = '2026-12-31';
 const DEFAULT_VIDEO_TOKENS_PER_SECOND = 300;
+const APIFY_DEVIATION_MULTIPLIER = 1.10;
+const MAX_REMIX_ATTEMPTS = 2;
 
 function createBudgetError(code, details = {}) {
   const error = new Error(code);
@@ -61,7 +63,7 @@ function readPlatformBudget(env, platform) {
     maxActorStarts: configuredActorStarts ?? defaults.maxActorStarts,
     totalMaxChargeUsd: configuredTotalCharge,
     allowInstagramFallback: platform === 'instagram'
-      ? readOptionalBoolean(env, 'PERSONAL_URL_INSTAGRAM_FALLBACK_ENABLED', true)
+      ? readOptionalBoolean(env, 'PERSONAL_URL_INSTAGRAM_FALLBACK_ENABLED', false)
       : false,
   });
 }
@@ -75,27 +77,33 @@ function calculatePersonalUrlRunWorstCase(config) {
       remixModel: config.remixModel,
     });
   }
-  const platformCount = 2;
+  const platform = String(config.platform || '').trim().toLowerCase();
+  const activePlatformBudget = config.platforms[platform] || null;
   const maximumVideoInputTokensPerSource = config.geminiVideoMaxInputTokens;
   const maximumRemixInputTokensPerSource = config.geminiRemixMaxRequestBytes;
-  const apifyUsd = config.platforms.instagram.totalMaxChargeUsd
-    + config.platforms.tiktok.totalMaxChargeUsd;
-  const videoInputUsd = platformCount * maximumVideoInputTokensPerSource * videoPricing.input / 1_000_000;
-  const videoTokenCountInputUsd = videoInputUsd;
-  const videoOutputUsd = platformCount * config.geminiVideoMaxOutputTokens * videoPricing.output / 1_000_000;
-  const remixInputUsd = platformCount * maximumRemixInputTokensPerSource * remixPricing.input / 1_000_000;
-  const remixOutputUsd = platformCount * config.geminiRemixMaxOutputTokens * remixPricing.output / 1_000_000;
-  const totalUsd = apifyUsd
-    + videoTokenCountInputUsd
+  const apifyBaseUsd = platform
+    ? activePlatformBudget?.totalMaxChargeUsd || 0
+    : Math.max(
+      config.platforms.instagram.totalMaxChargeUsd,
+      config.platforms.tiktok.totalMaxChargeUsd,
+    );
+  const apifyUsd = apifyBaseUsd * APIFY_DEVIATION_MULTIPLIER;
+  const videoInputUsd = maximumVideoInputTokensPerSource * videoPricing.input / 1_000_000;
+  const videoTokenCountInputUsd = 0;
+  const videoOutputUsd = config.geminiVideoMaxOutputTokens * videoPricing.output / 1_000_000;
+  const remixInputUsd = MAX_REMIX_ATTEMPTS * maximumRemixInputTokensPerSource * remixPricing.input / 1_000_000;
+  const remixOutputUsd = MAX_REMIX_ATTEMPTS * config.geminiRemixMaxOutputTokens * remixPricing.output / 1_000_000;
+  const totalUsd = Number((apifyUsd
     + videoInputUsd
     + videoOutputUsd
     + remixInputUsd
-    + remixOutputUsd;
+    + remixOutputUsd).toFixed(6));
   return Object.freeze({
     pricingValidThrough: GEMINI_PRICING_VALID_THROUGH,
     videoTokensPerSecond: config.videoTokensPerSecond,
     maximumVideoInputTokensPerSource,
     maximumRemixInputTokensPerSource,
+    remixAttemptCount: MAX_REMIX_ATTEMPTS,
     apifyUsd,
     videoTokenCountInputUsd,
     videoInputUsd,

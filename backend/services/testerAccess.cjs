@@ -106,8 +106,8 @@ function getTesterManualRefreshPolicy(planId) {
   if (planId !== TESTER_PLAN_ID) return null;
   return {
     triggerMode: 'manual_refresh',
-    perRunBudgetUsd: 1,
-    manualRefreshDailyBudgetUsd: 3,
+    perRunBudgetUsd: 1.25,
+    manualRefreshDailyBudgetUsd: 3.75,
     monthlyBudgetUsd: 90,
     metadataApifyHardCapUsd: 0.5,
     downloadApifyHardCapUsd: 0.5,

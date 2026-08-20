@@ -111,7 +111,7 @@ assert.equal(budget.maxVideoDurationSeconds, 60);
 assert.equal(budget.geminiVideoMaxInputTokens, 25_000);
 assert.equal(budget.geminiVideoMaxOutputTokens, 1_536);
 assert.equal(budget.geminiRemixMaxOutputTokens, 2_560);
-assert.equal(budget.worstCase.totalUsd, 0.7186);
+assert.equal(budget.worstCase.totalUsd, 0.65659);
 
 const serverSource = fs.readFileSync(path.join(__dirname, '..', 'backend', 'server.js'), 'utf8');
 assert.match(serverSource, /PERSONAL_URL_STRICT_LIVE_RUN/);
@@ -168,8 +168,8 @@ assert.match(
 
 const savedUrlRoute = readRouteBlock("app.post('/api/workspaces/:workspaceId/saved-urls/:savedUrlId/analyze-adapt'");
 assert.match(savedUrlRoute, /createPersonalUrlProviderAttemptGuard/);
-assert.match(savedUrlRoute, /maxAttempts:\s*1/);
-assert.match(serverSource, /maxAttempts:\s*1/);
+assert.match(savedUrlRoute, /maxAttempts:\s*2/);
+assert.match(serverSource, /maxAttempts:\s*2/);
 assert.match(serverSource, /geminiRemixMaxOutputTokens/);
 assert.match(serverSource, /geminiRemixMaxRequestBytes/);
 

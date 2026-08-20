@@ -12,35 +12,8 @@ const models = {
   now: new Date('2026-08-15T12:00:00Z'),
 };
 
-// Official Gemini API Standard pricing, checked 2026-08-18:
-// https://ai.google.dev/gemini-api/docs/pricing
-const officialStandardPricingUsdPerMillion = {
-  'gemini-3.6-flash': { input: 1.50, output: 7.50 },
-  'gemini-3.5-flash': { input: 1.50, output: 9.00 },
-};
-
-function calculateOfficialStandardWorstCase(config) {
-  const videoPricing = officialStandardPricingUsdPerMillion[config.videoModel];
-  const remixPricing = officialStandardPricingUsdPerMillion[config.remixModel];
-  const platformCount = 2;
-  return config.platforms.instagram.totalMaxChargeUsd
-    + config.platforms.tiktok.totalMaxChargeUsd
-    + platformCount * config.geminiVideoMaxInputTokens * videoPricing.input / 1_000_000
-    + platformCount * config.geminiVideoMaxInputTokens * videoPricing.input / 1_000_000
-    + platformCount * config.geminiVideoMaxOutputTokens * videoPricing.output / 1_000_000
-    + platformCount * config.geminiRemixMaxRequestBytes * remixPricing.input / 1_000_000
-    + platformCount * config.geminiRemixMaxOutputTokens * remixPricing.output / 1_000_000;
-}
-
-const defaults = readPersonalUrlRunBudget({}, models);
-assert.equal(defaults.enabled, false);
-assert.equal(defaults.platforms.instagram.maxActorStarts, 2);
-assert.equal(defaults.platforms.instagram.allowInstagramFallback, true);
-assert.equal(defaults.platforms.tiktok.maxActorStarts, 1);
-assert.equal(defaults.maxVideoDurationSeconds, null);
-
-const cappedEnv = {
-  PERSONAL_URL_RUN_BUDGET_USD: '0.90',
+const savedUrlBudgetEnv = {
+  PERSONAL_URL_RUN_BUDGET_USD: '1.10',
   PERSONAL_URL_INSTAGRAM_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_TIKTOK_APIFY_MAX_ACTOR_STARTS: '1',
   PERSONAL_URL_INSTAGRAM_APIFY_TOTAL_MAX_CHARGE_USD: '0.05',
@@ -48,162 +21,62 @@ const cappedEnv = {
   PERSONAL_URL_INSTAGRAM_FALLBACK_ENABLED: 'false',
   PERSONAL_URL_MAX_VIDEO_DURATION_SECONDS: '60',
   PERSONAL_URL_GEMINI_VIDEO_MAX_INPUT_TOKENS: '25000',
-  PERSONAL_URL_GEMINI_VIDEO_MAX_OUTPUT_TOKENS: '1536',
-  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '2560',
-  PERSONAL_URL_GEMINI_VIDEO_MAX_REQUEST_BYTES: '12000',
-  PERSONAL_URL_GEMINI_REMIX_MAX_REQUEST_BYTES: '12000',
-};
-const capped = readPersonalUrlRunBudget(cappedEnv, models);
-assert.equal(capped.enabled, true);
-assert.equal(capped.platforms.instagram.maxActorStarts, 1);
-assert.equal(capped.platforms.instagram.allowInstagramFallback, false);
-assert.equal(capped.worstCase.maximumVideoInputTokensPerSource, 25_000);
-assert.equal(capped.worstCase.maximumRemixInputTokensPerSource, 12_000);
-assert.equal(capped.worstCase.videoTokenCountInputUsd, capped.worstCase.videoInputUsd);
-assert.ok(Math.abs(capped.worstCase.totalUsd - 0.80512) < 1e-12);
-assert.ok(capped.worstCase.totalUsd < capped.totalBudgetUsd);
-assert.deepEqual(calculatePersonalUrlRunWorstCase(capped), capped.worstCase);
-
-const currentPaidRunEnv = {
-  ...cappedEnv,
-  PERSONAL_URL_INSTAGRAM_APIFY_MAX_ACTOR_STARTS: '2',
-  PERSONAL_URL_INSTAGRAM_FALLBACK_ENABLED: 'true',
-};
-const currentPaidRun = readPersonalUrlRunBudget(currentPaidRunEnv, models);
-const officialStandardWorstCaseUsd = calculateOfficialStandardWorstCase(currentPaidRun);
-assert.ok(Math.abs(officialStandardWorstCaseUsd - 0.80512) < 1e-12);
-assert.ok(Math.abs(currentPaidRun.worstCase.totalUsd - officialStandardWorstCaseUsd) < 1e-12);
-assert.equal(currentPaidRun.totalBudgetUsd, 0.90);
-assert.throws(
-  () => readPersonalUrlRunBudget({
-    ...currentPaidRunEnv,
-    PERSONAL_URL_RUN_BUDGET_USD: '0.80',
-  }, models),
-  (error) => error?.code === 'personal_url_run_budget_exceeded'
-    && Math.abs(error.details.maximumExposureUsd - officialStandardWorstCaseUsd) < 1e-12,
-  'a strict ceiling below $0.80512 must fail closed under the official Gemini Standard REST prices',
-);
-
-const prospective4096Env = {
-  ...currentPaidRunEnv,
   PERSONAL_URL_GEMINI_VIDEO_MAX_OUTPUT_TOKENS: '4096',
-};
-const prospective4096 = readPersonalUrlRunBudget(prospective4096Env, models);
-const prospective4096StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospective4096);
-assert.equal(prospective4096.platforms.instagram.maxActorStarts, 2);
-assert.equal(prospective4096.platforms.instagram.allowInstagramFallback, true);
-assert.equal(prospective4096.platforms.instagram.totalMaxChargeUsd, 0.05);
-assert.equal(prospective4096.platforms.tiktok.maxActorStarts, 1);
-assert.equal(prospective4096.platforms.tiktok.totalMaxChargeUsd, 0.50);
-assert.equal(prospective4096.maxVideoDurationSeconds, 60);
-assert.equal(prospective4096.geminiVideoMaxInputTokens, 25_000);
-assert.equal(prospective4096.geminiVideoMaxOutputTokens, 4_096);
-assert.equal(prospective4096.geminiVideoMaxRequestBytes, 12_000);
-assert.equal(prospective4096.geminiRemixMaxOutputTokens, 2_560);
-assert.equal(prospective4096.geminiRemixMaxRequestBytes, 12_000);
-assert.ok(Math.abs(prospective4096StandardWorstCaseUsd - 0.84352) < 1e-12);
-assert.ok(Math.abs(prospective4096.worstCase.totalUsd - prospective4096StandardWorstCaseUsd) < 1e-12);
-assert.ok(prospective4096.worstCase.totalUsd < prospective4096.totalBudgetUsd);
-
-const prospective30000Env = {
-  ...prospective4096Env,
+  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8192',
+  PERSONAL_URL_GEMINI_VIDEO_MAX_REQUEST_BYTES: '12000',
   PERSONAL_URL_GEMINI_REMIX_MAX_REQUEST_BYTES: '30000',
 };
-const prospective30000 = readPersonalUrlRunBudget(prospective30000Env, models);
-const prospective30000StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospective30000);
-assert.equal(prospective30000.platforms.instagram.maxActorStarts, 2);
-assert.equal(prospective30000.platforms.instagram.allowInstagramFallback, true);
-assert.equal(prospective30000.platforms.instagram.totalMaxChargeUsd, 0.05);
-assert.equal(prospective30000.platforms.tiktok.maxActorStarts, 1);
-assert.equal(prospective30000.platforms.tiktok.totalMaxChargeUsd, 0.50);
-assert.equal(prospective30000.maxVideoDurationSeconds, 60);
-assert.equal(prospective30000.geminiVideoMaxInputTokens, 25_000);
-assert.equal(prospective30000.geminiVideoMaxOutputTokens, 4_096);
-assert.equal(prospective30000.geminiVideoMaxRequestBytes, 12_000);
-assert.equal(prospective30000.geminiRemixMaxOutputTokens, 2_560);
-assert.equal(prospective30000.geminiRemixMaxRequestBytes, 30_000);
-assert.ok(Math.abs(prospective30000StandardWorstCaseUsd - 0.89752) < 1e-12);
-assert.ok(Math.abs(prospective30000.worstCase.totalUsd - prospective30000StandardWorstCaseUsd) < 1e-12);
-assert.ok(prospective30000.worstCase.totalUsd < prospective30000.totalBudgetUsd);
 
-const prospectiveOneDollar8192Env = {
-  ...prospective30000Env,
-  PERSONAL_URL_RUN_BUDGET_USD: '1.00',
-  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8192',
-};
-const prospectiveOneDollar8192 = readPersonalUrlRunBudget(prospectiveOneDollar8192Env, models);
-const prospectiveOneDollar8192StandardWorstCaseUsd = calculateOfficialStandardWorstCase(prospectiveOneDollar8192);
-assert.equal(prospectiveOneDollar8192.totalBudgetUsd, 1.00);
-assert.equal(prospectiveOneDollar8192.platforms.instagram.maxActorStarts, 2);
-assert.equal(prospectiveOneDollar8192.platforms.instagram.allowInstagramFallback, true);
-assert.equal(prospectiveOneDollar8192.platforms.instagram.totalMaxChargeUsd, 0.05);
-assert.equal(prospectiveOneDollar8192.platforms.tiktok.maxActorStarts, 1);
-assert.equal(prospectiveOneDollar8192.platforms.tiktok.totalMaxChargeUsd, 0.50);
-assert.equal(prospectiveOneDollar8192.maxVideoDurationSeconds, 60);
-assert.equal(prospectiveOneDollar8192.geminiVideoMaxInputTokens, 25_000);
-assert.equal(prospectiveOneDollar8192.geminiVideoMaxOutputTokens, 4_096);
-assert.equal(prospectiveOneDollar8192.geminiVideoMaxRequestBytes, 12_000);
-assert.equal(prospectiveOneDollar8192.geminiRemixMaxRequestBytes, 30_000);
-assert.equal(prospectiveOneDollar8192.geminiRemixMaxOutputTokens, 8_192);
-assert.ok(Math.abs(prospectiveOneDollar8192StandardWorstCaseUsd - 0.998896) < 1e-12);
-assert.ok(Math.abs(prospectiveOneDollar8192.worstCase.totalUsd - 0.998896) < 1e-12);
-assert.ok(prospectiveOneDollar8192.worstCase.totalUsd < prospectiveOneDollar8192.totalBudgetUsd);
+const defaults = readPersonalUrlRunBudget({}, models);
+assert.equal(defaults.enabled, false);
+assert.equal(defaults.platforms.instagram.maxActorStarts, 1);
+assert.equal(defaults.platforms.instagram.allowInstagramFallback, false);
+assert.equal(defaults.platforms.tiktok.maxActorStarts, 1);
+
+const budget = readPersonalUrlRunBudget(savedUrlBudgetEnv, models);
+assert.equal(budget.enabled, true);
+assert.equal(budget.maxVideoDurationSeconds, 60);
+assert.equal(budget.geminiVideoMaxInputTokens, 25_000);
+assert.equal(budget.geminiVideoMaxOutputTokens, 4_096);
+assert.equal(budget.geminiRemixMaxOutputTokens, 8_192);
+assert.equal(budget.geminiVideoMaxRequestBytes, 12_000);
+assert.equal(budget.geminiRemixMaxRequestBytes, 30_000);
+assert.equal(budget.platforms.instagram.maxActorStarts, 1);
+assert.equal(budget.platforms.instagram.allowInstagramFallback, false);
+assert.equal(budget.platforms.tiktok.maxActorStarts, 1);
+
+const estimate = (platform) => calculatePersonalUrlRunWorstCase({ ...budget, platform });
+const youtube = estimate('youtube');
+const instagram = estimate('instagram');
+const tiktok = estimate('tiktok');
+
+// Official Gemini API Standard pricing: 3.6 Flash $0.75/$3.75 and 3.5 Flash $1.50/$9.00 per million input/output tokens.
+assert.ok(Math.abs(youtube.totalUsd - 0.271566) < 1e-9, `YouTube estimate was ${youtube.totalUsd}`);
+assert.ok(Math.abs(instagram.totalUsd - 0.326566) < 1e-9, `Instagram estimate was ${instagram.totalUsd}`);
+assert.ok(Math.abs(tiktok.totalUsd - 0.821566) < 1e-9, `TikTok estimate was ${tiktok.totalUsd}`);
+assert.ok(tiktok.totalUsd < budget.totalBudgetUsd);
+assert.equal(youtube.apifyUsd, 0, 'unused social platforms must not be charged');
+assert.ok(Math.abs(instagram.apifyUsd - 0.055) < 1e-9, 'Instagram includes only its 10% Apify margin');
+assert.ok(Math.abs(tiktok.apifyUsd - 0.55) < 1e-9, 'TikTok includes only its 10% Apify margin');
+assert.equal(youtube.videoTokenCountInputUsd, 0, 'video input is not charged twice for token counting');
+assert.equal(youtube.remixAttemptCount, 2, 'the estimate reserves the two permitted remix attempts and no third');
 
 assert.throws(
-  () => readPersonalUrlRunBudget({
-    ...prospectiveOneDollar8192Env,
-    PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '12288',
-  }, models),
+  () => readPersonalUrlRunBudget({ ...savedUrlBudgetEnv, PERSONAL_URL_RUN_BUDGET_USD: '0.82' }, models),
   (error) => error?.code === 'personal_url_run_budget_exceeded'
-    && Math.abs(error.details.maximumExposureUsd - 1.072624) < 1e-12,
-  '12,288 remix output tokens must fail closed above the $1.00 hard ceiling',
-);
-
-const prospectiveOneDollarUpperEdge = readPersonalUrlRunBudget({
-  ...prospectiveOneDollar8192Env,
-  PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8253',
-}, models);
-assert.ok(Math.abs(prospectiveOneDollarUpperEdge.worstCase.totalUsd - 0.999994) < 1e-12);
-assert.ok(prospectiveOneDollarUpperEdge.worstCase.totalUsd < prospectiveOneDollarUpperEdge.totalBudgetUsd);
-assert.throws(
-  () => readPersonalUrlRunBudget({
-    ...prospectiveOneDollar8192Env,
-    PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '8254',
-  }, models),
-  (error) => error?.code === 'personal_url_run_budget_exceeded'
-    && Math.abs(error.details.maximumExposureUsd - 1.000012) < 1e-12,
-  '8,254 remix output tokens must fail closed above the $1.00 hard ceiling',
-);
-
-assert.throws(
-  () => readPersonalUrlRunBudget({
-    ...prospective4096Env,
-    PERSONAL_URL_GEMINI_REMIX_MAX_REQUEST_BYTES: '31000',
-  }, models),
-  (error) => error?.code === 'personal_url_run_budget_exceeded'
-    && Math.abs(error.details.maximumExposureUsd - 0.90052) < 1e-12,
-  '31,000 remix request bytes must fail closed above the $0.90 hard ceiling',
-);
-
-assert.throws(
-  () => readPersonalUrlRunBudget({ PERSONAL_URL_RUN_BUDGET_USD: '0.75' }, models),
-  (error) => error?.code === 'personal_url_run_budget_config_incomplete'
-    && error.details.missing.includes('PERSONAL_URL_MAX_VIDEO_DURATION_SECONDS'),
+    && Math.abs(error.details.maximumExposureUsd - 0.821566) < 1e-9,
+  'the global envelope must reject a budget below the highest active-source estimate',
 );
 assert.throws(
-  () => readPersonalUrlRunBudget({
-    ...cappedEnv,
-    PERSONAL_URL_GEMINI_REMIX_MAX_OUTPUT_TOKENS: '65536',
-  }, models),
-  (error) => error?.code === 'personal_url_run_budget_exceeded'
-    && error.details.maximumExposureUsd > 0.75,
+  () => readPersonalUrlRunBudget({ PERSONAL_URL_RUN_BUDGET_USD: '1.10' }, models),
+  (error) => error?.code === 'personal_url_run_budget_config_incomplete',
 );
 assert.throws(
-  () => readPersonalUrlRunBudget(cappedEnv, { ...models, videoModel: 'unknown-model' }),
+  () => readPersonalUrlRunBudget(savedUrlBudgetEnv, { ...models, videoModel: 'unknown-model' }),
   (error) => error?.code === 'personal_url_run_budget_model_pricing_unknown',
 );
 assert.throws(
-  () => readPersonalUrlRunBudget(cappedEnv, { ...models, now: new Date('2027-01-01T00:00:00Z') }),
+  () => readPersonalUrlRunBudget(savedUrlBudgetEnv, { ...models, now: new Date('2027-01-01T00:00:00Z') }),
   (error) => error?.code === 'personal_url_run_budget_pricing_expired',
 );
 

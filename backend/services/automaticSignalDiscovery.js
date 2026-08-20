@@ -46,12 +46,13 @@ const B_SOFT_DURATION_MAX_SECONDS = 60;
 const B_SOFT_DURATION_DECAY_SECONDS = 12;
 const MANUAL_REFRESH_TRIGGER_MODE = 'manual_refresh';
 const SCHEDULED_TRIGGER_MODE = 'scheduled';
-const MANUAL_REFRESH_PER_RUN_CAP_USD = 1;
-const MANUAL_REFRESH_DAILY_CAP_USD = 3;
+const MANUAL_REFRESH_PER_RUN_CAP_USD = 1.25;
+const MANUAL_REFRESH_DAILY_CAP_USD = 3.75;
 const MANUAL_REFRESH_MONTHLY_CAP_USD = 90;
 const MANUAL_METADATA_APIFY_CAP_USD = 0.5;
 const MANUAL_DOWNLOAD_APIFY_CAP_USD = 0.5;
 const MANUAL_GEMINI_CAP_USD = 0.15;
+const MANUAL_APIFY_DEVIATION_MULTIPLIER = 1.10;
 
 const BOOTSTRAP_KEYWORDS = [
   'ai tools',
@@ -110,6 +111,10 @@ function roundUsd(value) {
 
 function roundProviderUsd(value) {
   return Number(Number(value || 0).toFixed(6));
+}
+
+function withManualApifyDeviation(value) {
+  return roundProviderUsd(value * MANUAL_APIFY_DEVIATION_MULTIPLIER);
 }
 
 function createProviderBudgetLedger({ hardCapUsd = MANUAL_REFRESH_PER_RUN_CAP_USD } = {}) {
@@ -2121,7 +2126,7 @@ function prepareAutomaticDiscovery(args = {}) {
     ? policy?.perRunBudgetUsd || MANUAL_REFRESH_PER_RUN_CAP_USD
     : settings.dailyBudgetUsd;
   const metadataReservationUsd = isManualRefresh
-    ? policy?.metadataApifyHardCapUsd || MANUAL_METADATA_APIFY_CAP_USD
+    ? withManualApifyDeviation(policy?.metadataApifyHardCapUsd || MANUAL_METADATA_APIFY_CAP_USD)
     : estimatedMetadataCostUsd;
   const estimateExceedsBudget = spentUsd + metadataReservationUsd > dailyBudgetUsd;
   const monthlyEstimateExceedsBudget = isManualRefresh
@@ -2420,7 +2425,7 @@ async function executeAutomaticDiscovery(args = {}) {
     const callEstimateUsd = estimateDiscoveryCallCostUsd(call);
     if (budgetLedger) {
       try {
-        budgetLedger.reserve('metadata', budgetPolicy.metadataApifyHardCapUsd, {
+        budgetLedger.reserve('metadata', withManualApifyDeviation(budgetPolicy.metadataApifyHardCapUsd), {
           estimatedCostUsd: callEstimateUsd,
         });
         syncBudgetLedger();
@@ -2662,7 +2667,7 @@ async function executeAutomaticDiscovery(args = {}) {
       if (downloadBudgetAvailable && budgetLedger) {
         try {
           const currentCommitment = budgetLedger.snapshot().committedCostUsd;
-          const exposure = budgetPolicy.downloadApifyHardCapUsd;
+          const exposure = withManualApifyDeviation(budgetPolicy.downloadApifyHardCapUsd);
           if (spentUsd + currentCommitment + exposure > run.dailyBudgetUsd) throw new Error('manual_refresh_daily_budget_exceeded');
           if (run.monthlySpentUsdBefore + currentCommitment + exposure > run.monthlyBudgetUsd) throw new Error('manual_refresh_monthly_budget_exceeded');
           budgetLedger.reserve('download', exposure, { estimatedCostUsd: downloadEstimateUsd });

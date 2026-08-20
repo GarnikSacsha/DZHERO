@@ -289,7 +289,7 @@ try {
     budget: {
       enabled: true,
       totalUsd: 0.75,
-      worstCaseUsd: 0.7186,
+      worstCaseUsd: 0.65659,
       pricingValidThrough: '2026-12-31',
     },
   });

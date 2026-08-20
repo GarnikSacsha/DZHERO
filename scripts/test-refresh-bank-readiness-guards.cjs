@@ -90,11 +90,15 @@ function createCandidate(workspaceId, stableId = '7668237339872759053', { downlo
 }
 
 const pilotPolicy = {
-  dailyBudgetUsd: 1.15,
-  monthlyBudgetUsd: 11.5,
-  perRunBudgetUsd: 1.15,
+  dailyBudgetUsd: 3.75,
+  manualRefreshDailyBudgetUsd: 3.75,
+  monthlyBudgetUsd: 90,
+  perRunBudgetUsd: 1.25,
+  metadataApifyHardCapUsd: 0.5,
+  downloadApifyHardCapUsd: 0.5,
+  geminiHardCapUsd: 0.15,
   dailyTarget: 1,
-  maxBudgetedRunsPerDay: 1,
+  maxBudgetedRunsPerDay: 3,
   resultLimitPerPlatform: 5,
   maxPlannedCalls: 1,
 };
@@ -173,15 +177,58 @@ await check('Apify caps and run identity reach the provider boundary', async () 
 
 await check('per-run ledger reserves unknown actual cost fail-closed', async () => {
   assert.equal(typeof discovery.createProviderBudgetLedger, 'function');
-  const ledger = discovery.createProviderBudgetLedger({ hardCapUsd: 1.15 });
-  ledger.reserve('metadata', 0.5);
+  const ledger = discovery.createProviderBudgetLedger({ hardCapUsd: 1.25 });
+  ledger.reserve('metadata', 0.55);
   ledger.complete('metadata', { actualCostUsd: null });
-  ledger.reserve('download', 0.5);
+  ledger.reserve('download', 0.55);
   ledger.complete('download', { actualCostUsd: null });
   ledger.reserve('gemini', 0.15);
-  assert.equal(ledger.snapshot().committedCostUsd, 1.15);
+  assert.equal(ledger.snapshot().committedCostUsd, 1.25);
   assert.equal(ledger.snapshot().remainingBudgetUsd, 0);
   assert.throws(() => ledger.reserve('extra', 0.01), /budget/i);
+});
+
+await check('three $1.25 manual Refresh runs fit the $3.75 daily envelope and a fourth is blocked', async () => {
+  const policy = { ...pilotPolicy };
+  for (let priorRuns = 0; priorRuns < 3; priorRuns += 1) {
+    const state = createPausedState();
+    for (let index = 0; index < priorRuns; index += 1) {
+      state.discoveryRuns.push({
+        id: `completed_${index}`,
+        workspaceId: 'ws_manual_refresh',
+        lane: 'automatic',
+        status: 'completed',
+        attemptedCallCount: 1,
+        reservedCostUsd: 1.25,
+        claimedAt: '2026-08-03T01:00:00.000Z',
+      });
+    }
+    const prepared = discovery.prepareAutomaticDiscovery({
+      state, workspaceId: 'ws_manual_refresh', now, force: true,
+      triggerMode: 'manual_refresh', policy,
+    });
+    assert.equal(prepared.run?.status, 'running', `${priorRuns + 1} budgeted runs must fit`);
+    assert.ok(prepared.execution);
+  }
+  const blockedState = createPausedState();
+  for (let index = 0; index < 3; index += 1) {
+    blockedState.discoveryRuns.push({
+      id: `completed_${index}`,
+      workspaceId: 'ws_manual_refresh',
+      lane: 'automatic',
+      status: 'completed',
+      attemptedCallCount: 1,
+      reservedCostUsd: 1.25,
+      claimedAt: '2026-08-03T01:00:00.000Z',
+    });
+  }
+  assert.equal(discovery.getDailyAutomaticSpend(blockedState.discoveryRuns, 'ws_manual_refresh', now), 3.75);
+  const blocked = discovery.prepareAutomaticDiscovery({
+    state: blockedState, workspaceId: 'ws_manual_refresh', now, force: true,
+    triggerMode: 'manual_refresh', policy,
+  });
+  assert.equal(blocked.reason, 'daily_run_limit');
+  assert.equal(blocked.execution, null);
 });
 
 await check('Gemini runtime guards are bounded and pricing-known', async () => {
@@ -232,6 +279,14 @@ await check('daily and monthly workspace limits block before provider execution'
     id: 'previous_daily_run', workspaceId: 'ws_manual_refresh', lane: 'automatic', status: 'failed',
     attemptedCallCount: 1, reservedCostUsd: 0.5, claimedAt: '2026-08-03T01:00:00.000Z',
   });
+  dailyState.discoveryRuns.push({
+    id: 'previous_daily_run_two', workspaceId: 'ws_manual_refresh', lane: 'automatic', status: 'failed',
+    attemptedCallCount: 1, reservedCostUsd: 0.5, claimedAt: '2026-08-03T02:00:00.000Z',
+  });
+  dailyState.discoveryRuns.push({
+    id: 'previous_daily_run_three', workspaceId: 'ws_manual_refresh', lane: 'automatic', status: 'failed',
+    attemptedCallCount: 1, reservedCostUsd: 0.5, claimedAt: '2026-08-03T03:00:00.000Z',
+  });
   const daily = discovery.prepareAutomaticDiscovery({
     state: dailyState, workspaceId: 'ws_manual_refresh', now, force: true,
     triggerMode: 'manual_refresh', policy: pilotPolicy,
@@ -242,7 +297,7 @@ await check('daily and monthly workspace limits block before provider execution'
   const monthlyState = createPausedState();
   monthlyState.discoveryRuns.push({
     id: 'previous_monthly_run', workspaceId: 'ws_manual_refresh', lane: 'automatic', status: 'failed',
-    attemptedCallCount: 1, reservedCostUsd: 11.2, claimedAt: '2026-08-02T01:00:00.000Z',
+    attemptedCallCount: 1, reservedCostUsd: 89.6, claimedAt: '2026-08-02T01:00:00.000Z',
   });
   const monthly = discovery.prepareAutomaticDiscovery({
     state: monthlyState, workspaceId: 'ws_manual_refresh', now, force: true,

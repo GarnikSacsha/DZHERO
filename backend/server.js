@@ -1734,8 +1734,8 @@ async function runAutomaticDiscoveryForWorkspace(workspaceId, options = {}) {
       const manualPolicy = options.triggerMode === 'manual_refresh'
           ? getTesterManualRefreshPolicy(entitlements.plan.id) || {
             triggerMode: 'manual_refresh',
-            perRunBudgetUsd: 1,
-            manualRefreshDailyBudgetUsd: 3,
+            perRunBudgetUsd: 1.25,
+            manualRefreshDailyBudgetUsd: 3.75,
             monthlyBudgetUsd: 90,
             metadataApifyHardCapUsd: 0.5,
             downloadApifyHardCapUsd: 0.5,
