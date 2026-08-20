@@ -5,6 +5,7 @@ import { buildStudioContentPlanDraft } from '../src/contentPlanUtils.mjs';
 import {
   deriveStudioAnalysis,
   deriveStudioTranscript,
+  getStudioPreviewImage,
   getStudioRemix,
   getStudioRemixes,
   getStudioSourceLinks,
@@ -87,6 +88,27 @@ assert.deepEqual(getStudioSourceLinks({
   sourceUrl: 'javascript:alert(1)',
   profileUrl: 'data:text/html,unsafe',
 }), { originalUrl: '', profileUrl: '' });
+
+const tiktokPoster = 'https://cdn.example.test/tiktok-current-poster.jpg';
+assert.equal(
+  getStudioPreviewImage({
+    sourceType: 'personal_url',
+    sourceUrl: 'https://www.tiktok.com/@creator/video/7450000000000000000',
+    image: '',
+    thumbnail: '',
+    importedMetadata: {
+      platform: 'tiktok',
+      image: tiktokPoster,
+    },
+  }),
+  tiktokPoster,
+  'Studio must render the persisted TikTok poster when the view-state fixture has no top-level image',
+);
+assert.equal(
+  getStudioPreviewImage({ importedMetadata: { platform: 'tiktok' } }),
+  '',
+  'Studio must keep its existing no-preview fallback when TikTok has no persisted media',
+);
 
 const transcript = deriveStudioTranscript(signal);
 assert.equal(transcript.status, 'available');

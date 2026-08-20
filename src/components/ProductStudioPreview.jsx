@@ -24,6 +24,7 @@ import { useI18n } from '../i18nProvider.mjs';
 import {
   deriveStudioAnalysis,
   deriveStudioTranscript,
+  getStudioPreviewImage,
   getStudioRemixes,
   getStudioSourceLinks,
   normalizeStudioScriptScenes,
@@ -68,14 +69,6 @@ const SOURCE_DIAGNOSTIC_COPY = Object.freeze({
 function resolveCopy(value, t) {
   const text = String(value || '').trim();
   return text.startsWith('product.') ? t(text) : text;
-}
-
-function getSignalImage(signal) {
-  return signal?.image
-    || signal?.thumbnail
-    || signal?.importedMetadata?.thumbnail
-    || signal?.importedMetadata?.youtube?.thumbnail
-    || '';
 }
 
 function getSourceGrounding(signal) {
@@ -538,7 +531,7 @@ export default function ProductStudioPreview({
   const platform = resolveCopy(signal.platform || signal.importedMetadata?.source?.label, t)
     || t('product.studio.values.unknownPlatform');
   const title = resolveCopy(signal.title, t) || t('product.studio.values.untitledSignal');
-  const image = getSignalImage(signal);
+  const image = getStudioPreviewImage(signal);
   const initials = String(signal.initials || creator)
     .split(/\s+/)
     .filter(Boolean)

@@ -197,6 +197,20 @@ function isPersonalUrlSignal(signal = {}) {
     || Boolean(getSourceGrounding(signal));
 }
 
+export function getStudioPreviewImage(signal = {}) {
+  const metadata = signal.importedMetadata || {};
+  const youtube = metadata.youtube || {};
+  return cleanText(
+    signal.image
+    || signal.thumbnail
+    || metadata.image
+    || metadata.thumbnail
+    || metadata.thumbnailUrl
+    || youtube.thumbnail
+    || youtube.thumbnailUrl,
+  );
+}
+
 export function getStudioSourceLinks(signal = {}) {
   const metadata = signal.importedMetadata || {};
   const youtube = metadata.youtube || {};
